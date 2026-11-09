@@ -5,6 +5,7 @@
 <title>細道ルートメーカー hosomichi</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.5.3/dist/leaflet-rotate.js"></script>
 <style>
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
@@ -37,6 +38,12 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #gps{position:absolute;bottom:calc(84px + env(safe-area-inset-bottom));right:12px;z-index:1000;width:60px;height:60px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:28px;line-height:60px;text-align:center}
 #gps.on{background:#1a73e8;color:#fff}
+#dir{position:absolute;bottom:calc(156px + env(safe-area-inset-bottom));right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0;display:none}
+#dir.on{background:#1a73e8}
+#dir svg{display:block;margin:auto;transition:transform .3s}
+#dir small{position:absolute;right:0;bottom:-16px;text-align:right;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+.me-ic svg{display:block}
 #nav{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom));left:10px;right:64px;z-index:1000;background:#fffe;border-radius:12px;
   box-shadow:0 2px 8px #0004;padding:8px 12px;font-size:18px;font-weight:bold;display:none}
 #nav.off{color:#c00}
@@ -49,8 +56,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <div id="panel">
   <div id="head"><span class="t">🚲 細道ルートメーカー</span><button id="tog">たたむ</button></div>
   <div class="body">
-    <div class="row"><label>出発</label><input type="text" id="from" placeholder="空なら現在地">
-      <button class="ib" id="here" title="現在地">📍</button></div>
+    <div class="row"><label>出発</label><input type="text" id="from" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" placeholder="駅名・住所・GoogleマップURL"></div>
     <div class="row"><label>細道度</label><input type="range" id="hosoi" min="1" max="10" value="5"><b id="hv">5</b></div>
     <div style="font-size:11px;color:#888;margin-top:2px">地図をタップしても出発・到着を選べるよ。大きいほど遠回りしても細い道</div>
@@ -79,6 +85,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 </div>
 <div id="nav"></div>
 <button id="gps" title="現在地についていく">◎</button>
+<button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
 
 <script id="router" type="text/plain">// ==== 細道ルート計算エンジン（Web Worker / Node 両用） ====
 const PENALTY = {
@@ -498,7 +505,8 @@ const base = {
   "標準": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr }),
   "写真": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg", { maxZoom: 18, attribution: attr }),
 };
-const map = L.map("map", { zoomControl: false }).setView([35.69, 139.75], 11);
+const map = L.map("map", { zoomControl: false, rotate: true, bearing: 0, rotateControl: false, touchRotate: false,
+  shiftKeyRotate: false, compassBearing: false }).setView([35.69, 139.75], 11);
 base["淡色"].addTo(map);
 L.control.layers(base, null, { position: "bottomright" }).addTo(map);
 map.attributionControl.setPrefix(false);
@@ -683,7 +691,6 @@ $("bNew").onclick = () => { history.replaceState(null, "", location.pathname); $
 // ---------- パネル ----------
 $("tog").onclick = () => { const p = $("panel"); p.classList.toggle("min"); $("tog").textContent = p.classList.contains("min") ? "ひらく" : "たたむ"; };
 $("hosoi").oninput = () => $("hv").textContent = $("hosoi").value;
-$("here").onclick = async () => { $("from").value = "さがし中…"; try { const p = await getHere(); $("from").value = p.map(v => v.toFixed(6)).join(","); } catch (e) { $("from").value = ""; setMsg(e.message, true); } };
 map.on("click", e => {
   if (follow) return;
   const v = e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6);
@@ -695,6 +702,29 @@ map.on("click", e => {
 
 // ---------- 現在地ナビ ----------
 let me = null, acc = null, follow = false, wid = null, lock = null;
+let headUp = false, heading = null, lastFix = null;
+const SVG_DOT = '<svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="8" fill="#1a73e8" stroke="#fff" stroke-width="3"/></svg>';
+const SVG_ARROW = '<svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="19" r="8" fill="#1a73e8" stroke="#fff" stroke-width="3"/><polygon points="17,1 24,13 10,13" fill="#1a73e8" stroke="#fff" stroke-width="2"/></svg>';
+const icDot = L.divIcon({ className: "me-ic", html: SVG_DOT, iconSize: [26, 26], iconAnchor: [13, 13] });
+const icArrow = L.divIcon({ className: "me-ic", html: SVG_ARROW, iconSize: [34, 34], iconAnchor: [17, 19] });
+function bearingDeg(a, b) {
+  const y = Math.sin((b[1] - a[1]) * RAD) * Math.cos(b[0] * RAD);
+  const x = Math.cos(a[0] * RAD) * Math.sin(b[0] * RAD) - Math.sin(a[0] * RAD) * Math.cos(b[0] * RAD) * Math.cos((b[1] - a[1]) * RAD);
+  return (Math.atan2(y, x) / RAD + 360) % 360;
+}
+function updHeading(c, ll) {
+  // 進んでいる向き：GPSの進行方向（動いているとき）→ なければ前の位置から計算
+  if (c.heading != null && !isNaN(c.heading) && (c.speed || 0) > 1.2) heading = c.heading;
+  else if (lastFix && hav(lastFix, ll) > 8) heading = bearingDeg(lastFix, ll);
+  if (!lastFix || hav(lastFix, ll) > 8) lastFix = ll;
+}
+function applyBearing() {
+  const b = headUp && heading != null ? -heading : 0;
+  if (headUp) $("dirL").textContent = heading == null ? "動くと回るよ" : "進む向きが上";
+  map.setBearing(b);
+  $("needle").style.transform = `rotate(${b}deg)`;
+  if (me) { me.setIcon(heading != null ? icArrow : icDot); me.setRotation(heading != null ? heading * RAD : 0); }
+}
 function nearestOnRoute(p) {
   const r = cur.route, c = Math.cos(p[0] * RAD), X = q => [(q[1] - p[1]) * c * 111320, (q[0] - p[0]) * 111320];
   let bd = Infinity, bi = 0, bt = 0;
@@ -709,11 +739,13 @@ function nearestOnRoute(p) {
 }
 function onPos(p) {
   const ll = [p.coords.latitude, p.coords.longitude];
+  updHeading(p.coords, ll);
   if (!me) {
     acc = L.circle(ll, { radius: p.coords.accuracy, color: "#1a73e8", weight: 1, fillOpacity: .1, interactive: false }).addTo(map);
-    me = L.circleMarker(ll, { radius: 9, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1, interactive: false }).addTo(map);
+    me = L.marker(ll, { icon: icDot, interactive: false, zIndexOffset: 1000, rotateWithView: true, rotation: 0 }).addTo(map);
   }
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
+  applyBearing();
   if (follow) map.setView(ll, Math.max(map.getZoom(), 16), { animate: true });
   if (cur && cur.route.length > 1) {
     const [off, rest] = nearestOnRoute(ll), nav = $("nav");
@@ -728,11 +760,18 @@ $("gps").onclick = () => {
     if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
     wid = navigator.geolocation.watchPosition(onPos, e => setMsg("位置情報エラー: " + e.message, true), { enableHighAccuracy: true, maximumAge: 2000 });
     follow = true; $("gps").classList.add("on"); wake();
+    $("dir").style.display = "block";
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } else {
     follow = !follow; $("gps").classList.toggle("on", follow);
     if (follow && me) map.setView(me.getLatLng(), Math.max(map.getZoom(), 16));
   }
+};
+$("dir").onclick = () => {
+  headUp = !headUp;
+  $("dir").classList.toggle("on", headUp);
+  if (!headUp) $("dirL").textContent = "北が上";
+  applyBearing();
 };
 map.on("dragstart", () => { follow = false; $("gps").classList.remove("on"); });
 document.addEventListener("visibilitychange", () => { if (wid !== null && document.visibilityState === "visible") wake(); });
