@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2319</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2324</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -111,6 +111,12 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <div class="pre" id="pre2"><button data-p="near">近道</button><button data-p="std">おすすめ</button><button data-p="hoso">細道こだわり</button></div>
       <div class="note" style="font-size:11px;color:#888;margin-top:4px">上のボタンでおまかせ、下で1つずつ変えられるよ（計算のしかた・曲がる回数・広さはおまかせでも変わらないよ）</div>
       <div id="cfgBox"></div>
+      <div id="homeBox" style="margin-top:8px;background:#fff7e6;border-radius:8px;padding:8px;font-size:13px">
+        <b>🏠 自宅の場所</b>（共有するときに、自宅のまわりを自動で隠すよ）<br>
+        <span id="homeSt"></span>
+        <div class="btns" style="margin-top:6px"><button class="ib" id="hmHere">現在地を自宅にする</button><button class="ib" id="hmClear">消す</button></div>
+        <div style="font-size:11px;color:#888;margin-top:4px">地図をタップして「自宅にする」でも登録できるよ。自宅の場所はこの端末の中だけにしまって、どこにも送らないよ</div>
+      </div>
     </div>
     <div id="tabLog" style="display:none">
       <div class="btns" style="margin:6px 0"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
@@ -144,7 +150,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
           <select id="hide"><option value="0">隠さない</option><option value="200">200m</option>
           <option value="400" selected>400m</option><option value="800">800m</option></select>
           <label><input type="checkbox" id="hideEnd"> 到着地も</label></div>
-        <div style="margin:4px 0;color:#666">自宅から出発したルートを公開するときは隠してね</div>
+        <div id="homeNote" style="margin:4px 0;color:#666">自宅から出発したルートを公開するときは隠してね</div>
         <div class="row" style="margin-top:4px"><label style="width:auto">名前</label><input type="text" id="shareName" maxlength="40" placeholder="ルートの名前（いっしょに送るよ）"></div>
         <textarea id="url" readonly></textarea>
         <div class="btns"><button class="ib" id="bQr">📷 QR</button><button class="ib" id="bCopy">コピー</button><button class="ib" id="bSys">共有…</button></div>
@@ -1388,11 +1394,51 @@ function showRoute(r, fit) {
 }
 
 // ---------- 共有URL・GPX ----------
+// ---------- 自宅を守る ----------
+// 自宅を登録しておくと、出発・到着が自宅の近く（500m以内）のときは共有で必ず隠す
+const HOME_R = 500, HOME_HIDE = 500;
+let home = (() => { try { return JSON.parse(localStorage.getItem("hosomichi_home")); } catch { return null; } })();
+function setHome(ll) {
+  home = ll ? [+ll[0].toFixed(5), +ll[1].toFixed(5)] : null;
+  try { if (home) localStorage.setItem("hosomichi_home", JSON.stringify(home)); else localStorage.removeItem("hosomichi_home"); } catch {}
+  showHome(); addLog(home ? "🏠 自宅を登録したよ（この端末だけ）" : "🏠 自宅の登録を消したよ", "m");
+  if (cur && $("share").style.display === "block") updateShare();
+}
+function showHome() {
+  $("homeSt").innerHTML = home ? "✅ 登録ずみ（出発・到着が自宅から500m以内なら、共有で必ず隠すよ）" : '<span style="color:#c00">まだ登録してないよ</span>';
+}
+$("hmHere").onclick = async () => { try { setHome(await getHere()); } catch (e) { alert(e.message); } };
+$("hmClear").onclick = () => { if (confirm("自宅の登録を消す？")) setHome(null); };
+showHome();
+// 共有するときにどれだけ隠すか（選んだ値＋自宅の近くなら強制）
+function hidePlan() {
+  const R = cur.route, sel = +$("hide").value;
+  let hs = sel, he = $("hideEnd").checked ? sel : 0;
+  const nearS = home && hav(R[0], home) < HOME_R, nearE = home && hav(R[R.length - 1], home) < HOME_R;
+  if (nearS) hs = Math.max(hs, HOME_HIDE);
+  if (nearE) he = Math.max(he, HOME_HIDE);
+  let midNear = false;
+  if (home) for (let i = 0; i < R.length; i++) if (hav(R[i], home) < 150 && hav(R[i], R[0]) > hs && hav(R[i], R[R.length - 1]) > he) { midNear = true; break; }
+  return { hs, he, nearS, nearE, midNear };
+}
+function updateHomeNote() {
+  const p = hidePlan(), n = $("homeNote"), msgs = [];
+  if (p.nearS) msgs.push("🏠 出発地が自宅の近くなので、まわり500mを自動で隠しているよ");
+  if (p.nearE) msgs.push("🏠 到着地が自宅の近くなので、まわり500mを自動で隠しているよ");
+  if (p.midNear) msgs.push("⚠ ルートのとちゅうで自宅のそばを通るよ。共有してもいいか確かめてね");
+  if (!home && !p.hs) msgs.push("⚠ 出発地を隠してないよ。自宅から出発してないか確かめてね（⚙ 設定で自宅を登録すると自動で隠せるよ）");
+  n.innerHTML = msgs.length ? msgs.join("<br>") : "自宅から出発したルートを公開するときは隠してね";
+  n.style.color = msgs.some(m => m.startsWith("⚠")) ? "#c00" : msgs.length ? "#188038" : "#666";
+}
+
 function shareUrl(tol = 3) {
-  const R = cur.route, hide = +$("hide").value;
+  const R = cur.route, { hs, he, nearS, nearE } = hidePlan();
+  // 出発（到着）から hs(he) m 以内、または自宅から 500m 以内の線は送らない
+  const hideS = q => hav(q, R[0]) < hs || (nearS && hav(q, home) < HOME_HIDE);
+  const hideE = q => hav(q, R[R.length - 1]) < he || (nearE && hav(q, home) < HOME_HIDE);
   let i0 = 0, i1 = R.length;
-  if (hide) { while (i0 < R.length - 1 && hav(R[i0], R[0]) < hide) i0++; }
-  if (hide && $("hideEnd").checked) { while (i1 > i0 + 1 && hav(R[i1 - 1], R[R.length - 1]) < hide) i1--; }
+  if (hs) { while (i0 < R.length - 1 && hideS(R[i0])) i0++; }
+  if (he) { while (i1 > i0 + 1 && hideE(R[i1 - 1])) i1--; }
   const rest = i0 > 0 || i1 < R.length;
   const sub = R.slice(i0, i1), subK = cur.kc ? cur.kc.slice(i0, i1 - 1) : null;
   const keep = p => !rest || sub.some(q => hav(p, q) < 30);
@@ -1402,7 +1448,7 @@ function shareUrl(tol = 3) {
   if (nm) prm.set("n", nm);
   prm.set("r", encPoly(pts));
   if (sr.kc) prm.set("k", encK(sr.kc));
-  if (cur.resume && !(hide && $("hideEnd").checked)) {   // 続きから計算できるように、ゴールと設定も入れる
+  if (cur.resume && !he) {   // 続きから計算できるように、ゴールと設定も入れる
     prm.set("g", cur.resume.g.map(v => v.toFixed(5)).join(","));
     prm.set("c", btoa(unescape(encodeURIComponent(JSON.stringify(cur.resume.cfg)))).replace(/=+$/, ""));
   }
@@ -1412,7 +1458,7 @@ function shareUrl(tol = 3) {
   if (ng.length) prm.set("ng", encPoly(ng));
   return location.origin + location.pathname + "#" + prm.toString();
 }
-function updateShare() { $("url").value = shareUrl(); }
+function updateShare() { $("url").value = shareUrl(); updateHomeNote(); }
 // QRコード：パソコンで作ったルートをスマホのカメラで読んで開く
 let qrLib = null;
 function loadQrLib() {
@@ -1620,9 +1666,11 @@ map.on("click", e => {
   if (follow) return;
   const v = e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6);
   const div = document.createElement("div"); div.className = "pin";
-  div.innerHTML = "ここを<br><button data-k='from'>出発にする</button><button data-k='to'>到着にする</button>";
+  div.innerHTML = "ここを<br><button data-k='from'>出発にする</button><button data-k='to'>到着にする</button><br><button data-k='home'>🏠 自宅にする</button>";
   const pop = L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
-  div.onclick = ev => { const k = ev.target.dataset.k; if (!k) return; $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
+  div.onclick = ev => { const k = ev.target.dataset.k; if (!k) return;
+    if (k === "home") { setHome([e.latlng.lat, e.latlng.lng]); map.closePopup(pop); return; }
+    $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 });
 
 // ---------- 現在地ナビ ----------
