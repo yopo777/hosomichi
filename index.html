@@ -13,6 +13,9 @@
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
 #map{position:absolute;inset:0}
+:root{--ptop:90px}
+/* 画面の下には何も置かない（Chrome の「タブを閉じました」などが10秒くらい出てタッチできないため）
+   ボタンは右のまんなか、「のこり」や色の説明はパネルのすぐ下 */
 #panel{position:absolute;top:8px;left:8px;right:8px;max-width:440px;z-index:1100;background:#fff;border-radius:12px;
   box-shadow:0 2px 10px #0004;padding:10px 12px;font-size:15px}
 #panel.min .body{display:none}
@@ -71,18 +74,18 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #list .it button{border:1px solid #ccc;background:#fff;border-radius:6px;padding:4px 8px;font-size:13px}
 #share{display:none;margin-top:8px;font-size:13px;background:#f6f6f6;border-radius:8px;padding:8px}
 #share textarea{width:100%;height:60px;font-size:11px}
-#gps{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom));right:12px;z-index:1000;width:60px;height:60px;border-radius:50%;
+#gps{position:absolute;top:calc(50% + 60px);right:12px;z-index:1000;width:60px;height:60px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:28px;line-height:60px;text-align:center}
 #gps.on{background:#1a73e8;color:#fff}
-#dir{position:absolute;bottom:calc(100px + env(safe-area-inset-bottom));right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+#dir{position:absolute;top:calc(50% - 10px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0;display:none}
 #dir.on{background:#1a73e8}
-#lay{position:absolute;bottom:calc(172px + env(safe-area-inset-bottom));right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+#lay{position:absolute;top:calc(50% - 82px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
-#col{position:absolute;bottom:calc(244px + env(safe-area-inset-bottom));right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+#col{position:absolute;top:calc(50% - 154px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
 #col small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
-#legend{position:absolute;left:10px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:999;background:#fffe;border-radius:10px;
+#legend{position:absolute;left:10px;top:calc(50% - 40px);z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:6px 8px;font-size:11px;line-height:1.6;display:none;max-width:60%}
 #legend i{display:inline-block;width:18px;height:6px;border-radius:3px;margin-right:4px;vertical-align:middle}
 #lay small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
@@ -90,7 +93,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #dir svg{display:block;margin:auto;transition:transform .3s}
 #dir small{position:absolute;right:0;bottom:-16px;text-align:right;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 .me-ic svg{display:block}
-#nav{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom));left:10px;right:84px;z-index:1000;background:#fffe;border-radius:12px;
+#nav{position:absolute;top:calc(var(--ptop) + 8px);left:10px;right:84px;z-index:1000;background:#fffe;border-radius:12px;
   box-shadow:0 2px 8px #0004;padding:8px 12px;font-size:18px;font-weight:bold;display:none}
 #nav.off{color:#c00}
 .pin{font-size:13px}
@@ -100,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2259</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2312</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -155,7 +158,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <div id="ask" style="display:none;position:fixed;inset:0;z-index:2500;background:#0006;align-items:center;justify-content:center;padding:16px"></div>
 <div id="upd" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:2000;background:#188038;color:#fff;
   border-radius:10px;padding:8px 12px;font-size:14px;box-shadow:0 2px 8px #0005;white-space:nowrap"></div>
-<div id="inapp" style="display:none;position:absolute;left:8px;right:8px;bottom:calc(90px + env(safe-area-inset-bottom));z-index:1001;background:#333;color:#fff;
+<div id="inapp" style="display:none;position:absolute;left:8px;right:8px;top:calc(var(--ptop) + 8px);z-index:1001;background:#333;color:#fff;
   border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">📱 X などのアプリの中で開いてるよ。現在地ナビを使うときは「︙」→「ブラウザで開く」で Chrome や Safari で開いてね
   <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
 <button id="gps" title="現在地についていく">◎</button>
@@ -1390,7 +1393,7 @@ function loadQrLib() {
   }));
 }
 // detail=false：読みやすさ優先（長いルートは線を間引く）／ detail=true：線をなるべく間引かない（QRが細かくなる）
-let qrDetail = false;
+const qrDetail = true;   // いつも「くわしい」（線をなるべく間引かない）
 // 1マスが整数ピクセルになるように描く（ぼやけると読めないので）
 function qrSvg(qr, maxSize) {
   const n = qr.getModuleCount(), m = 4, k = Math.max(2, Math.floor(maxSize / (n + m * 2))), W = (n + m * 2) * k;
@@ -1410,17 +1413,15 @@ async function makeQr() {
     const qr = qrcode(0, "L"); qr.addData(url, "Byte"); qr.make();
     const n = qr.getModuleCount();
     const size = Math.floor(Math.min(window.innerWidth - 24, window.innerHeight - 130));   // 画面いっぱいに大きく
-    const full = shareUrl(1).length;
     box.innerHTML =
-      `<div class="btns" style="margin:0 auto 8px;max-width:420px;display:flex;gap:6px"><button class="ib" data-q="x" style="flex:1">✕ とじる</button><button class="ib" data-q="0" style="flex:1;${qrDetail ? "" : "border-color:#d93025;color:#d93025"}">ふつう</button>` +
-      `<button class="ib" data-q="1" style="flex:1;${qrDetail ? "border-color:#d93025;color:#d93025" : ""}">くわしい</button></div>` +
+      `<div class="btns" style="margin:0 auto 8px;max-width:420px;display:flex;gap:6px"><button class="ib" data-q="x" style="flex:1">✕ とじる</button></div>` +
       qrSvg(qr, size) +
       `<div style="font-size:13px;color:#666;margin-top:6px">スマホのカメラで読みとってね（${n}×${n}マス）<br>` +
       (tol > 1 ? `線を${tol}m単位に間引いてるよ` : "線は間引いてないよ") +
-      (qrDetail ? "。細かいので、スマホを画面に近づけて読んでね" : (tol > 3 && full <= 2900 ? "。もっと正確にしたいときは「くわしい」" : "")) + `</div>`;
+      "。細かいときは、スマホを画面に近づけて読んでね" + `</div>`;
   } catch (e) { box.innerHTML = `<span style="color:#c00">${e.message}</span>`; }
 }
-$("qr").addEventListener("click", e => { const q = e.target.dataset.q; if (q == null) return; if (q === "x") { $("qr").style.display = "none"; return; } qrDetail = q === "1"; makeQr(); });
+$("qr").addEventListener("click", e => { if (e.target.dataset.q === "x") $("qr").style.display = "none"; });
 $("bQr").onclick = () => { const b = $("qr"); if (b.style.display === "block") { b.style.display = "none"; return; } makeQr(); };
 function defaultShareName() { return (cur.name || "").slice(0, 40); }   // 名前の住所は町名までなので、そのまま
 $("bShare").onclick = () => { const s = $("share"); s.style.display = s.style.display === "block" ? "none" : "block"; $("shareName").value = defaultShareName(); updateShare(); };
@@ -1502,6 +1503,10 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 $("ver").style.cursor = "pointer";
 $("ver").onclick = () => { showTab("log"); checkUpdate(true); };
 
+// パネルの下の位置を CSS に教える（「のこり」や色の説明をそのすぐ下に出すため）
+const setPtop = () => { const p = $("panel"); document.documentElement.style.setProperty("--ptop", (p.offsetTop + p.offsetHeight) + "px"); };
+new ResizeObserver(setPtop).observe($("panel")); setPtop();
+
 // ---------- パネル ----------
 // 入力欄で Enter → ルートを作る（日本語の変換確定の Enter はのぞく）
 for (const id of ["from", "to"]) $(id).addEventListener("keydown", e => {
@@ -1518,7 +1523,7 @@ $("fs").onclick = async () => {
     else await (fsEl.requestFullscreen || fsEl.webkitRequestFullscreen).call(fsEl, { navigationUI: "hide" });
   } catch (e) { setMsg("全画面にできませんでした（このブラウザは対応してないかも）", true); }
 };
-const onFs = () => { $("fs").textContent = isFs() ? "✕" : "⛶"; $("fs").title = isFs() ? "全画面をやめる" : "全画面"; setTimeout(() => map.invalidateSize(), 300); if (wid !== null) wake(); };
+const onFs = () => { document.body.classList.toggle("fs", isFs()); $("fs").textContent = isFs() ? "✕" : "⛶"; $("fs").title = isFs() ? "全画面をやめる" : "全画面"; setTimeout(() => map.invalidateSize(), 300); if (wid !== null) wake(); };
 document.addEventListener("fullscreenchange", onFs); document.addEventListener("webkitfullscreenchange", onFs);
 $("tog").onclick = () => { const p = $("panel"); p.classList.toggle("min"); $("tog").textContent = p.classList.contains("min") ? "ひらく" : "たたむ"; };
 // ---------- 細かい設定 ----------
