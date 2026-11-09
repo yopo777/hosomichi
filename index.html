@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#d93025">
+<title>細道ルートメーカー hosomichi</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+#map{position:absolute;inset:0}
+#panel{position:absolute;top:8px;left:8px;right:8px;max-width:440px;z-index:1000;background:#fff;border-radius:12px;
+  box-shadow:0 2px 10px #0004;padding:10px 12px;font-size:15px}
+#panel.min .body{display:none}
+#head{display:flex;align-items:center;gap:8px;font-weight:bold}
+#head .t{flex:1}
+#tog{border:none;background:#eee;border-radius:8px;padding:4px 10px;font-size:14px}
+.row{display:flex;gap:6px;margin-top:8px;align-items:center}
+.row label{width:3.2em;font-size:13px;color:#555}
+.row input[type=text]{flex:1;min-width:0;padding:9px;border:1px solid #ccc;border-radius:8px;font-size:15px}
+.ib{border:1px solid #ccc;background:#fff;border-radius:8px;padding:8px 10px;font-size:15px}
+#go{width:100%;margin-top:10px;padding:12px;border:none;border-radius:10px;background:#d93025;color:#fff;font-size:17px;font-weight:bold}
+#go:disabled{background:#999}
+#hosoi{flex:1}
+#prog{margin-top:8px;display:none}
+#bar{height:8px;background:#eee;border-radius:4px;overflow:hidden}
+#bar div{height:100%;width:0;background:#d93025;transition:width .2s}
+#bar.busy div{width:30%!important;animation:busy 1.2s infinite linear}
+@keyframes busy{from{margin-left:-30%}to{margin-left:100%}}
+#msg{font-size:12px;color:#555;margin-top:4px;white-space:pre-wrap}
+#msg.err{color:#c00}
+#result{display:none;margin-top:8px;font-size:13px;line-height:1.5}
+#result .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+#result .btns button{flex:1}
+#share{display:none;margin-top:8px;font-size:13px;background:#f6f6f6;border-radius:8px;padding:8px}
+#share textarea{width:100%;height:60px;font-size:11px}
+#gps{position:absolute;bottom:calc(84px + env(safe-area-inset-bottom));right:12px;z-index:1000;width:60px;height:60px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:28px;line-height:60px;text-align:center}
+#gps.on{background:#1a73e8;color:#fff}
+#nav{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom));left:10px;right:64px;z-index:1000;background:#fffe;border-radius:12px;
+  box-shadow:0 2px 8px #0004;padding:8px 12px;font-size:18px;font-weight:bold;display:none}
+#nav.off{color:#c00}
+.pin{font-size:13px}
+.pin button{margin:4px 2px 0;padding:6px 10px;border-radius:6px;border:1px solid #ccc;background:#fff}
+.leaflet-control-attribution{font-size:10px}
+</style></head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <div id="head"><span class="t">🚲 細道ルートメーカー</span><button id="tog">たたむ</button></div>
+  <div class="body">
+    <div class="row"><label>出発</label><input type="text" id="from" placeholder="空なら現在地">
+      <button class="ib" id="here" title="現在地">📍</button></div>
+    <div class="row"><label>到着</label><input type="text" id="to" placeholder="駅名・住所・GoogleマップURL"></div>
+    <div class="row"><label>細道度</label><input type="range" id="hosoi" min="1" max="10" value="5"><b id="hv">5</b></div>
+    <div style="font-size:11px;color:#888;margin-top:2px">地図をタップしても出発・到着を選べるよ。大きいほど遠回りしても細い道</div>
+    <button id="go">ルートを作る</button>
+    <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>
+    <div id="result">
+      <div id="sum"></div>
+      <div class="btns">
+        <button class="ib" id="bShare">🔗 共有URL</button>
+        <button class="ib" id="bGpx">⬇ GPX</button>
+        <button class="ib" id="bNew" style="display:none">✏ 新しく作る</button>
+      </div>
+      <div id="share">
+        <div>出発地のまわりを隠す
+          <select id="hide"><option value="0">隠さない</option><option value="200">200m</option>
+          <option value="400" selected>400m</option><option value="800">800m</option></select>
+          <label><input type="checkbox" id="hideEnd"> 到着地も</label></div>
+        <div style="margin:4px 0;color:#666">自宅から出発したルートを公開するときは隠してね</div>
+        <textarea id="url" readonly></textarea>
+        <div class="btns"><button class="ib" id="bCopy">コピー</button><button class="ib" id="bSys">共有…</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="nav"></div>
+<button id="gps" title="現在地についていく">◎</button>
+
+<script id="router" type="text/plain">// ==== 細道ルート計算エンジン（Web Worker / Node 両用） ====
+const PENALTY = {
+  living_street: 1.0, residential: 1.0, service: 1.1, unclassified: 1.2, track: 1.3, path: 1.3,
+  cycleway: 1.0, pedestrian: 1.5, footway: 2.0, steps: 15.0,
+  tertiary: 3.0, tertiary_link: 3.0, secondary: 6.0, secondary_link: 6.0,
+  primary: 10.0, primary_link: 10.0, trunk: 30.0, trunk_link: 30.0,
+};
+const DEFAULT_PENALTY = 2.0;
+const EXCLUDE = new Set(["motorway", "motorway_link", "construction", "proposed", "raceway", "bus_guideway",
+  "elevator", "corridor", "platform", "bus_stop"]);
+const UNPAVED = new Set(["gravel", "fine_gravel", "pebblestone", "unpaved", "dirt", "earth", "ground", "grass",
+  "sand", "mud", "compacted", "woodchips", "rock", "grass_paver"]);
+const UNPAVED_PENALTY = 20.0, UNKNOWN_TRACK_PENALTY = 6.0;
+const SIGNAL_RADIUS = 35, CROSS_PENALTY = 3000;
+const KIND_JA = {
+  living_street: "生活道路", residential: "住宅街の道", service: "私道・通路", unclassified: "細めの一般道",
+  track: "農道", path: "小道", cycleway: "自転車道", pedestrian: "歩行者道", footway: "歩道",
+  tertiary: "一般道", tertiary_link: "一般道", secondary: "県道クラス", secondary_link: "県道クラス",
+  primary: "国道・主要道", primary_link: "国道・主要道", trunk: "幹線国道", trunk_link: "幹線国道",
+  steps: "スロープ付き階段", road: "道",
+};
+const OVERPASS_URLS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+];
+
+function lanesOf(t) { const n = parseInt(String(t.lanes || "0").split(";")[0]); return isNaN(n) ? 0 : n; }
+function isOneway(t) { return ["yes", "1", "true", "-1"].includes(t.oneway); }
+function isWide(t) {
+  const hw = t.highway || "", n = lanesOf(t), ow = isOneway(t);
+  if (n >= 4) return true;
+  if ((hw === "trunk" || hw === "trunk_link") && n !== 2 && !(ow && n === 1)) return true;
+  if (["trunk", "primary", "secondary"].includes(hw) && ow && n >= 2) return true;
+  return false;
+}
+function unpaved(t) {
+  const sf = t.surface || "";
+  if (UNPAVED.has(sf)) return [UNPAVED_PENALTY, "砂利・土の道"];
+  if (["grade3", "grade4", "grade5"].includes(t.tracktype)) return [UNPAVED_PENALTY, "砂利・土の道"];
+  if (!sf && (t.highway === "track" || t.highway === "path") && t.tracktype !== "grade1") return [UNKNOWN_TRACK_PENALTY, "舗装不明の小道"];
+  return null;
+}
+function hasBikeRamp(t) { return ["ramp:bicycle", "ramp:stroller", "ramp:wheelchair", "ramp"].some(k => t[k] === "yes"); }
+function wayPenalty(t, hosoi) {
+  let p = PENALTY[t.highway] ?? DEFAULT_PENALTY;
+  if (lanesOf(t) >= 2) p *= 1.5;
+  p = 1 + (p - 1) * (hosoi / 5);
+  const u = unpaved(t); if (u) p *= u[0];
+  return p;
+}
+const R = 6371000, RAD = Math.PI / 180;
+function hav(la1, lo1, la2, lo2) {
+  const a = Math.sin((la2 - la1) * RAD / 2) ** 2 + Math.cos(la1 * RAD) * Math.cos(la2 * RAD) * Math.sin((lo2 - lo1) * RAD / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function overpassQuery(b) {
+  return `[out:json][timeout:120];
+way["highway"]["highway"!~"^(motorway|motorway_link|construction|proposed|platform|corridor|elevator|raceway|bus_guideway|bus_stop)$"]["access"!~"^(no|private)$"]["service"!~"^(parking_aisle|drive-through)$"](${b.s},${b.w},${b.n},${b.e});
+(._;>;);
+out body qt;`;
+}
+
+async function fetchOSM(b, prog) {
+  const body = "data=" + encodeURIComponent(overpassQuery(b));
+  let last;
+  for (let round = 0; round < 3; round++) {
+    for (const url of OVERPASS_URLS) {
+      const host = new URL(url).host;
+      try {
+        prog({ msg: `${host} サーバーが計算中`, done: 0, total: 0 });
+        const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 150000);
+        const res = await fetch(url, { method: "POST", body, signal: ac.signal,
+          headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const total = +res.headers.get("Content-Length") || 0;
+        const reader = res.body.getReader(); const chunks = []; let done = 0;
+        for (;;) {
+          const { value, done: fin } = await reader.read();
+          if (fin) break;
+          chunks.push(value); done += value.length;
+          prog({ msg: `${host} ダウンロード中`, done, total });
+        }
+        clearTimeout(timer);
+        const buf = new Uint8Array(done); let o = 0;
+        for (const c of chunks) { buf.set(c, o); o += c.length; }
+        prog({ msg: "データを読みこみ中", done, total: done });
+        const json = JSON.parse(new TextDecoder().decode(buf));
+        if (json.remark && !json.elements?.length) throw new Error(json.remark.slice(0, 80));
+        return json;
+      } catch (e) {
+        last = e; prog({ msg: `${host} 失敗: ${e.message}`, warn: true });
+      }
+    }
+    if (round < 2) { prog({ msg: "10秒待ってもう一周…" }); await new Promise(r => setTimeout(r, 10000)); }
+  }
+  throw new Error("OSMのデータが取れませんでした（" + (last?.message || "") + "）。少し待ってもう一度ためしてね");
+}
+
+function buildGraph(osm, hosoi) {
+  const idx = new Map(), lat = [], lon = [], ntags = new Map();
+  for (const e of osm.elements) if (e.type === "node") {
+    idx.set(e.id, lat.length); if (e.tags) ntags.set(lat.length, e.tags); lat.push(e.lat); lon.push(e.lon);
+  }
+  const N = lat.length, adj = Array.from({ length: N }, () => []);
+  const wide = new Uint8Array(N), inGraph = new Uint8Array(N);
+  const d = (u, v) => hav(lat[u], lon[u], lat[v], lon[v]);
+  for (const e of osm.elements) {
+    if (e.type !== "way") continue;
+    const t = e.tags || {}, hw = t.highway;
+    if (!hw || EXCLUDE.has(hw)) continue;
+    if (t.access === "no" || t.access === "private" || t.bicycle === "no") continue;
+    if (hw === "steps" && !hasBikeRamp(t)) continue;
+    const nd = e.nodes.map(id => idx.get(id)).filter(x => x !== undefined);
+    if (nd.length < 2) continue;
+    let pen = wayPenalty(t, hosoi);
+    let name = KIND_JA[hw] || hw;
+    const up = unpaved(t); if (up) name = up[1];
+    if (["footway", "path", "pedestrian", "cycleway", "track"].includes(hw) && nd.some(i => ntags.get(i)?.railway === "crossing")) {
+      let wl = 0; for (let i = 1; i < nd.length; i++) wl += d(nd[i - 1], nd[i]);
+      if (wl < 200) { pen = 1.0; name = "歩行者・自転車用踏切"; }
+    }
+    const w = isWide(t);
+    let ow = t.oneway; if (t["oneway:bicycle"] === "no") ow = "no";
+    const fwd = ow !== "-1", back = !["yes", "1", "true"].includes(ow);
+    for (let i = 1; i < nd.length; i++) {
+      const u = nd[i - 1], v = nd[i], L = d(u, v);
+      if (w) { wide[u] = 1; wide[v] = 1; }
+      inGraph[u] = 1; inGraph[v] = 1;
+      if (fwd) adj[u].push({ v, c: L * pen, L, w, k: name });
+      if (back) adj[v].push({ v: u, c: L * pen, L, w, k: name });
+    }
+  }
+  // 信号
+  const grid = new Map();
+  for (const [i, t] of ntags) {
+    if (t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes") {
+      const k = Math.round(lat[i] * 2000) + "," + Math.round(lon[i] * 2000);
+      if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i);
+    }
+  }
+  const nearSignal = i => {
+    const a = Math.round(lat[i] * 2000), b = Math.round(lon[i] * 2000);
+    for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++)
+      for (const j of grid.get((a + x) + "," + (b + y)) || []) if (d(i, j) <= SIGNAL_RADIUS) return true;
+    return false;
+  };
+  const flag = new Uint8Array(N); let nDanger = 0, nNodes = 0; // 1=信号なし危険, 2=信号あり
+  for (let i = 0; i < N; i++) {
+    if (inGraph[i]) nNodes++;
+    if (wide[i]) { flag[i] = nearSignal(i) ? 2 : 1; if (flag[i] === 1) nDanger++; }
+  }
+  return { lat, lon, adj, flag, inGraph, nDanger, nNodes };
+}
+
+function nearest(G, la, lo) {
+  let best = -1, bd = Infinity;
+  for (let i = 0; i < G.lat.length; i++) {
+    if (!G.inGraph[i]) continue;
+    const dd = hav(la, lo, G.lat[i], G.lon[i]);
+    if (dd < bd) { bd = dd; best = i; }
+  }
+  return [best, bd];
+}
+
+class Heap {
+  constructor() { this.k = []; this.v = []; }
+  get size() { return this.k.length; }
+  push(k, v) {
+    const K = this.k, V = this.v; let i = K.length; K.push(k); V.push(v);
+    while (i > 0) { const p = (i - 1) >> 1; if (K[p] <= k) break; K[i] = K[p]; V[i] = V[p]; i = p; }
+    K[i] = k; V[i] = v;
+  }
+  pop() {
+    const K = this.k, V = this.v, rk = K[0], rv = V[0], lk = K.pop(), lv = V.pop(), n = K.length;
+    if (n) {
+      let i = 0;
+      for (;;) {
+        let c = 2 * i + 1; if (c >= n) break;
+        if (c + 1 < n && K[c + 1] < K[c]) c++;
+        if (K[c] >= lk) break;
+        K[i] = K[c]; V[i] = V[c]; i = c;
+      }
+      K[i] = lk; V[i] = lv;
+    }
+    return [rk, rv];
+  }
+}
+
+function dijkstra(G, s, g, useLen) {
+  const N = G.lat.length, best = new Float64Array(N * 2).fill(Infinity), prev = new Int32Array(N * 2).fill(-1);
+  const h = new Heap(); best[s * 2] = 0; h.push(0, s * 2);
+  let goal = -1;
+  while (h.size) {
+    const [c, st] = h.pop();
+    if (c > best[st]) continue;
+    const u = st >> 1, uw = st & 1;
+    if (u === g) { goal = st; break; }
+    const danger = !useLen && G.flag[u] === 1 && u !== s && !uw;
+    for (const e of G.adj[u]) {
+      let nc = c + (useLen ? e.L : e.c);
+      if (danger && !e.w) nc += CROSS_PENALTY;
+      const ns = e.v * 2 + (e.w ? 1 : 0);
+      if (nc < best[ns]) { best[ns] = nc; prev[ns] = st; h.push(nc, ns); }
+    }
+  }
+  if (goal < 0) throw new Error("ルートが見つかりませんでした（道がつながっていないかも）");
+  const path = []; for (let st = goal; st >= 0; st = prev[st]) path.push(st >> 1);
+  return path.reverse();
+}
+
+function edge(G, u, v) {
+  let best = null; for (const e of G.adj[u]) if (e.v === v && (!best || e.c < best.c)) best = e;
+  return best;
+}
+
+function analyze(G, path) {
+  const ok = [], ng = [], kinds = {}; let len = 0;
+  for (let i = 1; i < path.length; i++) {
+    const e = edge(G, path[i - 1], path[i]); len += e.L; kinds[e.k] = (kinds[e.k] || 0) + e.L;
+  }
+  for (let i = 1; i < path.length - 1; i++) {
+    const u = path[i]; if (!G.flag[u]) continue;
+    if (!edge(G, path[i - 1], u).w && !edge(G, u, path[i + 1]).w) (G.flag[u] === 1 ? ng : ok).push([G.lat[u], G.lon[u]]);
+  }
+  return { ok, ng, kinds, len };
+}
+
+// bboxキャッシュ（範囲内なら再ダウンロードしない）
+let cache = null;
+function inside(a, b) { return a.s >= b.s && a.w >= b.w && a.n <= b.n && a.e <= b.e; }
+
+async function route(req, prog) {
+  const { s, g, hosoi } = req;
+  const pad = Math.max(0.008, (Math.abs(s[0] - g[0]) + Math.abs(s[1] - g[1])) * 0.15);
+  const bb = { s: Math.min(s[0], g[0]) - pad, w: Math.min(s[1], g[1]) - pad, n: Math.max(s[0], g[0]) + pad, e: Math.max(s[1], g[1]) + pad };
+  const t0 = Date.now();
+  let osm;
+  if (cache && inside(bb, cache.bb)) { osm = cache.osm; prog({ stage: 1, msg: "前に取ったデータを使います" }); }
+  else {
+    prog({ stage: 1, msg: "道路データ取得" });
+    osm = await fetchOSM(bb, p => prog({ stage: 1, ...p }));
+    cache = { bb, osm };
+  }
+  prog({ stage: 2, msg: "道のつながりを作成中" });
+  const G = buildGraph(osm, hosoi);
+  const [sn, sd] = nearest(G, s[0], s[1]), [gn, gd] = nearest(G, g[0], g[1]);
+  prog({ stage: 3, msg: `ルート探索中（道の点 ${G.nNodes.toLocaleString()} 個）` });
+  const path = dijkstra(G, sn, gn, false), spath = dijkstra(G, sn, gn, true);
+  const a = analyze(G, path), sa = analyze(G, spath);
+  return {
+    route: path.map(i => [G.lat[i], G.lon[i]]), short: spath.map(i => [G.lat[i], G.lon[i]]),
+    ok: a.ok, ng: a.ng, kinds: a.kinds, len: a.len, slen: sa.len, snapS: sd, snapG: gd,
+    nNodes: G.nNodes, nDanger: G.nDanger, sec: (Date.now() - t0) / 1000,
+  };
+}
+
+if (typeof self !== "undefined" && typeof self.postMessage === "function" && typeof module === "undefined") {
+  self.onmessage = async ev => {
+    try {
+      const r = await route(ev.data, p => self.postMessage({ type: "prog", ...p }));
+      self.postMessage({ type: "done", ...r });
+    } catch (e) { self.postMessage({ type: "error", msg: e.message }); }
+  };
+}
+if (typeof module !== "undefined") module.exports = { buildGraph, dijkstra, analyze, nearest, route, isWide, wayPenalty, overpassQuery };
+</script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+// ---------- 地図 ----------
+const attr = '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a> | 経路 &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+const base = {
+  "淡色": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr }),
+  "標準": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr }),
+  "写真": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg", { maxZoom: 18, attribution: attr }),
+};
+const map = L.map("map", { zoomControl: false }).setView([35.69, 139.75], 11);
+base["淡色"].addTo(map);
+L.control.layers(base, null, { position: "bottomright" }).addTo(map);
+map.attributionControl.setPrefix(false);
+const layer = L.layerGroup().addTo(map);
+
+// ---------- 便利関数 ----------
+const RAD = Math.PI / 180;
+const hav = (a, b) => { const x = Math.sin((b[0] - a[0]) * RAD / 2) ** 2 + Math.cos(a[0] * RAD) * Math.cos(b[0] * RAD) * Math.sin((b[1] - a[1]) * RAD / 2) ** 2; return 12742000 * Math.asin(Math.sqrt(x)); };
+const fmtKm = m => m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m";
+function setMsg(t, err) { $("prog").style.display = "block"; $("msg").textContent = t; $("msg").className = err ? "err" : ""; }
+function setBar(r) { const b = $("bar"); if (r == null) b.classList.add("busy"); else { b.classList.remove("busy"); b.firstChild.style.width = (r * 100).toFixed(1) + "%"; } }
+
+// Google Polyline 形式（URLを短くするため）
+function encPoly(pts) {
+  let out = "", pa = 0, po = 0;
+  const enc = v => { v = v < 0 ? ~(v << 1) : v << 1; let s = ""; while (v >= 0x20) { s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; } return s + String.fromCharCode(v + 63); };
+  for (const [a, o] of pts) { const A = Math.round(a * 1e5), O = Math.round(o * 1e5); out += enc(A - pa) + enc(O - po); pa = A; po = O; }
+  return out;
+}
+function decPoly(s) {
+  const pts = []; let i = 0, a = 0, o = 0;
+  const dec = () => { let r = 0, sh = 0, b; do { b = s.charCodeAt(i++) - 63; r |= (b & 0x1f) << sh; sh += 5; } while (b >= 0x20); return r & 1 ? ~(r >> 1) : r >> 1; };
+  while (i < s.length) { a += dec(); o += dec(); pts.push([a / 1e5, o / 1e5]); }
+  return pts;
+}
+// 線を間引く（Douglas-Peucker、m単位）
+function simplify(pts, tol) {
+  if (pts.length < 3) return pts.slice();
+  const c = Math.cos(pts[0][0] * RAD), P = pts.map(p => [p[1] * c * 111320, p[0] * 111320]);
+  const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+  const st = [[0, pts.length - 1]];
+  while (st.length) {
+    const [a, b] = st.pop(); let md = 0, mi = -1;
+    const [ax, ay] = P[a], [bx, by] = P[b], dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
+    for (let i = a + 1; i < b; i++) {
+      let t = ((P[i][0] - ax) * dx + (P[i][1] - ay) * dy) / L2; t = Math.max(0, Math.min(1, t));
+      const d = Math.hypot(P[i][0] - ax - t * dx, P[i][1] - ay - t * dy);
+      if (d > md) { md = d; mi = i; }
+    }
+    if (md > tol) { keep[mi] = 1; st.push([a, mi], [mi, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+function trim(pts, m, fromEnd) {
+  if (!m) return pts;
+  const ref = fromEnd ? pts[pts.length - 1] : pts[0];
+  if (fromEnd) { let j = pts.length; while (j > 1 && hav(pts[j - 1], ref) < m) j--; return pts.slice(0, j); }
+  let i = 0; while (i < pts.length - 1 && hav(pts[i], ref) < m) i++; return pts.slice(i);
+}
+
+// ---------- 場所さがし ----------
+function cleanAddr(t) {
+  let a = t.normalize("NFKC");
+  if (/\d\s*[‐－―ー−-]\s*\d/.test(a)) a = a.replace(/[‐－―ー−]/g, "-");
+  a = a.replace(/〒?\s*\d{3}-\d{4}/, "").replace(/\s+/g, "");
+  const m = a.match(/^.+?\d+丁目(?:\d+(?:番地|番|号|-)?)*/) || a.match(/^.+?\d+(?:-\d+)+/) || a.match(/^.+?\d+番地?(?:\d+号?)?/);
+  return m ? m[0].replace(/-$/, "") : a;
+}
+async function geocode(text) {
+  text = text.trim();
+  if (/^https?:/.test(text)) {
+    const m = text.match(/!3d(-?[\d.]+)!4d(-?[\d.]+)/) || text.match(/@(-?[\d.]+),(-?[\d.]+)/) || decodeURIComponent(text).match(/[?&](?:q|query|ll)=(-?[\d.]+),\s*(-?[\d.]+)/);
+    if (m) return [[+m[1], +m[2]], "GoogleマップのURL"];
+    throw new Error("このURLから場所が読み取れませんでした。短縮URL(maps.app.goo.gl)のときは、開いたあとのURLを貼ってね");
+  }
+  const ll = text.normalize("NFKC").replace(/\s/g, "").match(/^(-?\d+\.\d+)[,、](-?\d+\.\d+)$/);
+  if (ll) return [[+ll[1], +ll[2]], "座標"];
+  const gsi = async () => {
+    const q = cleanAddr(text);
+    const r = await (await fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q=" + encodeURIComponent(q))).json();
+    if (r.length) return [[r[0].geometry.coordinates[1], r[0].geometry.coordinates[0]], r[0].properties.title];
+  };
+  const nomi = async () => {
+    const q = text.normalize("NFKC").replace(/〒?\s*\d{3}[-‐－―ー−]\d{4}/, "").trim();
+    const r = await (await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&q=" + encodeURIComponent(q))).json();
+    if (r.length) return [[+r[0].lat, +r[0].lon], r[0].display_name.split(",").slice(0, 3).join(",")];
+  };
+  const looksAddr = /丁目|番地|番|号|\d+\s*[-‐－―ー−]\s*\d+|[０-９]+[‐－―ー−][０-９]+/.test(text);
+  for (const fn of looksAddr ? [gsi, nomi] : [nomi, gsi]) {
+    try { const r = await fn(); if (r) return r; } catch (e) { console.warn(e); }
+  }
+  throw new Error(`「${text}」が見つかりませんでした。マンション名やお店の名前は見つからないことがあるよ。住所かGoogleマップのURLで入れてみてね`);
+}
+function getHere(timeout = 15000) {
+  return new Promise((ok, ng) => {
+    if (!navigator.geolocation) return ng(new Error("位置情報が使えません"));
+    navigator.geolocation.getCurrentPosition(p => ok([p.coords.latitude, p.coords.longitude]),
+      e => ng(new Error("現在地がとれませんでした: " + e.message)), { enableHighAccuracy: true, timeout });
+  });
+}
+
+// ---------- ルート計算（Web Worker） ----------
+const worker = new Worker(URL.createObjectURL(new Blob([$("router").textContent], { type: "text/javascript" })));
+let cur = null; // 今表示しているルート
+const STAGES = ["", "1/3 道路データ", "2/3 道のつながり", "3/3 ルート探索"];
+let tStart = 0, tickTimer = null, lastProg = {};
+function showProg() {
+  const p = lastProg, el = ((Date.now() - tStart) / 1000).toFixed(0);
+  let t = `${STAGES[p.stage] || ""}  ${p.msg || ""}  ${el}秒`;
+  if (p.done) t += `  ${(p.done / 1048576).toFixed(1)} MB`;
+  setMsg(t, false);
+  if (p.total) setBar(p.done / p.total); else setBar(null);
+}
+worker.onmessage = ev => {
+  const m = ev.data;
+  if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total }; showProg(); return; }
+  clearInterval(tickTimer); $("go").disabled = false;
+  if (m.type === "error") { setBar(0); setMsg(m.msg, true); return; }
+  setBar(1); setMsg(`できた！（${m.sec.toFixed(1)}秒・道の点 ${m.nNodes.toLocaleString()} 個）`);
+  showRoute({ route: m.route, short: m.short, ok: m.ok, ng: m.ng, kinds: m.kinds, len: m.len, slen: m.slen }, true);
+};
+
+$("go").onclick = async () => {
+  const fromT = $("from").value.trim(), toT = $("to").value.trim();
+  if (!toT) { setMsg("到着地を入れてね", true); return; }
+  $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" };
+  clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
+  try {
+    const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
+    const [g, gn] = await geocode(toT);
+    if (hav(s, g) > 60000) throw new Error(`出発と到着が ${fmtKm(hav(s, g))} もはなれてるよ。60km以内にしてね`);
+    lastProg = { stage: 1, msg: `出発: ${sn} → 到着: ${gn}` }; showProg();
+    layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発"); L.marker(g).addTo(layer).bindTooltip("到着");
+    map.fitBounds([s, g], { padding: [40, 40] });
+    worker.postMessage({ s, g, hosoi: +$("hosoi").value });
+  } catch (e) { clearInterval(tickTimer); $("go").disabled = false; setBar(0); setMsg(e.message, true); }
+};
+
+// ---------- 表示 ----------
+let cum = [];
+function showRoute(r, fit) {
+  cur = r; layer.clearLayers();
+  if (r.short?.length) L.polyline(r.short, { color: "#777", weight: 4, opacity: .5 }).addTo(layer).bindTooltip("ただの最短");
+  const line = L.polyline(r.route, { color: "#d93025", weight: 7, opacity: .9 }).addTo(layer).bindTooltip("細道ルート");
+  L.circleMarker(r.route[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(layer).bindTooltip("出発");
+  L.circleMarker(r.route[r.route.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
+  (r.ok || []).forEach(p => L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("信号で横断"));
+  (r.ng || []).forEach(p => L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).addTo(layer).bindTooltip("⚠ 信号なし横断"));
+  if (fit) map.fitBounds(line.getBounds(), { padding: [30, 30] });
+  cum = [0]; for (let i = 1; i < r.route.length; i++) cum.push(cum[i - 1] + hav(r.route[i - 1], r.route[i]));
+  r.len = r.len || cum[cum.length - 1];
+  let h = `<b>細道ルート ${fmtKm(r.len)}</b>`;
+  if (r.slen) h += `（最短 ${fmtKm(r.slen)}、+${Math.round((r.len / r.slen - 1) * 100)}%）`;
+  if (r.ok || r.ng) h += `<br>広い道の横断: 信号あり ${r.ok.length} / <span style="color:${r.ng.length ? "#c00" : "inherit"}">信号なし ${r.ng.length}</span>`;
+  if (r.kinds) h += "<br><span style='color:#666'>" + Object.entries(r.kinds).sort((a, b) => b[1] - a[1]).map(([k, m]) => `${k} ${fmtKm(m)}`).join(" / ") + "</span>";
+  $("sum").innerHTML = h; $("result").style.display = "block"; $("share").style.display = "none";
+}
+
+// ---------- 共有URL・GPX ----------
+function shareUrl() {
+  let pts = trim(cur.route, +$("hide").value, false);
+  if ($("hideEnd").checked) pts = trim(pts, +$("hide").value, true);
+  const rest = pts.length < cur.route.length;
+  const keep = p => !rest || pts.some(q => hav(p, q) < 30);
+  pts = simplify(pts, 3);
+  const prm = new URLSearchParams();
+  prm.set("r", encPoly(pts));
+  const ok = (cur.ok || []).filter(keep), ng = (cur.ng || []).filter(keep);
+  if (ok.length) prm.set("ok", encPoly(ok));
+  if (ng.length) prm.set("ng", encPoly(ng));
+  return location.origin + location.pathname + "#" + prm.toString();
+}
+function updateShare() { $("url").value = shareUrl(); }
+$("bShare").onclick = () => { const s = $("share"); s.style.display = s.style.display === "block" ? "none" : "block"; updateShare(); };
+$("hide").onchange = $("hideEnd").onchange = updateShare;
+$("bCopy").onclick = async () => { updateShare(); try { await navigator.clipboard.writeText($("url").value); $("bCopy").textContent = "コピーしたよ！"; } catch { $("url").select(); document.execCommand("copy"); } setTimeout(() => $("bCopy").textContent = "コピー", 1500); };
+$("bSys").onclick = () => { updateShare(); if (navigator.share) navigator.share({ title: "細道ルート", url: $("url").value }).catch(() => {}); else $("bCopy").click(); };
+$("bGpx").onclick = () => {
+  const x = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="hosomichi" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>細道ルート</name><trkseg>\n'
+    + cur.route.map(([a, o]) => `<trkpt lat="${a.toFixed(6)}" lon="${o.toFixed(6)}"/>`).join("\n") + "\n</trkseg></trk></gpx>\n";
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([x], { type: "application/gpx+xml" }));
+  a.download = "hosomichi_" + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "") + ".gpx"; a.click();
+};
+$("bNew").onclick = () => { history.replaceState(null, "", location.pathname); $("bNew").style.display = "none"; $("result").style.display = "none"; layer.clearLayers(); cur = null; };
+
+// ---------- パネル ----------
+$("tog").onclick = () => { const p = $("panel"); p.classList.toggle("min"); $("tog").textContent = p.classList.contains("min") ? "ひらく" : "たたむ"; };
+$("hosoi").oninput = () => $("hv").textContent = $("hosoi").value;
+$("here").onclick = async () => { $("from").value = "さがし中…"; try { const p = await getHere(); $("from").value = p.map(v => v.toFixed(6)).join(","); } catch (e) { $("from").value = ""; setMsg(e.message, true); } };
+map.on("click", e => {
+  if (follow) return;
+  const v = e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6);
+  const div = document.createElement("div"); div.className = "pin";
+  div.innerHTML = "ここを<br><button data-k='from'>出発にする</button><button data-k='to'>到着にする</button>";
+  const pop = L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
+  div.onclick = ev => { const k = ev.target.dataset.k; if (!k) return; $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
+});
+
+// ---------- 現在地ナビ ----------
+let me = null, acc = null, follow = false, wid = null, lock = null;
+function nearestOnRoute(p) {
+  const r = cur.route, c = Math.cos(p[0] * RAD), X = q => [(q[1] - p[1]) * c * 111320, (q[0] - p[0]) * 111320];
+  let bd = Infinity, bi = 0, bt = 0;
+  for (let i = 1; i < r.length; i++) {
+    const [ax, ay] = X(r[i - 1]), [bx, by] = X(r[i]), dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
+    let t = -(ax * dx + ay * dy) / L2; t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(ax + t * dx, ay + t * dy);
+    if (d < bd) { bd = d; bi = i; bt = t; }
+  }
+  const along = cum[bi - 1] + bt * (cum[bi] - cum[bi - 1]);
+  return [bd, cum[cum.length - 1] - along];
+}
+function onPos(p) {
+  const ll = [p.coords.latitude, p.coords.longitude];
+  if (!me) {
+    acc = L.circle(ll, { radius: p.coords.accuracy, color: "#1a73e8", weight: 1, fillOpacity: .1, interactive: false }).addTo(map);
+    me = L.circleMarker(ll, { radius: 9, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1, interactive: false }).addTo(map);
+  }
+  me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
+  if (follow) map.setView(ll, Math.max(map.getZoom(), 16), { animate: true });
+  if (cur && cur.route.length > 1) {
+    const [off, rest] = nearestOnRoute(ll), nav = $("nav");
+    nav.style.display = "block";
+    nav.className = off > 60 ? "off" : "";
+    nav.textContent = rest < 30 ? "🎉 とうちゃく！" : `のこり ${fmtKm(rest)}` + (off > 60 ? `　⚠ ルートから ${Math.round(off)}m` : "");
+  }
+}
+async function wake() { try { lock = await navigator.wakeLock.request("screen"); } catch {} }
+$("gps").onclick = () => {
+  if (wid === null) {
+    if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
+    wid = navigator.geolocation.watchPosition(onPos, e => setMsg("位置情報エラー: " + e.message, true), { enableHighAccuracy: true, maximumAge: 2000 });
+    follow = true; $("gps").classList.add("on"); wake();
+    $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+  } else {
+    follow = !follow; $("gps").classList.toggle("on", follow);
+    if (follow && me) map.setView(me.getLatLng(), Math.max(map.getZoom(), 16));
+  }
+};
+map.on("dragstart", () => { follow = false; $("gps").classList.remove("on"); });
+document.addEventListener("visibilitychange", () => { if (wid !== null && document.visibilityState === "visible") wake(); });
+
+// ---------- 共有URLから開いたとき ----------
+function loadHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (!h.get("r")) return;
+  try {
+    showRoute({ route: decPoly(h.get("r")), ok: h.get("ok") ? decPoly(h.get("ok")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [] }, true);
+    $("bNew").style.display = ""; $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+  } catch (e) { setMsg("共有URLが読めませんでした", true); }
+}
+loadHash();
+window.addEventListener("hashchange", loadHash);
+</script>
+</body></html>
