@@ -16,8 +16,10 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #panel{position:absolute;top:8px;left:8px;right:8px;max-width:440px;z-index:1000;background:#fff;border-radius:12px;
   box-shadow:0 2px 10px #0004;padding:10px 12px;font-size:15px}
 #panel.min .body{display:none}
+#mini{display:none;font-weight:normal;font-size:11px;color:#d93025;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#panel.min #mini{display:block}
 #head{display:flex;align-items:center;gap:8px;font-weight:bold}
-#head .t{flex:1}
+#head .t{flex:1;min-width:0}
 #tog{border:none;background:#eee;border-radius:8px;padding:4px 10px;font-size:14px}
 #fs{border:none;background:#eee;border-radius:8px;padding:4px 10px;font-size:16px;line-height:1.2;display:none}
 .row{display:flex;gap:6px;margin-top:8px;align-items:center}
@@ -76,7 +78,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1717</small></span><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1836</small><small id="mini"></small></span><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div class="body">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
@@ -259,9 +261,9 @@ async function fetchOSM(b, prog, start = 0) {
 
 function buildGraph(osm, cfg, onProg) {
   cfg = { ...DEFAULT_CFG, ...cfg, pen: { ...DEFAULT_CFG.pen, ...(cfg && cfg.pen) } };
-  const idx = new Map(), lat = [], lon = [], ntags = new Map();
+  const idx = new Map(), lat = [], lon = [], ntags = new Map(), ids = [];
   for (const e of osm.elements) if (e.type === "node") {
-    idx.set(e.id, lat.length); if (e.tags) ntags.set(lat.length, e.tags); lat.push(e.lat); lon.push(e.lon);
+    idx.set(e.id, lat.length); ids.push(e.id); if (e.tags) ntags.set(lat.length, e.tags); lat.push(e.lat); lon.push(e.lon);
   }
   const N = lat.length, adj = Array.from({ length: N }, () => []);
   const lvl = new Uint8Array(N), inGraph = new Uint8Array(N);
@@ -327,7 +329,7 @@ function buildGraph(osm, cfg, onProg) {
     if (lvl[i] === 2) xcost[i] = cfg.wideCross === "any" ? 0 : sig ? 0 : (cfg.wideCross === "crosswalk" && xw) ? 0 : HARD;
     else xcost[i] = cfg.midCross === "any" || sig || xw ? 0 : cfg.midCross === "must" ? HARD : SOFT;
   }
-  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl };
+  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids };
 }
 
 function nearest(G, la, lo) {
@@ -364,18 +366,25 @@ class Heap {
   }
 }
 
-function dijkstra(G, s, g, useLen, onProg) {
-  // 状態 = (点, 入ってきた道の格)。格の低い道 → 格の高い道の点 → 格の低い道 と抜けたら「横断」
+// A*：ゴールまでのまっすぐな距離を見こみに足して、ゴールの方向から先に調べる（はやい）
+// 状態 = (点, 入ってきた道の格)。格の低い道 → 格の高い道の点 → 格の低い道 と抜けたら「横断」
+// g<0 のときはゴールが範囲の外：調べられるところまで全部調べる（途中までのルート用）
+function search(G, s, g, gll, useLen, onProg) {
   const N = G.lat.length, best = new Float64Array(N * 3).fill(Infinity), prev = new Int32Array(N * 3).fill(-1);
-  const h = new Heap(); best[s * 3] = 0; h.push(0, s * 3);
+  const glat = gll[0], glon = gll[1], kx = Math.cos(glat * RAD) * 111320 * 0.995, ky = 111320 * 0.995;
+  const H = i => Math.hypot((G.lon[i] - glon) * kx, (G.lat[i] - glat) * ky);
+  const closed = new Uint8Array(N * 3);
+  const h = new Heap(); best[s * 3] = 0; h.push(H(s), s * 3);
   let goal = -1, pops = 0, far = 0;
-  const D0 = hav(G.lat[s], G.lon[s], G.lat[g], G.lon[g]) || 1;
+  const D0 = H(s) || 1;
   while (h.size) {
-    const [c, st] = h.pop();
-    if (c > best[st]) continue;
+    const st = h.pop()[1];
+    if (closed[st]) continue;
+    closed[st] = 1;
+    const c = best[st];
     const u = (st / 3) | 0, ul = st % 3;
     if (onProg && (++pops & 0x7fff) === 0) {
-      far = Math.max(far, 1 - hav(G.lat[u], G.lon[u], G.lat[g], G.lon[g]) / D0);
+      far = Math.max(far, 1 - H(u) / D0);
       onProg(Math.min(0.99, Math.max(0, far)));
     }
     if (u === g) { goal = st; break; }
@@ -385,12 +394,16 @@ function dijkstra(G, s, g, useLen, onProg) {
       let nc = c + (useLen ? e.L : e.c);
       if (chk && isCrossing(G, pu, u, e.v, ul, e.l, L)) nc += G.xcost[u];
       const ns = e.v * 3 + e.l;
-      if (nc < best[ns]) { best[ns] = nc; prev[ns] = st; h.push(nc, ns); }
+      if (nc < best[ns] && !closed[ns]) { best[ns] = nc; prev[ns] = st; h.push(nc + H(e.v), ns); }
     }
   }
-  if (goal < 0) throw new Error("ルートが見つかりませんでした（道がつながっていないか、設定で通れない道が多すぎるかも）");
-  const path = []; for (let st = goal; st >= 0; st = prev[st]) path.push((st / 3) | 0);
-  return path.reverse();
+  return { goal, best, prev, closed, H };
+}
+function pathTo(prev, st) { const p = []; for (; st >= 0; st = prev[st]) p.push((st / 3) | 0); return p.reverse(); }
+function dijkstra(G, s, g, useLen, onProg) {
+  const r = search(G, s, g, [G.lat[g], G.lon[g]], useLen, onProg);
+  if (r.goal < 0) throw new Error("ルートが見つかりませんでした（道がつながっていないか、設定で通れない道が多すぎるかも）");
+  return pathTo(r.prev, r.goal);
 }
 
 // 大きい道(格L)の点 u で、p→u→v と進むのが「道を横切る」かどうか
@@ -417,7 +430,7 @@ function edge(G, u, v) {
 }
 
 function analyze(G, path) {
-  const ok = [], xw = [], ng = [], kinds = {}; let len = 0;
+  const ok = [], xw = [], ng = [], ngIdx = [], kinds = {}; let len = 0;
   for (let i = 1; i < path.length; i++) {
     const e = edge(G, path[i - 1], path[i]); len += e.L; kinds[e.k] = (kinds[e.k] || 0) + e.L;
   }
@@ -426,10 +439,10 @@ function analyze(G, path) {
     if (isCrossing(G, path[i - 1], u, path[i + 1], edge(G, path[i - 1], u).l, edge(G, u, path[i + 1]).l, L)) {
       const p = [G.lat[u], G.lon[u]], k = G.xkind[u];
       if (k === 1) ok.push(p); else if (k === 2) xw.push(p);
-      else if (G.xcost[u] > 0 || L === 2) ng.push(p);   // ルール違反（または4車線を信号なし）
+      else if (G.xcost[u] > 0 || L === 2) { ng.push(p); ngIdx.push(i); }   // ルール違反（または4車線を信号なし）
     }
   }
-  return { ok, xw, ng, kinds, len };
+  return { ok, xw, ng, ngIdx, kinds, len };
 }
 
 // ==== タイル分割取得 ＋ 保存（メモリ ＋ IndexedDB） ====
@@ -460,7 +473,8 @@ function openDB() {
 function req(r) { return new Promise((ok, ng) => { r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); }); }
 async function store(mode) { const db = await openDB(); return db ? db.transaction(STORE, mode).objectStore(STORE) : null; }
 async function pack(text) {
-  if (typeof CompressionStream !== "undefined") {
+  // スマホではgzipが重いので、そのまま保存する（容量は増えるけど速い）
+  if (false && typeof CompressionStream !== "undefined") {
     const s = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
     return { gz: true, blob: await new Response(s).blob() };
   }
@@ -534,82 +548,165 @@ function padFor(s, g, area) {
   if (area === "wide") return Math.min(0.02, Math.max(0.006, d * 0.1)); // 600m〜2km
   return Math.min(0.01, Math.max(0.004, d * 0.05));                     // 400m〜1km
 }
-async function loadArea(s, g, prog, area) {
-  const pad = padFor(s, g, area);
+const pendingSaves = [];
+async function flushSaves() {
+  const list = pendingSaves.splice(0);
+  await Promise.all(list.map(([k, t]) => putTile(k, t)));
+  prune();
+}
+
+// ==== スタートから順番に確定していくルート計算 ====
+// マスを「スタートからの進み具合」の順に取得して、取れたところまでで途中のルートを決める。
+// 先っぽ（まだ変わるかもしれない所）は点線＝仮のルートとして出す。
+const FIRST_BAND = 700, BAND = 1500, TENTATIVE = 500, BACK = 600;
+async function route(req, prog, partial) {
+  const { s, g, cfg } = req;
+  const T0 = Date.now();
+  const pad = padFor(s, g, cfg && cfg.area);
   const tiles = tilesFor(s, g, pad), N = tiles.length;
-  const got = new Map();
-  // 1) メモリ・端末保存から
-  let fromStore = 0;
-  for (const t of tiles) {
-    if (mem.has(t.key)) { got.set(t.key, mem.get(t.key)); continue; }
-    const el = await getTile(t.key);
-    if (el) { got.set(t.key, el); mem.set(t.key, el); fromStore++; }
-  }
-  const need = tiles.filter(t => !got.has(t.key));
-  const saved = N - need.length;
-  // 2) 足りないマスをダウンロード
-  let done = 0, bytes = 0; const t0 = Date.now(); const active = new Map();
+  // スタート→ゴールの線にそった進み具合（m）
+  const c0 = Math.cos(s[0] * RAD), ux = (g[1] - s[1]) * c0 * 111320, uy = (g[0] - s[0]) * 111320, D = Math.hypot(ux, uy) || 1;
+  const along = (la, lo) => (((lo - s[1]) * c0 * 111320) * ux + ((la - s[0]) * 111320) * uy) / D;
+  for (const t of tiles) t.tc = Math.max(0, along((t.bb.s + t.bb.n) / 2, (t.bb.w + t.bb.e) / 2));
+  tiles.sort((a, b) => a.tc - b.tc);
+  const tileHalf = hav(tiles[0].bb.s, tiles[0].bb.w, tiles[0].bb.n, tiles[0].bb.e) / 2;
+
+  // --- 取得：保存データ → 足りないマスをスタート側から順にダウンロード ---
+  const got = new Map(), waiters = new Map();
+  const ready = key => got.has(key) ? Promise.resolve() : new Promise(r => { if (!waiters.has(key)) waiters.set(key, []); waiters.get(key).push(r); });
+  const setTile = (key, el) => { got.set(key, el); mem.set(key, el); (waiters.get(key) || []).forEach(r => r()); waiters.delete(key); };
+  prog({ stage: 1, msg: `保存したデータをさがし中（${N}マス）`, done: 0, total: N });
+  await Promise.all(tiles.map(async t => {
+    const el = mem.get(t.key) || await getTile(t.key);
+    if (el) setTile(t.key, el);
+  }));
+  const saved = got.size, need = tiles.filter(t => !got.has(t.key));
+  let done = 0, bytes = 0, fetchErr = null, stage = 1, stageMsg = "";
+  const active = new Map(), tf0 = Date.now();
   const report = () => {
-    const el = (Date.now() - t0) / 1000;
+    const el = (Date.now() - tf0) / 1000;
     let eta = "";
     if (done > 0 && done < need.length) {
-      const sec = el / done * (need.length - done) / Math.min(PARALLEL, need.length - done || 1) * Math.min(PARALLEL, need.length);
+      const sec = el / done * (need.length - done);
       eta = sec > 90 ? `あと約${Math.ceil(sec / 60)}分` : `あと約${Math.ceil(sec / 10) * 10}秒`;
     }
     const cur = [...active.values()].join(" / ");
-    prog({ msg: `道路データ ${saved + done}/${N}マス` + (saved ? `（保存済み ${saved}）` : "") + (eta ? `  ${eta}` : "") + (cur ? `\n${cur}` : ""),
+    prog({ stage, msg: (stageMsg ? stageMsg + "\n" : "") + `道路データ ${saved + done}/${N}マス` + (saved ? `（保存済み ${saved}）` : "") + (eta ? `  ${eta}` : "") + (cur ? `\n${cur}` : ""),
       done: saved + done, total: N, bytes });
   };
-  report();
   const timer = setInterval(report, 1000);
-  try {
-    let next = 0;
-    const runner = async (w) => {
-      while (next < need.length) {
-        const t = need[next++];
-        active.set(w, "取得中…");
+  let next = 0;
+  const runner = async w => {
+    while (next < need.length && !fetchErr) {
+      const t = need[next++];
+      active.set(w, "取得中…");
+      try {
         const r = await fetchOSM(t.bb, p => { active.set(w, p.msg); }, w);
-        bytes += r.text.length;
-        got.set(t.key, r.json.elements); mem.set(t.key, r.json.elements);
-        await putTile(t.key, r.text);
-        done++; active.delete(w); report();
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(PARALLEL, need.length) }, (_, w) => runner(w)));
-  } finally { clearInterval(timer); }
-  if (need.length) prune();
-  // 3) マスをつなげる（同じ道・点は1つに）
-  const seen = new Set(), elements = [];
-  for (const t of tiles) for (const e of got.get(t.key)) {
-    const k = e.type[0] + e.id; if (seen.has(k)) continue; seen.add(k); elements.push(e);
-  }
-  return { elements, N, saved, fetched: need.length };
-}
-
-async function route(req, prog) {
-  const { s, g, cfg } = req;
-  const t0 = Date.now();
-  const osm = await loadArea(s, g, p => prog({ stage: 1, ...p }), cfg && cfg.area);
-  prog({ stage: 2, msg: "道のつながりを作成中", done: 0, total: 1 });
-  const G = buildGraph(osm, cfg, r => prog({ stage: 2, msg: "道のつながりを作成中", done: r, total: 1 }));
-  const [sn, sd] = nearest(G, s[0], s[1]), [gn, gd] = nearest(G, g[0], g[1]);
-  const msg3 = `ルート探索中（道の点 ${G.nNodes.toLocaleString()} 個）`;
-  prog({ stage: 3, msg: msg3, done: 0, total: 1 });
-  if (sd > 300 || gd > 300) throw new Error("出発か到着のそばに道が見つかりませんでした。地図データの範囲を「ひろい」にしてみてね");
-  let path;
-  try { path = dijkstra(G, sn, gn, false, r => prog({ stage: 3, msg: msg3, done: r * 0.6, total: 1 }));
-  } catch (e) {
-    if (cfg && cfg.area !== "wide") throw new Error(e.message + "。地図データの範囲を広くするとつながるかも（⚙ 細かく →「地図データを取る広さ」）");
-    throw e;
-  }
-  const spath = dijkstra(G, sn, gn, true, r => prog({ stage: 3, msg: msg3, done: 0.6 + r * 0.4, total: 1 }));
-  const a = analyze(G, path), sa = analyze(G, spath);
-  return {
-    route: path.map(i => [G.lat[i], G.lon[i]]), short: spath.map(i => [G.lat[i], G.lon[i]]),
-    ok: a.ok, xw: a.xw, ng: a.ng, kinds: a.kinds, len: a.len, slen: sa.len, snapS: sd, snapG: gd,
-    nNodes: G.nNodes, sec: (Date.now() - t0) / 1000, tiles: osm.N, saved: osm.saved,
+        bytes += r.text.length; pendingSaves.push([t.key, r.text]);
+        done++; active.delete(w); setTile(t.key, r.json.elements); report();
+      } catch (e) { fetchErr = e; active.delete(w); [...waiters.values()].flat().forEach(r => r()); }
+    }
   };
+  const fetching = Promise.all(Array.from({ length: Math.min(PARALLEL, need.length) }, (_, w) => runner(w)));
+  const waitUpTo = async tEnd => {
+    for (const t of tiles) if (t.tc <= tEnd) { await ready(t.key); if (fetchErr) throw fetchErr; }
+  };
+
+  // --- 順番に確定 ---
+  const conf = [], kinds = {}, ok = [], xw = [], ng = [];
+  let confLen = 0, confEnd = null /* OSMの点id */, tConf = 0, tBuild = 0, tSearch = 0, nNodes = 0;
+  // mode "full"：ぜんぶ取ってから一度に計算（いちばん良いルート）／ それ以外：スタートから順番に確定（すぐ走り出せる）
+  let bandEnd = cfg && cfg.mode === "full" ? D : Math.min(D, FIRST_BAND), lastGraph = null;
+  const addKinds = k => { for (const [n, m] of Object.entries(k)) kinds[n] = (kinds[n] || 0) + m; };
+  try {
+    for (;;) {
+      const final = bandEnd >= D;
+      stageMsg = final ? "ゴールまでのルートを計算中" : `スタートから ${(bandEnd / 1000).toFixed(1)}km 先まで計算中`;
+      report();
+      await waitUpTo(final ? Infinity : bandEnd + tileHalf);
+      stage = 2; report();
+      // 確定したところの少し手前から先だけで道のつながりを作る（スマホでも軽く）。
+      // 信号のない横断などルール外になったら、取ってある範囲ぜんぶでやりなおす
+      let path, r, G, sn, gn = -1, wide = false;
+      for (;;) {
+        const lo = wide ? -Infinity : Math.max(0, tConf - BACK), seen = new Set(), elements = [];
+        for (const t of tiles) if (t.tc >= lo - tileHalf && (final || t.tc <= bandEnd + tileHalf) && got.has(t.key))
+          for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
+        const tb = Date.now();
+        G = buildGraph({ elements }, cfg);
+        tBuild += (Date.now() - tb) / 1000; nNodes = Math.max(nNodes, G.nNodes);
+        sn = confEnd != null ? G.idx.get(confEnd) : undefined;
+        if (sn === undefined) { const [n, d] = nearest(G, s[0], s[1]); if (d > 300) throw new Error("出発地のそばに道が見つかりませんでした"); sn = n; }
+        stage = 3; report();
+        const ts = Date.now();
+        if (final) {
+          const [n, d] = nearest(G, g[0], g[1]);
+          if (d > 300) throw new Error("到着地のそばに道が見つかりませんでした。地図の広さを「ひろい」にしてみてね");
+          gn = n;
+        }
+        r = search(G, sn, gn, g, false);
+        path = null;
+        if (final) {
+          if (r.goal >= 0) path = pathTo(r.prev, r.goal);
+        } else {
+          // 先っぽ（まだ取ってない所との境目あたり）で、ゴールにいちばん近づけそうな点をえらぶ
+          let bestSt = -1, bestF = Infinity;
+          const edge0 = bandEnd - 400;
+          for (let st = 0; st < r.closed.length; st++) {
+            if (!r.closed[st]) continue;
+            const u = (st / 3) | 0;
+            if (along(G.lat[u], G.lon[u]) < edge0) continue;
+            const f = r.best[st] + r.H(u);
+            if (f < bestF) { bestF = f; bestSt = st; }
+          }
+          if (bestSt >= 0) path = pathTo(r.prev, bestSt);
+        }
+        tSearch += (Date.now() - ts) / 1000;
+        const bad = !path || analyze(G, path).ng.length > 0;
+        if (bad && !wide && lo > 0) { wide = true; continue; }
+        break;
+      }
+      if (!path) {
+        if (final) throw new Error("ルートが見つかりませんでした" + (cfg && cfg.area !== "wide" ? "。地図の広さを広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
+        bandEnd = Math.min(D, bandEnd + BAND); continue;   // 先に進める道がない：もっと先まで取ってから
+      }
+      // どこまで確定するか（最後は全部、それ以外は先っぽ TENTATIVE m を仮のまま残す）
+      let k = path.length - 1;
+      if (!final) {
+        const lim = bandEnd - TENTATIVE;
+        k = 0; for (let i = 0; i < path.length; i++) if (along(G.lat[path[i]], G.lon[path[i]]) <= lim) k = i; else if (i > 0 && along(G.lat[path[i]], G.lon[path[i]]) > lim + 300) break;
+        // ルール外の横断がある所は、先のデータで信号が見つかるかもしれないので確定しない（少し手前まで）
+        const bi = analyze(G, path).ngIdx[0];
+        if (bi !== undefined && k >= bi - 1) {
+          let j = bi - 1, back = 0;
+          while (j > 0 && back < 150) { back += hav(G.lat[path[j]], G.lon[path[j]], G.lat[path[j - 1]], G.lon[path[j - 1]]); j--; }
+          k = Math.max(0, j);
+        }
+      }
+      const confPart = path.slice(0, k + 1), tent = path.slice(k);
+      if (confPart.length > 1) {
+        const a = analyze(G, confPart);
+        addKinds(a.kinds); ok.push(...a.ok); xw.push(...a.xw); ng.push(...a.ng); confLen += a.len;
+        const pts = confPart.map(i => [G.lat[i], G.lon[i]]);
+        conf.push(...(conf.length ? pts.slice(1) : pts));
+        confEnd = G.ids[confPart[confPart.length - 1]];
+        tConf = along(G.lat[confPart[confPart.length - 1]], G.lon[confPart[confPart.length - 1]]);
+      }
+      lastGraph = { G, sn: G.idx.get(G.ids[path[0]]) };
+      if (final) break;
+      const tentPts = tent.map(i => [G.lat[i], G.lon[i]]);
+      partial({ route: conf.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), kinds: { ...kinds }, len: confLen,
+        progress: Math.min(1, tConf / D), restAir: hav(tentPts[tentPts.length - 1][0], tentPts[tentPts.length - 1][1], g[0], g[1]) });
+      bandEnd = Math.min(D, bandEnd + BAND);
+    }
+  } finally { clearInterval(timer); fetchErr = fetchErr || new Error("stop"); }
+  await fetching.catch(() => {});
+  const T = (Date.now() - T0) / 1000;
+  return { route: conf, ok, xw, ng, kinds, len: confLen, nNodes, sec: T, tiles: N, saved, bytes,
+    tLoad: Math.max(0, T - tBuild - tSearch), tBuild, tSearch };
 }
+// 「ただの最短」はくらべる用。順番に確定する方式では出さない
+function shortest() { return null; }
 
 if (typeof self !== "undefined" && typeof self.postMessage === "function" && typeof module === "undefined") {
   self.onmessage = async ev => {
@@ -617,13 +714,15 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     try {
       if (d.cmd === "stats") return self.postMessage({ type: "stats", ...(await stats()) });
       if (d.cmd === "clear") { await clearAll(); return self.postMessage({ type: "stats", ...(await stats()) }); }
-      const r = await route(d, p => self.postMessage({ type: "prog", ...p }));
+      const r = await route(d, p => self.postMessage({ type: "prog", ...p }), p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
+      const sh = shortest(); if (sh) self.postMessage({ type: "short", ...sh });
+      await flushSaves();
       self.postMessage({ type: "stats", ...(await stats()) });
     } catch (e) { self.postMessage({ type: "error", msg: e.message }); }
   };
 }
-if (typeof module !== "undefined") module.exports = { padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
+if (typeof module !== "undefined") module.exports = { shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
 </script>
 <script>
 "use strict";
@@ -656,7 +755,7 @@ $("lay").onclick = () => {
 const RAD = Math.PI / 180;
 const hav = (a, b) => { const x = Math.sin((b[0] - a[0]) * RAD / 2) ** 2 + Math.cos(a[0] * RAD) * Math.cos(b[0] * RAD) * Math.sin((b[1] - a[1]) * RAD / 2) ** 2; return 12742000 * Math.asin(Math.sqrt(x)); };
 const fmtKm = m => m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m";
-function setMsg(t, err) { $("prog").style.display = "block"; $("msg").textContent = t; $("msg").className = err ? "err" : ""; }
+function setMsg(t, err) { $("prog").style.display = "block"; $("msg").textContent = t; $("msg").className = err ? "err" : ""; $("mini").textContent = t.split("\n").slice(0, 2).join("　"); }
 function setBar(r) { const b = $("bar"); if (r == null) b.classList.add("busy"); else { b.classList.remove("busy"); b.firstChild.style.width = (r * 100).toFixed(1) + "%"; } }
 
 // Google Polyline 形式（URLを短くするため）
@@ -766,6 +865,7 @@ function showProg() {
   const p = lastProg, el = ((Date.now() - tStart) / 1000).toFixed(0);
   let t = `${STAGES[p.stage] || ""}  経過 ${el}秒` + (p.bytes ? `  受信 ${(p.bytes / 1048576).toFixed(1)} MB` : "") + `\n${p.msg || ""}`;
   setMsg(t, false);
+  if (cur && cur.partial) $("mini").textContent = `✅ スタートから ${fmtKm(cur.len)} 確定　残りを計算中（${el}秒）`;
   if (p.total) setBar(p.done / p.total); else setBar(null);
 }
 worker.onmessage = ev => {
@@ -775,11 +875,25 @@ worker.onmessage = ev => {
     $("stv").textContent = `${m.n}件・${(m.bytes / 1048576).toFixed(1)} MB（30日で自動更新）`;
     return;
   }
+  if (m.type === "short") {   // あとから届く「ただの最短」
+    if (cur && !cur.short) { cur.short = m.short; cur.slen = m.slen; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); }
+    return;
+  }
+  if (m.type === "partial") {   // スタート側から順番に確定していく途中のルート
+    const first = !cur || !cur.partial;
+    showRoute({ route: m.route, tent: m.tent, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, len: m.len,
+      restAir: m.restAir, partial: true, name: pendingName }, first && !follow ? "start" : false);
+    if (first) { $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }   // 地図を見せて、すぐ ◎ を押せるように
+    return;
+  }
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
   clearInterval(tickTimer); $("go").disabled = false;
   if (m.type === "error") { setBar(0); setMsg(m.msg, true); return; }
-  setBar(1); setMsg(`できた！（${m.sec.toFixed(1)}秒・${m.tiles}マス中 ${m.saved}マスは保存データ・道の点 ${m.nNodes.toLocaleString()} 個）`);
-  showRoute({ route: m.route, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, len: m.len, slen: m.slen, name: pendingName }, true);
+  setBar(1);
+  setMsg(`できた！ ${m.sec.toFixed(1)}秒\n` +
+    `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
+    `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
+  showRoute({ route: m.route, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, len: m.len, slen: m.slen, name: pendingName }, !follow);
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
 };
 let pendingName = "";
@@ -806,21 +920,28 @@ $("go").onclick = async () => {
 let cum = [];
 function showRoute(r, fit) {
   cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn);
+  const tent = r.tent || [];
+  r.nav = r.route.length ? r.route.concat(tent.slice(1)) : tent.slice();   // ナビで使う線（確定＋仮）
   if (r.short?.length) L.polyline(r.short, { color: "#777", weight: 4, opacity: .5 }).addTo(layer).bindTooltip("ただの最短");
-  const line = L.polyline(r.route, { color: "#d93025", weight: 7, opacity: .9 }).addTo(layer).bindTooltip("細道ルート");
-  L.circleMarker(r.route[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(layer).bindTooltip("出発");
-  L.circleMarker(r.route[r.route.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
+  const line = L.polyline(r.route.length ? r.route : tent, { color: "#d93025", weight: 7, opacity: r.route.length ? .9 : 0 }).addTo(layer).bindTooltip("細道ルート");
+  if (tent.length > 1) L.polyline(tent, { color: "#d93025", weight: 6, opacity: .7, dashArray: "8 10" }).addTo(layer).bindTooltip("計算中（まだ変わるかも）");
+  L.circleMarker(r.nav[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(layer).bindTooltip("出発");
+  if (!r.partial) L.circleMarker(r.route[r.route.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
   (r.ok || []).forEach(p => L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("信号で横断"));
   (r.xw || []).forEach(p => L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("横断歩道で横断"));
   (r.ng || []).forEach(p => L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).addTo(layer).bindTooltip("⚠ 設定どおりに渡れなかった場所"));
-  if (fit) map.fitBounds(line.getBounds(), { padding: [30, 30] });
-  cum = [0]; for (let i = 1; i < r.route.length; i++) cum.push(cum[i - 1] + hav(r.route[i - 1], r.route[i]));
-  r.len = r.len || cum[cum.length - 1];
-  let h = `<b>細道ルート ${fmtKm(r.len)}</b>`;
+  if (fit === "start") map.fitBounds(L.latLngBounds(r.nav), { padding: [40, 40], maxZoom: 16 });
+  else if (fit) map.fitBounds(line.getBounds(), { padding: [30, 30] });
+  cum = [0]; for (let i = 1; i < r.nav.length; i++) cum.push(cum[i - 1] + hav(r.nav[i - 1], r.nav[i]));
+  if (!r.partial) r.len = r.len || cum[cum.length - 1];
+  let h = r.partial
+    ? `<b style="color:#188038">スタートから ${fmtKm(r.len)} 確定！走り出してOK</b><br><span style="color:#666">点線の先は計算中（のこり約 ${fmtKm(r.restAir || 0)}）。走ってる間に伸びていくよ</span>`
+    : `<b>細道ルート ${fmtKm(r.len)}</b>`;
   if (r.slen) h += `（最短 ${fmtKm(r.slen)}、+${Math.round((r.len / r.slen - 1) * 100)}%）`;
   if (r.ok || r.ng) h += `<br>道の横断: <span style="color:#0a0">●信号 ${r.ok.length}</span> / <span style="color:#1a73e8">●横断歩道 ${(r.xw || []).length}</span> / <span style="color:${r.ng.length ? "#c00" : "inherit"}">●ルール外 ${r.ng.length}</span>`;
   if (r.kinds) h += "<br><span style='color:#666'>" + Object.entries(r.kinds).sort((a, b) => b[1] - a[1]).map(([k, m]) => `${k} ${fmtKm(m)}`).join(" / ") + "</span>";
   $("sum").innerHTML = h; $("result").style.display = "block"; $("share").style.display = "none";
+  $("result").querySelector(".btns").style.display = r.partial ? "none" : "";
 }
 
 // ---------- 共有URL・GPX ----------
@@ -881,13 +1002,14 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
-  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, area: "normal", steps: "no", bridge: 3, unpaved: 20, wideCross: "signal", midCross: "prefer" };
+  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "quick", area: "normal", steps: "no", bridge: 3, unpaved: 20, wideCross: "signal", midCross: "prefer" };
 const PRESETS = {
   std: CFG_DEF,
   near: { ...CFG_DEF, pen: { ...CFG_DEF.pen, service: 1, unclassified: 1, tertiary: 1, secondary: 1.2, primary: 1.5, trunk: 3, footway: 1.5, path: 1.2, track: 1.2 }, bridge: 1.5, midCross: "any" },
   hoso: { ...CFG_DEF, pen: { ...CFG_DEF.pen, service: 1.5, unclassified: 1.5, tertiary: 5, secondary: 12, primary: 20, trunk: "no", footway: 3, pedestrian: 2, path: 2, track: 2 }, midCross: "must" },
 };
 const OTHER_ROWS = [
+  ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["area", "地図データを取る広さ", [["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（おそい・まわり道〜2km）"]]],
   ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ"], ["yes", "通る（かついで上がる）"]]],
   ["bridge", "歩道橋・地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
@@ -898,7 +1020,7 @@ const OTHER_ROWS = [
 let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } catch {} return structuredClone(CFG_DEF); })();
 function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} markPreset(); }
 function markPreset() {
-  let hit = null; for (const k in PRESETS) if (JSON.stringify({ ...PRESETS[k], area: cfg.area }) === JSON.stringify(cfg)) hit = k;
+  let hit = null; for (const k in PRESETS) if (JSON.stringify({ ...PRESETS[k], mode: cfg.mode, area: cfg.area }) === JSON.stringify(cfg)) hit = k;
   for (const b of $("pre").children) b.classList.toggle("on", b.dataset.p === hit || (b.dataset.p === "cfg" && $("cfgBox").style.display === "block"));
 }
 const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${String(v) === String(val) ? " selected" : ""}>${t}</option>`).join("");
@@ -918,7 +1040,7 @@ $("cfgBox").onchange = e => {
 $("pre").onclick = e => {
   const p = e.target.dataset.p; if (!p) return;
   if (p === "cfg") { const b = $("cfgBox"); b.style.display = b.style.display === "block" ? "none" : "block"; renderCfg(); markPreset(); return; }
-  cfg = { ...structuredClone(PRESETS[p]), area: cfg.area }; saveCfg(); renderCfg();  // 広さはそのまま
+  cfg = { ...structuredClone(PRESETS[p]), mode: cfg.mode, area: cfg.area }; saveCfg(); renderCfg();  // 計算のしかた・広さはそのまま
 };
 $("areaSel").value = cfg.area;
 $("areaSel").onchange = () => { cfg.area = $("areaSel").value; saveCfg(); renderCfg(); };
@@ -959,7 +1081,7 @@ function applyBearing() {
   if (me) { me.setIcon(heading != null ? icArrow : icDot); me.setRotation(heading != null ? heading * RAD : 0); }
 }
 function nearestOnRoute(p) {
-  const r = cur.route, c = Math.cos(p[0] * RAD), X = q => [(q[1] - p[1]) * c * 111320, (q[0] - p[0]) * 111320];
+  const r = cur.nav, c = Math.cos(p[0] * RAD), X = q => [(q[1] - p[1]) * c * 111320, (q[0] - p[0]) * 111320];
   let bd = Infinity, bi = 0, bt = 0;
   for (let i = 1; i < r.length; i++) {
     const [ax, ay] = X(r[i - 1]), [bx, by] = X(r[i]), dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
@@ -968,7 +1090,7 @@ function nearestOnRoute(p) {
     if (d < bd) { bd = d; bi = i; bt = t; }
   }
   const along = cum[bi - 1] + bt * (cum[bi] - cum[bi - 1]);
-  return [bd, cum[cum.length - 1] - along];
+  return [bd, cum[cum.length - 1] - along + (cur.partial ? cur.restAir || 0 : 0)];
 }
 function onPos(p) {
   const ll = [p.coords.latitude, p.coords.longitude];
@@ -981,11 +1103,12 @@ function onPos(p) {
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
   applyBearing();
   if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
-  if (cur && cur.route.length > 1) {
+  if (cur && cur.nav && cur.nav.length > 1) {
     const [off, rest] = nearestOnRoute(ll), nav = $("nav");
     nav.style.display = "block";
     nav.className = off > 60 ? "off" : "";
-    nav.textContent = rest < 30 ? "🎉 とうちゃく！" : `のこり ${fmtKm(rest)}` + (off > 60 ? `　⚠ ルートから ${Math.round(off)}m` : "");
+    nav.textContent = (rest < 30 && !cur.partial ? "🎉 とうちゃく！" : `のこり ${cur.partial ? "約" : ""}${fmtKm(rest)}` + (cur.partial ? "（計算中）" : ""))
+      + (off > 60 ? `　⚠ ルートから ${Math.round(off)}m` : "");
   }
 }
 async function wake() { try { lock = await navigator.wakeLock.request("screen"); } catch {} }
