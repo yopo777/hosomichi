@@ -32,6 +32,13 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 .pre{display:flex;gap:6px;margin-top:8px}
 .pre button{flex:1;padding:8px 4px;border:1px solid #ccc;background:#fff;border-radius:8px;font-size:13px}
 .pre button.on{border-color:#d93025;background:#fdecea;color:#d93025;font-weight:bold}
+.tabs{display:flex;gap:4px;margin-top:8px;border-bottom:2px solid #eee}
+.tabs button{flex:1;border:none;background:none;padding:6px;font-size:14px;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tabs button.on{color:#d93025;border-bottom-color:#d93025;font-weight:bold}
+#logN{font-size:11px;color:#999;font-weight:normal}
+#log{height:55vh;overflow:auto;background:#1e1e1e;color:#ddd;border-radius:8px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+#log .w{color:#ffb74d} #log .e{color:#ff6e6e;font-weight:bold} #log .ok{color:#81c784} #log .h{color:#64b5f6;font-weight:bold} #log .m{color:#ce93d8}
+#log time{color:#777;margin-right:6px}
 #cfgBox{display:none;margin-top:8px;background:#f7f7f7;border-radius:8px;padding:6px 8px;max-height:45vh;overflow:auto}
 #cfgBox h4{margin:8px 0 2px;font-size:12px;color:#d93025}
 #cfgBox .c{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:13px}
@@ -85,8 +92,15 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2030</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2216</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div class="body">
+    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div id="tabLog" style="display:none">
+      <div class="btns" style="margin:6px 0"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
+        <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="lgAuto" checked>自動スクロール</label></div>
+      <div id="log"></div>
+    </div>
+    <div id="tabRoute">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div class="pre" id="pre"><button data-p="near">近道</button><button data-p="std">おすすめ</button><button data-p="hoso">細道こだわり</button><button data-p="cfg">⚙ 細かく</button></div>
@@ -120,6 +134,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
         <div class="btns"><button class="ib" id="bQr">📷 QR</button><button class="ib" id="bCopy">コピー</button><button class="ib" id="bSys">共有…</button></div>
 
       </div>
+    </div>
     </div>
   </div>
 </div>
@@ -233,6 +248,11 @@ way["highway"]["highway"!~"^(motorway|motorway_link|construction|proposed|platfo
 out body qt;`;
 }
 
+// ==== ログ（ページの「ログ」タブに出す） ====
+let logFn = null;
+function log(msg, lv = "i") { if (logFn) logFn({ t: Date.now(), lv, msg }); }
+const kb = n => n >= 1048576 ? (n / 1048576).toFixed(2) + "MB" : (n / 1024).toFixed(0) + "KB";
+
 // ==== 途中で止める ====
 let stopReq = false;
 const stopWaiters = new Set();   // 道路データ待ちをしている所を、止めたときに起こす
@@ -241,7 +261,7 @@ class StopError extends Error { constructor() { super("止めたよ"); this.stop
 const checkStop = () => { if (stopReq) throw new StopError(); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function fetchOSM(b, prog, start = 0, quick = false) {
+async function fetchOSM(b, prog, start = 0, quick = false, tag = "") {
   const body = "data=" + encodeURIComponent(overpassQuery(b));
   const urls = OVERPASS_URLS.map((_, i) => OVERPASS_URLS[(i + start) % OVERPASS_URLS.length]);
   let last;
@@ -252,12 +272,15 @@ async function fetchOSM(b, prog, start = 0, quick = false) {
       const host = new URL(url).host;
       try {
         checkStop();
+        const tq = Date.now();
+        log(`取得開始 [${tag}] → ${host}${quick ? "（予備データあり）" : ""}`);
         prog({ msg: `${host} サーバーが計算中`, done: 0, total: 0 });
         const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 150000);
         aborts.add(ac);
         const res = await fetch(url, { method: "POST", body, signal: ac.signal,
           headers: { "Content-Type": "application/x-www-form-urlencoded" } });
         if (!res.ok) throw new Error("HTTP " + res.status);
+        log(`  返事あり [${tag}] ${host} HTTP ${res.status}（${((Date.now() - tq) / 1000).toFixed(1)}秒）`);
         const total = +res.headers.get("Content-Length") || 0;
         const reader = res.body.getReader(); const chunks = []; let done = 0;
         for (;;) {
@@ -273,19 +296,24 @@ async function fetchOSM(b, prog, start = 0, quick = false) {
         const text = new TextDecoder().decode(buf);
         const json = JSON.parse(text);
         if (json.remark && /error|timed out|memory/i.test(json.remark)) throw new Error(json.remark.slice(0, 80));
+        const nw = json.elements.filter(e => e.type === "way").length;
+        log(`  取得OK [${tag}] ${host} ${kb(done)}・道 ${nw}本・点 ${json.elements.length - nw}個（合計 ${((Date.now() - tq) / 1000).toFixed(1)}秒）`, "ok");
         return { json, text };
       } catch (e) {
         checkStop();
         last = e; prog({ msg: `${host} 失敗: ${e.message}`, warn: true });
+        log(`  失敗 [${tag}] ${host}: ${e.name === "AbortError" ? "時間切れ(150秒)" : e.message}`, "w");
       }
     }
     if (!quick && round < WAITS.length) {
+      log(`全サーバー失敗 [${tag}]。${WAITS[round]}秒待ってやりなおし（${round + 1}/${WAITS.length}）`, "w");
       for (let sec = WAITS[round]; sec > 0; sec--) {
         prog({ msg: `サーバーが混んでるみたい（${last?.message || ""}）。${sec}秒後にもう一度ためすよ（${round + 1}/${WAITS.length}回目）` });
         await sleep(1000); checkStop();
       }
     }
   }
+  log(`取得あきらめ [${tag}]: ${last?.message || ""}`, "e");
   throw new Error("OSMのデータが取れませんでした（" + (last?.message || "") + "）。サーバーが混んでるみたい。しばらくしてから「▶ 続きを計算」でためしてね");
 }
 
@@ -413,7 +441,7 @@ function search(G, s, g, gll, useLen, onProg) {
     closed[st] = 1;
     const c = best[st];
     const u = (st / 3) | 0, ul = st % 3;
-    if (onProg && (++pops & 0x7fff) === 0) {
+    if ((++pops & 0x7fff) === 0 && onProg) {
       far = Math.max(far, 1 - H(u) / D0);
       onProg(Math.min(0.99, Math.max(0, far)));
     }
@@ -429,7 +457,7 @@ function search(G, s, g, gll, useLen, onProg) {
       if (nc < best[ns] && !closed[ns]) { best[ns] = nc; prev[ns] = st; inWay[ns] = e.w; h.push(nc + H(e.v), ns); }
     }
   }
-  return { goal, best, prev, closed, H };
+  return { goal, best, prev, closed, H, pops };
 }
 function pathTo(prev, st) { const p = []; for (; st >= 0; st = prev[st]) p.push((st / 3) | 0); return p.reverse(); }
 function dijkstra(G, s, g, useLen, onProg) {
@@ -593,7 +621,10 @@ function padFor(s, g, area) {
 const pendingSaves = [];
 async function flushSaves() {
   const list = pendingSaves.splice(0);
+  if (!list.length) return;
+  const t0 = Date.now();
   await Promise.all(list.map(([k, t]) => putTile(k, t)));
+  log(`端末に保存: ${list.length}マス（${kb(list.reduce((a, x) => a + x[1].length, 0))} をちぢめて保存・${Date.now() - t0}ms）`, "ok");
   prune();
 }
 
@@ -606,6 +637,11 @@ async function route(req, prog, partial) {
   const T0 = Date.now();
   const pad = padFor(s, g, cfg && cfg.area);
   const tiles = tilesFor(s, g, pad), N = tiles.length;
+  log(`==== ルート計算スタート ====`, "h");
+  log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 到着 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
+  log(`設定: 計算=${cfg?.mode || "quick"} 広さ=${cfg?.area || "normal"}（余白 ${Math.round(pad * 111000)}m） 曲がる=${cfg?.turn ?? 0} 階段=${cfg?.steps} 4車線=${cfg?.wideCross} 2車線=${cfg?.midCross}`);
+  log(`道の倍率: ${Object.entries(cfg?.pen || {}).map(([k, v]) => k + "=" + v).join(" ")}`);
+  log(`マス: ${N}個（1マス ${tiles[0] ? tiles[0].key.split(":")[0] : "?"}°）`);
   // スタート→ゴールの線にそった進み具合（m）
   const c0 = Math.cos(s[0] * RAD), ux = (g[1] - s[1]) * c0 * 111320, uy = (g[0] - s[0]) * 111320, D = Math.hypot(ux, uy) || 1;
   const along = (la, lo) => (((lo - s[1]) * c0 * 111320) * ux + ((la - s[0]) * 111320) * uy) / D;
@@ -629,6 +665,7 @@ async function route(req, prog, partial) {
     if (r && !r.stale) setTile(t.key, r.el); else if (r) stale.set(t.key, r.el);
   }));
   const saved = got.size, need = tiles.filter(t => !got.has(t.key));
+  log(`端末の保存データ: 使える ${saved}マス / 1年より古い ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
   let done = 0, bytes = 0, fetchErr = null, stage = 1, stageMsg = "";
   const active = new Map(), tf0 = Date.now();
   const report = () => {
@@ -649,11 +686,12 @@ async function route(req, prog, partial) {
       const t = need[next++];
       active.set(w, "取得中…");
       try {
-        const r = await fetchOSM(t.bb, p => { active.set(w, p.msg); }, w, stale.has(t.key));
+        const r = await fetchOSM(t.bb, p => { active.set(w, p.msg); }, w, stale.has(t.key), `${t.key.split(":")[1]} 進み${Math.round(t.tc)}m`);
         bytes += r.text.length; pendingSaves.push([t.key, r.text]);
         done++; active.delete(w); setTile(t.key, r.json.elements); report();
       } catch (e) {
         if (!e.stopped && stale.has(t.key)) {   // 取れなかったけど、1年より前のデータがあるならそれを使う
+          log(`取れなかったので古いデータを使う [${t.key}]`, "w");
           setTile(t.key, stale.get(t.key)); done++; active.delete(w); report(); continue;
         }
         if (!e.stopped) fetchErr = e; active.delete(w); [...waiters.values()].flat().forEach(r => r()); if (e.stopped) return; }
@@ -674,6 +712,7 @@ async function route(req, prog, partial) {
     for (;;) {
       const final = bandEnd >= D;
       await sleep(0); checkStop();   // 「止める」を受けとれるように
+      log(final ? `--- 最後の区間（ゴールまで）を待っています ---` : `--- 区間: スタートから ${(bandEnd / 1000).toFixed(1)}km 先まで（確定ずみ ${(confLen / 1000).toFixed(2)}km） ---`, "h");
       stageMsg = final ? "ゴールまでのルートを計算中" : `スタートから ${(bandEnd / 1000).toFixed(1)}km 先まで計算中`;
       report();
       await waitUpTo(final ? Infinity : bandEnd + tileHalf);
@@ -688,6 +727,8 @@ async function route(req, prog, partial) {
         const tb = Date.now();
         G = buildGraph({ elements }, cfg);
         tBuild += (Date.now() - tb) / 1000; nNodes = Math.max(nNodes, G.nNodes);
+        { let ne = 0; for (const a of G.adj) ne += a.length;
+          log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${wide ? "【範囲を広げてやりなおし】" : ""}`); }
         sn = confEnd != null ? G.idx.get(confEnd) : undefined;
         if (sn === undefined) { const [n, d] = nearest(G, s[0], s[1]); if (d > 300) throw new Error("出発地のそばに道が見つかりませんでした"); sn = n; }
         stage = 3; report();
@@ -698,6 +739,7 @@ async function route(req, prog, partial) {
           gn = n;
         }
         r = search(G, sn, gn, g, false);
+        log(`探索: 調べた点 ${r.pops}個（${Date.now() - ts}ms）${final ? (r.goal >= 0 ? " ゴールに到着" : " ゴールに届かない") : ""}`, final && r.goal < 0 ? "w" : "i");
         path = null;
         if (final) {
           if (r.goal >= 0) path = pathTo(r.prev, r.goal);
@@ -716,11 +758,12 @@ async function route(req, prog, partial) {
         }
         tSearch += (Date.now() - ts) / 1000;
         const bad = !path || analyze(G, path).ng.length > 0;
-        if (bad && !wide && lo > 0) { wide = true; continue; }
+        if (bad && !wide && lo > 0) { log(path ? "ルール外の横断があるので、取ってある範囲ぜんぶで探しなおし" : "先に進める道がないので、範囲を広げて探しなおし", "w"); wide = true; continue; }
         break;
       }
       if (!path) {
         if (final) throw new Error("ルートが見つかりませんでした" + (cfg && cfg.area !== "wide" ? "。地図の広さを広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
+        log("この範囲では先に進めないので、もっと先のデータを待つ", "w");
         bandEnd = Math.min(D, bandEnd + BAND); continue;   // 先に進める道がない：もっと先まで取ってから
       }
       // どこまで確定するか（最後は全部、それ以外は先っぽ TENTATIVE m を仮のまま残す）
@@ -744,7 +787,8 @@ async function route(req, prog, partial) {
         conf.push(...(conf.length ? pts.slice(1) : pts));
         confEnd = G.ids[confPart[confPart.length - 1]];
         tConf = along(G.lat[confPart[confPart.length - 1]], G.lon[confPart[confPart.length - 1]]);
-      }
+        log(`確定: +${(a.len / 1000).toFixed(2)}km（合計 ${(confLen / 1000).toFixed(2)}km）曲がる ${a.turns}回・信号 ${a.ok.length}・横断歩道 ${a.xw.length}・ルール外 ${a.ng.length}`, a.ng.length ? "w" : "ok");
+      } else if (!final) log("今回は確定できる所がなかった（先のデータ待ち）");
       lastGraph = { G, sn: G.idx.get(G.ids[path[0]]) };
       if (final) break;
       const tentPts = tent.map(i => [G.lat[i], G.lon[i]]);
@@ -755,6 +799,7 @@ async function route(req, prog, partial) {
   } finally { clearInterval(timer); fetchErr = fetchErr || new Error("stop"); }
   await fetching.catch(() => {});
   const T = (Date.now() - T0) / 1000;
+  log(`==== 完了 ${(confLen / 1000).toFixed(2)}km・${T.toFixed(1)}秒（ダウンロード ${done}マス ${kb(bytes)}・つながり ${tBuild.toFixed(1)}秒・探索 ${tSearch.toFixed(1)}秒） ====`, "ok");
   return { route: conf, ek, ok, xw, ng, kinds, turns, len: confLen, nNodes, sec: T, tiles: N, saved, bytes,
     tLoad: Math.max(0, T - tBuild - tSearch), tBuild, tSearch };
 }
@@ -762,12 +807,14 @@ async function route(req, prog, partial) {
 function shortest() { return null; }
 
 if (typeof self !== "undefined" && typeof self.postMessage === "function" && typeof module === "undefined") {
+  logFn = m => self.postMessage({ type: "log", ...m });
   self.onmessage = async ev => {
     const d = ev.data;
     try {
       if (d.cmd === "stats") return self.postMessage({ type: "stats", ...(await stats()) });
       if (d.cmd === "clear") { await clearAll(); return self.postMessage({ type: "stats", ...(await stats()) }); }
       if (d.cmd === "stop") {   // 計算中の「止める」
+        log("■ 止めるボタンが押されました", "w");
         stopReq = true; for (const ac of aborts) ac.abort(); aborts.clear();
         for (const ws of stopWaiters) ws(); return;
       }
@@ -778,8 +825,8 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       await flushSaves();
       self.postMessage({ type: "stats", ...(await stats()) });
     } catch (e) {
-      if (e && e.stopped) { self.postMessage({ type: "stopped" }); await flushSaves().catch(() => {}); self.postMessage({ type: "stats", ...(await stats()) }); }
-      else self.postMessage({ type: "error", msg: e.message });
+      if (e && e.stopped) { log("■ 止めました", "w"); self.postMessage({ type: "stopped" }); await flushSaves().catch(() => {}); self.postMessage({ type: "stats", ...(await stats()) }); }
+      else { log("エラー: " + e.message, "e"); self.postMessage({ type: "error", msg: e.message }); }
     }
   };
 }
@@ -904,6 +951,7 @@ function geoErrText(e) {
   return "現在地がとれませんでした" + (e && e.message ? "：" + e.message : "");
 }
 function onGeoErr(e) {
+  addLog(`現在地エラー: code=${e && e.code} ${e && e.message}`, "e");
   if (wid !== null) navigator.geolocation.clearWatch(wid);
   wid = null; follow = false; $("gps").classList.remove("on"); $("dir").style.display = "none";
   map.dragging.enable();
@@ -932,6 +980,7 @@ function showProg() {
 }
 worker.onmessage = ev => {
   const m = ev.data;
+  if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
   if (m.type === "stats") {
     $("store").style.display = m.n ? "block" : "none";
     $("stv").textContent = `${m.n}件・${(m.bytes / 1048576).toFixed(1)} MB（1年で自動更新）`;
@@ -1005,6 +1054,7 @@ $("bResume").onclick = () => {
   if (!cur || !cur.resume || $("go").disabled) return;
   pendingName = cur.name || pendingName;
   const P = { ...cur, tent: null, partial: false };
+  addLog(`▶ 続きを計算: 確定ずみ ${fmtKm(cur.len || 0)} の先から`, "h");
   startJob(cur.route[cur.route.length - 1], cur.resume.g, cur.resume.cfg, P);
 };
 let pendingName = "";
@@ -1017,15 +1067,18 @@ $("go").onclick = async () => {
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   try {
+    addLog(`場所をさがす: 出発「${fromT || "現在地"}」 到着「${toT.slice(0, 60)}」`, "m");
     const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
+    addLog(`  出発 → ${sn}（${s[0].toFixed(5)},${s[1].toFixed(5)}）`, "m");
     const [g, gn] = await geocode(toT);
+    addLog(`  到着 → ${gn}（${g[0].toFixed(5)},${g[1].toFixed(5)}）`, "m");
     if (hav(s, g) > 60000) throw new Error(`出発と到着が ${fmtKm(hav(s, g))} もはなれてるよ。60km以内にしてね`);
     lastProg = { stage: 1, msg: `出発: ${sn} → 到着: ${gn}` }; showProg();
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発"); L.marker(g).addTo(layer).bindTooltip("到着");
     map.fitBounds([s, g], { padding: [40, 40] });
     clearInterval(tickTimer);
     startJob(s, g, structuredClone(cfg), null);
-  } catch (e) { clearInterval(tickTimer); $("go").disabled = false; setBar(0); setMsg(e.message, true); }
+  } catch (e) { clearInterval(tickTimer); $("go").disabled = false; setBar(0); setMsg(e.message, true); addLog("エラー: " + e.message, "e"); }
 };
 
 // ---------- 表示 ----------
@@ -1135,7 +1188,10 @@ async function loadElevation(r) {
       carry = d - (t - 20); acc += d;
     }
     pts.push(R[R.length - 1]); dist.push(acc);
+    addLog(`坂: 標高を ${pts.length}点（20mごと）調べるよ`, "m");
+    const te = Date.now();
     const h = await Promise.all(pts.map(p => elevAt(p[0], p[1])));
+    addLog(`坂: 標高タイル ${demCache.size}枚・${Date.now() - te}ms・データなし ${h.filter(v => v == null).length}点`, "m");
     if (h.every(v => v == null)) throw new Error("標高データが取れませんでした");
     for (let i = 0; i < h.length; i++) if (h[i] == null) h[i] = h[i - 1] ?? h.find(v => v != null);
     const sm = h.map((_, i) => { let a = 0, n = 0; for (let k = i - 2; k <= i + 2; k++) if (h[k] != null) { a += h[k]; n++; } return a / n; });
@@ -1147,7 +1203,8 @@ async function loadElevation(r) {
     }
     r.elev = { pts, grade };
     r.elevInfo = `のぼり合計 +${Math.round(up)}m・いちばん急 ${mx.toFixed(1)}%`;
-  } catch (e) { r.elevErr = e.message || "標高データが取れませんでした"; }
+    addLog("坂: " + r.elevInfo, "ok");
+  } catch (e) { r.elevErr = e.message || "標高データが取れませんでした"; addLog("坂: " + r.elevErr, "e"); }
   if (cur === r) showRoute(r, false);
 }
 function setColorMode(m) {
@@ -1284,6 +1341,35 @@ $("bNew").onclick = () => {
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   $("to").focus();
 };
+
+// ---------- ログ（📜 ログ タブ） ----------
+const LOG_MAX = 3000;
+let logCount = 0;
+function addLog(msg, lv = "i", t = Date.now()) {
+  const box = $("log"), atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  const d = new Date(t), ts = d.toTimeString().slice(0, 8) + "." + String(d.getMilliseconds()).padStart(3, "0");
+  const line = document.createElement("div"); line.className = lv;
+  line.innerHTML = `<time>${ts}</time>`; line.appendChild(document.createTextNode(msg));
+  box.appendChild(line);
+  while (box.childElementCount > LOG_MAX) box.firstChild.remove();
+  logCount++; $("logN").textContent = `(${logCount})`;
+  if ($("lgAuto").checked && (atBottom || box.style.display !== "none")) box.scrollTop = box.scrollHeight;
+}
+$("lgClear").onclick = () => { $("log").innerHTML = ""; logCount = 0; $("logN").textContent = ""; };
+$("lgCopy").onclick = async () => {
+  const text = [...$("log").children].map(d => d.textContent).join("\n");
+  try { await navigator.clipboard.writeText(text); $("lgCopy").textContent = "コピーしたよ！"; }
+  catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+  setTimeout(() => $("lgCopy").textContent = "コピー", 1500);
+};
+document.querySelector(".tabs").onclick = e => {
+  const t = e.target.closest("button")?.dataset.t; if (!t) return;
+  for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.t === t);
+  $("tabRoute").style.display = t === "route" ? "" : "none";
+  $("tabLog").style.display = t === "log" ? "" : "none";
+  if (t === "log") $("log").scrollTop = $("log").scrollHeight;
+};
+addLog(`細道ルートナビ ${$("ver").textContent} を開いたよ（${navigator.userAgent.match(/(Android [\d.]+|iPhone OS [\d_]+|Windows NT [\d.]+|Mac OS X [\d_]+)/)?.[0] || "?"}）`, "h");
 
 // ---------- パネル ----------
 // 入力欄で Enter → ルートを作る（日本語の変換確定の Enter はのぞく）
