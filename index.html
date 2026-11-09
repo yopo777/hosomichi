@@ -39,6 +39,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #log{height:55vh;overflow:auto;background:#1e1e1e;color:#ddd;border-radius:8px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
 #log .w{color:#ffb74d} #log .e{color:#ff6e6e;font-weight:bold} #log .ok{color:#81c784} #log .h{color:#64b5f6;font-weight:bold} #log .m{color:#ce93d8}
 #log time{color:#777;margin-right:6px}
+#upd button{margin-left:8px;border:none;border-radius:6px;padding:4px 10px;background:#fff;color:#188038;font-weight:bold}
 #cfgBox{margin-top:8px;background:#f7f7f7;border-radius:8px;padding:6px 8px;max-height:62vh;overflow:auto}
 #cfgBox h4{margin:8px 0 2px;font-size:12px;color:#d93025}
 #cfgBox .c{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:13px}
@@ -92,7 +93,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2220</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2223</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
     <div id="tabCfg" style="display:none">
@@ -143,6 +144,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   </div>
 </div>
 <div id="nav"></div>
+<div id="upd" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:2000;background:#188038;color:#fff;
+  border-radius:10px;padding:8px 12px;font-size:14px;box-shadow:0 2px 8px #0005;white-space:nowrap"></div>
 <div id="inapp" style="display:none;position:absolute;left:8px;right:8px;bottom:calc(90px + env(safe-area-inset-bottom));z-index:1001;background:#333;color:#fff;
   border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">📱 X などのアプリの中で開いてるよ。現在地ナビを使うときは「︙」→「ブラウザで開く」で Chrome や Safari で開いてね
   <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
@@ -1376,6 +1379,28 @@ function showTab(t) {
 }
 document.querySelector(".tabs").onclick = e => { const t = e.target.closest("button")?.dataset.t; if (t) showTab(t); };
 addLog(`細道ルートナビ ${$("ver").textContent} を開いたよ（${navigator.userAgent.match(/(Android [\d.]+|iPhone OS [\d_]+|Windows NT [\d.]+|Mac OS X [\d_]+)/)?.[0] || "?"}）`, "h");
+
+// ---------- 新しい版のチェック（GitHub Pages は10分くらい古いのを出すことがあるので） ----------
+// ?の後ろを毎回かえて、とっておき（キャッシュ）を通さずに最新の index.html を見にいく
+async function checkUpdate(manual) {
+  if (!/^https?:/.test(location.protocol)) return;
+  try {
+    const res = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
+    const m = (await res.text()).match(/id="ver"[^>]*>v([\d.]+)</);
+    const mine = $("ver").textContent.replace(/^v/, "");
+    if (m && m[1] !== mine) {
+      addLog(`新しい版があるよ: v${m[1]}（今は v${mine}）`, "h");
+      $("upd").innerHTML = `🆕 新しい版 v${m[1]} があるよ <button>更新する</button>`;
+      $("upd").style.display = "block";
+      $("upd").querySelector("button").onclick = () => location.replace(location.pathname + "?v=" + m[1] + location.hash);
+    } else if (manual) { addLog(`最新の版だよ（v${mine}）`, "ok"); }
+  } catch (e) { if (manual) addLog("更新チェックできませんでした: " + e.message, "w"); }
+}
+setTimeout(() => checkUpdate(false), 3000);
+setInterval(() => checkUpdate(false), 10 * 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkUpdate(false); });
+$("ver").style.cursor = "pointer";
+$("ver").onclick = () => { showTab("log"); checkUpdate(true); };
 
 // ---------- パネル ----------
 // 入力欄で Enter → ルートを作る（日本語の変換確定の Enter はのぞく）
