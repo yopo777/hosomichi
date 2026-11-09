@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2332</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2338</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -112,9 +112,11 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <div class="note" style="font-size:11px;color:#888;margin-top:4px">上のボタンでおまかせ、下で1つずつ変えられるよ（計算のしかた・曲がる回数・広さはおまかせでも変わらないよ）</div>
       <div id="cfgBox"></div>
       <div id="homeBox" style="margin-top:8px;background:#fff7e6;border-radius:8px;padding:8px;font-size:13px">
-        <b>🏠 守りたい場所</b>（自宅・実家など。共有するときに、まわりを自動で隠すよ）
+        <b>🏠 守りたい場所</b>（自宅・実家など。出発・到着にしたルートを共有するとき、まわりを自動で隠すよ）
         <div id="placeList" style="margin-top:4px"></div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="hmHere">＋ 現在地を登録</button></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">隠す広さ<input type="range" id="hmR" min="100" max="500" step="50" style="flex:1"><b id="hmRv"></b></div>
+        <div style="font-size:11px;color:#888">出発・到着がこの距離より近いと、共有するときにこのはんいの線を消すよ</div>
         <div style="font-size:11px;color:#888;margin-top:4px">地図をタップして「🏠 守る場所にする」でも登録できるよ。出発・到着に名前（例: 自宅）を入れると、その場所を使えるよ。場所はこの端末の中だけにしまって、どこにも送らないよ</div>
       </div>
     </div>
@@ -1402,7 +1404,8 @@ function showRoute(r, fit) {
 // ---------- 共有URL・GPX ----------
 // ---------- 守りたい場所（自宅・実家など） ----------
 // 出発・到着がどれかの場所から 500m 以内なら、共有で必ずそのまわりを隠す
-const HOME_R = 500, HOME_HIDE = 500;
+// 守りたい場所のまわりを隠す広さ（100〜500m）。出発・到着がこの距離より近いと、このはんいの線を消す
+let HOME_R = (() => { try { return +localStorage.getItem("hosomichi_place_r") || 300; } catch { return 300; } })();
 let places = (() => {
   try {
     const p = JSON.parse(localStorage.getItem("hosomichi_places"));
@@ -1432,6 +1435,12 @@ $("placeList").onclick = e => {
   if (b.dataset.a === "del") { if (confirm(`「${places[i].name}」を消す？`)) { places.splice(i, 1); savePlaces(); } }
   else { const n = prompt("場所の名前", places[i].name); if (n && n.trim()) { places[i].name = n.trim().slice(0, 20); savePlaces(); } }
 };
+$("hmR").value = HOME_R; $("hmRv").textContent = HOME_R + "m";
+$("hmR").oninput = () => {
+  HOME_R = +$("hmR").value; $("hmRv").textContent = HOME_R + "m";
+  try { localStorage.setItem("hosomichi_place_r", HOME_R); } catch {}
+  if (cur && $("share").style.display === "block") updateShare();
+};
 $("hmHere").onclick = async () => { try { addPlace(await getHere()); } catch (e) { alert(e.message); } };
 const placeByName = t => places.find(p => p.name === (t || "").trim());
 const nearPlace = (q, r) => places.find(p => hav(q, p.ll) < r);
@@ -1440,17 +1449,14 @@ function hidePlan() {
   const R = cur.route, sel = +$("hide").value;
   let hs = sel, he = $("hideEnd").checked ? sel : 0;
   const nearS = nearPlace(R[0], HOME_R), nearE = nearPlace(R[R.length - 1], HOME_R);
-  if (nearS) hs = Math.max(hs, HOME_HIDE);
-  if (nearE) he = Math.max(he, HOME_HIDE);
-  let midNear = null;
-  for (let i = 0; i < R.length && !midNear; i++) if (hav(R[i], R[0]) > hs && hav(R[i], R[R.length - 1]) > he) midNear = nearPlace(R[i], 150) || null;
-  return { hs, he, nearS, nearE, midNear };
+  if (nearS) hs = Math.max(hs, HOME_R);
+  if (nearE) he = Math.max(he, HOME_R);
+  return { hs, he, nearS, nearE };
 }
 function updateHomeNote() {
   const p = hidePlan(), n = $("homeNote"), msgs = [];
-  if (p.nearS) msgs.push(`🏠 出発地が「${esc(p.nearS.name)}」の近くなので、まわり500mを自動で隠しているよ`);
-  if (p.nearE) msgs.push(`🏠 到着地が「${esc(p.nearE.name)}」の近くなので、まわり500mを自動で隠しているよ`);
-  if (p.midNear) msgs.push(`⚠ ルートのとちゅうで「${esc(p.midNear.name)}」のそばを通るよ。共有してもいいか確かめてね`);
+  if (p.nearS) msgs.push(`🏠 出発地が「${esc(p.nearS.name)}」の近くなので、まわり${HOME_R}mを自動で隠しているよ`);
+  if (p.nearE) msgs.push(`🏠 到着地が「${esc(p.nearE.name)}」の近くなので、まわり${HOME_R}mを自動で隠しているよ`);
   if (!places.length && !p.hs) msgs.push("⚠ 出発地を隠してないよ。自宅から出発してないか確かめてね（⚙ 設定で守りたい場所を登録すると自動で隠せるよ）");
   n.innerHTML = msgs.length ? msgs.join("<br>") : "自宅から出発したルートを公開するときは隠してね";
   n.style.color = msgs.some(m => m.startsWith("⚠")) ? "#c00" : msgs.length ? "#188038" : "#666";
@@ -1459,8 +1465,8 @@ function updateHomeNote() {
 function shareUrl(tol = 3) {
   const R = cur.route, { hs, he, nearS, nearE } = hidePlan();
   // 出発（到着）から hs(he) m 以内、または自宅から 500m 以内の線は送らない
-  const hideS = q => hav(q, R[0]) < hs || (nearS && hav(q, nearS.ll) < HOME_HIDE);
-  const hideE = q => hav(q, R[R.length - 1]) < he || (nearE && hav(q, nearE.ll) < HOME_HIDE);
+  const hideS = q => hav(q, R[0]) < hs || (nearS && hav(q, nearS.ll) < HOME_R);
+  const hideE = q => hav(q, R[R.length - 1]) < he || (nearE && hav(q, nearE.ll) < HOME_R);
   let i0 = 0, i1 = R.length;
   if (hs) { while (i0 < R.length - 1 && hideS(R[i0])) i0++; }
   if (he) { while (i1 > i0 + 1 && hideE(R[i1 - 1])) i1--; }
