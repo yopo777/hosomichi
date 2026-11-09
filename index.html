@@ -85,7 +85,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #col{position:absolute;top:calc(50% - 154px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
 #col small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
-#legend{position:absolute;left:10px;top:calc(50% - 40px);z-index:999;background:#fffe;border-radius:10px;
+#legend{position:absolute;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));pointer-events:none;z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:6px 8px;font-size:11px;line-height:1.6;display:none;max-width:60%}
 #legend i{display:inline-block;width:18px;height:6px;border-radius:3px;margin-right:4px;vertical-align:middle}
 #lay small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2312</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2319</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1161,6 +1161,33 @@ function townName(t) {
     .replace(/[-ー－]+$/, "");
 }
 const looksAddress = t => /丁目|番地|番|号|\d+\s*[-‐－―ー−]\s*\d+|[０-９]+[‐－―ー−][０-９]+|[都道府県].+[市区町村]/.test(t);
+// 緯度経度から「市＋町名」をさがす（丁目・番地は入れない）
+const stripChome = t => (t || "").replace(/([0-9０-９]+|[一二三四五六七八九十]+)丁目.*$/, "").replace(/[0-9０-９].*$/, "").trim();
+async function reverseName(lat, lon) {
+  const tm = ms => new Promise((_, ng) => setTimeout(() => ng(new Error("時間切れ")), ms));
+  try {
+    const r = await Promise.race([fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=16&accept-language=ja&lat=${lat}&lon=${lon}`).then(r => r.json()), tm(5000)]);
+    const a = r.address || {};
+    const city = a.city || a.town || a.village || a.county || "";
+    const area = stripChome(a.suburb || a.quarter || a.neighbourhood || a.hamlet || "");
+    if (city || area) return (city + (area && area !== city ? area : "")).slice(0, 24);
+  } catch (e) { addLog("町名さがし(Nominatim)失敗: " + e.message, "w"); }
+  try {
+    const r = await Promise.race([fetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${lat}&lon=${lon}`).then(r => r.json()), tm(5000)]);
+    const t = stripChome(r.results && r.results.lv01Nm);
+    if (t && t !== "－") return t;
+  } catch (e) { addLog("町名さがし(地理院)失敗: " + e.message, "w"); }
+  return null;
+}
+// ルート名に使う場所の名前：空(現在地)・座標・URL なら町名をさがす。住所は町名まで。駅名などはそのまま
+async function placeName(input, ll) {
+  const t = (input || "").trim();
+  if (!t || /^https?:/.test(t) || /^-?\d+\.\d+\s*[,、]/.test(t.normalize("NFKC"))) {
+    const n = await reverseName(ll[0], ll[1]);
+    return n || (t ? "地図の地点" : "現在地");
+  }
+  return shortName(t);
+}
 const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : (looksAddress(t) ? townName(t) : cleanAddr(t)).slice(0, 24);
 
 $("go").onclick = async () => {
@@ -1176,6 +1203,10 @@ $("go").onclick = async () => {
     addLog(`  出発 → ${sn}（${s[0].toFixed(5)},${s[1].toFixed(5)}）`, "m");
     const [g, gn] = await geocode(toT);
     addLog(`  到着 → ${gn}（${g[0].toFixed(5)},${g[1].toFixed(5)}）`, "m");
+    // 「現在地」「地図の地点」のままだと、あとで見てもどこかわからないので、町名にする
+    const [sName, gName] = await Promise.all([placeName(fromT, s), placeName(toT, g)]);
+    pendingName = sName + " → " + gName;
+    addLog(`  ルート名: ${pendingName}`, "m");
     if (hav(s, g) > 60000) throw new Error(`出発と到着が ${fmtKm(hav(s, g))} もはなれてるよ。60km以内にしてね`);
     lastProg = { stage: 1, msg: `出発: ${sn} → 到着: ${gn}` }; showProg();
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発"); L.marker(g).addTo(layer).bindTooltip("到着");
