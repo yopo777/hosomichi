@@ -39,7 +39,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #log{height:55vh;overflow:auto;background:#1e1e1e;color:#ddd;border-radius:8px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
 #log .w{color:#ffb74d} #log .e{color:#ff6e6e;font-weight:bold} #log .ok{color:#81c784} #log .h{color:#64b5f6;font-weight:bold} #log .m{color:#ce93d8}
 #log time{color:#777;margin-right:6px}
-#cfgBox{display:none;margin-top:8px;background:#f7f7f7;border-radius:8px;padding:6px 8px;max-height:45vh;overflow:auto}
+#cfgBox{margin-top:8px;background:#f7f7f7;border-radius:8px;padding:6px 8px;max-height:62vh;overflow:auto}
 #cfgBox h4{margin:8px 0 2px;font-size:12px;color:#d93025}
 #cfgBox .c{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:13px}
 #cfgBox .c span{flex:1}
@@ -92,9 +92,14 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2216</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2220</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div id="tabCfg" style="display:none">
+      <div class="pre" id="pre2"><button data-p="near">近道</button><button data-p="std">おすすめ</button><button data-p="hoso">細道こだわり</button></div>
+      <div class="note" style="font-size:11px;color:#888;margin-top:4px">上のボタンでおまかせ、下で1つずつ変えられるよ（計算のしかた・曲がる回数・広さはおまかせでも変わらないよ）</div>
+      <div id="cfgBox"></div>
+    </div>
     <div id="tabLog" style="display:none">
       <div class="btns" style="margin:6px 0"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
         <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="lgAuto" checked>自動スクロール</label></div>
@@ -103,11 +108,10 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <div id="tabRoute">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
-    <div class="pre" id="pre"><button data-p="near">近道</button><button data-p="std">おすすめ</button><button data-p="hoso">細道こだわり</button><button data-p="cfg">⚙ 細かく</button></div>
+    <div class="pre" id="pre"><button data-p="near">近道</button><button data-p="std">おすすめ</button><button data-p="hoso">細道こだわり</button><button data-p="cfg">⚙ 設定</button></div>
     <div class="row" style="margin-top:6px"><label style="width:auto">地図の広さ</label>
       <select id="areaSel" style="flex:1;padding:6px;border-radius:8px;border:1px solid #ccc;font-size:13px">
         <option value="narrow">せまい（早い）</option><option value="normal">ふつう</option><option value="wide">ひろい（おそい）</option></select></div>
-    <div id="cfgBox"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図をタップしても出発・到着を選べるよ</div>
     <button id="go">ルートを作る</button>
     <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
@@ -1362,13 +1366,15 @@ $("lgCopy").onclick = async () => {
   catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
   setTimeout(() => $("lgCopy").textContent = "コピー", 1500);
 };
-document.querySelector(".tabs").onclick = e => {
-  const t = e.target.closest("button")?.dataset.t; if (!t) return;
+function showTab(t) {
   for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.t === t);
   $("tabRoute").style.display = t === "route" ? "" : "none";
+  $("tabCfg").style.display = t === "cfg" ? "" : "none";
   $("tabLog").style.display = t === "log" ? "" : "none";
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
-};
+  $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
+}
+document.querySelector(".tabs").onclick = e => { const t = e.target.closest("button")?.dataset.t; if (t) showTab(t); };
 addLog(`細道ルートナビ ${$("ver").textContent} を開いたよ（${navigator.userAgent.match(/(Android [\d.]+|iPhone OS [\d_]+|Windows NT [\d.]+|Mac OS X [\d_]+)/)?.[0] || "?"}）`, "h");
 
 // ---------- パネル ----------
@@ -1419,14 +1425,18 @@ let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cf
 function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} markPreset(); }
 function markPreset() {
   let hit = null; for (const k in PRESETS) if (JSON.stringify({ ...PRESETS[k], mode: cfg.mode, turn: cfg.turn, area: cfg.area }) === JSON.stringify(cfg)) hit = k;
-  for (const b of $("pre").children) b.classList.toggle("on", b.dataset.p === hit || (b.dataset.p === "cfg" && $("cfgBox").style.display === "block"));
+  for (const b of [...$("pre").children, ...$("pre2").children]) b.classList.toggle("on", b.dataset.p === hit || (b.dataset.p === "cfg" && !hit));
+  $("pre").querySelector('[data-p="cfg"]').textContent = hit ? "⚙ 設定" : "⚙ 自分で設定";
 }
 const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${String(v) === String(val) ? " selected" : ""}>${t}</option>`).join("");
 function renderCfg() {
-  let h = '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
+  const row = ([k, t, o]) => `<div class="c"><span>${t}</span><select data-k="${k}">${optHtml(o, cfg[k])}</select></div>`;
+  const get = ks => OTHER_ROWS.filter(r => ks.includes(r[0])).map(row).join("");
+  let h = "<h4>計算</h4>" + get(["mode", "area", "turn"]);
+  h += "<h4>道を渡るとき</h4>" + get(["wideCross", "midCross"]);
+  h += "<h4>階段・歩道橋・砂利</h4>" + get(["steps", "bridge", "unpaved"]);
+  h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
-  h += "<h4>そのほか</h4>";
-  for (const [k, t, o] of OTHER_ROWS) h += `<div class="c"><span>${t}</span><select data-k="${k}">${optHtml(o, cfg[k])}</select></div>`;
   h += '<div class="note" style="margin-top:6px">設定はこの端末におぼえておくよ。変えたらもう一度「ルートを作る」を押してね</div>';
   $("cfgBox").innerHTML = h;
 }
@@ -1435,9 +1445,10 @@ $("cfgBox").onchange = e => {
   if (el.dataset.pen) cfg.pen[el.dataset.pen] = v; else cfg[el.dataset.k] = v;
   saveCfg();
 };
+$("pre2").onclick = e => $("pre").onclick(e);
 $("pre").onclick = e => {
   const p = e.target.dataset.p; if (!p) return;
-  if (p === "cfg") { const b = $("cfgBox"); b.style.display = b.style.display === "block" ? "none" : "block"; renderCfg(); markPreset(); return; }
+  if (p === "cfg") { showTab("cfg"); return; }
   cfg = { ...structuredClone(PRESETS[p]), mode: cfg.mode, turn: cfg.turn, area: cfg.area }; saveCfg(); renderCfg();  // 計算のしかた・曲がる回数・広さはそのまま
 };
 $("areaSel").value = cfg.area;
