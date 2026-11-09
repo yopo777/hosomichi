@@ -63,6 +63,12 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #dir.on{background:#1a73e8}
 #lay{position:absolute;bottom:calc(172px + env(safe-area-inset-bottom));right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
+#col{position:absolute;bottom:calc(244px + env(safe-area-inset-bottom));right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
+#col small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+#legend{position:absolute;left:10px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:999;background:#fffe;border-radius:10px;
+  box-shadow:0 2px 8px #0003;padding:6px 8px;font-size:11px;line-height:1.6;display:none;max-width:60%}
+#legend i{display:inline-block;width:18px;height:6px;border-radius:3px;margin-right:4px;vertical-align:middle}
 #lay small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 .leaflet-bottom.leaflet-right{bottom:0}
 #dir svg{display:block;margin:auto;transition:transform .3s}
@@ -73,12 +79,12 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #nav.off{color:#c00}
 .pin{font-size:13px}
 .pin button{margin:4px 2px 0;padding:6px 10px;border-radius:6px;border:1px solid #ccc;background:#fff}
-.leaflet-control-attribution{font-size:10px}
+.leaflet-control-attribution{font-size:10px;pointer-events:none}
 </style></head>
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1836</small><small id="mini"></small></span><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1904</small><small id="mini"></small></span><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div class="body">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
@@ -109,7 +115,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
           <label><input type="checkbox" id="hideEnd"> 到着地も</label></div>
         <div style="margin:4px 0;color:#666">自宅から出発したルートを公開するときは隠してね</div>
         <textarea id="url" readonly></textarea>
-        <div class="btns"><button class="ib" id="bCopy">コピー</button><button class="ib" id="bSys">共有…</button></div>
+        <div class="btns"><button class="ib" id="bQr">📷 QR</button><button class="ib" id="bCopy">コピー</button><button class="ib" id="bSys">共有…</button></div>
+        <div id="qr" style="display:none;text-align:center;margin-top:8px"></div>
       </div>
     </div>
   </div>
@@ -120,6 +127,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
 <button id="gps" title="現在地についていく">◎</button>
 <button id="lay" title="地図の種類">🗺<small id="layL"></small></button>
+<button id="col" title="ルートの色">🎨<small id="colL"></small></button>
+<div id="legend"></div>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
 
 <script id="router" type="text/plain">// ==== 細道ルート計算エンジン（Web Worker / Node 両用） ====
@@ -430,9 +439,9 @@ function edge(G, u, v) {
 }
 
 function analyze(G, path) {
-  const ok = [], xw = [], ng = [], ngIdx = [], kinds = {}; let len = 0;
+  const ok = [], xw = [], ng = [], ngIdx = [], kinds = {}, ek = []; let len = 0;
   for (let i = 1; i < path.length; i++) {
-    const e = edge(G, path[i - 1], path[i]); len += e.L; kinds[e.k] = (kinds[e.k] || 0) + e.L;
+    const e = edge(G, path[i - 1], path[i]); len += e.L; kinds[e.k] = (kinds[e.k] || 0) + e.L; ek.push(e.k);
   }
   for (let i = 1; i < path.length - 1; i++) {
     const u = path[i], L = G.lvl[u]; if (!L) continue;
@@ -442,7 +451,7 @@ function analyze(G, path) {
       else if (G.xcost[u] > 0 || L === 2) { ng.push(p); ngIdx.push(i); }   // ルール違反（または4車線を信号なし）
     }
   }
-  return { ok, xw, ng, ngIdx, kinds, len };
+  return { ok, xw, ng, ngIdx, kinds, len, ek };
 }
 
 // ==== タイル分割取得 ＋ 保存（メモリ ＋ IndexedDB） ====
@@ -613,7 +622,7 @@ async function route(req, prog, partial) {
   };
 
   // --- 順番に確定 ---
-  const conf = [], kinds = {}, ok = [], xw = [], ng = [];
+  const conf = [], kinds = {}, ok = [], xw = [], ng = [], ek = [];
   let confLen = 0, confEnd = null /* OSMの点id */, tConf = 0, tBuild = 0, tSearch = 0, nNodes = 0;
   // mode "full"：ぜんぶ取ってから一度に計算（いちばん良いルート）／ それ以外：スタートから順番に確定（すぐ走り出せる）
   let bandEnd = cfg && cfg.mode === "full" ? D : Math.min(D, FIRST_BAND), lastGraph = null;
@@ -686,7 +695,7 @@ async function route(req, prog, partial) {
       const confPart = path.slice(0, k + 1), tent = path.slice(k);
       if (confPart.length > 1) {
         const a = analyze(G, confPart);
-        addKinds(a.kinds); ok.push(...a.ok); xw.push(...a.xw); ng.push(...a.ng); confLen += a.len;
+        addKinds(a.kinds); ok.push(...a.ok); xw.push(...a.xw); ng.push(...a.ng); ek.push(...a.ek); confLen += a.len;
         const pts = confPart.map(i => [G.lat[i], G.lon[i]]);
         conf.push(...(conf.length ? pts.slice(1) : pts));
         confEnd = G.ids[confPart[confPart.length - 1]];
@@ -695,14 +704,14 @@ async function route(req, prog, partial) {
       lastGraph = { G, sn: G.idx.get(G.ids[path[0]]) };
       if (final) break;
       const tentPts = tent.map(i => [G.lat[i], G.lon[i]]);
-      partial({ route: conf.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), kinds: { ...kinds }, len: confLen,
+      partial({ route: conf.slice(), ek: ek.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), kinds: { ...kinds }, len: confLen,
         progress: Math.min(1, tConf / D), restAir: hav(tentPts[tentPts.length - 1][0], tentPts[tentPts.length - 1][1], g[0], g[1]) });
       bandEnd = Math.min(D, bandEnd + BAND);
     }
   } finally { clearInterval(timer); fetchErr = fetchErr || new Error("stop"); }
   await fetching.catch(() => {});
   const T = (Date.now() - T0) / 1000;
-  return { route: conf, ok, xw, ng, kinds, len: confLen, nNodes, sec: T, tiles: N, saved, bytes,
+  return { route: conf, ek, ok, xw, ng, kinds, len: confLen, nNodes, sec: T, tiles: N, saved, bytes,
     tLoad: Math.max(0, T - tBuild - tSearch), tBuild, tSearch };
 }
 // 「ただの最短」はくらべる用。順番に確定する方式では出さない
@@ -728,7 +737,8 @@ if (typeof module !== "undefined") module.exports = { shortest, padFor, buildGra
 "use strict";
 const $ = id => document.getElementById(id);
 // ---------- 地図 ----------
-const attr = '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a> | 経路 &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+// 出典の表示は必要（地理院タイル・OpenStreetMap）。まちがえて開かないようにリンクにはしない
+const attr = '地理院タイル | 経路 &copy; OpenStreetMap contributors';
 const base = {
   "淡色": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr }),
   "標準": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr }),
@@ -881,7 +891,7 @@ worker.onmessage = ev => {
   }
   if (m.type === "partial") {   // スタート側から順番に確定していく途中のルート
     const first = !cur || !cur.partial;
-    showRoute({ route: m.route, tent: m.tent, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, len: m.len,
+    showRoute({ route: m.route, ek: m.ek, tent: m.tent, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, len: m.len,
       restAir: m.restAir, partial: true, name: pendingName }, first && !follow ? "start" : false);
     if (first) { $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }   // 地図を見せて、すぐ ◎ を押せるように
     return;
@@ -893,7 +903,7 @@ worker.onmessage = ev => {
   setMsg(`できた！ ${m.sec.toFixed(1)}秒\n` +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
-  showRoute({ route: m.route, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, len: m.len, slen: m.slen, name: pendingName }, !follow);
+  showRoute({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, len: m.len, slen: m.slen, name: pendingName }, !follow);
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
 };
 let pendingName = "";
@@ -917,13 +927,140 @@ $("go").onclick = async () => {
 };
 
 // ---------- 表示 ----------
+// ---------- ルートの色分け（赤 / 道の種類 / 坂） ----------
+const CATS = [["細い道", "#188038"], ["自転車道", "#00acc1"], ["歩道・小道（押す所も）", "#8e24aa"], ["一般道・県道", "#f29900"],
+  ["国道・幹線", "#d93025"], ["歩道橋・階段・踏切", "#6d4c41"], ["砂利・舗装不明・農道", "#757575"], ["そのほか", "#9e9e9e"]];
+function catOf(n) {
+  if (/住宅街|生活道路|私道|細めの一般道/.test(n)) return 0;
+  if (/自転車道/.test(n)) return 1;
+  if (/歩道橋|地下道|階段|踏切/.test(n)) return 5;
+  if (/歩道|歩行者|小道$/.test(n) && !/舗装不明/.test(n)) return 2;
+  if (/砂利|舗装不明|農道/.test(n)) return 6;
+  if (/国道|幹線/.test(n)) return 4;
+  if (/一般道|県道/.test(n)) return 3;
+  return 7;
+}
+const SLOPES = [["のぼり 7%〜", "#d50000", 7], ["のぼり 4〜7%", "#fb8c00", 4], ["のぼり 2〜4%", "#fdd835", 2], ["ほぼ平ら", "#43a047", -3], ["くだり", "#29b6f6", -99]];
+const slopeColor = g => SLOPES.find(x => g >= x[2])[1];
+// 区間ごとの種類を短い文字に（例 0a.3f.0c ＝ 種類＋区間数36進）
+const encK = kc => { const out = []; for (let i = 0; i < kc.length;) { let j = i; while (j < kc.length && kc[j] === kc[i]) j++; out.push(kc[i] + (j - i).toString(36)); i = j; } return out.join("."); };
+const decK = s => { const kc = []; for (const t of s.split(".")) { const c = +t[0], n = parseInt(t.slice(1), 36); for (let i = 0; i < n; i++) kc.push(c); } return kc; };
+// 線を間引いて、区間の種類もそれに合わせる
+function simpRoute(pts, kc, tol) {
+  const keep = simplify(pts.map((p, i) => [p[0], p[1], i]), tol).map(p => p[2]);
+  const out = keep.map(i => pts[i]);
+  return { pts: out, kc: kc && kc.length === pts.length - 1 ? keep.slice(0, -1).map(i => kc[i]) : null };
+}
+let colorMode = (() => { try { return localStorage.getItem("hosomichi_color") || "red"; } catch { return "red"; } })();
+const COLOR_NAMES = { red: "赤", kind: "道の種類", slope: "坂" };
+function legend(r) {
+  const lg = $("legend");
+  if (colorMode === "red" || !r || !r.route || r.route.length < 2) { lg.style.display = "none"; return; }
+  let h = "";
+  if (colorMode === "kind") {
+    if (!r.kc) h = "このルートには道の種類の情報がないよ";
+    else { const used = new Set(r.kc); h = CATS.map((c, i) => used.has(i) ? `<div><i style="background:${c[1]}"></i>${c[0]}</div>` : "").join(""); }
+  } else {
+    h = SLOPES.map(c => `<div><i style="background:${c[1]}"></i>${c[0]}</div>`).join("");
+    if (r.elevInfo) h += `<div style="margin-top:2px;color:#444">${r.elevInfo}</div>`;
+    else if (r.elevErr) h += `<div style="color:#c00">${r.elevErr}</div>`;
+    else h += `<div style="color:#666">標高を読みこみ中…</div>`;
+  }
+  lg.innerHTML = h; lg.style.display = "block";
+}
+function drawRoute(r) {
+  const R = r.route;
+  L.polyline(R, { color: "#fff", weight: 11, opacity: .85, interactive: false }).addTo(layer);   // ふちどり
+  const seg = (pts, color) => L.polyline(pts, { color, weight: 7, opacity: .95 }).addTo(layer);
+  if (colorMode === "kind" && r.kc && r.kc.length === R.length - 1) {
+    for (let i = 0; i < r.kc.length;) {
+      let j = i; while (j < r.kc.length && r.kc[j] === r.kc[i]) j++;
+      seg(R.slice(i, j + 1), CATS[r.kc[i]][1]).bindTooltip(CATS[r.kc[i]][0]); i = j;
+    }
+  } else if (colorMode === "slope" && r.elev) {
+    const { pts, grade } = r.elev;
+    for (let i = 0; i < grade.length;) {
+      const c = slopeColor(grade[i]); let j = i; while (j < grade.length && slopeColor(grade[j]) === c) j++;
+      seg(pts.slice(i, j + 1), c).bindTooltip(`${grade[i] >= 0 ? "のぼり" : "くだり"} ${Math.abs(grade[i]).toFixed(1)}%`); i = j;
+    }
+  } else {
+    seg(R, "#d93025").bindTooltip("細道ルート");
+    if (colorMode === "slope" && !r.elev && !r.elevErr && !r.partial) loadElevation(r);
+  }
+  legend(r);
+}
+// 地理院の標高タイル（PNG）からルートの高さを調べる
+const demCache = new Map();
+async function demTile(z, x, y, kind) {
+  const key = `${kind}/${z}/${x}/${y}`;
+  if (demCache.has(key)) return demCache.get(key);
+  const p = (async () => {
+    const res = await fetch(`https://cyberjapandata.gsi.go.jp/xyz/${kind}/${z}/${x}/${y}.png`);
+    if (!res.ok) return null;
+    const bmp = await createImageBitmap(await res.blob());
+    const cv = document.createElement("canvas"); cv.width = 256; cv.height = 256;
+    const cx = cv.getContext("2d"); cx.drawImage(bmp, 0, 0);
+    return cx.getImageData(0, 0, 256, 256).data;
+  })().catch(() => null);
+  demCache.set(key, p);
+  return p;
+}
+async function elevAt(lat, lon) {
+  for (const [kind, z] of [["dem5a_png", 15], ["dem5b_png", 15], ["dem_png", 14]]) {
+    const n = 2 ** z, px = (lon + 180) / 360 * n * 256;
+    const ly = Math.log(Math.tan(lat * RAD) + 1 / Math.cos(lat * RAD)), py = (1 - ly / Math.PI) / 2 * n * 256;
+    const tx = Math.floor(px / 256), ty = Math.floor(py / 256);
+    const d = await demTile(z, tx, ty, kind); if (!d) continue;
+    const i = ((Math.floor(py) - ty * 256) * 256 + (Math.floor(px) - tx * 256)) * 4;
+    const v = d[i] * 65536 + d[i + 1] * 256 + d[i + 2];
+    if (v === 8388608) continue;            // データなし
+    return (v < 8388608 ? v : v - 16777216) * 0.01;
+  }
+  return null;
+}
+async function loadElevation(r) {
+  r.elevLoading = true;
+  try {
+    // 20mごとに点を打つ
+    const R = r.route, pts = [R[0]], dist = [0]; let acc = 0, carry = 0;
+    for (let i = 1; i < R.length; i++) {
+      const d = hav(R[i - 1], R[i]); let t = 20 - carry;
+      while (t <= d) { const f = t / d; pts.push([R[i - 1][0] + (R[i][0] - R[i - 1][0]) * f, R[i - 1][1] + (R[i][1] - R[i - 1][1]) * f]); dist.push(acc + t); t += 20; }
+      carry = d - (t - 20); acc += d;
+    }
+    pts.push(R[R.length - 1]); dist.push(acc);
+    const h = await Promise.all(pts.map(p => elevAt(p[0], p[1])));
+    if (h.every(v => v == null)) throw new Error("標高データが取れませんでした");
+    for (let i = 0; i < h.length; i++) if (h[i] == null) h[i] = h[i - 1] ?? h.find(v => v != null);
+    const sm = h.map((_, i) => { let a = 0, n = 0; for (let k = i - 2; k <= i + 2; k++) if (h[k] != null) { a += h[k]; n++; } return a / n; });
+    const grade = []; let up = 0, mx = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = Math.max(0, i - 1), b = Math.min(pts.length - 1, i + 2), dd = dist[b] - dist[a];
+      const g = dd > 5 ? (sm[b] - sm[a]) / dd * 100 : 0; grade.push(g); if (g > mx) mx = g;
+      if (sm[i + 1] > sm[i]) up += sm[i + 1] - sm[i];
+    }
+    r.elev = { pts, grade };
+    r.elevInfo = `のぼり合計 +${Math.round(up)}m・いちばん急 ${mx.toFixed(1)}%`;
+  } catch (e) { r.elevErr = e.message || "標高データが取れませんでした"; }
+  if (cur === r) showRoute(r, false);
+}
+function setColorMode(m) {
+  colorMode = m; $("colL").textContent = COLOR_NAMES[m];
+  try { localStorage.setItem("hosomichi_color", m); } catch {}
+  if (cur) showRoute(cur, false); else legend(null);
+}
+$("col").onclick = () => setColorMode({ red: "kind", kind: "slope", slope: "red" }[colorMode]);
+$("colL").textContent = COLOR_NAMES[colorMode];
+
 let cum = [];
 function showRoute(r, fit) {
   cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn);
   const tent = r.tent || [];
   r.nav = r.route.length ? r.route.concat(tent.slice(1)) : tent.slice();   // ナビで使う線（確定＋仮）
   if (r.short?.length) L.polyline(r.short, { color: "#777", weight: 4, opacity: .5 }).addTo(layer).bindTooltip("ただの最短");
-  const line = L.polyline(r.route.length ? r.route : tent, { color: "#d93025", weight: 7, opacity: r.route.length ? .9 : 0 }).addTo(layer).bindTooltip("細道ルート");
+  if (r.ek && !r.kc) r.kc = r.ek.map(catOf);
+  const line = L.polyline(r.route.length ? r.route : tent, { opacity: 0, interactive: false }).addTo(layer);
+  if (r.route.length > 1) drawRoute(r);
   if (tent.length > 1) L.polyline(tent, { color: "#d93025", weight: 6, opacity: .7, dashArray: "8 10" }).addTo(layer).bindTooltip("計算中（まだ変わるかも）");
   L.circleMarker(r.nav[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(layer).bindTooltip("出発");
   if (!r.partial) L.circleMarker(r.route[r.route.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
@@ -945,21 +1082,52 @@ function showRoute(r, fit) {
 }
 
 // ---------- 共有URL・GPX ----------
-function shareUrl() {
-  let pts = trim(cur.route, +$("hide").value, false);
-  if ($("hideEnd").checked) pts = trim(pts, +$("hide").value, true);
-  const rest = pts.length < cur.route.length;
-  const keep = p => !rest || pts.some(q => hav(p, q) < 30);
-  pts = simplify(pts, 3);
+function shareUrl(tol = 3) {
+  const R = cur.route, hide = +$("hide").value;
+  let i0 = 0, i1 = R.length;
+  if (hide) { while (i0 < R.length - 1 && hav(R[i0], R[0]) < hide) i0++; }
+  if (hide && $("hideEnd").checked) { while (i1 > i0 + 1 && hav(R[i1 - 1], R[R.length - 1]) < hide) i1--; }
+  const rest = i0 > 0 || i1 < R.length;
+  const sub = R.slice(i0, i1), subK = cur.kc ? cur.kc.slice(i0, i1 - 1) : null;
+  const keep = p => !rest || sub.some(q => hav(p, q) < 30);
+  const sr = simpRoute(sub, subK, tol), pts = sr.pts;
   const prm = new URLSearchParams();
   prm.set("r", encPoly(pts));
+  if (sr.kc) prm.set("k", encK(sr.kc));
   const ok = (cur.ok || []).filter(keep), ng = (cur.ng || []).filter(keep), xw = (cur.xw || []).filter(keep);
   if (ok.length) prm.set("ok", encPoly(ok));
   if (xw.length) prm.set("xw", encPoly(xw));
   if (ng.length) prm.set("ng", encPoly(ng));
   return location.origin + location.pathname + "#" + prm.toString();
 }
-function updateShare() { $("url").value = shareUrl(); }
+function updateShare() { $("url").value = shareUrl(); if ($("qr").style.display === "block") makeQr(); }
+// QRコード：パソコンで作ったルートをスマホのカメラで読んで開く
+let qrLib = null;
+function loadQrLib() {
+  return qrLib || (qrLib = new Promise((ok, ng) => {
+    const sc = document.createElement("script");
+    sc.src = "https://unpkg.com/qrcode-generator@2.0.4/dist/qrcode.js";
+    sc.onload = () => ok(); sc.onerror = () => { qrLib = null; ng(new Error("QRの部品が読みこめませんでした")); };
+    document.head.appendChild(sc);
+  }));
+}
+async function makeQr() {
+  const box = $("qr");
+  box.style.display = "block"; box.innerHTML = "QRを作っています…";
+  try {
+    await loadQrLib();
+    // URLが長いとQRが細かくなって読めないので、線を少しずつ間引いて短くする
+    let url = "", tol = 3;
+    for (tol of [3, 5, 8, 12, 20]) { url = shareUrl(tol); if (url.length <= 1800) break; }
+    if (url.length > 2900) { box.innerHTML = '<span style="color:#c00">ルートが長すぎてQRにできないよ。URLをコピーして送ってね</span>'; return; }
+    const qr = qrcode(0, "L"); qr.addData(url, "Byte"); qr.make();
+    const n = qr.getModuleCount(), size = Math.min(420, Math.floor(window.innerWidth * .8));
+    box.innerHTML = qr.createSvgTag({ cellSize: Math.max(2, Math.floor(size / (n + 8))), margin: 4, scalable: true })
+      .replace("<svg ", `<svg style="width:${size}px;height:${size}px;background:#fff" `)
+      + `<div style="font-size:11px;color:#666">スマホのカメラで読みとってね` + (tol > 3 ? `（線を${tol}m単位に間引いてるよ）` : "") + `</div>`;
+  } catch (e) { box.innerHTML = `<span style="color:#c00">${e.message}</span>`; }
+}
+$("bQr").onclick = () => { const b = $("qr"); if (b.style.display === "block") { b.style.display = "none"; return; } makeQr(); };
 $("bShare").onclick = () => { const s = $("share"); s.style.display = s.style.display === "block" ? "none" : "block"; updateShare(); };
 $("hide").onchange = $("hideEnd").onchange = updateShare;
 $("bCopy").onclick = async () => { updateShare(); try { await navigator.clipboard.writeText($("url").value); $("bCopy").textContent = "コピーしたよ！"; } catch { $("url").select(); document.execCommand("copy"); } setTimeout(() => $("bCopy").textContent = "コピー", 1500); };
@@ -1145,7 +1313,8 @@ function loadHash() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (!h.get("r")) return;
   try {
-    showRoute({ route: decPoly(h.get("r")), ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], name: "共有されたルート" }, true);
+    const hr = decPoly(h.get("r")), hk = h.get("k") ? decK(h.get("k")) : null;
+    showRoute({ route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], name: "共有されたルート" }, true);
     $("bNew").style.display = ""; $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } catch (e) { setMsg("共有URLが読めませんでした", true); }
 }
@@ -1156,12 +1325,14 @@ const RKEY = "hosomichi_routes", LKEY = "hosomichi_last";
 function lsGet(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { alert("保存できませんでした（容量がいっぱいかも）"); return false; } }
 function packRoute(r) {
-  return { name: r.name || "", created: r.created || Date.now(), r: encPoly(simplify(r.route, 1)),
+  const sr = simpRoute(r.route, r.kc, 1);
+  return { name: r.name || "", created: r.created || Date.now(), r: encPoly(sr.pts), k: sr.kc ? encK(sr.kc) : "",
     s: r.short ? encPoly(simplify(r.short, 3)) : "", ok: encPoly(r.ok || []), xw: encPoly(r.xw || []), ng: encPoly(r.ng || []),
     len: r.len, slen: r.slen || 0, kinds: r.kinds || null };
 }
 function unpackRoute(o) {
-  return { name: o.name, created: o.created, route: decPoly(o.r), short: o.s ? decPoly(o.s) : null,
+  const route = decPoly(o.r), kc = o.k ? decK(o.k) : null;
+  return { name: o.name, created: o.created, route, kc: kc && kc.length === route.length - 1 ? kc : null, short: o.s ? decPoly(o.s) : null,
     ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), len: o.len, slen: o.slen, kinds: o.kinds };
 }
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
