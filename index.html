@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0000</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0004</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1007,6 +1007,20 @@ function cleanAddr(t) {
   const m = a.match(/^.+?\d+丁目(?:\d+(?:番地|番|号|-)?)*/) || a.match(/^.+?\d+(?:-\d+)+/) || a.match(/^.+?\d+番地?(?:\d+号?)?/);
   return m ? m[0].replace(/-$/, "") : a;
 }
+// Nominatim（OSMの住所さがし）は1秒に1回までのきまり。続けて呼ぶとことわられるので、順番に間をあけて呼ぶ
+let nomiLast = 0, nomiChain = Promise.resolve();
+function nomiFetch(url) {
+  const run = nomiChain.then(async () => {
+    const wait = nomiLast + 1100 - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    nomiLast = Date.now();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res;
+  });
+  nomiChain = run.catch(() => {});
+  return run;
+}
+
 // 「柏駅東口」「新宿駅南口」「品川駅 港南口」などの出口：まず駅をさがして、そのまわり500mで「東口」という名前の出口・バス停・広場をさがす
 const EXIT_RE = /^(.+?駅)\s*(.{1,6}?)\s*(口|改札)$/;
 async function geocodeExit(text) {
@@ -1039,7 +1053,7 @@ async function geocodeExit(text) {
   }
   // 見つからなければ、住所さがしで「柏駅東口」をそのままさがす → だめなら駅
   try {
-    const r = await (await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&q=" + encodeURIComponent(m[1] + word))).json();
+    const r = await (await nomiFetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&q=" + encodeURIComponent(m[1] + word))).json();
     if (r.length && hav([+r[0].lat, +r[0].lon], st) < 800) return [[+r[0].lat, +r[0].lon], r[0].display_name.split(",")[0]];
   } catch {}
   addLog(`  「${word}」が見つからなかったので、駅の場所を使うよ`, "w");
@@ -1063,7 +1077,7 @@ async function geocode(text) {
   };
   const nomi = async () => {
     const q = text.normalize("NFKC").replace(/〒?\s*\d{3}[-‐－―ー−]\d{4}/, "").trim();
-    const r = await (await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&q=" + encodeURIComponent(q))).json();
+    const r = await (await nomiFetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&q=" + encodeURIComponent(q))).json();
     if (r.length) return [[+r[0].lat, +r[0].lon], r[0].display_name.split(",").slice(0, 3).join(",")];
   };
   const looksAddr = /丁目|番地|番|号|\d+\s*[-‐－―ー−]\s*\d+|[０-９]+[‐－―ー−][０-９]+/.test(text);
@@ -1154,6 +1168,7 @@ worker.onmessage = ev => {
     name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
   if (job && job.prefix) cur.slen = 0;
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
+  { const r = cur; fixRouteName(r).then(ch => { if (ch && cur === r) { showRoute(r, false); lsSet(LKEY, packRoute(r)); } }); }
   job = null;
   // 保存した道路データをブラウザに勝手に消されないようにお願いする（できるブラウザだけ）
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
@@ -1207,7 +1222,7 @@ const stripChome = t => (t || "").replace(/([0-9０-９]+|[一二三四五六七
 async function reverseName(lat, lon) {
   const tm = ms => new Promise((_, ng) => setTimeout(() => ng(new Error("時間切れ")), ms));
   try {
-    const r = await Promise.race([fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=16&accept-language=ja&lat=${lat}&lon=${lon}`).then(r => r.json()), tm(5000)]);
+    const r = await Promise.race([nomiFetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=16&accept-language=ja&lat=${lat}&lon=${lon}`).then(r => r.json()), tm(8000)]);
     const a = r.address || {};
     const city = a.city || a.town || a.village || a.county || "";
     const area = stripChome(a.suburb || a.quarter || a.neighbourhood || a.hamlet || "");
@@ -1220,12 +1235,29 @@ async function reverseName(lat, lon) {
   } catch (e) { addLog("町名さがし(地理院)失敗: " + e.message, "w"); }
   return null;
 }
+// ルート名に「現在地」「地図の地点」がのこっていたら、ルートの始点・終点の町名に置きかえる
+async function fixRouteName(r) {
+  if (!r || !r.name || !r.route || r.route.length < 2 || !/現在地|地図の地点|地図の場所/.test(r.name)) return false;
+  const parts = r.name.split(" → ");
+  if (parts.length !== 2) return false;
+  const ends = [r.route[0], r.route[r.route.length - 1]];
+  let changed = false;
+  for (let i = 0; i < 2; i++) {
+    if (!/^(現在地|地図の地点|地図の場所)$/.test(parts[i].trim())) continue;
+    const n = await reverseName(ends[i][0], ends[i][1]);
+    if (n) { parts[i] = n; changed = true; }
+  }
+  if (changed) { r.name = parts.join(" → "); addLog(`ルート名を町名にしたよ: ${r.name}`, "ok"); }
+  return changed;
+}
 // ルート名に使う場所の名前：空(現在地)・座標・URL なら町名をさがす。住所は町名まで。駅名などはそのまま
 async function placeName(input, ll) {
   const t = (input || "").trim();
   if (!t || /^https?:/.test(t) || /^-?\d+\.\d+\s*[,、]/.test(t.normalize("NFKC"))) {
     const n = await reverseName(ll[0], ll[1]);
-    return n || (t ? "地図の地点" : "現在地");
+    if (n) return n;
+    addLog("町名がわからなかったので、あとでもう一度さがすよ", "w");
+    return t ? "地図の地点" : "現在地";
   }
   return shortName(t);
 }
@@ -1823,6 +1855,7 @@ $("list").onclick = ev => {
   const rs = lsGet(RKEY, []), i = rs.findIndex(o => String(o.id) === it.dataset.id); if (i < 0) return;
   if (a === "open") {
     showRoute({ ...unpackRoute(rs[i]), savedId: rs[i].id }, true);
+    { const r = cur, id = rs[i].id; fixRouteName(r).then(ch => { if (!ch) return; const all = lsGet(RKEY, []), o = all.find(x => x.id === id); if (o) { o.name = r.name; lsSet(RKEY, all); renderList(); } if (cur === r) showRoute(r, false); }); }
     setMsg(`「${rs[i].name}」を開いたよ`);
     $("list").style.display = "none";
   } else if (a === "ren") {
@@ -1844,8 +1877,9 @@ $("sum").addEventListener("click", e => {
   if (cur.savedId) { const rs = lsGet(RKEY, []), o = rs.find(o => o.id === cur.savedId); if (o) { o.name = cur.name; lsSet(RKEY, rs); renderList(); } }
   lsSet(LKEY, packRoute(cur)); showRoute(cur, false);
 });
-function saveCur() {
+async function saveCur() {
   if (!cur) return false;
+  await fixRouteName(cur);   // 「現在地」のままなら、保存する前に町名をさがす
   const rs = lsGet(RKEY, []);
   const old = cur.savedId ? rs.find(o => o.id === cur.savedId) : null;
   const n = prompt(old ? "名前を変えて上書き保存するよ" : "ルートの名前をつけてね", cur.name || "");
@@ -1870,7 +1904,7 @@ function askSave(what) {
     box.onclick = e => {
       const a = e.target.dataset.a; if (!a) return;
       box.style.display = "none";
-      if (a === "save" && !saveCur()) return res("cancel");   // 名前入力をやめたら、なにもしない
+      if (a === "save") { saveCur().then(ok => res(ok ? "save" : "cancel")); return; }   // 名前入力をやめたら、なにもしない
       res(a);
     };
   });
