@@ -33,6 +33,12 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #result{display:none;margin-top:8px;font-size:13px;line-height:1.5}
 #result .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 #result .btns button{flex:1}
+#list{display:none;max-height:40vh;overflow:auto;margin-top:6px}
+#list .it{display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid #eee;font-size:13px}
+#list .it .nm{flex:1;min-width:0;cursor:pointer}
+#list .it .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#list .it .nm small{color:#888}
+#list .it button{border:1px solid #ccc;background:#fff;border-radius:6px;padding:4px 8px;font-size:13px}
 #share{display:none;margin-top:8px;font-size:13px;background:#f6f6f6;border-radius:8px;padding:8px}
 #share textarea{width:100%;height:60px;font-size:11px}
 #gps{position:absolute;bottom:calc(84px + env(safe-area-inset-bottom));right:12px;z-index:1000;width:60px;height:60px;border-radius:50%;
@@ -61,12 +67,15 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <div class="row"><label>細道度</label><input type="range" id="hosoi" min="1" max="10" value="5"><b id="hv">5</b></div>
     <div style="font-size:11px;color:#888;margin-top:2px">地図をタップしても出発・到着を選べるよ。大きいほど遠回りしても細い道</div>
     <button id="go">ルートを作る</button>
+    <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
+      <div id="list"></div></div>
     <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
     <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>
     <div id="result">
       <div id="sum"></div>
       <div class="btns">
+        <button class="ib" id="bSave">💾 保存</button>
         <button class="ib" id="bShare">🔗 共有URL</button>
         <button class="ib" id="bGpx">⬇ GPX</button>
         <button class="ib" id="bNew" style="display:none">✏ 新しく作る</button>
@@ -620,12 +629,16 @@ worker.onmessage = ev => {
   clearInterval(tickTimer); $("go").disabled = false;
   if (m.type === "error") { setBar(0); setMsg(m.msg, true); return; }
   setBar(1); setMsg(`できた！（${m.sec.toFixed(1)}秒・${m.tiles}マス中 ${m.saved}マスは保存データ・道の点 ${m.nNodes.toLocaleString()} 個）`);
-  showRoute({ route: m.route, short: m.short, ok: m.ok, ng: m.ng, kinds: m.kinds, len: m.len, slen: m.slen }, true);
+  showRoute({ route: m.route, short: m.short, ok: m.ok, ng: m.ng, kinds: m.kinds, len: m.len, slen: m.slen, name: pendingName }, true);
+  lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
 };
+let pendingName = "";
+const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : cleanAddr(t).slice(0, 24);
 
 $("go").onclick = async () => {
   const fromT = $("from").value.trim(), toT = $("to").value.trim();
   if (!toT) { setMsg("到着地を入れてね", true); return; }
+  pendingName = (fromT ? shortName(fromT) : "現在地") + " → " + shortName(toT);
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   try {
@@ -642,7 +655,7 @@ $("go").onclick = async () => {
 // ---------- 表示 ----------
 let cum = [];
 function showRoute(r, fit) {
-  cur = r; layer.clearLayers();
+  cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn);
   if (r.short?.length) L.polyline(r.short, { color: "#777", weight: 4, opacity: .5 }).addTo(layer).bindTooltip("ただの最短");
   const line = L.polyline(r.route, { color: "#d93025", weight: 7, opacity: .9 }).addTo(layer).bindTooltip("細道ルート");
   L.circleMarker(r.route[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(layer).bindTooltip("出発");
@@ -789,11 +802,71 @@ function loadHash() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (!h.get("r")) return;
   try {
-    showRoute({ route: decPoly(h.get("r")), ok: h.get("ok") ? decPoly(h.get("ok")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [] }, true);
+    showRoute({ route: decPoly(h.get("r")), ok: h.get("ok") ? decPoly(h.get("ok")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], name: "共有されたルート" }, true);
     $("bNew").style.display = ""; $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } catch (e) { setMsg("共有URLが読めませんでした", true); }
 }
-loadHash();
 window.addEventListener("hashchange", loadHash);
+
+// ---------- ルートの保存（この端末のブラウザの中に） ----------
+const RKEY = "hosomichi_routes", LKEY = "hosomichi_last";
+function lsGet(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { alert("保存できませんでした（容量がいっぱいかも）"); return false; } }
+function packRoute(r) {
+  return { name: r.name || "", created: r.created || Date.now(), r: encPoly(simplify(r.route, 1)),
+    s: r.short ? encPoly(simplify(r.short, 3)) : "", ok: encPoly(r.ok || []), ng: encPoly(r.ng || []),
+    len: r.len, slen: r.slen || 0, kinds: r.kinds || null };
+}
+function unpackRoute(o) {
+  return { name: o.name, created: o.created, route: decPoly(o.r), short: o.s ? decPoly(o.s) : null,
+    ok: decPoly(o.ok || ""), ng: decPoly(o.ng || ""), len: o.len, slen: o.slen, kinds: o.kinds };
+}
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function renderList() {
+  const rs = lsGet(RKEY, []);
+  $("nSaved").textContent = rs.length;
+  $("list").innerHTML = rs.length ? rs.slice().sort((a, b) => b.created - a.created).map(o =>
+    `<div class="it" data-id="${o.id}"><div class="nm" data-a="open"><b>${esc(o.name || "名前なし")}</b>` +
+    `<small>${fmtKm(o.len)}・${new Date(o.created).toLocaleDateString("ja-JP")}</small></div>` +
+    `<button data-a="ren">名前</button><button data-a="del">🗑</button></div>`).join("")
+    : '<div style="font-size:12px;color:#888;padding:6px">まだないよ。ルートを作って「💾 保存」してね</div>';
+}
+$("bList").onclick = () => { const l = $("list"); l.style.display = l.style.display === "block" ? "none" : "block"; renderList(); };
+$("list").onclick = ev => {
+  const a = ev.target.closest("[data-a]")?.dataset.a, it = ev.target.closest(".it"); if (!a || !it) return;
+  const rs = lsGet(RKEY, []), i = rs.findIndex(o => String(o.id) === it.dataset.id); if (i < 0) return;
+  if (a === "open") {
+    showRoute({ ...unpackRoute(rs[i]), savedId: rs[i].id }, true);
+    $("bNew").style.display = ""; setMsg(`「${rs[i].name}」を開いたよ`);
+    $("list").style.display = "none";
+  } else if (a === "ren") {
+    const n = prompt("ルートの名前", rs[i].name); if (n == null) return;
+    rs[i].name = n.trim() || rs[i].name; lsSet(RKEY, rs); renderList();
+  } else if (a === "del") {
+    if (!confirm(`「${rs[i].name}」を消す？`)) return;
+    rs.splice(i, 1); lsSet(RKEY, rs); renderList();
+    if (cur && String(cur.savedId) === it.dataset.id) { cur.savedId = null; updSaveBtn(); }
+  }
+};
+function updSaveBtn() { $("bSave").textContent = cur && cur.savedId ? "💾 保存ずみ ✓" : "💾 保存"; }
+$("bSave").onclick = () => {
+  if (!cur) return;
+  const rs = lsGet(RKEY, []);
+  const old = cur.savedId ? rs.find(o => o.id === cur.savedId) : null;
+  const n = prompt(old ? "名前を変えて上書き保存するよ" : "ルートの名前をつけてね", cur.name || "");
+  if (n == null) return;
+  cur.name = n.trim() || cur.name || "名前なし";
+  if (old) Object.assign(old, packRoute(cur), { id: old.id, created: old.created });
+  else { cur.savedId = Date.now(); rs.push({ ...packRoute(cur), id: cur.savedId, created: Date.now() }); }
+  if (lsSet(RKEY, rs)) { updSaveBtn(); renderList(); }
+};
+renderList();
+
+// ---------- 開いたとき：共有URL → なければ前回のルート ----------
+if (location.hash.includes("r=")) loadHash();
+else {
+  const last = lsGet(LKEY, null);
+  if (last) { try { showRoute(unpackRoute(last), true); setMsg("前回のルートを表示してるよ"); $("bNew").style.display = ""; } catch {} }
+}
 </script>
 </body></html>
