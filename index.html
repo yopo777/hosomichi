@@ -18,6 +18,11 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #panel.min .body{display:none}
 #mini{display:none;font-weight:normal;font-size:11px;color:#d93025;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #panel.min #mini{display:block}
+#panel.min #msg{display:none}              /* たたんでいるときはゲージだけ */
+#panel.min #prog{margin-top:6px}
+#bar.done div{background:#188038}
+#bar.run{background:repeating-linear-gradient(-45deg,#eee 0 8px,#f8f8f8 8px 16px);background-size:200% 100%;animation:run 1s linear infinite}
+@keyframes run{from{background-position:0 0}to{background-position:-22px 0}}
 #head{display:flex;align-items:center;gap:8px;font-weight:bold}
 #head .t{flex:1;min-width:0}
 #tog{border:none;background:#eee;border-radius:8px;padding:4px 10px;font-size:14px}
@@ -93,7 +98,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2223</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2232</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
     <div id="tabCfg" style="display:none">
@@ -119,7 +125,6 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <div id="list"></div></div>
     <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
-    <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>
     <div id="result">
       <div id="sum"></div>
       <div class="btns">
@@ -1006,7 +1011,8 @@ worker.onmessage = ev => {
     return;
   }
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
-  clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none";
+  clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
+  if (m.type === "done") $("bar").classList.add("done");   // 終わったら緑
   if (m.type === "stopped") {
     setBar(0);
     if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); setMsg("止めたよ。「▶ 続きを計算」でここから再開できるよ"); }
@@ -1054,7 +1060,7 @@ function startJob(s, g, jcfg, prefix) {
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   worker.postMessage({ s, g, cfg: jcfg });
-  $("stop").style.display = "";
+  $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => { $("stop").textContent = "止めてるよ…"; worker.postMessage({ cmd: "stop" }); setTimeout(() => $("stop").textContent = "■ 止める", 3000); };
 $("bResume").onclick = () => {
