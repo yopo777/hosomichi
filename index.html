@@ -98,7 +98,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2232</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2236</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -400,6 +400,32 @@ function buildGraph(osm, cfg, onProg) {
     else xcost[i] = cfg.midCross === "any" || sig || xw ? 0 : cfg.midCross === "must" ? HARD : SOFT;
   }
   return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0) };
+}
+
+// 道の「つながりのかたまり」。駅の中の通路や公園の中の小道など、外とつながってない所を見分ける
+function components(G) {
+  if (G.comp) return G.comp;
+  const N = G.lat.length, par = new Int32Array(N);
+  for (let i = 0; i < N; i++) par[i] = i;
+  const f = x => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+  for (let u = 0; u < N; u++) for (const e of G.adj[u]) { const a = f(u), b = f(e.v); if (a !== b) par[a] = b; }
+  const root = new Int32Array(N), size = new Map();
+  for (let i = 0; i < N; i++) if (G.inGraph[i]) { root[i] = f(i); size.set(root[i], (size.get(root[i]) || 0) + 1); }
+  let big = 0; for (const v of size.values()) big = Math.max(big, v);
+  return (G.comp = { root, size, big });
+}
+// 近い点をえらぶ：ちゃんと外の道とつながっている点（大きいかたまり）だけ
+function nearestGood(G, la, lo, sameAs = -1) {
+  const C = components(G), min = Math.min(C.big, Math.max(30, C.big * 0.05));
+  let best = -1, bd = Infinity, any = -1, ad = Infinity;
+  for (let i = 0; i < G.lat.length; i++) {
+    if (!G.inGraph[i]) continue;
+    const d = hav(la, lo, G.lat[i], G.lon[i]);
+    if (d < ad) { ad = d; any = i; }
+    const ok = sameAs >= 0 ? C.root[i] === C.root[sameAs] : C.size.get(C.root[i]) >= min;
+    if (ok && d < bd) { bd = d; best = i; }
+  }
+  return { n: best, d: bd, nearestAny: any, dAny: ad, size: best >= 0 ? C.size.get(C.root[best]) : 0, anySize: any >= 0 ? C.size.get(C.root[any]) : 0 };
 }
 
 function nearest(G, la, lo) {
@@ -742,13 +768,23 @@ async function route(req, prog, partial) {
         { let ne = 0; for (const a of G.adj) ne += a.length;
           log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${wide ? "【範囲を広げてやりなおし】" : ""}`); }
         sn = confEnd != null ? G.idx.get(confEnd) : undefined;
-        if (sn === undefined) { const [n, d] = nearest(G, s[0], s[1]); if (d > 300) throw new Error("出発地のそばに道が見つかりませんでした"); sn = n; }
+        if (sn === undefined) {
+          const q = nearestGood(G, s[0], s[1]);
+          log(`出発の点: ${Math.round(q.d)}m先の道（つながり ${q.size}点）` + (q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m はつながり ${q.anySize}点しかないので使わない` : ""));
+          if (q.n < 0 || q.d > 400) throw new Error("出発地のそばに、ほかとつながっている道が見つかりませんでした");
+          sn = q.n;
+        }
         stage = 3; report();
         const ts = Date.now();
         if (final) {
-          const [n, d] = nearest(G, g[0], g[1]);
-          if (d > 300) throw new Error("到着地のそばに道が見つかりませんでした。地図の広さを「ひろい」にしてみてね");
-          gn = n;
+          // 出発とおなじ「つながりのかたまり」にある点だけをゴールにする（駅の中の通路などをさける）
+          const q = nearestGood(G, g[0], g[1], sn);
+          log(`到着の点: ${Math.round(q.d)}m先の道（出発とつながっている）` + (q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m は出発とつながってないので使わない（つながり ${q.anySize}点）` : ""), q.d > 300 ? "w" : "i");
+          if (q.n < 0 || q.d > 600) {
+            if (!wide && lo > 0) { log("到着地のそばにつながる道がないので、範囲を広げて探しなおし", "w"); wide = true; continue; }
+            throw new Error("到着地まで道がつながりませんでした。地図の広さを「ひろい」にするか、設定で「通らない」にしている道（階段・歩道橋など）をゆるめてみてね");
+          }
+          gn = q.n;
         }
         r = search(G, sn, gn, g, false);
         log(`探索: 調べた点 ${r.pops}個（${Date.now() - ts}ms）${final ? (r.goal >= 0 ? " ゴールに到着" : " ゴールに届かない") : ""}`, final && r.goal < 0 ? "w" : "i");
