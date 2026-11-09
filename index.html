@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2338</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2354</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -111,14 +111,6 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <div class="pre" id="pre2"><button data-p="near">近道</button><button data-p="std">おすすめ</button><button data-p="hoso">細道こだわり</button></div>
       <div class="note" style="font-size:11px;color:#888;margin-top:4px">上のボタンでおまかせ、下で1つずつ変えられるよ（計算のしかた・曲がる回数・広さはおまかせでも変わらないよ）</div>
       <div id="cfgBox"></div>
-      <div id="homeBox" style="margin-top:8px;background:#fff7e6;border-radius:8px;padding:8px;font-size:13px">
-        <b>🏠 守りたい場所</b>（自宅・実家など。出発・到着にしたルートを共有するとき、まわりを自動で隠すよ）
-        <div id="placeList" style="margin-top:4px"></div>
-        <div class="btns" style="margin-top:6px"><button class="ib" id="hmHere">＋ 現在地を登録</button></div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">隠す広さ<input type="range" id="hmR" min="100" max="500" step="50" style="flex:1"><b id="hmRv"></b></div>
-        <div style="font-size:11px;color:#888">出発・到着がこの距離より近いと、共有するときにこのはんいの線を消すよ</div>
-        <div style="font-size:11px;color:#888;margin-top:4px">地図をタップして「🏠 守る場所にする」でも登録できるよ。出発・到着に名前（例: 自宅）を入れると、その場所を使えるよ。場所はこの端末の中だけにしまって、どこにも送らないよ</div>
-      </div>
     </div>
     </div>
     <div id="tabLog" style="display:none">
@@ -127,8 +119,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <div id="log"></div>
     </div>
     <div id="tabRoute">
-    <div class="row"><label>出発</label><input type="text" id="from" list="plist" enterkeyhint="go" placeholder="空なら現在地"></div>
-    <div class="row"><label>到着</label><input type="text" id="to" list="plist" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
+    <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
+    <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div class="pre" id="pre"><button data-p="near">近道</button><button data-p="std">おすすめ</button><button data-p="hoso">細道こだわり</button><button data-p="cfg">⚙ 設定</button></div>
     <div class="row" style="margin-top:6px"><label style="width:auto">地図の広さ</label>
       <select id="areaSel" style="flex:1;padding:6px;border-radius:8px;border:1px solid #ccc;font-size:13px">
@@ -153,7 +145,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
           <select id="hide"><option value="0">隠さない</option><option value="200">200m</option>
           <option value="400" selected>400m</option><option value="800">800m</option></select>
           <label><input type="checkbox" id="hideEnd"> 到着地も</label></div>
-        <div id="homeNote" style="margin:4px 0;color:#666">自宅から出発したルートを公開するときは隠してね</div>
+        <div id="homeNote" style="margin:6px 0;padding:6px 8px;border-radius:6px;background:#fff3e0;color:#b45309;font-weight:bold"></div>
         <div class="row" style="margin-top:4px"><label style="width:auto">名前</label><input type="text" id="shareName" maxlength="40" placeholder="ルートの名前（いっしょに送るよ）"></div>
         <textarea id="url" readonly></textarea>
         <div class="btns"><button class="ib" id="bQr">📷 QR</button><button class="ib" id="bCopy">コピー</button><button class="ib" id="bSys">共有…</button></div>
@@ -164,7 +156,6 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   </div>
 </div>
 <div id="nav"></div>
-<datalist id="plist"></datalist>
 <div id="ask" style="display:none;position:fixed;inset:0;z-index:2500;background:#0006;align-items:center;justify-content:center;padding:16px"></div>
 <div id="upd" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:2000;background:#188038;color:#fff;
   border-radius:10px;padding:8px 12px;font-size:14px;box-shadow:0 2px 8px #0005;white-space:nowrap"></div>
@@ -1018,7 +1009,6 @@ function cleanAddr(t) {
 }
 async function geocode(text) {
   text = text.trim();
-  const pl = placeByName(text); if (pl) return [pl.ll, `🏠 ${pl.name}（登録した場所）`];
   if (/^https?:/.test(text)) {
     const m = text.match(/!3d(-?[\d.]+)!4d(-?[\d.]+)/) || text.match(/@(-?[\d.]+),(-?[\d.]+)/) || decodeURIComponent(text).match(/[?&](?:q|query|ll)=(-?[\d.]+),\s*(-?[\d.]+)/);
     if (m) return [[+m[1], +m[2]], "GoogleマップのURL"];
@@ -1193,9 +1183,6 @@ async function reverseName(lat, lon) {
 // ルート名に使う場所の名前：空(現在地)・座標・URL なら町名をさがす。住所は町名まで。駅名などはそのまま
 async function placeName(input, ll) {
   const t = (input || "").trim();
-  // 登録した場所（自宅・姉の家など）の名前はルート名に入れない：その場所の町名にする
-  const pl = placeByName(t);
-  if (pl) return pl.town || (pl.town = await reverseName(pl.ll[0], pl.ll[1]), savePlaces(), pl.town) || "地図の地点";
   if (!t || /^https?:/.test(t) || /^-?\d+\.\d+\s*[,、]/.test(t.normalize("NFKC"))) {
     const n = await reverseName(ll[0], ll[1]);
     return n || (t ? "地図の地点" : "現在地");
@@ -1402,71 +1389,34 @@ function showRoute(r, fit) {
 }
 
 // ---------- 共有URL・GPX ----------
-// ---------- 守りたい場所（自宅・実家など） ----------
-// 出発・到着がどれかの場所から 500m 以内なら、共有で必ずそのまわりを隠す
-// 守りたい場所のまわりを隠す広さ（100〜500m）。出発・到着がこの距離より近いと、このはんいの線を消す
-let HOME_R = (() => { try { return +localStorage.getItem("hosomichi_place_r") || 300; } catch { return 300; } })();
-let places = (() => {
-  try {
-    const p = JSON.parse(localStorage.getItem("hosomichi_places"));
-    if (Array.isArray(p)) return p;
-    const old = JSON.parse(localStorage.getItem("hosomichi_home"));   // 前の版の「自宅」を引きつぐ
-    if (old) return [{ name: "自宅", ll: old }];
-  } catch {}
-  return [];
-})();
-function savePlaces() { try { localStorage.setItem("hosomichi_places", JSON.stringify(places)); localStorage.removeItem("hosomichi_home"); } catch {} renderPlaces(); if (cur && $("share").style.display === "block") updateShare(); }
-function renderPlaces() {
-  $("placeList").innerHTML = places.length ? places.map((p, i) =>
-    `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid #f0e0c0"><span style="flex:1">🏠 ${esc(p.name)}<br><small style="color:#999">ルート名では「${esc(p.town || "町名をさがし中…")}」</small></span>` +
-    `<button class="ib" data-i="${i}" data-a="ren" style="padding:2px 8px;font-size:12px">名前</button><button class="ib" data-i="${i}" data-a="del" style="padding:2px 8px;font-size:12px">🗑</button></div>`).join("")
-    : '<span style="color:#c00">まだ登録してないよ</span>';
-  $("plist").innerHTML = places.map(p => `<option value="${esc(p.name)}">`).join("");
-}
-function addPlace(ll) {
-  const n = prompt("場所の名前（例: 自宅・実家・姉の家）", places.length ? "" : "自宅");
-  if (n == null || !n.trim()) return;
-  const pl = { name: n.trim().slice(0, 20), ll: [+ll[0].toFixed(5), +ll[1].toFixed(5)] };
-  places.push(pl); savePlaces();
-  reverseName(pl.ll[0], pl.ll[1]).then(t => { if (t) { pl.town = t; savePlaces(); } });   // ルート名用の町名 addLog(`🏠 守りたい場所「${n.trim()}」を登録したよ（この端末だけ）`, "m");
-}
-$("placeList").onclick = e => {
-  const b = e.target.closest("button"); if (!b) return; const i = +b.dataset.i;
-  if (b.dataset.a === "del") { if (confirm(`「${places[i].name}」を消す？`)) { places.splice(i, 1); savePlaces(); } }
-  else { const n = prompt("場所の名前", places[i].name); if (n && n.trim()) { places[i].name = n.trim().slice(0, 20); savePlaces(); } }
-};
-$("hmR").value = HOME_R; $("hmRv").textContent = HOME_R + "m";
-$("hmR").oninput = () => {
-  HOME_R = +$("hmR").value; $("hmRv").textContent = HOME_R + "m";
-  try { localStorage.setItem("hosomichi_place_r", HOME_R); } catch {}
-  if (cur && $("share").style.display === "block") updateShare();
-};
-$("hmHere").onclick = async () => { try { addPlace(await getHere()); } catch (e) { alert(e.message); } };
-const placeByName = t => places.find(p => p.name === (t || "").trim());
-const nearPlace = (q, r) => places.find(p => hav(q, p.ll) < r);
-// 共有するときにどれだけ隠すか（選んだ値＋自宅の近くなら強制）
+// ---------- 共有するときの「隠す」 ----------
+// 前の版の「守りたい場所」のデータは消しておく
+try { ["hosomichi_places", "hosomichi_home", "hosomichi_place_r"].forEach(k => localStorage.removeItem(k)); } catch {}
 function hidePlan() {
-  const R = cur.route, sel = +$("hide").value;
-  let hs = sel, he = $("hideEnd").checked ? sel : 0;
-  const nearS = nearPlace(R[0], HOME_R), nearE = nearPlace(R[R.length - 1], HOME_R);
-  if (nearS) hs = Math.max(hs, HOME_R);
-  if (nearE) he = Math.max(he, HOME_R);
-  return { hs, he, nearS, nearE };
+  const sel = +$("hide").value;
+  return { hs: sel, he: $("hideEnd").checked ? sel : 0 };
 }
 function updateHomeNote() {
-  const p = hidePlan(), n = $("homeNote"), msgs = [];
-  if (p.nearS) msgs.push(`🏠 出発地が「${esc(p.nearS.name)}」の近くなので、まわり${HOME_R}mを自動で隠しているよ`);
-  if (p.nearE) msgs.push(`🏠 到着地が「${esc(p.nearE.name)}」の近くなので、まわり${HOME_R}mを自動で隠しているよ`);
-  if (!places.length && !p.hs) msgs.push("⚠ 出発地を隠してないよ。自宅から出発してないか確かめてね（⚙ 設定で守りたい場所を登録すると自動で隠せるよ）");
-  n.innerHTML = msgs.length ? msgs.join("<br>") : "自宅から出発したルートを公開するときは隠してね";
-  n.style.color = msgs.some(m => m.startsWith("⚠")) ? "#c00" : msgs.length ? "#188038" : "#666";
+  const p = hidePlan(), n = $("homeNote");
+  let t = "⚠ 自宅など、知られたくない場所が出発・到着になっていないか確かめてね。";
+  if (!p.hs && !p.he) t += "いまは出発も到着も隠してないよ！";
+  else if (!p.he) t += `出発のまわり${p.hs}mは隠してるよ。到着が自宅のときは「到着地も」にチェックしてね`;
+  else t += `出発・到着のまわり${p.hs}mは隠してるよ`;
+  n.textContent = t;
+  n.style.background = !p.hs ? "#fdecea" : "#fff3e0"; n.style.color = !p.hs ? "#c00" : "#b45309";
+}
+// 隠さないまま送ろうとしたら、ひと声かける
+function confirmShare() {
+  const p = hidePlan();
+  if (p.hs) return true;   // 出発地を隠しているなら聞かない（到着地のことは画面の注意に書いてある）
+  return confirm("出発地を隠さないで共有するよ。\n自宅など、知られたくない場所が出発・到着に入っていない？\n\n大丈夫なら OK を押してね");
 }
 
 function shareUrl(tol = 3) {
-  const R = cur.route, { hs, he, nearS, nearE } = hidePlan();
-  // 出発（到着）から hs(he) m 以内、または自宅から 500m 以内の線は送らない
-  const hideS = q => hav(q, R[0]) < hs || (nearS && hav(q, nearS.ll) < HOME_R);
-  const hideE = q => hav(q, R[R.length - 1]) < he || (nearE && hav(q, nearE.ll) < HOME_R);
+  const R = cur.route, { hs, he } = hidePlan();
+  // 出発（到着）から hs(he) m 以内の線は送らない
+  const hideS = q => hav(q, R[0]) < hs;
+  const hideE = q => hav(q, R[R.length - 1]) < he;
   let i0 = 0, i1 = R.length;
   if (hs) { while (i0 < R.length - 1 && hideS(R[i0])) i0++; }
   if (he) { while (i1 > i0 + 1 && hideE(R[i1 - 1])) i1--; }
@@ -1530,18 +1480,13 @@ async function makeQr() {
   } catch (e) { box.innerHTML = `<span style="color:#c00">${e.message}</span>`; }
 }
 $("qr").addEventListener("click", e => { if (e.target.dataset.q === "x") $("qr").style.display = "none"; });
-$("bQr").onclick = () => { const b = $("qr"); if (b.style.display === "block") { b.style.display = "none"; return; } makeQr(); };
-// 共有する名前：登録した場所の名前（自宅・姉の家など）が入っていたら町名に置きかえる（前に作ったルート用）
-function defaultShareName() {
-  let n = cur.name || "";
-  for (const p of places) if (p.name && n.includes(p.name)) n = n.split(p.name).join(p.town || "（場所）");
-  return n.slice(0, 40);
-}
+$("bQr").onclick = () => { const b = $("qr"); if (b.style.display === "block") { b.style.display = "none"; return; } if (!confirmShare()) return; makeQr(); };
+function defaultShareName() { return (cur.name || "").slice(0, 40); }   // 名前の住所は町名まで
 $("bShare").onclick = () => { const s = $("share"); s.style.display = s.style.display === "block" ? "none" : "block"; $("shareName").value = defaultShareName(); updateShare(); };
 $("hide").onchange = $("hideEnd").onchange = () => { $("shareName").value = defaultShareName(); updateShare(); };
 $("shareName").oninput = updateShare;
-$("bCopy").onclick = async () => { updateShare(); try { await navigator.clipboard.writeText($("url").value); $("bCopy").textContent = "コピーしたよ！"; } catch { $("url").select(); document.execCommand("copy"); } setTimeout(() => $("bCopy").textContent = "コピー", 1500); };
-$("bSys").onclick = () => { updateShare(); if (navigator.share) navigator.share({ title: "細道ルート", url: $("url").value }).catch(() => {}); else $("bCopy").click(); };
+$("bCopy").onclick = async () => { updateShare(); if (!confirmShare()) return; try { await navigator.clipboard.writeText($("url").value); $("bCopy").textContent = "コピーしたよ！"; } catch { $("url").select(); document.execCommand("copy"); } setTimeout(() => $("bCopy").textContent = "コピー", 1500); };
+$("bSys").onclick = () => { updateShare(); if (!confirmShare()) return; if (navigator.share) navigator.share({ title: "細道ルート", url: $("url").value }).catch(() => {}); else $("bCopy").click(); };
 $("bGpx").onclick = () => {
   const x = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="hosomichi" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>細道ルート</name><trkseg>\n'
     + cur.route.map(([a, o]) => `<trkpt lat="${a.toFixed(6)}" lon="${o.toFixed(6)}"/>`).join("\n") + "\n</trkseg></trk></gpx>\n";
@@ -1702,10 +1647,9 @@ map.on("click", e => {
   if (follow) return;
   const v = e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6);
   const div = document.createElement("div"); div.className = "pin";
-  div.innerHTML = "ここを<br><button data-k='from'>出発にする</button><button data-k='to'>到着にする</button><br><button data-k='home'>🏠 守る場所にする</button>";
+  div.innerHTML = "ここを<br><button data-k='from'>出発にする</button><button data-k='to'>到着にする</button>";
   const pop = L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
   div.onclick = ev => { const k = ev.target.dataset.k; if (!k) return;
-    if (k === "home") { map.closePopup(pop); addPlace([e.latlng.lat, e.latlng.lng]); return; }
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 });
 
@@ -1872,9 +1816,7 @@ function saveCur() {
   if (lsSet(RKEY, rs)) { updSaveBtn(); renderList(); addLog(`💾 保存: ${cur.name}`, "ok"); return true; }
   return false;
 }
-renderList(); renderPlaces();
-// 町名がまだの登録場所は、うしろで町名をさがしておく
-setTimeout(() => places.filter(p => !p.town).forEach(p => reverseName(p.ll[0], p.ll[1]).then(t => { if (t) { p.town = t; savePlaces(); } })), 2000);
+renderList();
 
 // 保存していないルートがあるときに、消す前に聞く
 function unsavedRoute() { return cur && !cur.partial && !cur.savedId && cur.route && cur.route.length > 1; }
