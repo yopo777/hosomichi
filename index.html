@@ -49,16 +49,20 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #list .it button{border:1px solid #ccc;background:#fff;border-radius:6px;padding:4px 8px;font-size:13px}
 #share{display:none;margin-top:8px;font-size:13px;background:#f6f6f6;border-radius:8px;padding:8px}
 #share textarea{width:100%;height:60px;font-size:11px}
-#gps{position:absolute;bottom:calc(84px + env(safe-area-inset-bottom));right:12px;z-index:1000;width:60px;height:60px;border-radius:50%;
+#gps{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom));right:12px;z-index:1000;width:60px;height:60px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:28px;line-height:60px;text-align:center}
 #gps.on{background:#1a73e8;color:#fff}
-#dir{position:absolute;bottom:calc(156px + env(safe-area-inset-bottom));right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+#dir{position:absolute;bottom:calc(100px + env(safe-area-inset-bottom));right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0;display:none}
 #dir.on{background:#1a73e8}
+#lay{position:absolute;bottom:calc(172px + env(safe-area-inset-bottom));right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
+#lay small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+.leaflet-bottom.leaflet-right{bottom:0}
 #dir svg{display:block;margin:auto;transition:transform .3s}
 #dir small{position:absolute;right:0;bottom:-16px;text-align:right;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 .me-ic svg{display:block}
-#nav{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom));left:10px;right:64px;z-index:1000;background:#fffe;border-radius:12px;
+#nav{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom));left:10px;right:84px;z-index:1000;background:#fffe;border-radius:12px;
   box-shadow:0 2px 8px #0004;padding:8px 12px;font-size:18px;font-weight:bold;display:none}
 #nav.off{color:#c00}
 .pin{font-size:13px}
@@ -68,7 +72,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートメーカー <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1638</small></span><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートメーカー <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1642</small></span><button id="tog">たたむ</button></div>
   <div class="body">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
@@ -106,6 +110,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 </div>
 <div id="nav"></div>
 <button id="gps" title="現在地についていく">◎</button>
+<button id="lay" title="地図の種類">🗺<small id="layL"></small></button>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
 
 <script id="router" type="text/plain">// ==== 細道ルート計算エンジン（Web Worker / Node 両用） ====
@@ -625,10 +630,20 @@ const base = {
 };
 const map = L.map("map", { zoomControl: false, rotate: true, bearing: 0, rotateControl: false, touchRotate: false,
   shiftKeyRotate: false, compassBearing: false }).setView([35.69, 139.75], 11);
-base["淡色"].addTo(map);
-L.control.layers(base, null, { position: "bottomright" }).addTo(map);
+let baseName = (() => { try { return localStorage.getItem("hosomichi_base") || "淡色"; } catch { return "淡色"; } })();
+if (!base[baseName]) baseName = "淡色";
+base[baseName].addTo(map);
 map.attributionControl.setPrefix(false);
 const layer = L.layerGroup().addTo(map);
+
+// 地図の種類ボタン（押すたびに 淡色 → 標準 → 写真）
+$("layL").textContent = baseName;
+$("lay").onclick = () => {
+  const names = Object.keys(base), next = names[(names.indexOf(baseName) + 1) % names.length];
+  map.removeLayer(base[baseName]); base[next].addTo(map); baseName = next;
+  $("layL").textContent = next;
+  try { localStorage.setItem("hosomichi_base", next); } catch {}
+};
 
 // ---------- 便利関数 ----------
 const RAD = Math.PI / 180;
