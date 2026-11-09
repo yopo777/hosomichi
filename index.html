@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0011</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0014</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1465,18 +1465,16 @@ function hidePlan() {
 }
 function updateHomeNote() {
   const p = hidePlan(), n = $("homeNote");
-  let t = "⚠ 自宅など、知られたくない場所が出発・到着になっていないか確かめてね。";
-  if (!p.hs && !p.he) t += "いまは出発も到着も隠してないよ！";
-  else if (!p.he) t += `出発のまわり${p.hs}mは隠してるよ。到着が自宅のときは「到着地も」にチェックしてね`;
-  else t += `出発・到着のまわり${p.hs}mは隠してるよ`;
-  n.textContent = t;
+  const st = !p.hs && !p.he ? "いまは出発も到着も隠してないよ" : !p.he ? `いまは出発のまわり${p.hs}mを隠してるよ` : `いまは出発・到着のまわり${p.hs}mを隠してるよ`;
+  n.innerHTML = "⚠ 自宅などが入ったルートを共有するのは自分だけにしてね。SNSなどに貼るときは注意！" +
+    `<div style="font-weight:normal;font-size:12px;margin-top:2px">（${st}）</div>`;
   n.style.background = !p.hs ? "#fdecea" : "#fff3e0"; n.style.color = !p.hs ? "#c00" : "#b45309";
 }
 // 隠さないまま送ろうとしたら、ひと声かける
 function confirmShare() {
   const p = hidePlan();
   if (p.hs) return true;   // 出発地を隠しているなら聞かない（到着地のことは画面の注意に書いてある）
-  return confirm("出発地を隠さないで共有するよ。\n自宅など、知られたくない場所が出発・到着に入っていない？\n\n大丈夫なら OK を押してね");
+  return confirm("出発地を隠さないで共有するよ。\n\n自宅などが入ったルートを共有するのは自分だけにしてね。\nSNSなどに貼るときは注意！\n\n大丈夫なら OK を押してね");
 }
 
 function shareUrl(tol = 3) {
