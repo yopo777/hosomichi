@@ -103,14 +103,13 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0007</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0011</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
     <div id="tabCfg" style="display:none">
-      <div class="pre" id="pre2"><button data-p="near">近道</button><button data-p="std">おすすめ</button><button data-p="hoso">細道こだわり</button></div>
-      <div class="note" style="font-size:11px;color:#888;margin-top:4px">上のボタンでおまかせ、下で1つずつ変えられるよ（計算のしかた・曲がる回数・広さはおまかせでも変わらないよ）</div>
       <div id="cfgBox"></div>
+      <div class="btns" style="margin-top:8px"><button class="ib" id="cfgReset">はじめの設定にもどす</button></div>
     </div>
     </div>
     <div id="tabLog" style="display:none">
@@ -121,10 +120,6 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <div id="tabRoute">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
-    <div class="pre" id="pre"><button data-p="near">近道</button><button data-p="std">おすすめ</button><button data-p="hoso">細道こだわり</button><button data-p="cfg">⚙ 設定</button></div>
-    <div class="row" style="margin-top:6px"><label style="width:auto">地図の広さ</label>
-      <select id="areaSel" style="flex:1;padding:6px;border-radius:8px;border:1px solid #ccc;font-size:13px">
-        <option value="narrow">せまい（早い）</option><option value="normal">ふつう</option><option value="wide">ひろい（おそい）</option></select></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図をタップしても出発・到着を選べるよ</div>
     <button id="go">ルートを作る</button>
     <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
@@ -819,7 +814,7 @@ async function route(req, prog, partial) {
           log(`到着の点: ${Math.round(q.d)}m先の道（出発とつながっている）` + (q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m は出発とつながってないので使わない（つながり ${q.anySize}点）` : ""), q.d > 300 ? "w" : "i");
           if (q.n < 0 || q.d > 600) {
             if (!wide && lo > 0) { log("到着地のそばにつながる道がないので、範囲を広げて探しなおし", "w"); wide = true; continue; }
-            throw new Error("到着地まで道がつながりませんでした。地図の広さを「ひろい」にするか、設定で「通らない」にしている道（階段・歩道橋など）をゆるめてみてね");
+            throw new Error("到着地まで道がつながりませんでした。⚙ 設定の「地図データを取る広さ」を「ひろい」にするか、設定で「通らない」にしている道（階段・歩道橋など）をゆるめてみてね");
           }
           gn = q.n;
         }
@@ -851,7 +846,7 @@ async function route(req, prog, partial) {
         await waitUpTo(final ? Infinity : bandEnd + tileHalf, false); continue;
       }
       if (!path) {
-        if (final) throw new Error("ルートが見つかりませんでした" + (cfg && cfg.area !== "wide" ? "。地図の広さを広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
+        if (final) throw new Error("ルートが見つかりませんでした" + (cfg && cfg.area !== "wide" ? "。⚙ 設定の「地図データを取る広さ」を広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
         log("この範囲では先に進めないので、もっと先のデータを待つ", "w");
         bandEnd = Math.min(D, bandEnd + BAND); continue;   // 先に進める道がない：もっと先まで取ってから
       }
@@ -1666,11 +1661,6 @@ const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
   primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: "any" };
-const PRESETS = {
-  std: CFG_DEF,
-  near: { ...CFG_DEF, pen: { ...CFG_DEF.pen, service: 1, unclassified: 1, tertiary: 1, secondary: 1.2, primary: 1.5, trunk: 3, footway: 1.5, path: 1.2, track: 1.2 }, bridge: 1.5, midCross: "any" },
-  hoso: { ...CFG_DEF, pen: { ...CFG_DEF.pen, service: 1.5, unclassified: 1.5, tertiary: 5, secondary: 12, primary: 20, trunk: "no", footway: 3, pedestrian: 2, path: 2, track: 2 }, wideCross: "signal", midCross: "must" },
-};
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
@@ -1682,12 +1672,7 @@ const OTHER_ROWS = [
   ["midCross", "2車線の道を渡る", [["must", "信号か横断歩道の所だけ"], ["prefer", "なるべく横断歩道（500mまで遠回り）"], ["any", "どこでも"]]],
 ];
 let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } catch {} return structuredClone(CFG_DEF); })();
-function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} markPreset(); }
-function markPreset() {
-  let hit = null; for (const k in PRESETS) if (JSON.stringify({ ...PRESETS[k], mode: cfg.mode, turn: cfg.turn, area: cfg.area }) === JSON.stringify(cfg)) hit = k;
-  for (const b of [...$("pre").children, ...$("pre2").children]) b.classList.toggle("on", b.dataset.p === hit || (b.dataset.p === "cfg" && !hit));
-  $("pre").querySelector('[data-p="cfg"]').textContent = hit ? "⚙ 設定" : "⚙ 自分で設定";
-}
+function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} }
 const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${String(v) === String(val) ? " selected" : ""}>${t}</option>`).join("");
 function renderCfg() {
   const row = ([k, t, o]) => `<div class="c"><span>${t}</span><select data-k="${k}">${optHtml(o, cfg[k])}</select></div>`;
@@ -1705,16 +1690,8 @@ $("cfgBox").onchange = e => {
   if (el.dataset.pen) cfg.pen[el.dataset.pen] = v; else cfg[el.dataset.k] = v;
   saveCfg();
 };
-$("pre2").onclick = e => $("pre").onclick(e);
-$("pre").onclick = e => {
-  const p = e.target.dataset.p; if (!p) return;
-  if (p === "cfg") { showTab("cfg"); return; }
-  cfg = { ...structuredClone(PRESETS[p]), mode: cfg.mode, turn: cfg.turn, area: cfg.area }; saveCfg(); renderCfg();  // 計算のしかた・曲がる回数・広さはそのまま
-};
-$("areaSel").value = cfg.area;
-$("areaSel").onchange = () => { cfg.area = $("areaSel").value; saveCfg(); renderCfg(); };
-$("cfgBox").addEventListener("change", () => { $("areaSel").value = cfg.area; });
-renderCfg(); markPreset();
+renderCfg();
+$("cfgReset").onclick = () => { if (!confirm("設定をはじめの状態にもどす？")) return; cfg = structuredClone(CFG_DEF); saveCfg(); renderCfg(); };
 map.on("click", e => {
   if (follow) return;
   const v = e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6);
