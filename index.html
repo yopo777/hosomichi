@@ -13,7 +13,7 @@
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
 #map{position:absolute;inset:0}
-#panel{position:absolute;top:8px;left:8px;right:8px;max-width:440px;z-index:1000;background:#fff;border-radius:12px;
+#panel{position:absolute;top:8px;left:8px;right:8px;max-width:440px;z-index:1100;background:#fff;border-radius:12px;
   box-shadow:0 2px 10px #0004;padding:10px 12px;font-size:15px}
 #panel.min .body{display:none}
 #mini{display:none;font-weight:normal;font-size:11px;color:#d93025;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -84,7 +84,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1904</small><small id="mini"></small></span><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2012</small><small id="mini"></small></span><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div class="body">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
@@ -107,6 +107,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
         <button class="ib" id="bShare">🔗 共有URL</button>
         <button class="ib" id="bGpx">⬇ GPX</button>
         <button class="ib" id="bNew" style="display:none">✏ 新しく作る</button>
+        <button class="ib" id="bResume" style="display:none;flex-basis:100%;border-color:#188038;color:#188038;font-weight:bold">▶ 続きを計算</button>
       </div>
       <div id="share">
         <div>出発地のまわりを隠す
@@ -116,7 +117,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
         <div style="margin:4px 0;color:#666">自宅から出発したルートを公開するときは隠してね</div>
         <textarea id="url" readonly></textarea>
         <div class="btns"><button class="ib" id="bQr">📷 QR</button><button class="ib" id="bCopy">コピー</button><button class="ib" id="bSys">共有…</button></div>
-        <div id="qr" style="display:none;text-align:center;margin-top:8px"></div>
+
       </div>
     </div>
   </div>
@@ -129,6 +130,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <button id="lay" title="地図の種類">🗺<small id="layL"></small></button>
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
+<div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
 
 <script id="router" type="text/plain">// ==== 細道ルート計算エンジン（Web Worker / Node 両用） ====
@@ -234,7 +236,9 @@ async function fetchOSM(b, prog, start = 0) {
   const body = "data=" + encodeURIComponent(overpassQuery(b));
   const urls = OVERPASS_URLS.map((_, i) => OVERPASS_URLS[(i + start) % OVERPASS_URLS.length]);
   let last;
-  for (let round = 0; round < 3; round++) {
+  // サーバーが混んでいる（502/504/429 など）ときは、だんだん長く待ちながら何回かやりなおす
+  const WAITS = [10, 20, 40, 60, 90];
+  for (let round = 0; round <= WAITS.length; round++) {
     for (const url of urls) {
       const host = new URL(url).host;
       try {
@@ -263,9 +267,14 @@ async function fetchOSM(b, prog, start = 0) {
         last = e; prog({ msg: `${host} 失敗: ${e.message}`, warn: true });
       }
     }
-    if (round < 2) { prog({ msg: "10秒待ってもう一周…" }); await new Promise(r => setTimeout(r, 10000)); }
+    if (round < WAITS.length) {
+      for (let sec = WAITS[round]; sec > 0; sec--) {
+        prog({ msg: `サーバーが混んでるみたい（${last?.message || ""}）。${sec}秒後にもう一度ためすよ（${round + 1}/${WAITS.length}回目）` });
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
   }
-  throw new Error("OSMのデータが取れませんでした（" + (last?.message || "") + "）。少し待ってもう一度ためしてね");
+  throw new Error("OSMのデータが取れませんでした（" + (last?.message || "") + "）。サーバーが混んでるみたい。しばらくしてから「▶ 続きを計算」でためしてね");
 }
 
 function buildGraph(osm, cfg, onProg) {
@@ -301,8 +310,8 @@ function buildGraph(osm, cfg, onProg) {
     for (let i = 1; i < nd.length; i++) {
       const u = nd[i - 1], v = nd[i], L = d(u, v);
       inGraph[u] = 1; inGraph[v] = 1;
-      if (fwd) adj[u].push({ v, c: L * pen, L, l: L0, k: name });
-      if (back) adj[v].push({ v: u, c: L * pen, L, l: L0, k: name });
+      if (fwd) adj[u].push({ v, c: L * pen, L, l: L0, k: name, w: e.id });
+      if (back) adj[v].push({ v: u, c: L * pen, L, l: L0, k: name, w: e.id });
     }
   }
   // 大きい道の向き（横断かどうか＝道の反対側に出るかを判定するため）
@@ -338,7 +347,7 @@ function buildGraph(osm, cfg, onProg) {
     if (lvl[i] === 2) xcost[i] = cfg.wideCross === "any" ? 0 : sig ? 0 : (cfg.wideCross === "crosswalk" && xw) ? 0 : HARD;
     else xcost[i] = cfg.midCross === "any" || sig || xw ? 0 : cfg.midCross === "must" ? HARD : SOFT;
   }
-  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids };
+  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0) };
 }
 
 function nearest(G, la, lo) {
@@ -382,7 +391,7 @@ function search(G, s, g, gll, useLen, onProg) {
   const N = G.lat.length, best = new Float64Array(N * 3).fill(Infinity), prev = new Int32Array(N * 3).fill(-1);
   const glat = gll[0], glon = gll[1], kx = Math.cos(glat * RAD) * 111320 * 0.995, ky = 111320 * 0.995;
   const H = i => Math.hypot((G.lon[i] - glon) * kx, (G.lat[i] - glat) * ky);
-  const closed = new Uint8Array(N * 3);
+  const closed = new Uint8Array(N * 3), inWay = new Float64Array(N * 3).fill(-1);  // その状態に入ってきた道
   const h = new Heap(); best[s * 3] = 0; h.push(H(s), s * 3);
   let goal = -1, pops = 0, far = 0;
   const D0 = H(s) || 1;
@@ -399,11 +408,13 @@ function search(G, s, g, gll, useLen, onProg) {
     if (u === g) { goal = st; break; }
     const L = G.lvl[u], pu = prev[st] >= 0 ? (prev[st] / 3) | 0 : -1;
     const chk = !useLen && L > 0 && G.xcost[u] > 0 && pu >= 0;
+    const tw = !useLen && G.turn > 0 && pu >= 0 ? inWay[st] : -1;
     for (const e of G.adj[u]) {
       let nc = c + (useLen ? e.L : e.c);
       if (chk && isCrossing(G, pu, u, e.v, ul, e.l, L)) nc += G.xcost[u];
+      if (tw >= 0 && e.w !== tw && isTurn(G, pu, u, e.v)) nc += G.turn;   // 別の道へ曲がる
       const ns = e.v * 3 + e.l;
-      if (nc < best[ns] && !closed[ns]) { best[ns] = nc; prev[ns] = st; h.push(nc + H(e.v), ns); }
+      if (nc < best[ns] && !closed[ns]) { best[ns] = nc; prev[ns] = st; inWay[ns] = e.w; h.push(nc + H(e.v), ns); }
     }
   }
   return { goal, best, prev, closed, H };
@@ -433,17 +444,26 @@ function isCrossing(G, p, u, v, inL, outL, L) {
   return Math.atan2(cr, dt) < -0.5;                  // 約30°以上の右折
 }
 
+// p→u→v で、進む向きが40°以上かわるか（＝曲がる）
+function isTurn(G, p, u, v) {
+  const c = G.cosl;
+  const ax = (G.lon[u] - G.lon[p]) * c, ay = G.lat[u] - G.lat[p], bx = (G.lon[v] - G.lon[u]) * c, by = G.lat[v] - G.lat[u];
+  const ang = Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by));
+  return ang > 0.7;
+}
+
 function edge(G, u, v) {
   let best = null; for (const e of G.adj[u]) if (e.v === v && (!best || e.c < best.c)) best = e;
   return best;
 }
 
 function analyze(G, path) {
-  const ok = [], xw = [], ng = [], ngIdx = [], kinds = {}, ek = []; let len = 0;
+  const ok = [], xw = [], ng = [], ngIdx = [], kinds = {}, ek = []; let len = 0, turns = 0;
   for (let i = 1; i < path.length; i++) {
     const e = edge(G, path[i - 1], path[i]); len += e.L; kinds[e.k] = (kinds[e.k] || 0) + e.L; ek.push(e.k);
   }
   for (let i = 1; i < path.length - 1; i++) {
+    if (edge(G, path[i - 1], path[i]).w !== edge(G, path[i], path[i + 1]).w && isTurn(G, path[i - 1], path[i], path[i + 1])) turns++;
     const u = path[i], L = G.lvl[u]; if (!L) continue;
     if (isCrossing(G, path[i - 1], u, path[i + 1], edge(G, path[i - 1], u).l, edge(G, u, path[i + 1]).l, L)) {
       const p = [G.lat[u], G.lon[u]], k = G.xkind[u];
@@ -451,7 +471,7 @@ function analyze(G, path) {
       else if (G.xcost[u] > 0 || L === 2) { ng.push(p); ngIdx.push(i); }   // ルール違反（または4車線を信号なし）
     }
   }
-  return { ok, xw, ng, ngIdx, kinds, len, ek };
+  return { ok, xw, ng, ngIdx, kinds, len, ek, turns };
 }
 
 // ==== タイル分割取得 ＋ 保存（メモリ ＋ IndexedDB） ====
@@ -623,7 +643,7 @@ async function route(req, prog, partial) {
 
   // --- 順番に確定 ---
   const conf = [], kinds = {}, ok = [], xw = [], ng = [], ek = [];
-  let confLen = 0, confEnd = null /* OSMの点id */, tConf = 0, tBuild = 0, tSearch = 0, nNodes = 0;
+  let turns = 0, confLen = 0, confEnd = null /* OSMの点id */, tConf = 0, tBuild = 0, tSearch = 0, nNodes = 0;
   // mode "full"：ぜんぶ取ってから一度に計算（いちばん良いルート）／ それ以外：スタートから順番に確定（すぐ走り出せる）
   let bandEnd = cfg && cfg.mode === "full" ? D : Math.min(D, FIRST_BAND), lastGraph = null;
   const addKinds = k => { for (const [n, m] of Object.entries(k)) kinds[n] = (kinds[n] || 0) + m; };
@@ -695,7 +715,7 @@ async function route(req, prog, partial) {
       const confPart = path.slice(0, k + 1), tent = path.slice(k);
       if (confPart.length > 1) {
         const a = analyze(G, confPart);
-        addKinds(a.kinds); ok.push(...a.ok); xw.push(...a.xw); ng.push(...a.ng); ek.push(...a.ek); confLen += a.len;
+        addKinds(a.kinds); ok.push(...a.ok); xw.push(...a.xw); ng.push(...a.ng); ek.push(...a.ek); turns += a.turns; confLen += a.len;
         const pts = confPart.map(i => [G.lat[i], G.lon[i]]);
         conf.push(...(conf.length ? pts.slice(1) : pts));
         confEnd = G.ids[confPart[confPart.length - 1]];
@@ -704,14 +724,14 @@ async function route(req, prog, partial) {
       lastGraph = { G, sn: G.idx.get(G.ids[path[0]]) };
       if (final) break;
       const tentPts = tent.map(i => [G.lat[i], G.lon[i]]);
-      partial({ route: conf.slice(), ek: ek.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), kinds: { ...kinds }, len: confLen,
+      partial({ route: conf.slice(), ek: ek.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), kinds: { ...kinds }, turns, len: confLen,
         progress: Math.min(1, tConf / D), restAir: hav(tentPts[tentPts.length - 1][0], tentPts[tentPts.length - 1][1], g[0], g[1]) });
       bandEnd = Math.min(D, bandEnd + BAND);
     }
   } finally { clearInterval(timer); fetchErr = fetchErr || new Error("stop"); }
   await fetching.catch(() => {});
   const T = (Date.now() - T0) / 1000;
-  return { route: conf, ek, ok, xw, ng, kinds, len: confLen, nNodes, sec: T, tiles: N, saved, bytes,
+  return { route: conf, ek, ok, xw, ng, kinds, turns, len: confLen, nNodes, sec: T, tiles: N, saved, bytes,
     tLoad: Math.max(0, T - tBuild - tSearch), tBuild, tSearch };
 }
 // 「ただの最短」はくらべる用。順番に確定する方式では出さない
@@ -891,20 +911,54 @@ worker.onmessage = ev => {
   }
   if (m.type === "partial") {   // スタート側から順番に確定していく途中のルート
     const first = !cur || !cur.partial;
-    showRoute({ route: m.route, ek: m.ek, tent: m.tent, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, len: m.len,
-      restAir: m.restAir, partial: true, name: pendingName }, first && !follow ? "start" : false);
+    showRoute(merged({ route: m.route, ek: m.ek, tent: m.tent, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len,
+      restAir: m.restAir, partial: true, name: pendingName, resume: { g: job.g, cfg: job.cfg } }), first && !follow && !job.prefix ? "start" : false);
+    lsSet(LKEY, packRoute(cur));   // とちゅうでタブを閉じても、あとで続きから計算できるように
     if (first) { $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }   // 地図を見せて、すぐ ◎ を押せるように
     return;
   }
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
   clearInterval(tickTimer); $("go").disabled = false;
-  if (m.type === "error") { setBar(0); setMsg(m.msg, true); return; }
+  if (m.type === "error") {
+    setBar(0); setMsg(m.msg, true);
+    if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); }
+    job = null; return;
+  }
   setBar(1);
   setMsg(`できた！ ${m.sec.toFixed(1)}秒\n` +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
-  showRoute({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, len: m.len, slen: m.slen, name: pendingName }, !follow);
+  showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen,
+    name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
+  if (job && job.prefix) cur.slen = 0;
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
+  job = null;
+};
+// ---------- 計算の「お仕事」と、途中からの再開 ----------
+let job = null;   // { g, cfg, prefix: 続きを計算するときの、もう決まっているルート }
+function sumKinds(a, b) { const o = { ...(a || {}) }; for (const [k, v] of Object.entries(b || {})) o[k] = (o[k] || 0) + v; return o; }
+function merged(m) {
+  const P = job && job.prefix;
+  if (!P || !P.route || P.route.length < 2) return m;
+  const mr = m.route || [];
+  return { ...m, ek: undefined,
+    route: mr.length ? P.route.concat(mr.slice(1)) : P.route.slice(),
+    kc: P.kc && m.ek ? P.kc.concat(m.ek.map(catOf)) : null,
+    ok: (P.ok || []).concat(m.ok || []), xw: (P.xw || []).concat(m.xw || []), ng: (P.ng || []).concat(m.ng || []),
+    kinds: sumKinds(P.kinds, m.kinds), turns: P.turns != null && m.turns != null ? P.turns + m.turns : undefined,
+    len: (P.len || 0) + (m.len || 0), short: null, slen: 0 };
+}
+function startJob(s, g, jcfg, prefix) {
+  job = { g, cfg: jcfg, prefix: prefix || null };
+  $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
+  clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
+  worker.postMessage({ s, g, cfg: jcfg });
+}
+$("bResume").onclick = () => {
+  if (!cur || !cur.resume || $("go").disabled) return;
+  pendingName = cur.name || pendingName;
+  const P = { ...cur, tent: null, partial: false };
+  startJob(cur.route[cur.route.length - 1], cur.resume.g, cur.resume.cfg, P);
 };
 let pendingName = "";
 const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : cleanAddr(t).slice(0, 24);
@@ -922,7 +976,8 @@ $("go").onclick = async () => {
     lastProg = { stage: 1, msg: `出発: ${sn} → 到着: ${gn}` }; showProg();
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発"); L.marker(g).addTo(layer).bindTooltip("到着");
     map.fitBounds([s, g], { padding: [40, 40] });
-    worker.postMessage({ s, g, cfg });
+    clearInterval(tickTimer);
+    startJob(s, g, structuredClone(cfg), null);
   } catch (e) { clearInterval(tickTimer); $("go").disabled = false; setBar(0); setMsg(e.message, true); }
 };
 
@@ -958,13 +1013,14 @@ function legend(r) {
   if (colorMode === "red" || !r || !r.route || r.route.length < 2) { lg.style.display = "none"; return; }
   let h = "";
   if (colorMode === "kind") {
-    if (!r.kc) h = "このルートには道の種類の情報がないよ";
+    if (!r.kc) h = "灰色の線：このルートには道の種類の情報がないよ";
     else { const used = new Set(r.kc); h = CATS.map((c, i) => used.has(i) ? `<div><i style="background:${c[1]}"></i>${c[0]}</div>` : "").join(""); }
   } else {
     h = SLOPES.map(c => `<div><i style="background:${c[1]}"></i>${c[0]}</div>`).join("");
     if (r.elevInfo) h += `<div style="margin-top:2px;color:#444">${r.elevInfo}</div>`;
     else if (r.elevErr) h += `<div style="color:#c00">${r.elevErr}</div>`;
-    else h += `<div style="color:#666">標高を読みこみ中…</div>`;
+    else if (r.partial) h += `<div style="color:#666">灰色の線：ルートが最後までできたら坂の色になるよ</div>`;
+    else h += `<div style="color:#666">灰色の線：標高を読みこみ中…</div>`;
   }
   lg.innerHTML = h; lg.style.display = "block";
 }
@@ -983,8 +1039,11 @@ function drawRoute(r) {
       const c = slopeColor(grade[i]); let j = i; while (j < grade.length && slopeColor(grade[j]) === c) j++;
       seg(pts.slice(i, j + 1), c).bindTooltip(`${grade[i] >= 0 ? "のぼり" : "くだり"} ${Math.abs(grade[i]).toFixed(1)}%`); i = j;
     }
-  } else {
+  } else if (colorMode === "red") {
     seg(R, "#d93025").bindTooltip("細道ルート");
+  } else {
+    // 色分けの準備がまだ：説明の色とまぎらわしくないように灰色で
+    seg(R, "#546e7a").bindTooltip("細道ルート（色分けの準備中）");
     if (colorMode === "slope" && !r.elev && !r.elevErr && !r.partial) loadElevation(r);
   }
   legend(r);
@@ -1071,14 +1130,20 @@ function showRoute(r, fit) {
   else if (fit) map.fitBounds(line.getBounds(), { padding: [30, 30] });
   cum = [0]; for (let i = 1; i < r.nav.length; i++) cum.push(cum[i - 1] + hav(r.nav[i - 1], r.nav[i]));
   if (!r.partial) r.len = r.len || cum[cum.length - 1];
+  if (r.resume && !r.partial) r.restAir = hav(r.route[r.route.length - 1], r.resume.g);
   let h = r.partial
     ? `<b style="color:#188038">スタートから ${fmtKm(r.len)} 確定！走り出してOK</b><br><span style="color:#666">点線の先は計算中（のこり約 ${fmtKm(r.restAir || 0)}）。走ってる間に伸びていくよ</span>`
+    : r.resume
+    ? `<b style="color:#e37400">途中まで ${fmtKm(r.len)}（ゴールまでまっすぐ約 ${fmtKm(r.restAir || 0)}）</b><br><span style="color:#666">「▶ 続きを計算」でここから先を計算できるよ</span>`
     : `<b>細道ルート ${fmtKm(r.len)}</b>`;
   if (r.slen) h += `（最短 ${fmtKm(r.slen)}、+${Math.round((r.len / r.slen - 1) * 100)}%）`;
+  if (r.turns != null) h += `<br>曲がる回数 <b>${r.turns}回</b>`;
   if (r.ok || r.ng) h += `<br>道の横断: <span style="color:#0a0">●信号 ${r.ok.length}</span> / <span style="color:#1a73e8">●横断歩道 ${(r.xw || []).length}</span> / <span style="color:${r.ng.length ? "#c00" : "inherit"}">●ルール外 ${r.ng.length}</span>`;
   if (r.kinds) h += "<br><span style='color:#666'>" + Object.entries(r.kinds).sort((a, b) => b[1] - a[1]).map(([k, m]) => `${k} ${fmtKm(m)}`).join(" / ") + "</span>";
   $("sum").innerHTML = h; $("result").style.display = "block"; $("share").style.display = "none";
-  $("result").querySelector(".btns").style.display = r.partial ? "none" : "";
+  $("result").querySelector(".btns").style.display = "";
+  $("bResume").style.display = r.resume && !r.partial && !$("go").disabled ? "" : "none";
+  $("bShare").textContent = r.resume ? "🔗 共有URL（続きから計算できる）" : "🔗 共有URL";
 }
 
 // ---------- 共有URL・GPX ----------
@@ -1094,13 +1159,17 @@ function shareUrl(tol = 3) {
   const prm = new URLSearchParams();
   prm.set("r", encPoly(pts));
   if (sr.kc) prm.set("k", encK(sr.kc));
+  if (cur.resume && !(hide && $("hideEnd").checked)) {   // 続きから計算できるように、ゴールと設定も入れる
+    prm.set("g", cur.resume.g.map(v => v.toFixed(5)).join(","));
+    prm.set("c", btoa(unescape(encodeURIComponent(JSON.stringify(cur.resume.cfg)))).replace(/=+$/, ""));
+  }
   const ok = (cur.ok || []).filter(keep), ng = (cur.ng || []).filter(keep), xw = (cur.xw || []).filter(keep);
   if (ok.length) prm.set("ok", encPoly(ok));
   if (xw.length) prm.set("xw", encPoly(xw));
   if (ng.length) prm.set("ng", encPoly(ng));
   return location.origin + location.pathname + "#" + prm.toString();
 }
-function updateShare() { $("url").value = shareUrl(); if ($("qr").style.display === "block") makeQr(); }
+function updateShare() { $("url").value = shareUrl(); }
 // QRコード：パソコンで作ったルートをスマホのカメラで読んで開く
 let qrLib = null;
 function loadQrLib() {
@@ -1111,22 +1180,38 @@ function loadQrLib() {
     document.head.appendChild(sc);
   }));
 }
+// detail=false：読みやすさ優先（長いルートは線を間引く）／ detail=true：線をなるべく間引かない（QRが細かくなる）
+let qrDetail = false;
+// 1マスが整数ピクセルになるように描く（ぼやけると読めないので）
+function qrSvg(qr, maxSize) {
+  const n = qr.getModuleCount(), m = 4, k = Math.max(2, Math.floor(maxSize / (n + m * 2))), W = (n + m * 2) * k;
+  let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${(c + m) * k} ${(r + m) * k}h${k}v${k}h-${k}z`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${W}" viewBox="0 0 ${W} ${W}" shape-rendering="crispEdges" style="background:#fff;max-width:100%;height:auto"><path d="${d}" fill="#000"/></svg>`;
+}
 async function makeQr() {
   const box = $("qr");
   box.style.display = "block"; box.innerHTML = "QRを作っています…";
   try {
     await loadQrLib();
-    // URLが長いとQRが細かくなって読めないので、線を少しずつ間引いて短くする
-    let url = "", tol = 3;
-    for (tol of [3, 5, 8, 12, 20]) { url = shareUrl(tol); if (url.length <= 1800) break; }
+    const LIMIT = qrDetail ? 2900 : 1800;     // QRに入る文字数（2900 くらいが上限）
+    let url = "", tol = 1;
+    for (tol of (qrDetail ? [1, 2, 3, 5, 8, 12, 20] : [3, 5, 8, 12, 20])) { url = shareUrl(tol); if (url.length <= LIMIT) break; }
     if (url.length > 2900) { box.innerHTML = '<span style="color:#c00">ルートが長すぎてQRにできないよ。URLをコピーして送ってね</span>'; return; }
     const qr = qrcode(0, "L"); qr.addData(url, "Byte"); qr.make();
-    const n = qr.getModuleCount(), size = Math.min(420, Math.floor(window.innerWidth * .8));
-    box.innerHTML = qr.createSvgTag({ cellSize: Math.max(2, Math.floor(size / (n + 8))), margin: 4, scalable: true })
-      .replace("<svg ", `<svg style="width:${size}px;height:${size}px;background:#fff" `)
-      + `<div style="font-size:11px;color:#666">スマホのカメラで読みとってね` + (tol > 3 ? `（線を${tol}m単位に間引いてるよ）` : "") + `</div>`;
+    const n = qr.getModuleCount();
+    const size = Math.floor(Math.min(window.innerWidth - 24, window.innerHeight - 130));   // 画面いっぱいに大きく
+    const full = shareUrl(1).length;
+    box.innerHTML =
+      `<div class="btns" style="margin:0 auto 8px;max-width:420px;display:flex;gap:6px"><button class="ib" data-q="x" style="flex:1">✕ とじる</button><button class="ib" data-q="0" style="flex:1;${qrDetail ? "" : "border-color:#d93025;color:#d93025"}">ふつう</button>` +
+      `<button class="ib" data-q="1" style="flex:1;${qrDetail ? "border-color:#d93025;color:#d93025" : ""}">くわしい</button></div>` +
+      qrSvg(qr, size) +
+      `<div style="font-size:13px;color:#666;margin-top:6px">スマホのカメラで読みとってね（${n}×${n}マス）<br>` +
+      (tol > 1 ? `線を${tol}m単位に間引いてるよ` : "線は間引いてないよ") +
+      (qrDetail ? "。細かいので、スマホを画面に近づけて読んでね" : (tol > 3 && full <= 2900 ? "。もっと正確にしたいときは「くわしい」" : "")) + `</div>`;
   } catch (e) { box.innerHTML = `<span style="color:#c00">${e.message}</span>`; }
 }
+$("qr").addEventListener("click", e => { const q = e.target.dataset.q; if (q == null) return; if (q === "x") { $("qr").style.display = "none"; return; } qrDetail = q === "1"; makeQr(); });
 $("bQr").onclick = () => { const b = $("qr"); if (b.style.display === "block") { b.style.display = "none"; return; } makeQr(); };
 $("bShare").onclick = () => { const s = $("share"); s.style.display = s.style.display === "block" ? "none" : "block"; updateShare(); };
 $("hide").onchange = $("hideEnd").onchange = updateShare;
@@ -1170,7 +1255,7 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
-  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "quick", area: "normal", steps: "no", bridge: 3, unpaved: 20, wideCross: "signal", midCross: "prefer" };
+  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "quick", turn: 100, area: "normal", steps: "no", bridge: 3, unpaved: 20, wideCross: "signal", midCross: "prefer" };
 const PRESETS = {
   std: CFG_DEF,
   near: { ...CFG_DEF, pen: { ...CFG_DEF.pen, service: 1, unclassified: 1, tertiary: 1, secondary: 1.2, primary: 1.5, trunk: 3, footway: 1.5, path: 1.2, track: 1.2 }, bridge: 1.5, midCross: "any" },
@@ -1178,6 +1263,7 @@ const PRESETS = {
 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
+  ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（おそい・まわり道〜2km）"]]],
   ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ"], ["yes", "通る（かついで上がる）"]]],
   ["bridge", "歩道橋・地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
@@ -1188,7 +1274,7 @@ const OTHER_ROWS = [
 let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } catch {} return structuredClone(CFG_DEF); })();
 function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} markPreset(); }
 function markPreset() {
-  let hit = null; for (const k in PRESETS) if (JSON.stringify({ ...PRESETS[k], mode: cfg.mode, area: cfg.area }) === JSON.stringify(cfg)) hit = k;
+  let hit = null; for (const k in PRESETS) if (JSON.stringify({ ...PRESETS[k], mode: cfg.mode, turn: cfg.turn, area: cfg.area }) === JSON.stringify(cfg)) hit = k;
   for (const b of $("pre").children) b.classList.toggle("on", b.dataset.p === hit || (b.dataset.p === "cfg" && $("cfgBox").style.display === "block"));
 }
 const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${String(v) === String(val) ? " selected" : ""}>${t}</option>`).join("");
@@ -1208,7 +1294,7 @@ $("cfgBox").onchange = e => {
 $("pre").onclick = e => {
   const p = e.target.dataset.p; if (!p) return;
   if (p === "cfg") { const b = $("cfgBox"); b.style.display = b.style.display === "block" ? "none" : "block"; renderCfg(); markPreset(); return; }
-  cfg = { ...structuredClone(PRESETS[p]), mode: cfg.mode, area: cfg.area }; saveCfg(); renderCfg();  // 計算のしかた・広さはそのまま
+  cfg = { ...structuredClone(PRESETS[p]), mode: cfg.mode, turn: cfg.turn, area: cfg.area }; saveCfg(); renderCfg();  // 計算のしかた・曲がる回数・広さはそのまま
 };
 $("areaSel").value = cfg.area;
 $("areaSel").onchange = () => { cfg.area = $("areaSel").value; saveCfg(); renderCfg(); };
@@ -1314,7 +1400,9 @@ function loadHash() {
   if (!h.get("r")) return;
   try {
     const hr = decPoly(h.get("r")), hk = h.get("k") ? decK(h.get("k")) : null;
-    showRoute({ route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], name: "共有されたルート" }, true);
+    let resume = null;
+    if (h.get("g")) { try { resume = { g: h.get("g").split(",").map(Number), cfg: h.get("c") ? JSON.parse(decodeURIComponent(escape(atob(h.get("c"))))) : structuredClone(cfg) }; } catch { resume = null; } }
+    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], name: resume ? "共有されたルート（途中）" : "共有されたルート" }, true);
     $("bNew").style.display = ""; $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } catch (e) { setMsg("共有URLが読めませんでした", true); }
 }
@@ -1328,12 +1416,12 @@ function packRoute(r) {
   const sr = simpRoute(r.route, r.kc, 1);
   return { name: r.name || "", created: r.created || Date.now(), r: encPoly(sr.pts), k: sr.kc ? encK(sr.kc) : "",
     s: r.short ? encPoly(simplify(r.short, 3)) : "", ok: encPoly(r.ok || []), xw: encPoly(r.xw || []), ng: encPoly(r.ng || []),
-    len: r.len, slen: r.slen || 0, kinds: r.kinds || null };
+    len: r.len, slen: r.slen || 0, kinds: r.kinds || null, rs: r.resume || null, tn: r.turns ?? null };
 }
 function unpackRoute(o) {
   const route = decPoly(o.r), kc = o.k ? decK(o.k) : null;
   return { name: o.name, created: o.created, route, kc: kc && kc.length === route.length - 1 ? kc : null, short: o.s ? decPoly(o.s) : null,
-    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), len: o.len, slen: o.slen, kinds: o.kinds };
+    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined };
 }
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function renderList() {
@@ -1382,7 +1470,7 @@ if (IN_APP) $("inapp").style.display = "block";
 if (location.hash.includes("r=")) loadHash();
 else {
   const last = lsGet(LKEY, null);
-  if (last) { try { showRoute(unpackRoute(last), true); setMsg("前回のルートを表示してるよ"); $("bNew").style.display = ""; } catch {} }
+  if (last) { try { const lr = unpackRoute(last); showRoute(lr, true); setMsg(lr.resume ? "前回の計算が途中だったよ。「▶ 続きを計算」で再開できるよ" : "前回のルートを表示してるよ"); $("bNew").style.display = ""; } catch {} }
 }
 </script>
 </body></html>
