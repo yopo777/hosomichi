@@ -44,6 +44,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #log{height:55vh;overflow:auto;background:#1e1e1e;color:#ddd;border-radius:8px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
 #log .w{color:#ffb74d} #log .e{color:#ff6e6e;font-weight:bold} #log .ok{color:#81c784} #log .h{color:#64b5f6;font-weight:bold} #log .m{color:#ce93d8}
 #log time{color:#777;margin-right:6px}
+#ask .q{background:#fff;border-radius:12px;padding:16px;max-width:360px;width:100%;font-size:14px;line-height:1.6;box-shadow:0 4px 16px #0006}
+#ask .btns{display:flex;gap:6px}#ask .btns button{flex:1}
 #upd button{margin-left:8px;border:none;border-radius:6px;padding:4px 10px;background:#fff;color:#188038;font-weight:bold}
 #cfgBox{margin-top:8px;background:#f7f7f7;border-radius:8px;padding:6px 8px;max-height:62vh;overflow:auto}
 #cfgBox h4{margin:8px 0 2px;font-size:12px;color:#d93025}
@@ -98,7 +100,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2236</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2241</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -149,6 +151,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   </div>
 </div>
 <div id="nav"></div>
+<div id="ask" style="display:none;position:fixed;inset:0;z-index:2500;background:#0006;align-items:center;justify-content:center;padding:16px"></div>
 <div id="upd" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:2000;background:#188038;color:#fff;
   border-radius:10px;padding:8px 12px;font-size:14px;box-shadow:0 2px 8px #0005;white-space:nowrap"></div>
 <div id="inapp" style="display:none;position:absolute;left:8px;right:8px;bottom:calc(90px + env(safe-area-inset-bottom));z-index:1001;background:#333;color:#fff;
@@ -1112,6 +1115,7 @@ const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,
 $("go").onclick = async () => {
   const fromT = $("from").value.trim(), toT = $("to").value.trim();
   if (!toT) { setMsg("到着地を入れてね", true); return; }
+  if (unsavedRoute() && await askSave("新しいルートを作る") === "cancel") return;
   pendingName = (fromT ? shortName(fromT) : "現在地") + " → " + shortName(toT);
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
@@ -1380,8 +1384,9 @@ $("bGpx").onclick = () => {
 $("bClear").onclick = () => { if (confirm("端末に保存した道路データを消す？（次は取りなおしになるよ）")) worker.postMessage({ cmd: "clear" }); };
 worker.postMessage({ cmd: "stats" });
 // 「新しく作る」：今のルートを画面から消して、入力欄を空にして、到着地を入れられるようにする
-$("bNew").onclick = () => {
+$("bNew").onclick = async () => {
   if ($("go").disabled) return;
+  if (unsavedRoute() && await askSave("消す") === "cancel") return;
   history.replaceState(null, "", location.pathname);
   layer.clearLayers(); cur = null; cum = [];
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
@@ -1673,18 +1678,38 @@ $("list").onclick = ev => {
   }
 };
 function updSaveBtn() { $("bSave").textContent = cur && cur.savedId ? "💾 保存ずみ ✓" : "💾 保存"; }
-$("bSave").onclick = () => {
-  if (!cur) return;
+$("bSave").onclick = () => saveCur();
+function saveCur() {
+  if (!cur) return false;
   const rs = lsGet(RKEY, []);
   const old = cur.savedId ? rs.find(o => o.id === cur.savedId) : null;
   const n = prompt(old ? "名前を変えて上書き保存するよ" : "ルートの名前をつけてね", cur.name || "");
-  if (n == null) return;
+  if (n == null) return false;
   cur.name = n.trim() || cur.name || "名前なし";
   if (old) Object.assign(old, packRoute(cur), { id: old.id, created: old.created });
   else { cur.savedId = Date.now(); rs.push({ ...packRoute(cur), id: cur.savedId, created: Date.now() }); }
-  if (lsSet(RKEY, rs)) { updSaveBtn(); renderList(); }
-};
+  if (lsSet(RKEY, rs)) { updSaveBtn(); renderList(); addLog(`💾 保存: ${cur.name}`, "ok"); return true; }
+  return false;
+}
 renderList();
+
+// 保存していないルートがあるときに、消す前に聞く
+function unsavedRoute() { return cur && !cur.partial && !cur.savedId && cur.route && cur.route.length > 1; }
+function askSave(what) {
+  return new Promise(res => {
+    const box = $("ask");
+    box.innerHTML = `<div class="q"><b>今のルートは保存してないよ</b><br>「${esc(cur.name || "名前なし")}」（${fmtKm(cur.len || 0)}）<br>${what}前に保存する？
+      <div class="btns" style="margin-top:10px"><button class="ib" data-a="save" style="border-color:#188038;color:#188038;font-weight:bold">💾 保存する</button>
+      <button class="ib" data-a="skip">保存しない</button><button class="ib" data-a="cancel">やめる</button></div></div>`;
+    box.style.display = "flex";
+    box.onclick = e => {
+      const a = e.target.dataset.a; if (!a) return;
+      box.style.display = "none";
+      if (a === "save" && !saveCur()) return res("cancel");   // 名前入力をやめたら、なにもしない
+      res(a);
+    };
+  });
+}
 
 if (IN_APP) $("inapp").style.display = "block";
 
