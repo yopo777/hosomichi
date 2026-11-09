@@ -21,6 +21,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #head{display:flex;align-items:center;gap:8px;font-weight:bold}
 #head .t{flex:1;min-width:0}
 #tog{border:none;background:#eee;border-radius:8px;padding:4px 10px;font-size:14px}
+#stop{border:none;background:#fdecea;color:#d93025;border-radius:8px;padding:4px 10px;font-size:13px;font-weight:bold;white-space:nowrap}
 #fs{border:none;background:#eee;border-radius:8px;padding:4px 10px;font-size:16px;line-height:1.2;display:none}
 .row{display:flex;gap:6px;margin-top:8px;align-items:center}
 .row label{width:3.2em;font-size:13px;color:#555}
@@ -84,7 +85,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2012</small><small id="mini"></small></span><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2025</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div class="body">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
@@ -232,6 +233,14 @@ way["highway"]["highway"!~"^(motorway|motorway_link|construction|proposed|platfo
 out body qt;`;
 }
 
+// ==== 途中で止める ====
+let stopReq = false;
+const stopWaiters = new Set();   // 道路データ待ちをしている所を、止めたときに起こす
+const aborts = new Set();
+class StopError extends Error { constructor() { super("止めたよ"); this.stopped = true; } }
+const checkStop = () => { if (stopReq) throw new StopError(); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 async function fetchOSM(b, prog, start = 0) {
   const body = "data=" + encodeURIComponent(overpassQuery(b));
   const urls = OVERPASS_URLS.map((_, i) => OVERPASS_URLS[(i + start) % OVERPASS_URLS.length]);
@@ -242,8 +251,10 @@ async function fetchOSM(b, prog, start = 0) {
     for (const url of urls) {
       const host = new URL(url).host;
       try {
+        checkStop();
         prog({ msg: `${host} サーバーが計算中`, done: 0, total: 0 });
         const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 150000);
+        aborts.add(ac);
         const res = await fetch(url, { method: "POST", body, signal: ac.signal,
           headers: { "Content-Type": "application/x-www-form-urlencoded" } });
         if (!res.ok) throw new Error("HTTP " + res.status);
@@ -255,7 +266,7 @@ async function fetchOSM(b, prog, start = 0) {
           chunks.push(value); done += value.length;
           prog({ msg: `${host} ダウンロード中`, done, total });
         }
-        clearTimeout(timer);
+        clearTimeout(timer); aborts.delete(ac);
         const buf = new Uint8Array(done); let o = 0;
         for (const c of chunks) { buf.set(c, o); o += c.length; }
         prog({ msg: "データを読みこみ中", done, total: done });
@@ -264,13 +275,14 @@ async function fetchOSM(b, prog, start = 0) {
         if (json.remark && /error|timed out|memory/i.test(json.remark)) throw new Error(json.remark.slice(0, 80));
         return { json, text };
       } catch (e) {
+        checkStop();
         last = e; prog({ msg: `${host} 失敗: ${e.message}`, warn: true });
       }
     }
     if (round < WAITS.length) {
       for (let sec = WAITS[round]; sec > 0; sec--) {
         prog({ msg: `サーバーが混んでるみたい（${last?.message || ""}）。${sec}秒後にもう一度ためすよ（${round + 1}/${WAITS.length}回目）` });
-        await new Promise(r => setTimeout(r, 1000));
+        await sleep(1000); checkStop();
       }
     }
   }
@@ -602,7 +614,11 @@ async function route(req, prog, partial) {
 
   // --- 取得：保存データ → 足りないマスをスタート側から順にダウンロード ---
   const got = new Map(), waiters = new Map();
-  const ready = key => got.has(key) ? Promise.resolve() : new Promise(r => { if (!waiters.has(key)) waiters.set(key, []); waiters.get(key).push(r); });
+  const ready = key => got.has(key) ? Promise.resolve() : new Promise(r => {
+    if (!waiters.has(key)) waiters.set(key, []);
+    const w = () => { stopWaiters.delete(w); r(); };
+    waiters.get(key).push(w); stopWaiters.add(w);
+  });
   const setTile = (key, el) => { got.set(key, el); mem.set(key, el); (waiters.get(key) || []).forEach(r => r()); waiters.delete(key); };
   prog({ stage: 1, msg: `保存したデータをさがし中（${N}マス）`, done: 0, total: N });
   await Promise.all(tiles.map(async t => {
@@ -626,19 +642,19 @@ async function route(req, prog, partial) {
   const timer = setInterval(report, 1000);
   let next = 0;
   const runner = async w => {
-    while (next < need.length && !fetchErr) {
+    while (next < need.length && !fetchErr && !stopReq) {
       const t = need[next++];
       active.set(w, "取得中…");
       try {
         const r = await fetchOSM(t.bb, p => { active.set(w, p.msg); }, w);
         bytes += r.text.length; pendingSaves.push([t.key, r.text]);
         done++; active.delete(w); setTile(t.key, r.json.elements); report();
-      } catch (e) { fetchErr = e; active.delete(w); [...waiters.values()].flat().forEach(r => r()); }
+      } catch (e) { if (!e.stopped) fetchErr = e; active.delete(w); [...waiters.values()].flat().forEach(r => r()); if (e.stopped) return; }
     }
   };
   const fetching = Promise.all(Array.from({ length: Math.min(PARALLEL, need.length) }, (_, w) => runner(w)));
   const waitUpTo = async tEnd => {
-    for (const t of tiles) if (t.tc <= tEnd) { await ready(t.key); if (fetchErr) throw fetchErr; }
+    for (const t of tiles) if (t.tc <= tEnd) { await ready(t.key); checkStop(); if (fetchErr) throw fetchErr; }
   };
 
   // --- 順番に確定 ---
@@ -650,6 +666,7 @@ async function route(req, prog, partial) {
   try {
     for (;;) {
       const final = bandEnd >= D;
+      await sleep(0); checkStop();   // 「止める」を受けとれるように
       stageMsg = final ? "ゴールまでのルートを計算中" : `スタートから ${(bandEnd / 1000).toFixed(1)}km 先まで計算中`;
       report();
       await waitUpTo(final ? Infinity : bandEnd + tileHalf);
@@ -743,12 +760,20 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     try {
       if (d.cmd === "stats") return self.postMessage({ type: "stats", ...(await stats()) });
       if (d.cmd === "clear") { await clearAll(); return self.postMessage({ type: "stats", ...(await stats()) }); }
+      if (d.cmd === "stop") {   // 計算中の「止める」
+        stopReq = true; for (const ac of aborts) ac.abort(); aborts.clear();
+        for (const ws of stopWaiters) ws(); return;
+      }
+      stopReq = false;
       const r = await route(d, p => self.postMessage({ type: "prog", ...p }), p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
       const sh = shortest(); if (sh) self.postMessage({ type: "short", ...sh });
       await flushSaves();
       self.postMessage({ type: "stats", ...(await stats()) });
-    } catch (e) { self.postMessage({ type: "error", msg: e.message }); }
+    } catch (e) {
+      if (e && e.stopped) { self.postMessage({ type: "stopped" }); await flushSaves().catch(() => {}); self.postMessage({ type: "stats", ...(await stats()) }); }
+      else self.postMessage({ type: "error", msg: e.message });
+    }
   };
 }
 if (typeof module !== "undefined") module.exports = { shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
@@ -918,7 +943,13 @@ worker.onmessage = ev => {
     return;
   }
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
-  clearInterval(tickTimer); $("go").disabled = false;
+  clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none";
+  if (m.type === "stopped") {
+    setBar(0);
+    if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); setMsg("止めたよ。「▶ 続きを計算」でここから再開できるよ"); }
+    else setMsg("止めたよ");
+    job = null; return;
+  }
   if (m.type === "error") {
     setBar(0); setMsg(m.msg, true);
     if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); }
@@ -950,10 +981,17 @@ function merged(m) {
 }
 function startJob(s, g, jcfg, prefix) {
   job = { g, cfg: jcfg, prefix: prefix || null };
+  if (!prefix) {   // 新しいルート：古いルートは画面から消す（ナビの「のこり」もまちがえないように）
+    cur = null; cum = [];
+    $("result").style.display = "none"; $("share").style.display = "none"; $("qr").style.display = "none";
+    $("nav").style.display = "none"; legend(null);
+  }
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   worker.postMessage({ s, g, cfg: jcfg });
+  $("stop").style.display = "";
 }
+$("stop").onclick = () => { $("stop").textContent = "止めてるよ…"; worker.postMessage({ cmd: "stop" }); setTimeout(() => $("stop").textContent = "■ 止める", 3000); };
 $("bResume").onclick = () => {
   if (!cur || !cur.resume || $("go").disabled) return;
   pendingName = cur.name || pendingName;
@@ -1143,6 +1181,7 @@ function showRoute(r, fit) {
   $("sum").innerHTML = h; $("result").style.display = "block"; $("share").style.display = "none";
   $("result").querySelector(".btns").style.display = "";
   $("bResume").style.display = r.resume && !r.partial && !$("go").disabled ? "" : "none";
+  $("bNew").style.display = !r.partial && !$("go").disabled ? "" : "none";
   $("bShare").textContent = r.resume ? "🔗 共有URL（続きから計算できる）" : "🔗 共有URL";
 }
 
@@ -1225,7 +1264,17 @@ $("bGpx").onclick = () => {
 };
 $("bClear").onclick = () => { if (confirm("端末に保存した道路データを消す？（次は取りなおしになるよ）")) worker.postMessage({ cmd: "clear" }); };
 worker.postMessage({ cmd: "stats" });
-$("bNew").onclick = () => { history.replaceState(null, "", location.pathname); $("bNew").style.display = "none"; $("result").style.display = "none"; layer.clearLayers(); cur = null; };
+// 「新しく作る」：今のルートを画面から消して、入力欄を空にして、到着地を入れられるようにする
+$("bNew").onclick = () => {
+  if ($("go").disabled) return;
+  history.replaceState(null, "", location.pathname);
+  layer.clearLayers(); cur = null; cum = [];
+  for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
+  legend(null);
+  $("from").value = ""; $("to").value = ""; setMsg(""); $("prog").style.display = "none";
+  $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
+  $("to").focus();
+};
 
 // ---------- パネル ----------
 // 入力欄で Enter → ルートを作る（日本語の変換確定の Enter はのぞく）
@@ -1403,7 +1452,7 @@ function loadHash() {
     let resume = null;
     if (h.get("g")) { try { resume = { g: h.get("g").split(",").map(Number), cfg: h.get("c") ? JSON.parse(decodeURIComponent(escape(atob(h.get("c"))))) : structuredClone(cfg) }; } catch { resume = null; } }
     showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], name: resume ? "共有されたルート（途中）" : "共有されたルート" }, true);
-    $("bNew").style.display = ""; $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+    $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } catch (e) { setMsg("共有URLが読めませんでした", true); }
 }
 window.addEventListener("hashchange", loadHash);
@@ -1439,7 +1488,7 @@ $("list").onclick = ev => {
   const rs = lsGet(RKEY, []), i = rs.findIndex(o => String(o.id) === it.dataset.id); if (i < 0) return;
   if (a === "open") {
     showRoute({ ...unpackRoute(rs[i]), savedId: rs[i].id }, true);
-    $("bNew").style.display = ""; setMsg(`「${rs[i].name}」を開いたよ`);
+    setMsg(`「${rs[i].name}」を開いたよ`);
     $("list").style.display = "none";
   } else if (a === "ren") {
     const n = prompt("ルートの名前", rs[i].name); if (n == null) return;
@@ -1470,7 +1519,7 @@ if (IN_APP) $("inapp").style.display = "block";
 if (location.hash.includes("r=")) loadHash();
 else {
   const last = lsGet(LKEY, null);
-  if (last) { try { const lr = unpackRoute(last); showRoute(lr, true); setMsg(lr.resume ? "前回の計算が途中だったよ。「▶ 続きを計算」で再開できるよ" : "前回のルートを表示してるよ"); $("bNew").style.display = ""; } catch {} }
+  if (last) { try { const lr = unpackRoute(last); showRoute(lr, true); setMsg(lr.resume ? "前回の計算が途中だったよ。「▶ 続きを計算」で再開できるよ" : "前回のルートを表示してるよ"); } catch {} }
 }
 </script>
 </body></html>
