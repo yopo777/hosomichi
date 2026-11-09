@@ -23,8 +23,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #go:disabled{background:#999}
 #hosoi{flex:1}
 #prog{margin-top:8px;display:none}
-#bar{height:8px;background:#eee;border-radius:4px;overflow:hidden}
-#bar div{height:100%;width:0;background:#d93025;transition:width .2s}
+#bar{height:10px;background:#eee;border-radius:4px;overflow:hidden}
+#bar div{height:100%;width:0;background:#d93025;transition:width .4s}
 #bar.busy div{width:30%!important;animation:busy 1.2s infinite linear}
 @keyframes busy{from{margin-left:-30%}to{margin-left:100%}}
 #msg{font-size:12px;color:#555;margin-top:4px;white-space:pre-wrap}
@@ -171,7 +171,7 @@ async function fetchOSM(b, prog) {
         prog({ msg: "データを読みこみ中", done, total: done });
         const text = new TextDecoder().decode(buf);
         const json = JSON.parse(text);
-        if (json.remark && !json.elements?.length) throw new Error(json.remark.slice(0, 80));
+        if (json.remark && /error|timed out|memory/i.test(json.remark)) throw new Error(json.remark.slice(0, 80));
         return { json, text };
       } catch (e) {
         last = e; prog({ msg: `${host} 失敗: ${e.message}`, warn: true });
@@ -182,7 +182,7 @@ async function fetchOSM(b, prog) {
   throw new Error("OSMのデータが取れませんでした（" + (last?.message || "") + "）。少し待ってもう一度ためしてね");
 }
 
-function buildGraph(osm, hosoi) {
+function buildGraph(osm, hosoi, onProg) {
   const idx = new Map(), lat = [], lon = [], ntags = new Map();
   for (const e of osm.elements) if (e.type === "node") {
     idx.set(e.id, lat.length); if (e.tags) ntags.set(lat.length, e.tags); lat.push(e.lat); lon.push(e.lon);
@@ -190,7 +190,9 @@ function buildGraph(osm, hosoi) {
   const N = lat.length, adj = Array.from({ length: N }, () => []);
   const wide = new Uint8Array(N), inGraph = new Uint8Array(N);
   const d = (u, v) => hav(lat[u], lon[u], lat[v], lon[v]);
+  const NE = osm.elements.length; let ei = 0;
   for (const e of osm.elements) {
+    if (onProg && (++ei & 0x3fff) === 0) onProg(ei / NE * 0.9);
     if (e.type !== "way") continue;
     const t = e.tags || {}, hw = t.highway;
     if (!hw || EXCLUDE.has(hw)) continue;
@@ -272,14 +274,19 @@ class Heap {
   }
 }
 
-function dijkstra(G, s, g, useLen) {
+function dijkstra(G, s, g, useLen, onProg) {
   const N = G.lat.length, best = new Float64Array(N * 2).fill(Infinity), prev = new Int32Array(N * 2).fill(-1);
   const h = new Heap(); best[s * 2] = 0; h.push(0, s * 2);
-  let goal = -1;
+  let goal = -1, pops = 0, far = 0;
+  const D0 = hav(G.lat[s], G.lon[s], G.lat[g], G.lon[g]) || 1;
   while (h.size) {
     const [c, st] = h.pop();
     if (c > best[st]) continue;
     const u = st >> 1, uw = st & 1;
+    if (onProg && (++pops & 0x7fff) === 0) {  // ゴールにどれだけ近づいたかで進み具合を出す
+      far = Math.max(far, 1 - hav(G.lat[u], G.lon[u], G.lat[g], G.lon[g]) / D0);
+      onProg(Math.min(0.99, Math.max(0, far)));
+    }
     if (u === g) { goal = st; break; }
     const danger = !useLen && G.flag[u] === 1 && u !== s && !uw;
     for (const e of G.adj[u]) {
@@ -311,18 +318,24 @@ function analyze(G, path) {
   return { ok, ng, kinds, len };
 }
 
-// ==== 保存（メモリ ＋ IndexedDB） ====
-// 範囲内なら再ダウンロードしない。IndexedDB には gzip でちぢめて保存
-let cache = null;
-const DB_NAME = "hosomichi", STORE = "osm", MAX_AGE = 30 * 864e5, MAX_ENTRIES = 20;
+// ==== タイル分割取得 ＋ 保存（メモリ ＋ IndexedDB） ====
+// 範囲を TILE 度ごとのマスに分けて、1マスずつ取得・保存する
+const TILE = 0.03;                 // 約3.3km × 2.7km
+const PARALLEL = 2;                // 同時に取るマスの数（Overpassは1人2枠くらい）
+const DB_NAME = "hosomichi", STORE = "tiles", MAX_AGE = 30 * 864e5, MAX_TILES = 400;
+const mem = new Map();             // key -> elements
 let dbp = null;
 function openDB() {
   if (dbp) return dbp;
   dbp = new Promise(ok => {
     if (typeof indexedDB === "undefined") return ok(null);
     try {
-      const r = indexedDB.open(DB_NAME, 1);
-      r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
+      const r = indexedDB.open(DB_NAME, 2);
+      r.onupgradeneeded = () => {
+        const db = r.result;
+        if (db.objectStoreNames.contains("osm")) db.deleteObjectStore("osm");   // 古い形式は捨てる
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "key" });
+      };
       r.onsuccess = () => ok(r.result);
       r.onerror = () => ok(null);
     } catch { ok(null); }
@@ -331,8 +344,6 @@ function openDB() {
 }
 function req(r) { return new Promise((ok, ng) => { r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); }); }
 async function store(mode) { const db = await openDB(); return db ? db.transaction(STORE, mode).objectStore(STORE) : null; }
-async function allRecs() { const st = await store("readonly"); return st ? await req(st.getAll()) : []; }
-async function delRec(id) { const st = await store("readwrite"); if (st) await req(st.delete(id)); }
 async function pack(text) {
   if (typeof CompressionStream !== "undefined") {
     const s = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
@@ -345,63 +356,121 @@ async function unpack(rec) {
   if (rec.gz) s = s.pipeThrough(new DecompressionStream("gzip"));
   return JSON.parse(await new Response(s).text());
 }
-async function saveOSM(bb, text) {
+async function getTile(key) {
+  try {
+    const st = await store("readonly"); if (!st) return null;
+    const r = await req(st.get(key));
+    if (!r) return null;
+    if (Date.now() - r.savedAt > MAX_AGE) return null;
+    return (await unpack(r)).elements;
+  } catch { return null; }
+}
+async function putTile(key, text) {
   try {
     const { gz, blob } = await pack(text);
-    const now = Date.now();
-    for (const r of await allRecs())   // 古いもの・新しい範囲にふくまれるものは消す
-      if (now - r.savedAt > MAX_AGE || inside(r.bb, bb)) await delRec(r.id);
     const st = await store("readwrite"); if (!st) return;
-    await req(st.add({ bb, savedAt: now, gz, blob, size: blob.size, raw: text.length }));
-    const recs = (await allRecs()).sort((a, b) => b.savedAt - a.savedAt);
-    for (const r of recs.slice(MAX_ENTRIES)) await delRec(r.id);
+    await req(st.put({ key, savedAt: Date.now(), gz, blob, size: blob.size }));
   } catch (e) { console.warn("保存できませんでした", e); }
 }
-async function loadOSM(bb) {
-  const now = Date.now();
-  const hits = (await allRecs()).filter(r => now - r.savedAt <= MAX_AGE && inside(bb, r.bb)).sort((a, b) => a.size - b.size);
-  for (const r of hits) { try { return { osm: await unpack(r), bb: r.bb, savedAt: r.savedAt }; } catch (e) { await delRec(r.id); } }
-  return null;
+async function prune() {
+  try {
+    const st = await store("readonly"); if (!st) return;
+    const recs = (await req(st.getAll())).sort((a, b) => b.savedAt - a.savedAt);
+    const now = Date.now(), del = recs.filter((r, i) => i >= MAX_TILES || now - r.savedAt > MAX_AGE * 2);
+    if (del.length) { const w = await store("readwrite"); for (const r of del) await req(w.delete(r.key)); }
+  } catch {}
 }
 async function stats() {
-  const recs = await allRecs();
+  const st = await store("readonly"); if (!st) return { n: 0, bytes: 0 };
+  const recs = await req(st.getAll());
   return { n: recs.length, bytes: recs.reduce((a, r) => a + (r.size || 0), 0) };
 }
-async function clearAll() { const st = await store("readwrite"); if (st) await req(st.clear()); cache = null; }
-function inside(a, b) { return a.s >= b.s && a.w >= b.w && a.n <= b.n && a.e <= b.e; }
+async function clearAll() { const st = await store("readwrite"); if (st) await req(st.clear()); mem.clear(); }
+
+// 出発→到着の線のまわり（帯）にかかるマスだけ選ぶ
+function tilesFor(s, g, pad) {
+  const c = Math.cos(s[0] * RAD);
+  const P = q => [q[1] * c, q[0]];
+  const [ax, ay] = P(s), [bx, by] = P(g), dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-12;
+  const segDist = q => { const [x, y] = P(q); let t = ((x - ax) * dx + (y - ay) * dy) / L2; t = Math.max(0, Math.min(1, t)); return Math.hypot(x - ax - t * dx, y - ay - t * dy); };
+  const half = Math.hypot(TILE * c, TILE) / 2;
+  const out = [];
+  for (let i = Math.floor((Math.min(s[0], g[0]) - pad) / TILE); i <= Math.floor((Math.max(s[0], g[0]) + pad) / TILE); i++)
+    for (let j = Math.floor((Math.min(s[1], g[1]) - pad) / TILE); j <= Math.floor((Math.max(s[1], g[1]) + pad) / TILE); j++) {
+      const ctr = [(i + .5) * TILE, (j + .5) * TILE];
+      if (segDist(ctr) <= pad + half) out.push({ key: i + "," + j, bb: { s: i * TILE, w: j * TILE, n: (i + 1) * TILE, e: (j + 1) * TILE } });
+    }
+  return out;
+}
+
+async function loadArea(s, g, prog) {
+  const pad = Math.max(0.008, (Math.abs(s[0] - g[0]) + Math.abs(s[1] - g[1])) * 0.15);
+  const tiles = tilesFor(s, g, pad), N = tiles.length;
+  const got = new Map();
+  // 1) メモリ・端末保存から
+  let fromStore = 0;
+  for (const t of tiles) {
+    if (mem.has(t.key)) { got.set(t.key, mem.get(t.key)); continue; }
+    const el = await getTile(t.key);
+    if (el) { got.set(t.key, el); mem.set(t.key, el); fromStore++; }
+  }
+  const need = tiles.filter(t => !got.has(t.key));
+  const saved = N - need.length;
+  // 2) 足りないマスをダウンロード
+  let done = 0, bytes = 0; const t0 = Date.now(); const active = new Map();
+  const report = () => {
+    const el = (Date.now() - t0) / 1000;
+    let eta = "";
+    if (done > 0 && done < need.length) {
+      const sec = el / done * (need.length - done) / Math.min(PARALLEL, need.length - done || 1) * Math.min(PARALLEL, need.length);
+      eta = sec > 90 ? `あと約${Math.ceil(sec / 60)}分` : `あと約${Math.ceil(sec / 10) * 10}秒`;
+    }
+    const cur = [...active.values()].join(" / ");
+    prog({ msg: `道路データ ${saved + done}/${N}マス` + (saved ? `（保存済み ${saved}）` : "") + (eta ? `  ${eta}` : "") + (cur ? `\n${cur}` : ""),
+      done: saved + done, total: N, bytes });
+  };
+  report();
+  const timer = setInterval(report, 1000);
+  try {
+    let next = 0;
+    const runner = async (w) => {
+      while (next < need.length) {
+        const t = need[next++];
+        active.set(w, "取得中…");
+        const r = await fetchOSM(t.bb, p => { active.set(w, p.msg.replace(/^\S+ /, "")); });
+        bytes += r.text.length;
+        got.set(t.key, r.json.elements); mem.set(t.key, r.json.elements);
+        await putTile(t.key, r.text);
+        done++; active.delete(w); report();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, need.length) }, (_, w) => runner(w)));
+  } finally { clearInterval(timer); }
+  if (need.length) prune();
+  // 3) マスをつなげる（同じ道・点は1つに）
+  const seen = new Set(), elements = [];
+  for (const t of tiles) for (const e of got.get(t.key)) {
+    const k = e.type[0] + e.id; if (seen.has(k)) continue; seen.add(k); elements.push(e);
+  }
+  return { elements, N, saved, fetched: need.length };
+}
 
 async function route(req, prog) {
   const { s, g, hosoi } = req;
-  const pad = Math.max(0.008, (Math.abs(s[0] - g[0]) + Math.abs(s[1] - g[1])) * 0.15);
-  const bb = { s: Math.min(s[0], g[0]) - pad, w: Math.min(s[1], g[1]) - pad, n: Math.max(s[0], g[0]) + pad, e: Math.max(s[1], g[1]) + pad };
   const t0 = Date.now();
-  let osm;
-  if (cache && inside(bb, cache.bb)) { osm = cache.osm; prog({ stage: 1, msg: "前に取ったデータを使います" }); }
-  else {
-    prog({ stage: 1, msg: "保存したデータをさがし中" });
-    const hit = await loadOSM(bb);
-    if (hit) {
-      osm = hit.osm; cache = { bb: hit.bb, osm };
-      const days = Math.floor((Date.now() - hit.savedAt) / 864e5);
-      prog({ stage: 1, msg: `保存したデータを使います（${days ? days + "日前" : "今日"}取得）` });
-    } else {
-      prog({ stage: 1, msg: "道路データ取得" });
-      const r = await fetchOSM(bb, p => prog({ stage: 1, ...p }));
-      osm = r.json; cache = { bb, osm };
-      prog({ stage: 1, msg: "端末に保存中" });
-      await saveOSM(bb, r.text);
-    }
-  }
-  prog({ stage: 2, msg: "道のつながりを作成中" });
-  const G = buildGraph(osm, hosoi);
+  const osm = await loadArea(s, g, p => prog({ stage: 1, ...p }));
+  prog({ stage: 2, msg: "道のつながりを作成中", done: 0, total: 1 });
+  const G = buildGraph(osm, hosoi, r => prog({ stage: 2, msg: "道のつながりを作成中", done: r, total: 1 }));
   const [sn, sd] = nearest(G, s[0], s[1]), [gn, gd] = nearest(G, g[0], g[1]);
-  prog({ stage: 3, msg: `ルート探索中（道の点 ${G.nNodes.toLocaleString()} 個）` });
-  const path = dijkstra(G, sn, gn, false), spath = dijkstra(G, sn, gn, true);
+  const msg3 = `ルート探索中（道の点 ${G.nNodes.toLocaleString()} 個）`;
+  prog({ stage: 3, msg: msg3, done: 0, total: 1 });
+  const path = dijkstra(G, sn, gn, false, r => prog({ stage: 3, msg: msg3, done: r * 0.6, total: 1 }));
+  const spath = dijkstra(G, sn, gn, true, r => prog({ stage: 3, msg: msg3, done: 0.6 + r * 0.4, total: 1 }));
   const a = analyze(G, path), sa = analyze(G, spath);
   return {
     route: path.map(i => [G.lat[i], G.lon[i]]), short: spath.map(i => [G.lat[i], G.lon[i]]),
     ok: a.ok, ng: a.ng, kinds: a.kinds, len: a.len, slen: sa.len, snapS: sd, snapG: gd,
-    nNodes: G.nNodes, nDanger: G.nDanger, sec: (Date.now() - t0) / 1000,
+    nNodes: G.nNodes, nDanger: G.nDanger, sec: (Date.now() - t0) / 1000, tiles: osm.N, saved: osm.saved,
   };
 }
 
@@ -417,7 +486,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     } catch (e) { self.postMessage({ type: "error", msg: e.message }); }
   };
 }
-if (typeof module !== "undefined") module.exports = { buildGraph, dijkstra, analyze, nearest, route, isWide, wayPenalty, overpassQuery };
+if (typeof module !== "undefined") module.exports = { buildGraph, dijkstra, analyze, nearest, route, isWide, wayPenalty, overpassQuery, tilesFor };
 </script>
 <script>
 "use strict";
@@ -528,8 +597,7 @@ const STAGES = ["", "1/3 道路データ", "2/3 道のつながり", "3/3 ルー
 let tStart = 0, tickTimer = null, lastProg = {};
 function showProg() {
   const p = lastProg, el = ((Date.now() - tStart) / 1000).toFixed(0);
-  let t = `${STAGES[p.stage] || ""}  ${p.msg || ""}  ${el}秒`;
-  if (p.done) t += `  ${(p.done / 1048576).toFixed(1)} MB`;
+  let t = `${STAGES[p.stage] || ""}  経過 ${el}秒` + (p.bytes ? `  受信 ${(p.bytes / 1048576).toFixed(1)} MB` : "") + `\n${p.msg || ""}`;
   setMsg(t, false);
   if (p.total) setBar(p.done / p.total); else setBar(null);
 }
@@ -540,10 +608,10 @@ worker.onmessage = ev => {
     $("stv").textContent = `${m.n}件・${(m.bytes / 1048576).toFixed(1)} MB（30日で自動更新）`;
     return;
   }
-  if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total }; showProg(); return; }
+  if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
   clearInterval(tickTimer); $("go").disabled = false;
   if (m.type === "error") { setBar(0); setMsg(m.msg, true); return; }
-  setBar(1); setMsg(`できた！（${m.sec.toFixed(1)}秒・道の点 ${m.nNodes.toLocaleString()} 個）`);
+  setBar(1); setMsg(`できた！（${m.sec.toFixed(1)}秒・${m.tiles}マス中 ${m.saved}マスは保存データ・道の点 ${m.nNodes.toLocaleString()} 個）`);
   showRoute({ route: m.route, short: m.short, ok: m.ok, ng: m.ng, kinds: m.kinds, len: m.len, slen: m.slen }, true);
 };
 
