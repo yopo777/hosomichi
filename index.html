@@ -740,13 +740,14 @@ function nearestOnRoute(p) {
 function onPos(p) {
   const ll = [p.coords.latitude, p.coords.longitude];
   updHeading(p.coords, ll);
+  const first = !me;
   if (!me) {
     acc = L.circle(ll, { radius: p.coords.accuracy, color: "#1a73e8", weight: 1, fillOpacity: .1, interactive: false }).addTo(map);
     me = L.marker(ll, { icon: icDot, interactive: false, zIndexOffset: 1000, rotateWithView: true, rotation: 0 }).addTo(map);
   }
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
   applyBearing();
-  if (follow) map.setView(ll, Math.max(map.getZoom(), 16), { animate: true });
+  if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
   if (cur && cur.route.length > 1) {
     const [off, rest] = nearestOnRoute(ll), nav = $("nav");
     nav.style.display = "block";
@@ -759,12 +760,11 @@ $("gps").onclick = () => {
   if (wid === null) {
     if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
     wid = navigator.geolocation.watchPosition(onPos, e => setMsg("位置情報エラー: " + e.message, true), { enableHighAccuracy: true, maximumAge: 2000 });
-    follow = true; $("gps").classList.add("on"); wake();
+    setFollow(true); wake();
     $("dir").style.display = "block";
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } else {
-    follow = !follow; $("gps").classList.toggle("on", follow);
-    if (follow && me) map.setView(me.getLatLng(), Math.max(map.getZoom(), 16));
+    setFollow(!follow);
   }
 };
 $("dir").onclick = () => {
@@ -773,7 +773,15 @@ $("dir").onclick = () => {
   if (!headUp) $("dirL").textContent = "北が上";
   applyBearing();
 };
-map.on("dragstart", () => { follow = false; $("gps").classList.remove("on"); });
+// ナビ中は地図を動かせない（拡大・縮小だけ。自分の位置を中心に）。◎をもう一度押すまで解除しない
+function setFollow(on) {
+  follow = on;
+  $("gps").classList.toggle("on", on);
+  const z = on ? "center" : true;
+  map.options.touchZoom = z; map.options.scrollWheelZoom = z; map.options.doubleClickZoom = z;
+  if (on) { map.dragging.disable(); if (me) map.setView(me.getLatLng(), Math.max(map.getZoom(), 16)); }
+  else map.dragging.enable();
+}
 document.addEventListener("visibilitychange", () => { if (wid !== null && document.visibilityState === "visible") wake(); });
 
 // ---------- 共有URLから開いたとき ----------
