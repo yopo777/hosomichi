@@ -72,7 +72,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1647</small></span><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1702</small></span><button id="tog">たたむ</button></div>
   <div class="body">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
@@ -109,6 +109,9 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   </div>
 </div>
 <div id="nav"></div>
+<div id="inapp" style="display:none;position:absolute;left:8px;right:8px;bottom:calc(90px + env(safe-area-inset-bottom));z-index:1001;background:#333;color:#fff;
+  border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">📱 X などのアプリの中で開いてるよ。現在地ナビを使うときは「︙」→「ブラウザで開く」で Chrome や Safari で開いてね
+  <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
 <button id="gps" title="現在地についていく">◎</button>
 <button id="lay" title="地図の種類">🗺<small id="layL"></small></button>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
@@ -723,11 +726,30 @@ async function geocode(text) {
   }
   throw new Error(`「${text}」が見つかりませんでした。マンション名やお店の名前は見つからないことがあるよ。住所かGoogleマップのURLで入れてみてね`);
 }
+// ---------- 位置情報のエラーと、アプリ内ブラウザ（X など）の案内 ----------
+const UA = navigator.userAgent;
+const IN_APP = /Twitter|TwitterAndroid|\bX\/|FBAN|FBAV|Instagram|Line\/|; wv\)/i.test(UA);
+function geoErrText(e) {
+  if (e && e.code === 1) {
+    return IN_APP
+      ? "このアプリの中のブラウザでは位置情報が使えないみたい。右下か右上の「︙」から「ブラウザで開く」を選んで、Chrome や Safari で開いてね"
+      : "位置情報が許可されてないよ。ブラウザのアドレスバーの🔒（またはサイトの設定）から「位置情報」を「許可」にしてね";
+  }
+  if (e && e.code === 3) return "現在地がとれませんでした（時間切れ）。空が見える所でもう一度ためしてね";
+  return "現在地がとれませんでした" + (e && e.message ? "：" + e.message : "");
+}
+function onGeoErr(e) {
+  if (wid !== null) navigator.geolocation.clearWatch(wid);
+  wid = null; follow = false; $("gps").classList.remove("on"); $("dir").style.display = "none";
+  map.dragging.enable();
+  $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
+  setMsg(geoErrText(e), true);
+}
 function getHere(timeout = 15000) {
   return new Promise((ok, ng) => {
     if (!navigator.geolocation) return ng(new Error("位置情報が使えません"));
     navigator.geolocation.getCurrentPosition(p => ok([p.coords.latitude, p.coords.longitude]),
-      e => ng(new Error("現在地がとれませんでした: " + e.message)), { enableHighAccuracy: true, timeout });
+      e => ng(new Error(geoErrText(e))), { enableHighAccuracy: true, timeout });
   });
 }
 
@@ -953,7 +975,7 @@ async function wake() { try { lock = await navigator.wakeLock.request("screen");
 $("gps").onclick = () => {
   if (wid === null) {
     if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
-    wid = navigator.geolocation.watchPosition(onPos, e => setMsg("位置情報エラー: " + e.message, true), { enableHighAccuracy: true, maximumAge: 2000 });
+    wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 });
     setFollow(true); wake();
     $("dir").style.display = "block";
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
@@ -1042,6 +1064,8 @@ $("bSave").onclick = () => {
   if (lsSet(RKEY, rs)) { updSaveBtn(); renderList(); }
 };
 renderList();
+
+if (IN_APP) $("inapp").style.display = "block";
 
 // ---------- 開いたとき：共有URL → なければ前回のルート ----------
 if (location.hash.includes("r=")) loadHash();
