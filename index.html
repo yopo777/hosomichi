@@ -85,7 +85,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2025</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.2030</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div class="body">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
@@ -241,13 +241,13 @@ class StopError extends Error { constructor() { super("止めたよ"); this.stop
 const checkStop = () => { if (stopReq) throw new StopError(); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function fetchOSM(b, prog, start = 0) {
+async function fetchOSM(b, prog, start = 0, quick = false) {
   const body = "data=" + encodeURIComponent(overpassQuery(b));
   const urls = OVERPASS_URLS.map((_, i) => OVERPASS_URLS[(i + start) % OVERPASS_URLS.length]);
   let last;
   // サーバーが混んでいる（502/504/429 など）ときは、だんだん長く待ちながら何回かやりなおす
   const WAITS = [10, 20, 40, 60, 90];
-  for (let round = 0; round <= WAITS.length; round++) {
+  for (let round = 0; round <= (quick ? 0 : WAITS.length); round++) {   // quick：予備の古いデータがあるので1周だけ
     for (const url of urls) {
       const host = new URL(url).host;
       try {
@@ -279,7 +279,7 @@ async function fetchOSM(b, prog, start = 0) {
         last = e; prog({ msg: `${host} 失敗: ${e.message}`, warn: true });
       }
     }
-    if (round < WAITS.length) {
+    if (!quick && round < WAITS.length) {
       for (let sec = WAITS[round]; sec > 0; sec--) {
         prog({ msg: `サーバーが混んでるみたい（${last?.message || ""}）。${sec}秒後にもう一度ためすよ（${round + 1}/${WAITS.length}回目）` });
         await sleep(1000); checkStop();
@@ -491,7 +491,8 @@ function analyze(G, path) {
 // マスの大きさ：近場は細かく（取る量を少なく）、遠い所は大きめ（問い合わせ回数を少なく）
 const tileFor = (s, g) => hav(s[0], s[1], g[0], g[1]) <= 6000 ? 0.005 : 0.01;   // 約550m角 / 約1.1km角
 const PARALLEL = 4;                // 同時に取るマスの数（サーバーを分けて並行で）
-const DB_NAME = "hosomichi", STORE = "tiles", MAX_AGE = 30 * 864e5, MAX_TILES = 12000;
+// 道路データはできるだけたくさん・長く（1年）とっておく
+const DB_NAME = "hosomichi", STORE = "tiles", MAX_AGE = 365 * 864e5, MAX_TILES = 50000;
 const mem = new Map();             // key -> elements
 let dbp = null;
 function openDB() {
@@ -514,8 +515,8 @@ function openDB() {
 function req(r) { return new Promise((ok, ng) => { r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); }); }
 async function store(mode) { const db = await openDB(); return db ? db.transaction(STORE, mode).objectStore(STORE) : null; }
 async function pack(text) {
-  // スマホではgzipが重いので、そのまま保存する（容量は増えるけど速い）
-  if (false && typeof CompressionStream !== "undefined") {
+  // 長くたくさんとっておくので gzip でちぢめる（保存はルートを出したあとなので待たせない）
+  if (typeof CompressionStream !== "undefined") {
     const s = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
     return { gz: true, blob: await new Response(s).blob() };
   }
@@ -531,8 +532,8 @@ async function getTile(key) {
     const st = await store("readonly"); if (!st) return null;
     const r = await req(st.get(key));
     if (!r) return null;
-    if (Date.now() - r.savedAt > MAX_AGE) return null;
-    return (await unpack(r)).elements;
+    const el = (await unpack(r)).elements;
+    return { el, stale: Date.now() - r.savedAt > MAX_AGE };   // 古くても、取れなかったときの予備に使う
   } catch { return null; }
 }
 async function putTile(key, text) {
@@ -546,7 +547,7 @@ async function prune() {
   try {
     const st = await store("readonly"); if (!st) return;
     const recs = (await req(st.getAll())).sort((a, b) => b.savedAt - a.savedAt);
-    const now = Date.now(), del = recs.filter((r, i) => i >= MAX_TILES || now - r.savedAt > MAX_AGE * 2);
+    const now = Date.now(), del = recs.filter((r, i) => i >= MAX_TILES || now - r.savedAt > MAX_AGE * 3);
     if (del.length) { const w = await store("readwrite"); for (const r of del) await req(w.delete(r.key)); }
   } catch {}
 }
@@ -621,9 +622,11 @@ async function route(req, prog, partial) {
   });
   const setTile = (key, el) => { got.set(key, el); mem.set(key, el); (waiters.get(key) || []).forEach(r => r()); waiters.delete(key); };
   prog({ stage: 1, msg: `保存したデータをさがし中（${N}マス）`, done: 0, total: N });
+  const stale = new Map();
   await Promise.all(tiles.map(async t => {
-    const el = mem.get(t.key) || await getTile(t.key);
-    if (el) setTile(t.key, el);
+    if (mem.has(t.key)) return setTile(t.key, mem.get(t.key));
+    const r = await getTile(t.key);
+    if (r && !r.stale) setTile(t.key, r.el); else if (r) stale.set(t.key, r.el);
   }));
   const saved = got.size, need = tiles.filter(t => !got.has(t.key));
   let done = 0, bytes = 0, fetchErr = null, stage = 1, stageMsg = "";
@@ -646,10 +649,14 @@ async function route(req, prog, partial) {
       const t = need[next++];
       active.set(w, "取得中…");
       try {
-        const r = await fetchOSM(t.bb, p => { active.set(w, p.msg); }, w);
+        const r = await fetchOSM(t.bb, p => { active.set(w, p.msg); }, w, stale.has(t.key));
         bytes += r.text.length; pendingSaves.push([t.key, r.text]);
         done++; active.delete(w); setTile(t.key, r.json.elements); report();
-      } catch (e) { if (!e.stopped) fetchErr = e; active.delete(w); [...waiters.values()].flat().forEach(r => r()); if (e.stopped) return; }
+      } catch (e) {
+        if (!e.stopped && stale.has(t.key)) {   // 取れなかったけど、1年より前のデータがあるならそれを使う
+          setTile(t.key, stale.get(t.key)); done++; active.delete(w); report(); continue;
+        }
+        if (!e.stopped) fetchErr = e; active.delete(w); [...waiters.values()].flat().forEach(r => r()); if (e.stopped) return; }
     }
   };
   const fetching = Promise.all(Array.from({ length: Math.min(PARALLEL, need.length) }, (_, w) => runner(w)));
@@ -927,7 +934,7 @@ worker.onmessage = ev => {
   const m = ev.data;
   if (m.type === "stats") {
     $("store").style.display = m.n ? "block" : "none";
-    $("stv").textContent = `${m.n}件・${(m.bytes / 1048576).toFixed(1)} MB（30日で自動更新）`;
+    $("stv").textContent = `${m.n}件・${(m.bytes / 1048576).toFixed(1)} MB（1年で自動更新）`;
     return;
   }
   if (m.type === "short") {   // あとから届く「ただの最短」
@@ -964,6 +971,8 @@ worker.onmessage = ev => {
   if (job && job.prefix) cur.slen = 0;
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
   job = null;
+  // 保存した道路データをブラウザに勝手に消されないようにお願いする（できるブラウザだけ）
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
 };
 // ---------- 計算の「お仕事」と、途中からの再開 ----------
 let job = null;   // { g, cfg, prefix: 続きを計算するときの、もう決まっているルート }
