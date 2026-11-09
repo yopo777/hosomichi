@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0019</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0026</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -175,7 +175,7 @@ const DEFAULT_CFG = {
   bridge: 3,             // 歩道橋・地下道（歩行者用）: 倍率 or "no"
   unpaved: 20,           // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
-  midCross: "any",       // 2車線の道の横断: "must" / "prefer" / "any"
+  midCross: 0,           // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
 const OTHER_PENALTY = 2.0;
@@ -185,6 +185,8 @@ const UNPAVED = new Set(["gravel", "fine_gravel", "pebblestone", "unpaved", "dir
   "sand", "mud", "compacted", "woodchips", "rock", "grass_paver"]);
 const SIGNAL_RADIUS = 35, CROSSWALK_RADIUS = 20;
 const HARD = 3000, SOFT = 500;    // 横断ルールを守れないときの追加コスト(m相当)
+// 2車線の横断コスト。数字(m)か、むかしの設定の文字
+const midPen = v => typeof v === "number" ? v : ({ must: HARD, prefer: SOFT, any: 0 })[v] ?? (isFinite(+v) ? +v : 0);
 const MID_ROADS = new Set(["tertiary", "secondary", "primary", "trunk"]);
 const FOOTLIKE = new Set(["footway", "pedestrian", "path", "steps"]);
 const KIND_JA = {
@@ -415,7 +417,7 @@ function buildGraph(osm, cfg, onProg) {
     const sig = near(gSig, i, SIGNAL_RADIUS), xw = near(gXw, i, CROSSWALK_RADIUS);
     xkind[i] = sig ? 1 : xw ? 2 : 3;
     if (lvl[i] === 2) xcost[i] = cfg.wideCross === "any" ? 0 : sig ? 0 : (cfg.wideCross === "crosswalk" && xw) ? 0 : HARD;
-    else xcost[i] = cfg.midCross === "any" || sig || xw ? 0 : cfg.midCross === "must" ? HARD : SOFT;
+    else xcost[i] = sig || xw ? 0 : midPen(cfg.midCross);
   }
   return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0) };
 }
@@ -1657,7 +1659,7 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
-  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: "any" };
+  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
@@ -1666,9 +1668,10 @@ const OTHER_ROWS = [
   ["bridge", "歩道橋・地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
   ["unpaved", "砂利・土の道", [[1, "気にしない"], [3, "少し避ける"], [20, "かなり避ける"], ["no", "通らない"]]],
   ["wideCross", "4車線以上の道を渡る", [["signal", "信号のある所だけ"], ["crosswalk", "信号か横断歩道"], ["any", "どこでも"]]],
-  ["midCross", "2車線の道を渡る", [["must", "信号か横断歩道の所だけ"], ["prefer", "なるべく横断歩道（500mまで遠回り）"], ["any", "どこでも"]]],
+  ["midCross", "2車線の道を横断歩道以外で渡る", [[0, "どこでも渡る"], [100, "100mまでなら横断歩道へ"], [300, "300mまでなら横断歩道へ"], [500, "500mまでなら横断歩道へ"], [1000, "1kmまでなら横断歩道へ"], [3000, "信号か横断歩道の所だけ"]]],
 ];
-let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } catch {} return structuredClone(CFG_DEF); })();
+let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) { const m = { must: 3000, prefer: 500, any: 0 }; if (c.midCross in m) c.midCross = m[c.midCross];   // むかしの設定を数字に
+      return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } } catch {} return structuredClone(CFG_DEF); })();
 function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} }
 const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${String(v) === String(val) ? " selected" : ""}>${t}</option>`).join("");
 function renderCfg() {
