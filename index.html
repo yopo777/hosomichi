@@ -2,6 +2,9 @@
 <html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#d93025">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="細道ナビ">
 <title>細道ルートナビ hosomichi</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -16,6 +19,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #head{display:flex;align-items:center;gap:8px;font-weight:bold}
 #head .t{flex:1}
 #tog{border:none;background:#eee;border-radius:8px;padding:4px 10px;font-size:14px}
+#fs{border:none;background:#eee;border-radius:8px;padding:4px 10px;font-size:16px;line-height:1.2;display:none}
 .row{display:flex;gap:6px;margin-top:8px;align-items:center}
 .row label{width:3.2em;font-size:13px;color:#555}
 .row input[type=text]{flex:1;min-width:0;padding:9px;border:1px solid #ccc;border-radius:8px;font-size:15px}
@@ -72,7 +76,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1702</small></span><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1109.1717</small></span><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div class="body">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
@@ -854,6 +858,19 @@ $("bNew").onclick = () => { history.replaceState(null, "", location.pathname); $
 for (const id of ["from", "to"]) $(id).addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); e.target.blur(); if (!$("go").disabled) $("go").click(); }
 });
+// 全画面（Android の Chrome など。iPhone は「ホーム画面に追加」で全画面っぽく使える）
+const fsEl = document.documentElement;
+const canFs = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
+const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+if (canFs) $("fs").style.display = "inline-block";
+$("fs").onclick = async () => {
+  try {
+    if (isFs()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else await (fsEl.requestFullscreen || fsEl.webkitRequestFullscreen).call(fsEl, { navigationUI: "hide" });
+  } catch (e) { setMsg("全画面にできませんでした（このブラウザは対応してないかも）", true); }
+};
+const onFs = () => { $("fs").textContent = isFs() ? "✕" : "⛶"; $("fs").title = isFs() ? "全画面をやめる" : "全画面"; setTimeout(() => map.invalidateSize(), 300); if (wid !== null) wake(); };
+document.addEventListener("fullscreenchange", onFs); document.addEventListener("webkitfullscreenchange", onFs);
 $("tog").onclick = () => { const p = $("panel"); p.classList.toggle("min"); $("tog").textContent = p.classList.contains("min") ? "ひらく" : "たたむ"; };
 // ---------- 細かい設定 ----------
 const PEN_ROWS = [
