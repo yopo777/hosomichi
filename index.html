@@ -55,6 +55,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <div class="row"><label>細道度</label><input type="range" id="hosoi" min="1" max="10" value="5"><b id="hv">5</b></div>
     <div style="font-size:11px;color:#888;margin-top:2px">地図をタップしても出発・到着を選べるよ。大きいほど遠回りしても細い道</div>
     <button id="go">ルートを作る</button>
+    <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
+      <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
     <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>
     <div id="result">
       <div id="sum"></div>
@@ -167,9 +169,10 @@ async function fetchOSM(b, prog) {
         const buf = new Uint8Array(done); let o = 0;
         for (const c of chunks) { buf.set(c, o); o += c.length; }
         prog({ msg: "データを読みこみ中", done, total: done });
-        const json = JSON.parse(new TextDecoder().decode(buf));
+        const text = new TextDecoder().decode(buf);
+        const json = JSON.parse(text);
         if (json.remark && !json.elements?.length) throw new Error(json.remark.slice(0, 80));
-        return json;
+        return { json, text };
       } catch (e) {
         last = e; prog({ msg: `${host} 失敗: ${e.message}`, warn: true });
       }
@@ -308,8 +311,63 @@ function analyze(G, path) {
   return { ok, ng, kinds, len };
 }
 
-// bboxキャッシュ（範囲内なら再ダウンロードしない）
+// ==== 保存（メモリ ＋ IndexedDB） ====
+// 範囲内なら再ダウンロードしない。IndexedDB には gzip でちぢめて保存
 let cache = null;
+const DB_NAME = "hosomichi", STORE = "osm", MAX_AGE = 30 * 864e5, MAX_ENTRIES = 20;
+let dbp = null;
+function openDB() {
+  if (dbp) return dbp;
+  dbp = new Promise(ok => {
+    if (typeof indexedDB === "undefined") return ok(null);
+    try {
+      const r = indexedDB.open(DB_NAME, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => ok(null);
+    } catch { ok(null); }
+  });
+  return dbp;
+}
+function req(r) { return new Promise((ok, ng) => { r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); }); }
+async function store(mode) { const db = await openDB(); return db ? db.transaction(STORE, mode).objectStore(STORE) : null; }
+async function allRecs() { const st = await store("readonly"); return st ? await req(st.getAll()) : []; }
+async function delRec(id) { const st = await store("readwrite"); if (st) await req(st.delete(id)); }
+async function pack(text) {
+  if (typeof CompressionStream !== "undefined") {
+    const s = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+    return { gz: true, blob: await new Response(s).blob() };
+  }
+  return { gz: false, blob: new Blob([text]) };
+}
+async function unpack(rec) {
+  let s = rec.blob.stream();
+  if (rec.gz) s = s.pipeThrough(new DecompressionStream("gzip"));
+  return JSON.parse(await new Response(s).text());
+}
+async function saveOSM(bb, text) {
+  try {
+    const { gz, blob } = await pack(text);
+    const now = Date.now();
+    for (const r of await allRecs())   // 古いもの・新しい範囲にふくまれるものは消す
+      if (now - r.savedAt > MAX_AGE || inside(r.bb, bb)) await delRec(r.id);
+    const st = await store("readwrite"); if (!st) return;
+    await req(st.add({ bb, savedAt: now, gz, blob, size: blob.size, raw: text.length }));
+    const recs = (await allRecs()).sort((a, b) => b.savedAt - a.savedAt);
+    for (const r of recs.slice(MAX_ENTRIES)) await delRec(r.id);
+  } catch (e) { console.warn("保存できませんでした", e); }
+}
+async function loadOSM(bb) {
+  const now = Date.now();
+  const hits = (await allRecs()).filter(r => now - r.savedAt <= MAX_AGE && inside(bb, r.bb)).sort((a, b) => a.size - b.size);
+  for (const r of hits) { try { return { osm: await unpack(r), bb: r.bb, savedAt: r.savedAt }; } catch (e) { await delRec(r.id); } }
+  return null;
+}
+async function stats() {
+  const recs = await allRecs();
+  return { n: recs.length, bytes: recs.reduce((a, r) => a + (r.size || 0), 0) };
+}
+async function clearAll() { const st = await store("readwrite"); if (st) await req(st.clear()); cache = null; }
 function inside(a, b) { return a.s >= b.s && a.w >= b.w && a.n <= b.n && a.e <= b.e; }
 
 async function route(req, prog) {
@@ -320,9 +378,19 @@ async function route(req, prog) {
   let osm;
   if (cache && inside(bb, cache.bb)) { osm = cache.osm; prog({ stage: 1, msg: "前に取ったデータを使います" }); }
   else {
-    prog({ stage: 1, msg: "道路データ取得" });
-    osm = await fetchOSM(bb, p => prog({ stage: 1, ...p }));
-    cache = { bb, osm };
+    prog({ stage: 1, msg: "保存したデータをさがし中" });
+    const hit = await loadOSM(bb);
+    if (hit) {
+      osm = hit.osm; cache = { bb: hit.bb, osm };
+      const days = Math.floor((Date.now() - hit.savedAt) / 864e5);
+      prog({ stage: 1, msg: `保存したデータを使います（${days ? days + "日前" : "今日"}取得）` });
+    } else {
+      prog({ stage: 1, msg: "道路データ取得" });
+      const r = await fetchOSM(bb, p => prog({ stage: 1, ...p }));
+      osm = r.json; cache = { bb, osm };
+      prog({ stage: 1, msg: "端末に保存中" });
+      await saveOSM(bb, r.text);
+    }
   }
   prog({ stage: 2, msg: "道のつながりを作成中" });
   const G = buildGraph(osm, hosoi);
@@ -339,9 +407,13 @@ async function route(req, prog) {
 
 if (typeof self !== "undefined" && typeof self.postMessage === "function" && typeof module === "undefined") {
   self.onmessage = async ev => {
+    const d = ev.data;
     try {
-      const r = await route(ev.data, p => self.postMessage({ type: "prog", ...p }));
+      if (d.cmd === "stats") return self.postMessage({ type: "stats", ...(await stats()) });
+      if (d.cmd === "clear") { await clearAll(); return self.postMessage({ type: "stats", ...(await stats()) }); }
+      const r = await route(d, p => self.postMessage({ type: "prog", ...p }));
       self.postMessage({ type: "done", ...r });
+      self.postMessage({ type: "stats", ...(await stats()) });
     } catch (e) { self.postMessage({ type: "error", msg: e.message }); }
   };
 }
@@ -463,6 +535,11 @@ function showProg() {
 }
 worker.onmessage = ev => {
   const m = ev.data;
+  if (m.type === "stats") {
+    $("store").style.display = m.n ? "block" : "none";
+    $("stv").textContent = `${m.n}件・${(m.bytes / 1048576).toFixed(1)} MB（30日で自動更新）`;
+    return;
+  }
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total }; showProg(); return; }
   clearInterval(tickTimer); $("go").disabled = false;
   if (m.type === "error") { setBar(0); setMsg(m.msg, true); return; }
@@ -531,6 +608,8 @@ $("bGpx").onclick = () => {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([x], { type: "application/gpx+xml" }));
   a.download = "hosomichi_" + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "") + ".gpx"; a.click();
 };
+$("bClear").onclick = () => { if (confirm("端末に保存した道路データを消す？（次は取りなおしになるよ）")) worker.postMessage({ cmd: "clear" }); };
+worker.postMessage({ cmd: "stats" });
 $("bNew").onclick = () => { history.replaceState(null, "", location.pathname); $("bNew").style.display = "none"; $("result").style.display = "none"; layer.clearLayers(); cur = null; };
 
 // ---------- パネル ----------
