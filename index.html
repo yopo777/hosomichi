@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0004</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0007</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -180,8 +180,8 @@ const DEFAULT_CFG = {
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
   bridge: 3,             // 歩道橋・地下道（歩行者用）: 倍率 or "no"
   unpaved: 20,           // 砂利・土の道: 倍率 or "no"（1=気にしない）
-  wideCross: "signal",   // 4車線以上の横断: "signal" / "crosswalk" / "any"
-  midCross: "prefer",    // 2車線の道の横断: "must" / "prefer" / "any"
+  wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
+  midCross: "any",       // 2車線の道の横断: "must" / "prefer" / "any"
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
 const OTHER_PENALTY = 2.0;
@@ -1665,11 +1665,11 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
-  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "quick", turn: 100, area: "normal", steps: "no", bridge: 3, unpaved: 20, wideCross: "signal", midCross: "prefer" };
+  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: "any" };
 const PRESETS = {
   std: CFG_DEF,
   near: { ...CFG_DEF, pen: { ...CFG_DEF.pen, service: 1, unclassified: 1, tertiary: 1, secondary: 1.2, primary: 1.5, trunk: 3, footway: 1.5, path: 1.2, track: 1.2 }, bridge: 1.5, midCross: "any" },
-  hoso: { ...CFG_DEF, pen: { ...CFG_DEF.pen, service: 1.5, unclassified: 1.5, tertiary: 5, secondary: 12, primary: 20, trunk: "no", footway: 3, pedestrian: 2, path: 2, track: 2 }, midCross: "must" },
+  hoso: { ...CFG_DEF, pen: { ...CFG_DEF.pen, service: 1.5, unclassified: 1.5, tertiary: 5, secondary: 12, primary: 20, trunk: "no", footway: 3, pedestrian: 2, path: 2, track: 2 }, wideCross: "signal", midCross: "must" },
 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
