@@ -41,7 +41,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 .pre button{flex:1;padding:8px 4px;border:1px solid #ccc;background:#fff;border-radius:8px;font-size:13px}
 .pre button.on{border-color:#d93025;background:#fdecea;color:#d93025;font-weight:bold}
 .tabs{display:flex;gap:4px;margin-top:8px;border-bottom:2px solid #eee}
-.tabs button{flex:1;border:none;background:none;padding:6px;font-size:14px;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tabs button{flex:1;border:none;background:none;padding:6px 2px;font-size:13px;white-space:nowrap;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px}
 .tabs button.on{color:#d93025;border-bottom-color:#d93025;font-weight:bold}
 #logN{font-size:11px;color:#999;font-weight:normal}
 #log{height:55vh;overflow:auto;background:#1e1e1e;color:#ddd;border-radius:8px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
@@ -102,10 +102,27 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1138</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1310</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div id="tabData" style="display:none">
+      <div style="font-size:11px;color:#666;margin-top:6px">ルートを作るのに使う道路データのこと。地図がカラーの所は、もう端末に入っているよ</div>
+    <div id="pfBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+<div style="margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:6px">
+        <button class="ib" id="pkAll" style="font-size:12px;width:100%">📦 関東の配布データをまとめて入れる</button>
+        <div id="pkMsg" style="font-size:11px;color:#666;margin-top:2px">配布データがある所は、ルートを作るときもサーバーにアクセスしないですぐ取れるよ。まとめて入れるのはパソコン（Wi-Fi）向け（数百MB）</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="pfAuto">🗺 地図のまわりの道路データを自動でためる</label>
+      <div style="font-size:11px;color:#b45309;font-weight:bold;margin-top:2px">⚠ パソコン（Wi-Fi・光回線）用だよ。スマホではオンにしないでね！ギガをたくさん使っちゃう（1日 最大100MBくらい）</div>
+      <div id="pfMsg" style="font-size:11px;color:#666;margin-top:2px">もう持っている道路データのとなりを、いつも使うあたりに近い順に、ゆっくり1マスずつ取るよ（ルート計算中はお休み）</div>
+      <div class="btns" style="margin-top:6px"><button class="ib" id="pfExp" style="font-size:12px">⬇ ためたデータを書き出す</button><button class="ib" id="pfImp" style="font-size:12px">⬆ 読みこむ</button></div>
+      <input type="file" id="pfFile" style="display:none">
+
+    </div>
+    <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
+      <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
+    </div>
     <div id="tabCfg" style="display:none">
       <div id="cfgBox"></div>
       <div class="btns" style="margin-top:8px"><button class="ib" id="cfgReset">はじめの設定にもどす</button></div>
@@ -122,19 +139,6 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <button id="go">ルートを作る</button>
     <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
       <div id="list"></div></div>
-    <div id="pfBox" style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-      <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="pfAuto">🗺 地図のまわりの道路データを自動でためる</label>
-      <div style="font-size:11px;color:#b45309;font-weight:bold;margin-top:2px">⚠ パソコン（Wi-Fi・光回線）用だよ。スマホではオンにしないでね！ギガをたくさん使っちゃう（1日 最大100MBくらい）</div>
-      <div id="pfMsg" style="font-size:11px;color:#666;margin-top:2px">もう持っている道路データのとなりを、いつも使うあたりに近い順に、ゆっくり1マスずつ取るよ（ルート計算中はお休み）</div>
-      <div class="btns" style="margin-top:6px"><button class="ib" id="pfExp" style="font-size:12px">⬇ ためたデータを書き出す</button><button class="ib" id="pfImp" style="font-size:12px">⬆ 読みこむ</button></div>
-      <input type="file" id="pfFile" style="display:none">
-      <div style="margin-top:8px;border-top:1px solid #eee;padding-top:6px">
-        <button class="ib" id="pkAll" style="font-size:12px;width:100%">📦 配布データ（東京・千葉北西部・神奈川東部・埼玉南部）をまとめて入れる</button>
-        <div id="pkMsg" style="font-size:11px;color:#666;margin-top:2px">配布データがある所は、ルートを作るときもサーバーにアクセスしないですぐ取れるよ。まとめて入れるのはパソコン（Wi-Fi）向け</div>
-      </div>
-    </div>
-    <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
-      <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
     <div id="result">
       <div id="sum"></div>
       <div class="btns">
@@ -185,6 +189,7 @@ const DEFAULT_CFG = {
   unpaved: 20,           // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
+  sidewalk: 1.5,         // 歩道（段差・柵）のある道の倍率。1＝気にしない
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
   midCross: 0,           // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
 };
@@ -390,6 +395,51 @@ function buildGraph(osm, cfg, onProg) {
   const d = (u, v) => hav(lat[u], lon[u], lat[v], lon[v]);
   const NE = osm.elements.length; let ei = 0;
   const mainWays = [];
+  const cosl0 = Math.cos((lat[0] || 35) * RAD), X = i => lon[i] * cosl0 * 111320, Y = i => lat[i] * 111320;
+  // 歩道（段差・柵があることが多い）がある道：道のすぐ横に、同じ向きの歩道の線が走っているか
+  const swPen = +cfg.sidewalk || 1, fwGrid = new Map(), GS = 20;
+  if (swPen > 1) {
+    for (const e of osm.elements) {
+      if (e.type !== "way") continue;
+      const t = e.tags || {};
+      if (!(t.highway === "footway" || t.highway === "cycleway" || (t.highway === "path" && t.footway === "sidewalk"))) continue;
+      if (t.footway === "crossing" || t.cycleway === "crossing" || t.crossing) continue;
+      const nd = e.nodes.map(id => idx.get(id)).filter(x => x !== undefined);
+      for (let k = 1; k < nd.length; k++) {
+        const ax = X(nd[k - 1]), ay = Y(nd[k - 1]), bx = X(nd[k]), by = Y(nd[k]), seg = [ax, ay, bx, by];
+        const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / GS));
+        const seen = new Set();
+        for (let s = 0; s <= n; s++) {
+          const key = Math.floor((ax + (bx - ax) * s / n) / GS) + "," + Math.floor((ay + (by - ay) * s / n) / GS);
+          if (seen.has(key)) continue; seen.add(key);
+          if (!fwGrid.has(key)) fwGrid.set(key, []); fwGrid.get(key).push(seg);
+        }
+      }
+    }
+  }
+  const SW_ROADS = new Set(["living_street", "residential", "unclassified", "service", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
+  const swTag = t => ["both", "left", "right", "separate", "yes"].includes(t.sidewalk) || ["yes", "separate"].includes(t["sidewalk:both"]) || ["yes", "separate"].includes(t["sidewalk:left"]) || ["yes", "separate"].includes(t["sidewalk:right"]);
+  const hasSW = (u, v) => {   // 区間 u→v の横（13m以内）に、平行な歩道の線があるか（半分以上の場所で）
+    const ax = X(u), ay = Y(u), bx = X(v), by = Y(v), L = Math.hypot(bx - ax, by - ay);
+    if (L < 1) return false;
+    const ux = (bx - ax) / L, uy = (by - ay) / L, n = Math.max(1, Math.round(L / 10));
+    let hit = 0;
+    for (let s = 0; s < n; s++) {
+      const f = (s + 0.5) / n, px = ax + (bx - ax) * f, py = ay + (by - ay) * f, cx = Math.floor(px / GS), cy = Math.floor(py / GS);
+      let ok = false;
+      for (let i = -1; i <= 1 && !ok; i++) for (let j = -1; j <= 1 && !ok; j++) {
+        for (const [qx, qy, rx, ry] of fwGrid.get((cx + i) + "," + (cy + j)) || []) {
+          const dx = rx - qx, dy = ry - qy, l = Math.hypot(dx, dy); if (l < 1) continue;
+          if (Math.abs((dx * ux + dy * uy) / l) < 0.93) continue;   // 平行じゃない（横断歩道など）
+          let tq = ((px - qx) * dx + (py - qy) * dy) / (l * l); tq = Math.max(0, Math.min(1, tq));
+          if (Math.hypot(px - qx - tq * dx, py - qy - tq * dy) <= 13) { ok = true; break; }
+        }
+      }
+      if (ok) hit++;
+    }
+    return hit * 2 >= n;
+  };
+  let swLen = 0;
   for (const e of osm.elements) {
     if (onProg && (++ei & 0x3fff) === 0) onProg(ei / NE * 0.9);
     if (e.type !== "way") continue;
@@ -418,11 +468,14 @@ function buildGraph(osm, cfg, onProg) {
       rname = small ? name + "（一方通行を逆向き）" : `歩道（${name}の逆向き）`;   // 太い道の逆向き＝歩道を走る（色も歩道の色）
     }
     const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
+    const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);
     for (let i = 1; i < nd.length; i++) {
       const u = nd[i - 1], v = nd[i], L = d(u, v);
       inGraph[u] = 1; inGraph[v] = 1;
-      if (fwd) adj[u].push({ v, c: L * (rev ? rp : pen), L, l: L0, k: rev ? rname : name, w: e.id });
-      if (back) adj[v].push({ v: u, c: L * (rev ? pen : rp), L, l: L0, k: rev ? name : rname, w: e.id });
+      const m = swRoad && (swAll || hasSW(u, v)) ? swPen : 1;   // 歩道のある道は避ける
+      if (m > 1) swLen += L;
+      if (fwd) adj[u].push({ v, c: L * (rev ? rp : pen) * m, L, l: L0, k: rev ? rname : name, w: e.id });
+      if (back) adj[v].push({ v: u, c: L * (rev ? pen : rp) * m, L, l: L0, k: rev ? name : rname, w: e.id });
     }
   }
   // 大きい道の向き（横断かどうか＝道の反対側に出るかを判定するため）
@@ -458,7 +511,7 @@ function buildGraph(osm, cfg, onProg) {
     if (lvl[i] === 2) xcost[i] = cfg.wideCross === "any" ? 0 : sig ? 0 : (cfg.wideCross === "crosswalk" && xw) ? 0 : HARD;
     else xcost[i] = sig || xw ? 0 : midPen(cfg.midCross);
   }
-  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0) };
+  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen };
 }
 
 // 道の「つながりのかたまり」。駅の中の通路や公園の中の小道など、外とつながってない所を見分ける
@@ -1074,7 +1127,7 @@ async function route(req, prog, partial) {
         G = buildGraph({ elements }, cfg);
         tBuild += (Date.now() - tb) / 1000; nNodes = Math.max(nNodes, G.nNodes);
         { let ne = 0; for (const a of G.adj) ne += a.length;
-          log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${wide ? "【範囲を広げてやりなおし】" : ""}`); }
+          log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${G.swLen ? `・歩道のある道 ${(G.swLen / 1000).toFixed(1)}km` : ""}${wide ? "【範囲を広げてやりなおし】" : ""}`); }
         sn = confEnd != null ? G.idx.get(confEnd) : undefined;
         if (sn === undefined) {
           const q = nearestGood(G, s[0], s[1]);
@@ -1510,7 +1563,7 @@ function onPk(m) {
   if (m.tile) { if (!cachedKeys.includes(m.tile)) cachedKeys.push(m.tile); if (Date.now() - pfDrawT > 2000) { pfDrawT = Date.now(); drawArea(); } return; }
   if (m.total != null) $("pkMsg").textContent = `${m.done}/${m.total}マス・${((m.bytes || 0) / 1048576).toFixed(1)}MB` + (m.fin ? (m.stopped ? "・止めたよ" : "・ぜんぶ入ったよ！") : "");
   else if (m.msg) $("pkMsg").textContent = m.msg;
-  if (m.fin) { pkOn = false; $("pkAll").textContent = "📦 配布データ（東京・千葉北西部・神奈川東部・埼玉南部）をまとめて入れる"; drawArea(); if (!m.stopped && m.total) chime(); }
+  if (m.fin) { pkOn = false; $("pkAll").textContent = "📦 関東の配布データをまとめて入れる"; drawArea(); if (!m.stopped && m.total) chime(); }
 }
 // 書き出し・読みこみ（ためた道路データをほかの端末や人にわたす）
 $("pfExp").onclick = () => { $("pfExp").textContent = "書き出し中…"; worker.postMessage({ cmd: "export" }); };
@@ -2063,6 +2116,7 @@ function showTab(t) {
   for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.t === t);
   $("tabRoute").style.display = t === "route" ? "" : "none";
   $("tabCfg").style.display = t === "cfg" ? "" : "none";
+  $("tabData").style.display = t === "data" ? "" : "none";
   $("tabLog").style.display = t === "log" ? "" : "none";
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
@@ -2124,12 +2178,13 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
-  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small", bigCross: "mid" };
+  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small", bigCross: "mid", sidewalk: 1.5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（おそい・まわり道〜2km）"]]],
   ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
+  ["sidewalk", "歩道（段差・柵）のある道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [6, "かなり避ける"]]],
   ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ"], ["yes", "通る（かついで上がる）"]]],
   ["bridge", "歩道橋・地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
   ["unpaved", "砂利・土の道", [[1, "気にしない"], [3, "少し避ける"], [20, "かなり避ける"], ["no", "通らない"]]],
@@ -2147,6 +2202,7 @@ function renderCfg() {
   let h = "<h4>計算</h4>" + get(["mode", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
+  h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div>';
   h += "<h4>階段・歩道橋・砂利</h4>" + get(["steps", "bridge", "unpaved"]);
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
