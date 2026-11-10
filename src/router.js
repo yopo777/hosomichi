@@ -1145,7 +1145,12 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     try {
       if (d.cmd === "stats") return self.postMessage({ type: "stats", ...(await stats()) });
       if (d.cmd === "clear") { await clearAll(); return self.postMessage({ type: "stats", ...(await stats()) }); }
-      if (d.cmd === "pack") { packBase = d.base; packIdx = null; return; }
+      if (d.cmd === "pack") {   // 配布データの場所。一覧を読んで、地図に「すぐ使える所」を出せるように画面に送る
+        packBase = d.base; packIdx = null;
+        const p = await packIndex();
+        if (p && p.size) self.postMessage({ type: "packinfo", keys: [...p], empty: packEmpty ? [...packEmpty] : [] });
+        return;
+      }
       if (d.cmd === "packAll") { pkStop = false; await packAll(p => self.postMessage({ type: "pk", ...p })); return self.postMessage({ type: "stats", ...(await stats()) }); }
       if (d.cmd === "packStop") { pkStop = true; return; }
       if (d.cmd === "autoPf") {
