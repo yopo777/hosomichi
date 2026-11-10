@@ -80,19 +80,12 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #dir{position:absolute;top:calc(50% - 10px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0;display:none}
 #dir.on{background:#1a73e8}
-#lay{position:absolute;top:calc(50% - 82px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
-  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
-#area{position:absolute;top:calc(50% - 226px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
-  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
-#area.on{background:#e6f4ea}
-#area small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 #col{position:absolute;top:calc(50% - 154px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
 #col small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 #legend{position:absolute;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));pointer-events:none;z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:6px 8px;font-size:11px;line-height:1.6;display:none;max-width:60%}
 #legend i{display:inline-block;width:18px;height:6px;border-radius:3px;margin-right:4px;vertical-align:middle}
-#lay small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 .leaflet-bottom.leaflet-right{bottom:0}
 #dir svg{display:block;margin:auto;transition:transform .3s}
 #dir small{position:absolute;right:0;bottom:-16px;text-align:right;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
@@ -107,7 +100,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0945</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1008</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -161,8 +154,6 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">📱 X などのアプリの中で開いてるよ。現在地ナビを使うときは「︙」→「ブラウザで開く」で Chrome や Safari で開いてね
   <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
 <button id="gps" title="現在地についていく">◎</button>
-<button id="lay" title="地図の種類">🗺<small id="layL"></small></button>
-<button id="area" title="道路データの範囲">📦<small>範囲</small></button>
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
@@ -960,27 +951,16 @@ const $ = id => document.getElementById(id);
 // ---------- 地図 ----------
 // 出典の表示は必要（地理院タイル・OpenStreetMap）。まちがえて開かないようにリンクにはしない
 const attr = '地理院タイル | 経路 &copy; OpenStreetMap contributors';
-const base = {
+const base = {   // 地図は淡色だけ（保存ずみの所は📦でカラーになる）
   "淡色": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr }),
-  "標準": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr }),
-  "写真": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg", { maxZoom: 18, attribution: attr }),
 };
 const map = L.map("map", { zoomControl: false, rotate: true, bearing: 0, rotateControl: false, touchRotate: false,
   shiftKeyRotate: false, compassBearing: false }).setView([35.69, 139.75], 11);
-let baseName = (() => { try { return localStorage.getItem("hosomichi_base") || "淡色"; } catch { return "淡色"; } })();
-if (!base[baseName]) baseName = "淡色";
+const baseName = "淡色";
+try { localStorage.removeItem("hosomichi_base"); } catch {}
 base[baseName].addTo(map);
 map.attributionControl.setPrefix(false);
 const layer = L.layerGroup().addTo(map);
-
-// 地図の種類ボタン（押すたびに 淡色 → 標準 → 写真）
-$("layL").textContent = baseName;
-$("lay").onclick = () => {
-  const names = Object.keys(base), next = names[(names.indexOf(baseName) + 1) % names.length];
-  map.removeLayer(base[baseName]); base[next].addTo(map); baseName = next;
-  $("layL").textContent = next;
-  try { localStorage.setItem("hosomichi_base", next); } catch {}
-};
 
 // ---------- 便利関数 ----------
 const RAD = Math.PI / 180;
@@ -1155,25 +1135,55 @@ function showProg() {
   if (p.total) setBar(p.done / p.total); else setBar(null);
 }
 // ==== 道路データの範囲：端末に保存ずみ＝うすい緑でぬる / 今の計算の範囲＝青い点線の枠 ====
-let cachedKeys = [], calcKeys = [], areaOn = lsGet("hosomichi_area", true) !== false;
+let cachedKeys = [], calcKeys = [];
+const areaOn = true;   // いつも表示
+try { localStorage.removeItem("hosomichi_area"); } catch {}
 map.createPane("areaPane"); map.getPane("areaPane").style.zIndex = 350; map.getPane("areaPane").style.pointerEvents = "none";
 const areaLayer = L.layerGroup().addTo(map), areaRend = L.canvas({ pane: "areaPane" });
 const keyBox = k => { const [T, ij] = k.split(":"), t = +T, [i, j] = ij.split(",").map(Number); return [[i * t, j * t], [(i + 1) * t, (j + 1) * t]]; };
+// 保存ずみのマスの形に切りぬいた「標準」地図
+let cachedRects = [];
+map.createPane("colorPane"); map.getPane("colorPane").style.zIndex = 250; map.getPane("colorPane").style.pointerEvents = "none";
+const ColorLayer = L.GridLayer.extend({
+  createTile(c, done) {
+    const cv = document.createElement("canvas"), sz = this.getTileSize(); cv.width = sz.x; cv.height = sz.y;
+    const o = c.scaleBy(sz), px = (la, lo) => map.project([la, lo], c.z).subtract(o);
+    const nw = map.unproject(o, c.z), se = map.unproject(o.add(sz), c.z);
+    const hit = cachedRects.filter(r => r[0] < nw.lat && r[2] > se.lat && r[1] < se.lng && r[3] > nw.lng);
+    if (!hit.length) { setTimeout(() => done(null, cv), 0); return cv; }
+    const img = new Image();
+    img.onload = () => {
+      const g = cv.getContext("2d"); g.beginPath();
+      for (const r of hit) { const a = px(r[2], r[1]), b = px(r[0], r[3]); g.rect(Math.floor(a.x), Math.floor(a.y), Math.ceil(b.x - a.x) + 1, Math.ceil(b.y - a.y) + 1); }
+      g.clip(); g.drawImage(img, 0, 0, sz.x, sz.y); done(null, cv);
+    };
+    img.onerror = () => done(null, cv);
+    img.src = `https://cyberjapandata.gsi.go.jp/xyz/std/${c.z}/${c.x}/${c.y}.png`;
+    return cv;
+  },
+});
+const colorLayer = new ColorLayer({ pane: "colorPane", maxZoom: 18, maxNativeZoom: 18 });
 function drawArea() {
-  areaLayer.clearLayers(); $("area").classList.toggle("on", areaOn);
+  areaLayer.clearLayers();
+  if (map.hasLayer(colorLayer) && (!areaOn || baseName !== "淡色")) map.removeLayer(colorLayer);
   if (!areaOn) return;
   // 保存ずみ：となりあうマスを横につなげて軽くする
+  cachedRects = [];
   const rows = new Map();
   for (const k of cachedKeys) { const [T, ij] = k.split(":"), [i, j] = ij.split(",").map(Number); const rk = T + ":" + i; if (!rows.has(rk)) rows.set(rk, []); rows.get(rk).push(j); }
   for (const [rk, js] of rows) {
     const [T, i] = rk.split(":").map(Number); js.sort((a, b) => a - b);
     for (let a = 0; a < js.length;) { let b = a; while (b + 1 < js.length && js[b + 1] === js[b] + 1) b++;
-      L.rectangle([[i * T, js[a] * T], [(i + 1) * T, (js[b] + 1) * T]], { renderer: areaRend, stroke: false, fillColor: "#34a853", fillOpacity: 0.14, interactive: false }).addTo(areaLayer);
+      cachedRects.push([i * T, js[a] * T, (i + 1) * T, (js[b] + 1) * T]);   // [南, 西, 北, 東]
       a = b + 1; }
   }
+  if (baseName === "淡色") {   // 淡色地図のときは、保存ずみの所だけカラーの「標準」地図にする
+    if (!map.hasLayer(colorLayer)) colorLayer.addTo(map);
+    colorLayer.redraw();
+  } else for (const r of cachedRects)   // ほかの地図のときは、うすい緑でぬる
+    L.rectangle([[r[0], r[1]], [r[2], r[3]]], { renderer: areaRend, stroke: false, fillColor: "#34a853", fillOpacity: 0.14, interactive: false }).addTo(areaLayer);
   for (const k of calcKeys) L.rectangle(keyBox(k), { renderer: areaRend, color: "#1a73e8", weight: 1.5, dashArray: "5 5", fill: false, interactive: false }).addTo(areaLayer);
 }
-$("area").onclick = () => { areaOn = !areaOn; lsSet("hosomichi_area", areaOn); drawArea(); };
 // ==== できたら音 ====
 let actx = null;
 function audioUnlock() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {} }
