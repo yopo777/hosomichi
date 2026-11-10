@@ -107,7 +107,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2241</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2247</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -147,7 +147,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <div class="row"><label>🔍</label><input type="text" id="jump" enterkeyhint="search" placeholder="地名・駅名で地図を動かす"></div>
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row" id="loopRow"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="loopOn">🔁 ぐるっと1周して出発にもどる</label>
-      <select id="loopKm" style="padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option>10</option><option>20</option><option selected>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
+      <select id="loopKm" style="padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option>10</option><option>20</option><option selected>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
     <div id="poiRow" style="display:none;font-size:13px;margin-top:4px;padding-left:4px;gap:10px;flex-wrap:wrap;align-items:center">寄り道：
       <label><input type="checkbox" id="poiView">🔭 見晴らし（展望台・丘の上）</label>
       <label><input type="checkbox" id="poiMini">🏪 ミニストップ</label>
@@ -2432,12 +2432,14 @@ const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,
 
 // 🔁 ぐるっと1周：経由・到着の欄はかくす（出発にもどるので）
 const poiWant = () => ({ view: $("poiView").checked, mini: $("poiMini").checked, park: $("poiPark").checked, station: $("poiSta").checked, worship: $("poiWor").checked, shotengai: $("poiSho").checked, meisho: $("poiMei").checked });
-const loopKm = () => $("loopOn").checked ? +$("loopKm").value : 0;
+const loopKm = () => $("loopOn").checked ? ($("loopKm").value === "auto" ? "auto" : +$("loopKm").value) : 0;
+// おまかせの長さ：経由地があれば まっすぐの距離 × 2.8（行きと帰りを別の道にできる太さの輪っか。5km単位）、なければ 30km
+const autoKm = (s, v) => v ? Math.max(10, Math.ceil(hav(s, v) * 2.8 / 5000) * 5) : 30;
 function loopUi() {
   const on = $("loopOn").checked;
   $("toRow").style.display = on ? "none" : "";   // 1周でも経由地は1つ入れられる（そこを通って1周）
   $("poiRow").style.display = on ? "flex" : "none";
-  $("go").textContent = on ? `🔁 ${$("loopKm").value}kmの1周ルートを作る` : "ルートを作る";
+  $("go").textContent = on ? ($("loopKm").value === "auto" ? "🔁 おまかせの長さで1周ルートを作る" : `🔁 ${$("loopKm").value}kmの1周ルートを作る`) : "ルートを作る";
   try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value, poi: poiWant() })); } catch {}
 }
 try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; const p = l.poi || {}; $("poiView").checked = !!p.view; $("poiMini").checked = !!p.mini; $("poiPark").checked = !!p.park; $("poiSta").checked = !!(p.station ?? p.land); $("poiWor").checked = !!(p.worship ?? p.land); $("poiSho").checked = !!(p.shotengai ?? p.land); $("poiMei").checked = !!p.meisho; } } catch {}
@@ -2445,11 +2447,11 @@ for (const id of ["loopOn", "loopKm", "poiView", "poiMini", "poiPark", "poiSta",
 loopUi();
 $("go").onclick = async () => {
   audioUnlock();
-  const LK = loopKm();
+  let LK = loopKm();
   const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = $("via").value.trim();
   if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
   if (unsavedRoute() && await askSave("新しいルートを作る") === "cancel") return;
-  pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? ` 1周${LK}km` : " → " + shortName(toT));
+  pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? " 1周" : " → " + shortName(toT));
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   geoAbort = new AbortController(); $("stop").style.display = "";   // 場所さがしの間も「■ 止める」できる
@@ -2460,8 +2462,13 @@ $("go").onclick = async () => {
     if (LK) {   // 1周：出発のまわりを三角形にまわる。経由地が入っていれば、そこを通る1周
       const [v, vn] = viaT ? await geocode(viaT) : [null, ""];
       if (v) { addLog(`  経由 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
-        if (hav(s, v) > 75000) throw new Error(`経由地が ${fmtKm(hav(s, v))} もはなれてるよ。1周なら75km以内にしてね`);
-        if (hav(s, v) * 2 > LK * 1000 * 0.9) addLog(`  経由地まで往復するだけで ${LK}km くらいになっちゃうよ。長めにするといい感じの1周になるよ`, "w"); }
+        if (hav(s, v) > 75000) throw new Error(`経由地が ${fmtKm(hav(s, v))} もはなれてるよ。1周なら75km以内にしてね`); }
+      if (LK === "auto") { LK = autoKm(s, v); addLog(`  長さ: おまかせ → ${LK}km` + (v ? `（経由地まで まっすぐ ${fmtKm(hav(s, v))}）` : ""), "m"); }
+      else if (v && hav(s, v) * 2.5 > LK * 1000) {   // 輪っかにするほど長さがない（経由地まで行って帰るだけになる）
+        const ak = autoKm(s, v);
+        if (confirm(`経由地まで往復するだけで 約${Math.round(hav(s, v) * 2 * 1.2 / 1000)}km かかるよ。\n${LK}km だと輪っかにできなくて「行って別の道で帰る」1本だけになっちゃうの。\n\nおまかせ（${ak}km）にする？`)) { LK = ak; addLog(`  長さ: おまかせ → ${LK}km`, "m"); }
+        else addLog(`  ${LK}km だと輪っかにできないので、経由地まで行って別の道で帰るよ`, "w");
+      }
       pendingName = (await placeName(fromT, s)) + ` 1周${LK}km` + (v ? `（${await placeName(viaT, v)}経由）` : "");
       addLog(`  ルート名: ${pendingName}`, "m");
       lastProg = { stage: 1, msg: `🔁 ${sn} から ${LK}km の1周` }; showProg();
