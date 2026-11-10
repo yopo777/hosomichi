@@ -3,18 +3,18 @@
 const DEFAULT_CFG = {
   pen: {                 // 1m を何m分と数えるか（大きいほど避ける）。"no" は通らない
     living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1,
-    tertiary: 3, secondary: 5, primary: 8, trunk: 30,
-    footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5,
+    tertiary: 5, secondary: 8, primary: 8, trunk: 8,
+    footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5,
   },
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
   bridge: 3,             // 歩道橋・地下道（歩行者用）: 倍率 or "no"
   unpaved: 20,           // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
-  sidewalk: 1.5,         // 歩道（段差・柵）のある道の倍率。1＝気にしない
+  sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
-  midCross: 0,           // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
+  midCross: 100,         // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
 const OTHER_PENALTY = 2.0;
@@ -810,7 +810,7 @@ function tilesFor(s, g, pad, TILE = tileFor(s, g)) {
 function padFor(s, g, area) {
   const d = Math.abs(s[0] - g[0]) + Math.abs(s[1] - g[1]);
   if (area === "narrow") return 0.002;                                  // 約200m
-  if (area === "wide") return Math.min(0.02, Math.max(0.006, d * 0.1)); // 600m〜2km
+  if (area === "wide") return Math.min(0.04, Math.max(0.018, d * 0.15)); // 2km〜4.4km（データが手元にあることが多いので広めに）
   return Math.min(0.01, Math.max(0.004, d * 0.05));                     // 400m〜1km
 }
 const pendingSaves = [];
