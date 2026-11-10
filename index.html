@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1336</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1351</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1216,9 +1216,39 @@ async function route(req, prog, partial) {
   await fetching.catch(() => {});
   cancelFetch = false;
   { const miss = tiles.filter(t => !got.has(t.key)).length; if (miss) log(`取れなかったマス ${miss}個（なくてもルートはできたよ）`, "w"); }
+  // 第2・第3のルート：道路データがもう端末にあった（ダウンロードしなかった）ときだけ。計算はすぐおわる
+  let alts = [];
+  if (done === 0 && conf.length > 1 && !(cfg && cfg.alts === false)) {
+    try {
+      const ta = Date.now(), seen = new Set(), elements = [];
+      for (const t of tiles) if (got.has(t.key)) for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
+      const G = buildGraph({ elements }, cfg), qs = nearestGood(G, s[0], s[1]), qg = nearestGood(G, g[0], g[1], qs.n);
+      if (qs.n >= 0 && qg.n >= 0) {
+        const r0 = search(G, qs.n, qg.n, g, false), p0 = r0.goal >= 0 ? pathTo(r0.prev, r0.goal) : null;
+        if (p0) {
+          const ek2 = (u, v) => u < v ? u + "," + v : v + "," + u, mainSet = new Set(), paths = [p0];
+          for (let i = 1; i < p0.length; i++) mainSet.add(ek2(p0[i - 1], p0[i]));
+          const mainLen = analyze(G, p0).len;
+          const penal = p => { for (let i = 1; i < p.length; i++) { const u = p[i - 1], v = p[i];
+            for (const e of G.adj[u]) if (e.v === v) e.c *= 1.7; for (const e of G.adj[v]) if (e.v === u) e.c *= 1.7; } };
+          for (let tries = 0; tries < 6 && alts.length < 2; tries++) {
+            penal(paths[paths.length - 1]);
+            const r1 = search(G, qs.n, qg.n, g, false); if (r1.goal < 0) break;
+            const p = pathTo(r1.prev, r1.goal), a = analyze(G, p);
+            let same = 0; for (let i = 1; i < p.length; i++) if (mainSet.has(ek2(p[i - 1], p[i]))) same += hav(G.lat[p[i - 1]], G.lon[p[i - 1]], G.lat[p[i]], G.lon[p[i]]);
+            const dup = alts.some(x => Math.abs(x.len - a.len) < 30 && x.route.length === p.length);
+            paths.push(p);
+            if (same / a.len > 0.75 || a.len > mainLen * 1.4 || dup) continue;   // ほとんど同じ・遠回りすぎはいらない
+            alts.push({ route: p.map(u => [G.lat[u], G.lon[u]]), ek: a.ek, ok: a.ok, xw: a.xw, ng: a.ng, kinds: a.kinds, turns: a.turns, len: a.len });
+          }
+        }
+      }
+      log(`ほかのルート: ${alts.length}本（${alts.map(a => (a.len / 1000).toFixed(2) + "km").join("・") || "ちがう道が見つからなかった"}・${Date.now() - ta}ms）`);
+    } catch (e) { log("ほかのルートを出せなかった: " + e.message, "w"); alts = []; }
+  }
   const T = (Date.now() - T0) / 1000;
   log(`==== 完了 ${(confLen / 1000).toFixed(2)}km・${T.toFixed(1)}秒（ダウンロード ${done}マス ${kb(bytes)}・つながり ${tBuild.toFixed(1)}秒・探索 ${tSearch.toFixed(1)}秒） ====`, "ok");
-  return { route: conf, ek, ok, xw, ng, kinds, turns, len: confLen, nNodes, sec: T, tiles: N, saved, bytes,
+  return { route: conf, ek, ok, xw, ng, kinds, turns, len: confLen, nNodes, sec: T, tiles: N, saved, bytes, alts,
     tLoad: Math.max(0, T - tBuild - tSearch), tBuild, tSearch };
 }
 // 「ただの最短」はくらべる用。順番に確定する方式では出さない
@@ -1668,6 +1698,7 @@ worker.onmessage = ev => {
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
   showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen,
+    alts: job && job.prefix ? null : m.alts,
     name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
   if (job && job.prefix) cur.slen = 0;
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
@@ -1832,6 +1863,7 @@ function legend(r) {
   if ((r.ok || []).length) h += dot("#0a0", "#0a03", 16, "信号で横断");
   if ((r.xw || []).length) h += dot("#1a73e8", "#1a73e840", 15, "横断歩道で横断");
   if ((r.ng || []).length) h += dot("#f00", "#ff09", 18, "設定どおりに渡れなかった所");
+  if ((r.alts || []).length) h += `<div><i style="background:${ALT_COL[0]};opacity:.5"></i>うすい線＝ほかのルート（タップで切りかえ）</div>`;
   if (colorMode !== "red") h += '<div style="border-top:1px solid #ddd;margin:3px 0"></div>';
   if (colorMode === "kind") {
     if (!r.kc) h += "灰色の線：このルートには道の種類の情報がないよ";
@@ -1845,8 +1877,28 @@ function legend(r) {
   }
   lg.innerHTML = h; lg.style.display = "block";
 }
+// ほかのルート（うすい線）。タップするとそっちを使う
+const ALT_COL = ["#7e57c2", "#00897b"];
+function drawAlts(r) {
+  (r.alts || []).forEach((a, i) => {
+    const d = a.len - r.len, tip = `ルート${i + 2}：${fmtKm(a.len)}（${d >= 0 ? "+" : "−"}${fmtKm(Math.abs(d))}）` + (a.turns != null ? `・曲がる${a.turns}回` : "") + "　タップでこっちにする";
+    L.polyline(a.route, { color: "#fff", weight: 9, opacity: .5 }).addTo(layer);
+    L.polyline(a.route, { color: ALT_COL[i % 2], weight: 6, opacity: .45 }).addTo(layer).bindTooltip(tip, { sticky: true })
+      .on("click", ev => { L.DomEvent.stop(ev); useAlt(i); });
+  });
+}
+function useAlt(i) {
+  const r = cur, a = r.alts[i]; if (!a) return;
+  const asAlt = { route: r.route, ek: r.ek, ok: r.ok, xw: r.xw, ng: r.ng, kinds: r.kinds, turns: r.turns, len: r.len, kc: r.kc };
+  const alts = r.alts.slice(); alts[i] = asAlt;
+  const n = { ...a, kc: a.kc || null, name: r.name, alts, short: r.short, slen: r.slen };
+  if (!n.ek) delete n.kc;
+  addLog(`ルート${i + 2}（${fmtKm(a.len)}）に切りかえたよ`);
+  showRoute(n, false); lsSet(LKEY, packRoute(n));
+}
 function drawRoute(r) {
   const R = r.route;
+  drawAlts(r);
   L.polyline(R, { color: "#fff", weight: 11, opacity: .85, interactive: false }).addTo(layer);   // ふちどり
   const seg = (pts, color) => L.polyline(pts, { color, weight: 7, opacity: .95 }).addTo(layer);
   if (colorMode === "kind" && r.kc && r.kc.length === R.length - 1) {
