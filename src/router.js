@@ -382,6 +382,8 @@ function buildGraph(osm, cfg, onProg) {
     else xcost[i] = sig || xw ? 0 : midPen(cfg.midCross);
   }
   const nBlk = applyBlocks(lat, lon, adj, N);
+  // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
+  if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
   return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen,
     hk: Math.min(1, +cfg.kodo || 1) };   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
@@ -390,7 +392,7 @@ function buildGraph(osm, cfg, onProg) {
 let blockPts = [];
 const BLOCK_R = 12;
 let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
-const USED_PEN = 3;
+const USED_PEN = 2;
 const usedKey = (la, lo) => Math.round(la * 600) + "," + Math.round(lo * 490);   // 約180mのマス
 function markUsed(route) {
   for (let i = 0; i < route.length; i++) {
@@ -442,12 +444,13 @@ async function loopRoute(req, prog) {
   const dV = V ? hav(s[0], s[1], V[0], V[1]) : 0;
   log(`==== 🔁 ぐるっと1周 ${D / 1000}km（出発 ${s[0].toFixed(5)},${s[1].toFixed(5)}${V ? `・経由地まで ${(dV / 1000).toFixed(1)}km` : ""}） ====`, "h");
   // 寄り道スポット：まわる範囲の分を1回だけさがす
-  let pois = [];
+  let pois = [], poiErr = "";
   want.land = !!(want.station || want.worship || want.shotengai || want.meisho);   // ランドマーク（駅・寺神社・商店街・名所のどれか）
   if (want.view || want.mini || want.park || want.land) {
     prog({ stage: 1, msg: "🔁 寄り道の場所をさがし中…" });
     const m0 = V ? [(s[0] + V[0]) / 2, (s[1] + V[1]) / 2] : s, ext = V ? Math.max(dV * 0.7, D / 3.5) : 2.3 * D / 4.5;
-    pois = await poiFetch([m0[0] - ext / M, m0[1] - ext / (M * c0), m0[0] + ext / M, m0[1] + ext / (M * c0)], want).catch(e => { log("寄り道の場所が取れなかった（寄り道なしで作るよ）: " + e.message, "w"); return []; });
+    pois = await poiFetch([m0[0] - ext / M, m0[1] - ext / (M * c0), m0[0] + ext / M, m0[1] + ext / (M * c0)], want).catch(e => { poiErr = e.message; log("寄り道の場所が取れなかった（寄り道なしで作るよ）: " + e.message, "w"); return []; });
+    if (!poiErr && !pois.length) poiErr = "まわりに見つからなかった";
   }
   // 寄り道スポットに吸い寄せる。kindOrder の順にさがす
   const rest = [...(want.mini ? ["mini"] : []), ...(want.park ? ["park"] : [])];
@@ -457,8 +460,7 @@ async function loopRoute(req, prog) {
     for (const kind of order) {
       let pick = null;
       if (kind === "mini" || kind === "park") pick = nearestPoi(pois, w, rad, p => p.kind === kind, stops);
-      else if (kind === "land") pick = nearestPoi(pois, w, rad, p => LAND.has(p.kind) && (p.kind !== "temple" && p.kind !== "shrine" || p.big), stops)   // 寺・神社は境内（面）がある大きめの所
-        || nearestPoi(pois, w, rad * 0.6, p => LAND.has(p.kind), stops);
+      else if (kind === "land") pick = nearestPoi(pois, w, rad, p => LAND.has(p.kind), stops);
       else pick = nearestPoi(pois, w, rad, p => p.kind === "view" || p.kind === "tower", stops) || await hillNear(w, rad * 0.8, s);
       if (pick) return pick;
     }
@@ -551,7 +553,7 @@ async function loopRoute(req, prog) {
   out.sort((a, b) => score(a) - score(b));
   const [main, ...others] = out.slice(0, 3);
   log(`==== 🔁 完了 ${out.map(o => o.how + " " + (o.len / 1000).toFixed(1) + "km").join("・")}（${((Date.now() - T0) / 1000).toFixed(1)}秒） ====`, "ok");
-  return { ...main, alts: others, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
+  return { ...main, alts: others, loop: D / 1000, sec: (Date.now() - T0) / 1000, poiErr };
 }
 // 点（緯度経度）と線分 a-b のきょり（m）
 function segM(la, lo, a, b) {
@@ -573,14 +575,14 @@ async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
     (want.bench ? `node["amenity"="bench"](${b});` : "") +
     (want.vend ? `node["amenity"="vending_machine"]["vending"~"drinks"](${b});` : "") +
     (want.station ? `nwr["railway"="station"]["name"](${b});` : "") +
-    (want.worship ? `nwr["amenity"="place_of_worship"]["religion"~"buddhist|shinto"]["name"](${b});` : "") +
+    (want.worship ? `way["amenity"="place_of_worship"]["religion"~"buddhist|shinto"]["name"](${b});` : "") +   // 境内（面）があるものだけ（点まで入れると多すぎて重い）
     (want.meisho ? `nwr["historic"~"^(castle|ruins|archaeological_site|monument|battlefield|city_gate|fort|manor|building|milestone)$"]["name"](${b});` +
       `nwr["tourism"~"^(attraction|museum)$"]["name"](${b});nwr["heritage"]["name"](${b});` : "") +
     (want.park ? `way["leisure"="park"]["name"](${b});relation["leisure"="park"]["name"](${b});` : "") +
     (want.shotengai ? `way["highway"]["name"~"商店街"](${b});nwr["landuse"="retail"]["name"~"商店街"](${b});nwr["place"]["name"~"商店街"](${b});` : "") + `);out center tags;`;
   let last;
-  for (const url of OVERPASS_URLS) {
-    const ac = new AbortController(), to = setTimeout(() => ac.abort(), 30000); aborts.add(ac);
+  for (const url of OVERPASS_URLS.slice(0, 3)) {
+    const ac = new AbortController(), to = setTimeout(() => ac.abort(), 20000); aborts.add(ac);
     try {
       const t0 = Date.now();
       const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), signal: ac.signal, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
@@ -608,7 +610,7 @@ async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
       const cnt = k => out.filter(p => k.includes(p.kind)).length;
       log(`寄り道の場所: 展望 ${cnt(["view", "tower"])}・ミニストップ ${cnt(["mini"])}・ベンチ ${cnt(["bench"])}・自販機 ${cnt(["vend"])}（休けいセット ${cnt(["rest"])}）・ランドマーク ${cnt([...LAND])}（${new URL(url).host}・${((Date.now() - t0) / 1000).toFixed(1)}秒）`, "ok");
       poiMem.set(key, out); return out;
-    } catch (e) { last = e; if (stopReq) throw e; } finally { clearTimeout(to); aborts.delete(ac); }
+    } catch (e) { last = ac.signal.aborted && !stopReq ? new Error("20秒返事がなかった") : e; log(`  寄り道の場所: ${new URL(url).host} だめ（${last.message}）`, "w"); if (stopReq) throw e; } finally { clearTimeout(to); aborts.delete(ac); }
   }
   throw last || new Error("サーバーに つながらない");
 }
