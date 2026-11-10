@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1422</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1430</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -997,11 +997,23 @@ const FIRST_BAND = 700, BAND = 1500, TENTATIVE = 500, BACK = 600;
 async function route(req, prog, partial) {
   const { s, g, cfg } = req;
   const T0 = Date.now();
-  const pad = padFor(s, g, cfg && cfg.area);
+  // 「おまかせ」：ひろい範囲の道路データがぜんぶ手元（端末か配布データ）にあれば ひろい、なければ ダウンロードが少ない せまい
+  let area = cfg && cfg.area;
+  if (area === "auto") {
+    const wt = tilesFor(s, g, padFor(s, g, "wide"));
+    let ok = false;
+    try {
+      const p = await packIndex(), st = await store("readonly"), have = new Set(st ? (await req(st.getAllKeys())).map(String) : []);
+      ok = wt.every(t => have.has(t.key) || have.has(bigOf(t.key)) || (p && p.has(packName(bigOf(t.key)))));
+    } catch {}
+    area = ok ? "wide" : "narrow";
+    log(`地図データを取る広さ: おまかせ → ${ok ? "ひろい（データがぜんぶ手元にある）" : "せまい（ダウンロードが必要なので）"}`);
+  }
+  const pad = padFor(s, g, area);
   const tiles = tilesFor(s, g, pad), N = tiles.length;
   log(`==== ルート計算スタート ====`, "h");
   log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 到着 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
-  log(`設定: 計算=${cfg?.mode || "quick"} 広さ=${cfg?.area || "normal"}（余白 ${Math.round(pad * 111000)}m） 曲がる=${cfg?.turn ?? 0} 階段=${cfg?.steps} 4車線=${cfg?.wideCross} 県道国道=${cfg?.bigCross} 2車線=${cfg?.midCross} 一方通行逆向き=${cfg?.oneway}`);
+  log(`設定: 計算=${cfg?.mode || "quick"} 広さ=${area || "normal"}（余白 ${Math.round(pad * 111000)}m） 曲がる=${cfg?.turn ?? 0} 階段=${cfg?.steps} 4車線=${cfg?.wideCross} 県道国道=${cfg?.bigCross} 2車線=${cfg?.midCross} 一方通行逆向き=${cfg?.oneway}`);
   log(`道の倍率: ${Object.entries(cfg?.pen || {}).map(([k, v]) => k + "=" + v).join(" ")}`);
   log(`マス: ${N}個（1マス ${tiles[0] ? tiles[0].key.split(":")[0] : "?"}°）`);
   // スタート→ゴールの線にそった進み具合（m）
@@ -1198,7 +1210,7 @@ async function route(req, prog, partial) {
         await waitUpTo(final ? Infinity : bandEnd + tileHalf, false); continue;
       }
       if (!path) {
-        if (final) throw new Error("ルートが見つかりませんでした" + (cfg && cfg.area !== "wide" ? "。⚙ 設定の「地図データを取る広さ」を広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
+        if (final) throw new Error("ルートが見つかりませんでした" + (area !== "wide" ? "。⚙ 設定の「地図データを取る広さ」を広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
         log("この範囲では先に進めないので、もっと先のデータを待つ", "w");
         bandEnd = Math.min(D, bandEnd + BAND); continue;   // 先に進める道がない：もっと先まで取ってから
       }
@@ -2249,11 +2261,11 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
-  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small", bigCross: "mid", sidewalk: 1.5, kodo: 1 };
+  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small", bigCross: "mid", sidewalk: 1.5, kodo: 1 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
-  ["area", "地図データを取る広さ", [["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（おそい・まわり道〜2km）"]]],
+  ["area", "地図データを取る広さ", [["auto", "おまかせ（データがあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（おそい・まわり道〜2km）"]]],
   ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
   ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
   ["sidewalk", "歩道（段差・柵）のある道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [6, "かなり避ける"]]],
@@ -2265,6 +2277,7 @@ const OTHER_ROWS = [
   ["midCross", "2車線の道を横断歩道以外で渡る", [[0, "どこでも渡る"], [100, "100mまでなら横断歩道へ"], [300, "300mまでなら横断歩道へ"], [500, "500mまでなら横断歩道へ"], [1000, "1kmまでなら横断歩道へ"], [3000, "信号か横断歩道の所だけ"]]],
 ];
 let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) { const m = { must: 3000, prefer: 500, any: 0 }; if (c.midCross in m) c.midCross = m[c.midCross];   // むかしの設定を数字に
+      if (!c.areaV2) { if (c.area === "narrow") c.area = "auto"; c.areaV2 = 1; }   // 「せまい」がはじめの設定だったころの人は「おまかせ」に
       return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } } catch {} return structuredClone(CFG_DEF); })();
 function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} }
 const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${String(v) === String(val) ? " selected" : ""}>${t}</option>`).join("");

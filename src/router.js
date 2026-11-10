@@ -819,11 +819,23 @@ const FIRST_BAND = 700, BAND = 1500, TENTATIVE = 500, BACK = 600;
 async function route(req, prog, partial) {
   const { s, g, cfg } = req;
   const T0 = Date.now();
-  const pad = padFor(s, g, cfg && cfg.area);
+  // 「おまかせ」：ひろい範囲の道路データがぜんぶ手元（端末か配布データ）にあれば ひろい、なければ ダウンロードが少ない せまい
+  let area = cfg && cfg.area;
+  if (area === "auto") {
+    const wt = tilesFor(s, g, padFor(s, g, "wide"));
+    let ok = false;
+    try {
+      const p = await packIndex(), st = await store("readonly"), have = new Set(st ? (await req(st.getAllKeys())).map(String) : []);
+      ok = wt.every(t => have.has(t.key) || have.has(bigOf(t.key)) || (p && p.has(packName(bigOf(t.key)))));
+    } catch {}
+    area = ok ? "wide" : "narrow";
+    log(`地図データを取る広さ: おまかせ → ${ok ? "ひろい（データがぜんぶ手元にある）" : "せまい（ダウンロードが必要なので）"}`);
+  }
+  const pad = padFor(s, g, area);
   const tiles = tilesFor(s, g, pad), N = tiles.length;
   log(`==== ルート計算スタート ====`, "h");
   log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 到着 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
-  log(`設定: 計算=${cfg?.mode || "quick"} 広さ=${cfg?.area || "normal"}（余白 ${Math.round(pad * 111000)}m） 曲がる=${cfg?.turn ?? 0} 階段=${cfg?.steps} 4車線=${cfg?.wideCross} 県道国道=${cfg?.bigCross} 2車線=${cfg?.midCross} 一方通行逆向き=${cfg?.oneway}`);
+  log(`設定: 計算=${cfg?.mode || "quick"} 広さ=${area || "normal"}（余白 ${Math.round(pad * 111000)}m） 曲がる=${cfg?.turn ?? 0} 階段=${cfg?.steps} 4車線=${cfg?.wideCross} 県道国道=${cfg?.bigCross} 2車線=${cfg?.midCross} 一方通行逆向き=${cfg?.oneway}`);
   log(`道の倍率: ${Object.entries(cfg?.pen || {}).map(([k, v]) => k + "=" + v).join(" ")}`);
   log(`マス: ${N}個（1マス ${tiles[0] ? tiles[0].key.split(":")[0] : "?"}°）`);
   // スタート→ゴールの線にそった進み具合（m）
@@ -1020,7 +1032,7 @@ async function route(req, prog, partial) {
         await waitUpTo(final ? Infinity : bandEnd + tileHalf, false); continue;
       }
       if (!path) {
-        if (final) throw new Error("ルートが見つかりませんでした" + (cfg && cfg.area !== "wide" ? "。⚙ 設定の「地図データを取る広さ」を広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
+        if (final) throw new Error("ルートが見つかりませんでした" + (area !== "wide" ? "。⚙ 設定の「地図データを取る広さ」を広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
         log("この範囲では先に進めないので、もっと先のデータを待つ", "w");
         bandEnd = Math.min(D, bandEnd + BAND); continue;   // 先に進める道がない：もっと先まで取ってから
       }

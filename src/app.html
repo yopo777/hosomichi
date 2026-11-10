@@ -1105,11 +1105,11 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
-  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small", bigCross: "mid", sidewalk: 1.5, kodo: 1 };
+  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small", bigCross: "mid", sidewalk: 1.5, kodo: 1 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
-  ["area", "地図データを取る広さ", [["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（おそい・まわり道〜2km）"]]],
+  ["area", "地図データを取る広さ", [["auto", "おまかせ（データがあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（おそい・まわり道〜2km）"]]],
   ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
   ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
   ["sidewalk", "歩道（段差・柵）のある道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [6, "かなり避ける"]]],
@@ -1121,6 +1121,7 @@ const OTHER_ROWS = [
   ["midCross", "2車線の道を横断歩道以外で渡る", [[0, "どこでも渡る"], [100, "100mまでなら横断歩道へ"], [300, "300mまでなら横断歩道へ"], [500, "500mまでなら横断歩道へ"], [1000, "1kmまでなら横断歩道へ"], [3000, "信号か横断歩道の所だけ"]]],
 ];
 let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) { const m = { must: 3000, prefer: 500, any: 0 }; if (c.midCross in m) c.midCross = m[c.midCross];   // むかしの設定を数字に
+      if (!c.areaV2) { if (c.area === "narrow") c.area = "auto"; c.areaV2 = 1; }   // 「せまい」がはじめの設定だったころの人は「おまかせ」に
       return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } } catch {} return structuredClone(CFG_DEF); })();
 function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} }
 const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${String(v) === String(val) ? " selected" : ""}>${t}</option>`).join("");
