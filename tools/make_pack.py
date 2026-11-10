@@ -11,6 +11,7 @@
      （index.json だけ作りなおすときは: python make_pack.py --index-only 出力フォルダ）
      （駅の一覧 stations.json だけ作るときは: python make_pack.py --stations-only kanto-latest.osm.pbf 出力フォルダ）
      （寄り道スポット pois.json と 霊園のはんい areas.json だけ作るときは: python make_pack.py --pois-only kanto-latest.osm.pbf 出力フォルダ）
+     （霊園のはんい areas.json だけ作るときは: python make_pack.py --areas-only kanto-latest.osm.pbf 出力フォルダ）
   3. 出力フォルダの中身を GitHub の hosomichi-data リポジトリに push して GitHub Pages で公開
 
 データ: © OpenStreetMap contributors（ODbL）
@@ -312,6 +313,9 @@ def main():
     if len(sys.argv) in (3, 4) and sys.argv[1] == "--pois-only":   # 寄り道スポットの一覧だけ作る
         src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else ("kanto-latest.osm.pbf", sys.argv[2])
         write_pois(src, out); write_areas(src, out); return
+    if len(sys.argv) in (3, 4) and sys.argv[1] == "--areas-only":   # 霊園のはんい areas.json だけ作る
+        src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else ("kanto-latest.osm.pbf", sys.argv[2])
+        write_areas(src, out); return
     if len(sys.argv) == 3 and sys.argv[1] == "--index-only":   # マスはそのままで index.json だけ作りなおす
         out = sys.argv[2]; tdir = os.path.join(out, "t")
         names = sorted(n for n in os.listdir(tdir) if n.endswith(".json.gz"))
