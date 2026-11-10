@@ -1100,9 +1100,9 @@ async function route(req, prog, partial) {
   await fetching.catch(() => {});
   cancelFetch = false;
   { const miss = tiles.filter(t => !got.has(t.key)).length; if (miss) log(`取れなかったマス ${miss}個（なくてもルートはできたよ）`, "w"); }
-  // 第2・第3のルート：道路データがもう端末にあった（ダウンロードしなかった）ときだけ。計算はすぐおわる
+  // 第2・第3のルート：ルートができたときには道路データがそろっているので、いつでも出す（計算はすぐおわる）
   let alts = [];
-  if (done === 0 && conf.length > 1 && !(cfg && cfg.alts === false)) {
+  if (conf.length > 1 && !(cfg && cfg.alts === false)) {
     try {
       const ta = Date.now(), seen = new Set(), elements = [];
       for (const t of tiles) if (got.has(t.key)) for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }

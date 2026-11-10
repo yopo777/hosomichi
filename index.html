@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1453</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1509</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1278,9 +1278,9 @@ async function route(req, prog, partial) {
   await fetching.catch(() => {});
   cancelFetch = false;
   { const miss = tiles.filter(t => !got.has(t.key)).length; if (miss) log(`取れなかったマス ${miss}個（なくてもルートはできたよ）`, "w"); }
-  // 第2・第3のルート：道路データがもう端末にあった（ダウンロードしなかった）ときだけ。計算はすぐおわる
+  // 第2・第3のルート：ルートができたときには道路データがそろっているので、いつでも出す（計算はすぐおわる）
   let alts = [];
-  if (done === 0 && conf.length > 1 && !(cfg && cfg.alts === false)) {
+  if (conf.length > 1 && !(cfg && cfg.alts === false)) {
     try {
       const ta = Date.now(), seen = new Set(), elements = [];
       for (const t of tiles) if (got.has(t.key)) for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
