@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0920</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0932</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -192,6 +192,7 @@ const ONEWAY_OK = new Set(["residential", "living_street", "service", "unclassif
 const ONEWAY_REV = 1.3;           // 一方通行を逆向きに走るときは少しだけ避ける
 const midPen = v => typeof v === "number" ? v : ({ must: HARD, prefer: SOFT, any: 0 })[v] ?? (isFinite(+v) ? +v : 0);
 const MID_ROADS = new Set(["tertiary", "secondary", "primary", "trunk"]);
+const CYCLE_OK = new Set(["footway", "path", "pedestrian", "track", "bridleway"]);
 const FOOTLIKE = new Set(["footway", "pedestrian", "path", "steps"]);
 const KIND_JA = {
   living_street: "生活道路", residential: "住宅街の道", service: "私道・通路", unclassified: "細めの一般道",
@@ -235,7 +236,7 @@ function levelOf(t, cfg) {
 function isUnpaved(t) {
   const sf = t.surface || "";
   if (UNPAVED.has(sf) || ["grade3", "grade4", "grade5"].includes(t.tracktype)) return "sure";
-  if (!sf && (t.highway === "track" || t.highway === "path") && t.tracktype !== "grade1") return "maybe";
+  if (!sf && (t.highway === "track" || t.highway === "path") && t.tracktype !== "grade1" && t.bicycle !== "designated") return "maybe";   // 自転車指定なら舗装とみなす
   return null;
 }
 const yes = v => v && v !== "no";
@@ -248,12 +249,16 @@ function wayCost(t, cfg) {
     if (cfg.steps === "ramp" && t["ramp:bicycle"] !== "yes") return null;
     p = cfg.steps === "ramp" ? 8 : 5;
     name = cfg.steps === "ramp" ? "自転車スロープ付き階段" : "階段";
+  } else if (CYCLE_OK.has(hw) && t.bicycle === "designated") {
+    // 自転車の通行指定がある歩道・小道・農道（川べりのサイクリングロードに多い）＝自転車道あつかい
+    p = cfg.pen.cycleway ?? 1; name = "自転車道";
+    if (p === "no") return null;
   } else {
     p = cfg.pen[b] ?? OTHER_PENALTY;
     if (p === "no") return null;
     if (lanesOf(t) >= 2 && p > 1) p *= 1.5;
   }
-  if (FOOTLIKE.has(hw) && (yes(t.bridge) || yes(t.tunnel))) {
+  if (FOOTLIKE.has(hw) && t.bicycle !== "designated" && (yes(t.bridge) || yes(t.tunnel))) {
     if (cfg.bridge === "no") return null;
     p *= cfg.bridge; name = yes(t.bridge) ? "歩道橋" : "地下道";
   }
