@@ -107,7 +107,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2324</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2335</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -2873,10 +2873,26 @@ $("cfgBox").onchange = e => {
 };
 renderCfg();
 $("cfgReset").onclick = () => { if (!confirm("設定をはじめの状態にもどす？")) return; cfg = structuredClone(CFG_DEF); saveCfg(); renderCfg(); };
+// 📷 その場所のストリートビューを Google マップで開く（見るだけ。ルートの近くなら、進む向きを向く）
+function openStreetView(ll) {
+  let head = null;
+  if (cur && cur.route && cur.route.length > 1) {
+    const R = cur.route, c = Math.cos(ll.lat * RAD) * 111320; let bd = 40;
+    for (let i = 1; i < R.length; i++) {
+      const ax = (R[i - 1][1] - ll.lng) * c, ay = (R[i - 1][0] - ll.lat) * 111320, bx = (R[i][1] - ll.lng) * c, by = (R[i][0] - ll.lat) * 111320;
+      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+      const d = Math.hypot(ax + dx * t, ay + dy * t);
+      if (d < bd && L2 > 0) { bd = d; head = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360; }
+    }
+  }
+  const url = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}` + (head != null ? `&heading=${Math.round(head)}` : "");
+  addLog(`📷 ストビューを開くよ${head != null ? `（ルートの進む向き ${Math.round(head)}°）` : ""}`);
+  window.open(url, "_blank", "noopener");
+}
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
-    + "<button data-b='1' style='color:#c00'>🚫 通れない印</button>";
+    + "<button data-b='1' style='color:#c00'>🚫 通れない印</button><button data-sv='1'>📷 ストビュー</button>";
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
     if (ev.target.dataset.b) {   // 理由をえらぶ（押したボタンが消えると地図のタップあつかいになるので、少しあとで入れかえる）
@@ -2886,6 +2902,7 @@ function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着に�
       pop.update(); }, 0); return;
     }
     if (ev.target.dataset.r) { addBlock(L.latLng(ll), ev.target.dataset.r); map.closePopup(pop); return; }
+    if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 }
