@@ -183,14 +183,27 @@ const $ = id => document.getElementById(id);
 // ---------- 地図 ----------
 // 出典の表示は必要（地理院タイル・OpenStreetMap）。まちがえて開かないようにリンクにはしない
 const attr = '地理院タイル | 経路 &copy; OpenStreetMap contributors';
-const base = {   // 地図は淡色だけ（保存ずみの所は📦でカラーになる）
-  "淡色": L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr }),
+// 背景の地図（⚙ 設定でえらぶ）
+const BASES = {
+  pale: ["国土地理院 淡色", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
+  std: ["国土地理院 標準", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
+  cyclosm: ["CyclOSM（自転車用）", () => L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+    { subdomains: "abc", maxZoom: 20, maxNativeZoom: 20, attribution: "CyclOSM | 地図データ &copy; OpenStreetMap contributors" })],
 };
+const base = {};
 const map = L.map("map", { zoomControl: false, rotate: true, bearing: 0, rotateControl: false, touchRotate: false,
   shiftKeyRotate: false, compassBearing: false }).setView([35.69, 139.75], 11);
-const baseName = "淡色";
+let baseName = (() => { try { return localStorage.getItem("hosomichi_bg") || "pale"; } catch { return "pale"; } })();
+if (!BASES[baseName]) baseName = "pale";
 try { localStorage.removeItem("hosomichi_base"); } catch {}
-base[baseName].addTo(map);
+const baseLayer = n => base[n] || (base[n] = BASES[n][1]());
+baseLayer(baseName).addTo(map);
+function setBase(n) {
+  if (!BASES[n] || n === baseName) return;
+  map.removeLayer(baseLayer(baseName)); baseLayer(n).addTo(map); baseName = n;
+  try { localStorage.setItem("hosomichi_bg", n); } catch {}
+  if (typeof drawArea === "function") drawArea();
+}
 map.attributionControl.setPrefix(false);
 const layer = L.layerGroup().addTo(map);
 
@@ -396,9 +409,25 @@ const ColorLayer = L.GridLayer.extend({
   },
 });
 const colorLayer = new ColorLayer({ pane: "colorPane", maxZoom: 18, maxNativeZoom: 18 });
+// ほかの背景地図のとき：道路データがない所に、うすい灰色をかぶせる（ある所はそのまま）
+const VeilLayer = L.GridLayer.extend({
+  createTile(c) {
+    const cv = document.createElement("canvas"), sz = this.getTileSize(); cv.width = sz.x; cv.height = sz.y;
+    const g = cv.getContext("2d"), o = c.scaleBy(sz), px = (la, lo) => map.project([la, lo], c.z).subtract(o);
+    g.fillStyle = "rgba(60,60,60,0.28)"; g.fillRect(0, 0, sz.x, sz.y);
+    const nw = map.unproject(o, c.z), se = map.unproject(o.add(sz), c.z);
+    g.globalCompositeOperation = "destination-out";
+    for (const r of cachedRects) if (r[0] < nw.lat && r[2] > se.lat && r[1] < se.lng && r[3] > nw.lng) {
+      const a = px(r[2], r[1]), b = px(r[0], r[3]); g.fillRect(Math.floor(a.x), Math.floor(a.y), Math.ceil(b.x - a.x) + 1, Math.ceil(b.y - a.y) + 1);
+    }
+    return cv;
+  },
+});
+const veilLayer = new VeilLayer({ pane: "colorPane", maxZoom: 20 });
 function drawArea() {
   areaLayer.clearLayers();
-  if (map.hasLayer(colorLayer) && (!areaOn || baseName !== "淡色")) map.removeLayer(colorLayer);
+  if (map.hasLayer(colorLayer) && (!areaOn || baseName !== "pale")) map.removeLayer(colorLayer);
+  if (map.hasLayer(veilLayer) && (!areaOn || baseName === "pale")) map.removeLayer(veilLayer);
   if (!areaOn) return;
   // 保存ずみ：となりあうマスを横につなげて軽くする
   cachedRects = [];
@@ -410,11 +439,13 @@ function drawArea() {
       cachedRects.push([i * T, js[a] * T, (i + 1) * T, (js[b] + 1) * T]);   // [南, 西, 北, 東]
       a = b + 1; }
   }
-  if (baseName === "淡色") {   // 淡色地図のときは、保存ずみの所だけカラーの「標準」地図にする
+  if (baseName === "pale") {   // 淡色地図のときは、保存ずみの所だけカラーの「標準」地図にする
     if (!map.hasLayer(colorLayer)) colorLayer.addTo(map);
     colorLayer.redraw();
-  } else for (const r of cachedRects)   // ほかの地図のときは、うすい緑でぬる
-    L.rectangle([[r[0], r[1]], [r[2], r[3]]], { renderer: areaRend, stroke: false, fillColor: "#34a853", fillOpacity: 0.14, interactive: false }).addTo(areaLayer);
+  } else {   // ほかの地図のときは、保存してない所をうすい灰色に
+    if (!map.hasLayer(veilLayer)) veilLayer.addTo(map);
+    veilLayer.redraw();
+  }
   for (const k of calcKeys) L.rectangle(keyBox(k), { renderer: areaRend, color: "#1a73e8", weight: 1.5, dashArray: "5 5", fill: false, interactive: false }).addTo(areaLayer);
 }
 // ==== 自動でためる（まわりの道路データ） ====
@@ -1128,7 +1159,10 @@ const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${Strin
 function renderCfg() {
   const row = ([k, t, o]) => `<div class="c"><span>${t}</span><select data-k="${k}">${optHtml(o, cfg[k])}</select></div>`;
   const get = ks => OTHER_ROWS.filter(r => ks.includes(r[0])).map(row).join("");
-  let h = "<h4>計算</h4>" + get(["mode", "area", "turn"]);
+  let h = "<h4>背景の地図</h4>" + Object.entries(BASES).map(([k, [t]]) =>
+    `<label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="radio" name="bg" value="${k}"${k === baseName ? " checked" : ""}>${t}</label>`).join("") +
+    '<div class="note">端末に道路データがある所は、淡色ならカラーに、ほかの地図なら道路データがない所が少し暗くなるよ</div>';
+  h += "<h4>計算</h4>" + get(["mode", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div>';
@@ -1140,6 +1174,7 @@ function renderCfg() {
   $("cfgBox").innerHTML = h;
 }
 $("cfgBox").onchange = e => {
+  if (e.target.name === "bg") return setBase(e.target.value);
   const el = e.target, v = isNaN(+el.value) ? el.value : +el.value;
   if (el.dataset.pen) cfg.pen[el.dataset.pen] = v; else cfg[el.dataset.k] = v;
   saveCfg();
