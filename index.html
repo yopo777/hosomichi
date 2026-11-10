@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1621</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1638</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1580,11 +1580,11 @@ async function stationSearch(q) {
   const c = map.getCenter();
   // まずは配布データの駅の一覧（関東・名前がぴったり）
   try {
-    packStations = packStations || await (await tfetch(new URL("../hosomichi-data/stations.json", location.href))).json();
+    if (!packStations) { const res = await tfetch(new URL("../hosomichi-data/stations.json", location.href), { cache: "no-cache" }); if (!res.ok) throw new Error("HTTP " + res.status); packStations = await res.json(); }
     const hit = packStations.filter(x => norm(x[0]) === base).sort((a, b) => hav([a[1], a[2]], [c.lat, c.lng]) - hav([b[1], b[2]], [c.lat, c.lng]));
     addLog(`  駅さがし(配布データ)「${base}」: ${hit.length}件`, "m");
     if (hit.length) return [[hit[0][1], hit[0][2]], hit[0][0] + "駅"];
-  } catch (e) { packStations = packStations || []; }
+  } catch (e) { addLog(`  駅さがし(配布データ)：一覧が読めなかった（${e.message}）`, "w"); }   // 次にさがすとき、もう一回読む
   try {
     const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(base)}&osm_tag=railway:station&osm_tag=railway:halt&limit=15&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`;
     const f = ((await (await tfetch(u, {}, 8000)).json()).features || []).filter(x => x.properties.countrycode === "JP" || !x.properties.countrycode);
