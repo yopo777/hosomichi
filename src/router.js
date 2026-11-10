@@ -535,6 +535,7 @@ function openDB() {
   });
   return dbp;
 }
+const idbReq = r => req(r);   // route(req) の中では req が別のものになるので、こっちを使う
 function req(r) { return new Promise((ok, ng) => { r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); }); }
 async function store(mode) { const db = await openDB(); return db ? db.transaction(STORE, mode).objectStore(STORE) : null; }
 async function pack(text) {
@@ -574,7 +575,7 @@ async function getTileAny(key) {
 }
 // ==== 配布データ（GitHub Pages に置いた道路データ。Overpass にアクセスしないですむ） ====
 // 形式: <base>index.json（{v:日付, keys:["緯度番号_経度番号", ...]}）と <base>t/緯度番号_経度番号.json.gz（大きいマス 0.01°）
-let packBase = null, packIdx = null, packV = 0, packAt = 0, packBytes = 0, packId = "";
+let packBase = null, packIdx = null, packV = 0, packAt = 0, packBytes = 0, packId = "", packEmpty = null, packAreas = [];
 const bigOf = k => { const [T, ij] = k.split(":"), [i, j] = ij.split(",").map(Number); return T === "0.01" ? k : `0.01:${Math.floor(i / 2)},${Math.floor(j / 2)}`; };
 const packName = big => big.split(":")[1].replace(",", "_");
 async function packIndex() {
@@ -586,11 +587,20 @@ async function packIndex() {
     const j = await res.json();
     packIdx = new Set(j.keys); packV = Date.parse(j.v) || Date.now(); packBytes = j.bytes || 0;
     packId = j.built || `${j.v}:${j.bytes}`;   // 配布データの版。作りなおすと変わる
+    packEmpty = j.empty ? new Set(j.empty) : null;   // 範囲の中だけど道がないマス（川・湖・田んぼなど）
+    packAreas = Object.values(j.areas || {});
     log(`配布データ: ${packIdx.size}マス（${j.v} の地図・${(packBytes / 1048576).toFixed(0)}MB）`, "ok");
   } catch (e) { packIdx = packIdx || new Set(); log(`配布データの一覧が読めなかった（${e.message}）。サーバーから取るよ`, "w"); }
   packAt = Date.now();
   return packIdx;
 }
+// 配布データの範囲の中で、道がないので作っていないマス（ダウンロードしなくていい）
+const packEmptyHas = big => {
+  const n = packName(big);
+  if (packEmpty) return packEmpty.has(n);
+  const [i, j] = n.split("_").map(Number), la = (i + 0.5) * 0.01, lo = (j + 0.5) * 0.01;   // 古い index：範囲の四角の中ならそうみなす
+  return packAreas.some(([S, W, N, E]) => la > S && la < N && lo > W && lo < E);
+};
 const packHas = async big => { const p = await packIndex(); return !!(p && p.has(packName(big))); };
 async function packTile(big) {   // 大きいマスを配布データから取って、端末に保存する（ちぢめたまま保存）
   const res = await fetch(`${packBase}t/${packName(big)}.json.gz`);
@@ -822,11 +832,15 @@ async function route(req, prog, partial) {
   const T0 = Date.now();
   // 「おまかせ」：ひろい範囲の道路データがぜんぶ手元（端末か配布データ）にあれば ひろい、なければ ダウンロードが少ない せまい
   let area = cfg && cfg.area;
+  let missN = 0;
   const allLocal = async ts => {   // そのマスがぜんぶ手元（端末か配布データ）にあるか
     try {
-      const p = await packIndex(), st = await store("readonly"), have = new Set(st ? (await req(st.getAllKeys())).map(String) : []);
-      return ts.every(t => have.has(t.key) || have.has(bigOf(t.key)) || (p && p.has(packName(bigOf(t.key)))));
-    } catch { return false; }
+      const p = await packIndex(), st = await store("readonly"), have = new Set(st ? (await idbReq(st.getAllKeys())).map(String) : []);
+      const miss = ts.filter(t => !(have.has(t.key) || have.has(bigOf(t.key)) || (p && (p.has(packName(bigOf(t.key))) || packEmptyHas(bigOf(t.key))))));
+      missN = miss.length;
+      if (miss.length) log(`手元にないマス: ${miss.length}/${ts.length}（${miss.slice(0, 5).map(t => t.key).join(" ")}${miss.length > 5 ? " …" : ""}）`);
+      return !miss.length;
+    } catch (e) { log("手元のデータをたしかめられなかった: " + e.message, "w"); return false; }
   };
   if (area === "auto") {
     const ok = await allLocal(tilesFor(s, g, padFor(s, g, "wide")));
@@ -837,7 +851,7 @@ async function route(req, prog, partial) {
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
   { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
     if (km > 30 && !(await allLocal(tilesFor(s, g, pad))))
-      throw new Error(`出発と到着が ${km.toFixed(1)}km はなれてるよ。道路データのダウンロードが必要な所があるので、30km以内にしてね（配布データのある関東の中なら150kmまでOK）`); }
+      throw new Error(`出発と到着が ${km.toFixed(1)}km はなれてるよ。道路データのダウンロードが必要な所（${missN}マス）があるので、30km以内にしてね（配布データのある関東の中なら150kmまでOK）`); }
   const tiles = tilesFor(s, g, pad), N = tiles.length;
   log(`==== ルート計算スタート ====`, "h");
   log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 到着 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
@@ -872,10 +886,13 @@ async function route(req, prog, partial) {
   }));
   // 配布データにあるマスは、そこから取る（Overpass にアクセスしない）
   if (await packIndex() && packIdx.size) {
-    const want = new Map();
+    const want = new Map(); let empty = 0;
     for (const t of tiles) if (!got.has(t.key) || (stale.has(t.key) && Date.now() - packV < MAX_AGE)) {
-      const b = bigOf(t.key); if (packIdx.has(packName(b))) { if (!want.has(b)) want.set(b, []); want.get(b).push(t.key); }
+      const b = bigOf(t.key);
+      if (packIdx.has(packName(b))) { if (!want.has(b)) want.set(b, []); want.get(b).push(t.key); }
+      else if (!got.has(t.key) && packEmptyHas(b)) { setTile(t.key, []); empty++; }   // 道がないマス：取らなくていい
     }
+    if (empty) log(`道がないマス（川・湖など）: ${empty}マス`);
     if (want.size) {
       const bigs = [...want.keys()], tp = Date.now(); let n = 0, nb = 0, bad = 0;
       const run = async () => { while (bigs.length) { const b = bigs.shift();

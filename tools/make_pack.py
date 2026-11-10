@@ -8,6 +8,7 @@
      → Geofabrik から関東のデータ（kanto-latest.osm.pbf・数百MB）を自動でダウンロードして
        出力フォルダ/index.json と 出力フォルダ/t/緯度番号_経度番号.json.gz を作る
      （ダウンロードずみの pbf を使うときは: python make_pack.py kanto-latest.osm.pbf 出力フォルダ）
+     （index.json だけ作りなおすときは: python make_pack.py --index-only 出力フォルダ）
   3. 出力フォルダの中身を GitHub の hosomichi-data リポジトリに push して GitHub Pages で公開
 
 データ: © OpenStreetMap contributors（ODbL）
@@ -19,6 +20,38 @@ import urllib.request
 import osmium
 
 PBF_URL = "https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf"
+POLY_URL = "https://download.geofabrik.de/asia/japan/kanto.poly"   # 関東データのさかい目（どこまでが関東か）
+
+def load_poly(path="kanto.poly"):   # Geofabrik の .poly（[[(経度,緯度)…], …] と 穴）を読む
+    if not os.path.exists(path):
+        req = urllib.request.Request(POLY_URL, headers={"User-Agent": "hosomichi-make_pack/1.0"})
+        with urllib.request.urlopen(req) as r, open(path, "wb") as f: f.write(r.read())
+    rings, cur, hole = [], None, False
+    for line in open(path, encoding="utf-8").read().splitlines()[1:]:
+        s = line.strip()
+        if not s: continue
+        if s == "END":
+            if cur is not None: rings.append((hole, cur)); cur = None
+            continue
+        if cur is None: hole = s.startswith("!"); cur = []; continue
+        x, y = s.split()[:2]; cur.append((float(x), float(y)))
+    return rings
+
+def in_poly(rings, lo, la):
+    inside = False
+    for hole, pts in rings:
+        c = False
+        for k in range(len(pts)):
+            (x1, y1), (x2, y2) = pts[k - 1], pts[k]
+            if (y1 > la) != (y2 > la) and lo < (x2 - x1) * (la - y1) / (y2 - y1) + x1: c = not c
+        if c: inside = not hole   # 外がわの輪の中なら中、穴の輪の中なら外
+    return inside
+
+def empty_tiles(keys):   # 関東の中なのに道がないマス（川・湖・山など）。アプリはダウンロードしなくていいとわかる
+    try: rings = load_poly()
+    except Exception as e: print(f"  さかい目（kanto.poly）が読めなかったので、道のないマスの一覧はなし（{e}）"); return None
+    have = set(keys)
+    return [f"{i}_{j}" for (i, j) in sorted(WANT) if f"{i}_{j}" not in have and in_poly(rings, (j + 0.5) * T, (i + 0.5) * T)]
 
 def download(path):   # 1日以内にダウンロードしたものがあれば、それを使う
     if os.path.exists(path) and time.time() - os.path.getmtime(path) < 86400:
@@ -163,7 +196,22 @@ class H(osmium.SimpleHandler):
         self.nw += 1
         if self.nw % 100000 == 0: print(f"  道 {self.nw:,} 本…", flush=True)
 
+def write_index(out, src_date, keys, total, built=None):
+    empty = empty_tiles(keys)
+    idx = {"v": src_date, "built": built or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1,
+           "areas": AREAS, "bytes": total, "keys": keys,
+           "license": "© OpenStreetMap contributors / ODbL https://www.openstreetmap.org/copyright"}
+    if empty is not None: idx["empty"] = empty; print(f"  関東の中で道がないマス: {len(empty)}マス")
+    with open(os.path.join(out, "index.json"), "w", encoding="utf-8") as f: json.dump(idx, f, ensure_ascii=False, separators=(",", ":"))
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--index-only":   # マスはそのままで index.json だけ作りなおす
+        out = sys.argv[2]; tdir = os.path.join(out, "t")
+        names = sorted(n for n in os.listdir(tdir) if n.endswith(".json.gz"))
+        keys = [n[:-8] for n in names]; total = sum(os.path.getsize(os.path.join(tdir, n)) for n in names)
+        old = json.load(open(os.path.join(out, "index.json"), encoding="utf-8"))
+        write_index(out, old.get("v"), keys, total, old.get("built") or f"{old.get('v')}:{old.get('bytes')}")   # マスは同じなので版はそのまま
+        print(f"index.json を作りなおしたよ（{len(keys)}マス）"); return
     if len(sys.argv) == 2:
         out = sys.argv[1]; src = "kanto-latest.osm.pbf"; download(src)
     elif len(sys.argv) == 3:
@@ -206,9 +254,7 @@ def main():
         del h
     for name in old: os.remove(os.path.join(out, "t", name))   # はんい外になった古いマス
     v = datetime.datetime.fromtimestamp(os.path.getmtime(src)).strftime("%Y-%m-%d")
-    idx = {"v": v, "built": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1, "areas": AREAS, "bytes": total, "keys": keys,
-           "license": "© OpenStreetMap contributors / ODbL https://www.openstreetmap.org/copyright"}
-    with open(os.path.join(out, "index.json"), "w", encoding="utf-8") as f: json.dump(idx, f, ensure_ascii=False, separators=(",", ":"))
+    write_index(out, v, keys, total)
     open(os.path.join(out, ".nojekyll"), "w").close()   # GitHub Pages でそのまま配る（変換しない）
     with open(os.path.join(out, "README.md"), "w", encoding="utf-8") as f:
         f.write("# hosomichi-data\n\n[細道ルートナビ](https://yopo777.github.io/hosomichi/) 用の道路データ（約1km角のマスごと）です。\n\n"
