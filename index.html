@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1557</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1601</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1581,9 +1581,24 @@ async function stationSearch(q) {
   try {
     const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=20&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(base + "駅"))).json();
     const rail = x => ["railway", "public_transport"].includes(x.class) && /station|stop|halt/.test(x.type) || (x.class === "building" && x.type === "train_station");
-    const x = r.find(x => rail(x) && norm(x.name || x.display_name.split(",")[0]) === base);
+    const nmx = x => norm(x.name || x.display_name.split(",")[0]);
+    const x = r.find(x => rail(x) && nmx(x) === base) || r.find(x => nmx(x) === base && !/道の駅/.test(x.display_name));
+    addLog(`  駅さがし(Nominatim)「${base}駅」: 候補 ${r.length}件${x ? "・見つかった" : ""}`, "m");
     if (x) return [[+x.lat, +x.lon], x.display_name.split(",")[0]];
-  } catch {}
+  } catch (e) { addLog(`  駅さがし(Nominatim)失敗: ${e.message}`, "w"); }
+  // さいごは Overpass で「その名前の駅」をさがす（日本の中・名前がぴったり）
+  const qn = base.replace(/["\\]/g, "");
+  const oq = `[out:json][timeout:20];nwr["railway"~"^(station|halt)$"]["name"="${qn}"](24,122,46,154);out center 10;`;
+  for (const url of ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]) {
+    try {
+      const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(oq), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const els = ((await res.json()).elements || []).map(e => [e.lat ?? e.center?.lat, e.lon ?? e.center?.lon]).filter(p => p[0] != null);
+      addLog(`  駅さがし(Overpass)「${base}」: ${els.length}件`, "m");
+      if (els.length) { els.sort((a, b) => hav(a, [c.lat, c.lng]) - hav(b, [c.lat, c.lng])); return [els[0], base + "駅"]; }
+      break;
+    } catch (e) { addLog(`  駅さがし(Overpass)失敗: ${e.message}`, "w"); }
+  }
   return null;
 }
 async function geocode(text) {
