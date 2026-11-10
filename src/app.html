@@ -133,6 +133,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <div id="log"></div>
     </div>
     <div id="tabRoute">
+    <div class="row"><label>🔍</label><input type="text" id="jump" enterkeyhint="search" placeholder="地名・駅名で地図を動かす"></div>
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図をタップしても出発・到着を選べるよ</div>
@@ -314,6 +315,25 @@ async function geocodeExit(text) {
   return [st, `${stName}（${word}は見つからなかったよ）`];
 }
 
+// 駅をさがす：Photon（OpenStreetMap の駅だけにしぼれる）→ Nominatim。名前がぴったり合う駅だけ
+async function stationSearch(q) {
+  const base = q.replace(/駅$/, ""), norm = v => String(v || "").normalize("NFKC").replace(/\s/g, "").replace(/駅$/, "");
+  const c = map.getCenter();
+  try {
+    const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(base)}&osm_tag=railway:station&osm_tag=railway:halt&limit=15&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`;
+    const f = ((await (await fetch(u)).json()).features || []).filter(x => x.properties.countrycode === "JP" || !x.properties.countrycode);
+    const hit = f.filter(x => norm(x.properties.name) === base);
+    addLog(`  駅さがし(Photon)「${base}」: 候補 ${f.length}件・名前がぴったり ${hit.length}件` + hit.slice(0, 3).map(x => `｜${x.properties.name}（${x.properties.state || ""}${x.properties.city || ""}）`).join(""), "m");
+    if (hit.length) { const x = hit[0], [lo, la] = x.geometry.coordinates; return [[la, lo], `${x.properties.name}駅`.replace(/駅駅$/, "駅")]; }
+  } catch (e) { addLog(`  駅さがし(Photon)失敗: ${e.message}`, "w"); }
+  try {
+    const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=20&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(base + "駅"))).json();
+    const rail = x => ["railway", "public_transport"].includes(x.class) && /station|stop|halt/.test(x.type) || (x.class === "building" && x.type === "train_station");
+    const x = r.find(x => rail(x) && norm(x.name || x.display_name.split(",")[0]) === base);
+    if (x) return [[+x.lat, +x.lon], x.display_name.split(",")[0]];
+  } catch {}
+  return null;
+}
 async function geocode(text) {
   text = text.trim();
   if (EXIT_RE.test(text.normalize("NFKC")) && !/^https?:/.test(text)) { const r = await geocodeExit(text); if (r) return r; }
@@ -331,27 +351,18 @@ async function geocode(text) {
   };
   const nomi = async () => {
     const q = text.normalize("NFKC").replace(/〒?\s*\d{3}[-‐－―ー−]\d{4}/, "").trim();
-    // 「○○駅」は、鉄道の駅を先にえらぶ（「日光駅」で「道の駅 日光」にならないように）
-    const isSta = /駅$/.test(q) && !/道の駅/.test(q);
-    const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=${isSta ? 10 : 1}&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(q))).json();
+    const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(q))).json();
     if (!r.length) return;
-    let pick = r[0];
-    if (isSta) {
-      const nm = x => (x.name || x.display_name.split(",")[0]).replace(/\s/g, "");
-      const rail = x => ["railway", "public_transport"].includes(x.class) && /station|stop|halt/.test(x.type) || (x.class === "building" && x.type === "train_station");
-      const base = q.replace(/駅$/, "");
-      const good = r.filter(x => !/道の駅/.test(nm(x)));
-      const has = x => nm(x).includes(base);
-      pick = good.find(x => rail(x) && (nm(x) === q || nm(x) === base)) || good.find(x => rail(x) && has(x)) || good.find(has);
-      if (!pick) {   // 「日光」だけでもう一回さがして、その名前の鉄道の駅をさがす
-        const r2 = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=20&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(base))).json();
-        pick = r2.find(x => rail(x) && (nm(x) === q || nm(x) === base));
-      }
-      if (!pick) { addLog(`  「${q}」の鉄道の駅が見つからなかったので、地理院でさがすよ`, "m"); return null; }   // べつの駅（日暮里駅など）にしない
-      if (pick !== r[0]) addLog(`  「${q}」は鉄道の駅をえらんだよ: ${pick.display_name.split(",")[0]}（いちばん上の候補は ${r[0].display_name.split(",")[0]}）`, "m");
-    }
+    const pick = r[0];
     return [[+pick.lat, +pick.lon], pick.display_name.split(",").slice(0, 3).join(",")];
   };
+  // 「○○駅」は鉄道の駅だけをさがす（「日光駅」で 道の駅・べつの駅・ちがう場所 にならないように）
+  const q0 = text.normalize("NFKC").replace(/\s/g, "");
+  if (/駅$/.test(q0) && !/道の駅/.test(q0)) {
+    const r = await stationSearch(q0);
+    if (r) return r;
+    throw new Error(`「${q0}」という名前の駅が見つからなかったよ。駅名をたしかめるか、住所やGoogleマップのURLで入れてみてね`);
+  }
   const looksAddr = /丁目|番地|番|号|\d+\s*[-‐－―ー−]\s*\d+|[０-９]+[‐－―ー−][０-９]+/.test(text);
   for (const fn of looksAddr ? [gsi, nomi] : [nomi, gsi]) {
     try { const r = await fn(); if (r) return r; } catch (e) { console.warn(e); }
@@ -1197,14 +1208,29 @@ $("cfgBox").onchange = e => {
 };
 renderCfg();
 $("cfgReset").onclick = () => { if (!confirm("設定をはじめの状態にもどす？")) return; cfg = structuredClone(CFG_DEF); saveCfg(); renderCfg(); };
-map.on("click", e => {
-  if (follow) return;
-  const v = e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6);
+function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
-  div.innerHTML = "ここを<br><button data-k='from'>出発にする</button><button data-k='to'>到着にする</button>";
-  const pop = L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
+  div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + "ここを<br><button data-k='from'>出発にする</button><button data-k='to'>到着にする</button>";
+  const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => { const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
+}
+map.on("click", e => {
+  if (follow) return;
+  pinPopup(e.latlng, e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6));
+});
+// 🔍 地名・駅名で地図を動かす
+$("jump").addEventListener("keydown", async e => {
+  if (e.key !== "Enter" || e.isComposing) return;
+  const t = $("jump").value.trim(); if (!t) return;
+  $("jump").blur();
+  try {
+    const [ll, name] = await geocode(t);
+    if (follow) setFollow(false);
+    map.setView(ll, Math.max(map.getZoom(), 16));
+    $("panel").classList.add("min"); $("tog").textContent = "ひらく";   // 地図を見せる
+    setTimeout(() => pinPopup(ll, t, name), 300);
+  } catch (err) { alert(err.message); }
 });
 
 // ---------- 現在地ナビ ----------
