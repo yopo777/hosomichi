@@ -82,6 +82,10 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #dir.on{background:#1a73e8}
 #lay{position:absolute;top:calc(50% - 82px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
+#area{position:absolute;top:calc(50% - 226px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
+#area.on{background:#e6f4ea}
+#area small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 #col{position:absolute;top:calc(50% - 154px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
 #col small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
@@ -103,7 +107,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0932</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0945</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -158,6 +162,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
 <button id="gps" title="現在地についていく">◎</button>
 <button id="lay" title="地図の種類">🗺<small id="layL"></small></button>
+<button id="area" title="道路データの範囲">📦<small>範囲</small></button>
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
@@ -665,9 +670,9 @@ async function prune() {
   } catch {}
 }
 async function stats() {
-  const st = await store("readonly"); if (!st) return { n: 0, bytes: 0 };
+  const st = await store("readonly"); if (!st) return { n: 0, bytes: 0, keys: [] };
   const recs = await req(st.getAll());
-  return { n: recs.length, bytes: recs.reduce((a, r) => a + (r.size || 0), 0) };
+  return { n: recs.length, bytes: recs.reduce((a, r) => a + (r.size || 0), 0), keys: recs.map(r => r.key) };   // keys＝地図に色をぬる用
 }
 async function clearAll() { const st = await store("readwrite"); if (st) await req(st.clear()); mem.clear(); }
 
@@ -743,7 +748,7 @@ async function route(req, prog, partial) {
   });
   let lastTileAt = Date.now();
   const setTile = (key, el) => { lastTileAt = Date.now(); got.set(key, el); mem.set(key, el); (waiters.get(key) || []).forEach(r => r()); waiters.delete(key); };
-  prog({ stage: 1, msg: `保存したデータをさがし中（${N}マス）`, done: 0, total: N });
+  prog({ stage: 1, msg: `保存したデータをさがし中（${N}マス）`, done: 0, total: N, area: tiles.map(t => t.key) });   // 計算する範囲（地図に枠を出す）
   const stale = new Map();
   await Promise.all(tiles.map(async t => {
     if (mem.has(t.key)) return setTile(t.key, mem.get(t.key));
@@ -1149,12 +1154,47 @@ function showProg() {
   if (cur && cur.partial) $("mini").textContent = `✅ スタートから ${fmtKm(cur.len)} 確定　残りを計算中（${el}秒）`;
   if (p.total) setBar(p.done / p.total); else setBar(null);
 }
+// ==== 道路データの範囲：端末に保存ずみ＝うすい緑でぬる / 今の計算の範囲＝青い点線の枠 ====
+let cachedKeys = [], calcKeys = [], areaOn = lsGet("hosomichi_area", true) !== false;
+map.createPane("areaPane"); map.getPane("areaPane").style.zIndex = 350; map.getPane("areaPane").style.pointerEvents = "none";
+const areaLayer = L.layerGroup().addTo(map), areaRend = L.canvas({ pane: "areaPane" });
+const keyBox = k => { const [T, ij] = k.split(":"), t = +T, [i, j] = ij.split(",").map(Number); return [[i * t, j * t], [(i + 1) * t, (j + 1) * t]]; };
+function drawArea() {
+  areaLayer.clearLayers(); $("area").classList.toggle("on", areaOn);
+  if (!areaOn) return;
+  // 保存ずみ：となりあうマスを横につなげて軽くする
+  const rows = new Map();
+  for (const k of cachedKeys) { const [T, ij] = k.split(":"), [i, j] = ij.split(",").map(Number); const rk = T + ":" + i; if (!rows.has(rk)) rows.set(rk, []); rows.get(rk).push(j); }
+  for (const [rk, js] of rows) {
+    const [T, i] = rk.split(":").map(Number); js.sort((a, b) => a - b);
+    for (let a = 0; a < js.length;) { let b = a; while (b + 1 < js.length && js[b + 1] === js[b] + 1) b++;
+      L.rectangle([[i * T, js[a] * T], [(i + 1) * T, (js[b] + 1) * T]], { renderer: areaRend, stroke: false, fillColor: "#34a853", fillOpacity: 0.14, interactive: false }).addTo(areaLayer);
+      a = b + 1; }
+  }
+  for (const k of calcKeys) L.rectangle(keyBox(k), { renderer: areaRend, color: "#1a73e8", weight: 1.5, dashArray: "5 5", fill: false, interactive: false }).addTo(areaLayer);
+}
+$("area").onclick = () => { areaOn = !areaOn; lsSet("hosomichi_area", areaOn); drawArea(); };
+// ==== できたら音 ====
+let actx = null;
+function audioUnlock() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {} }
+function chime() {
+  try {
+    if (!actx) return; const t = actx.currentTime;
+    [[784, 0], [1047, 0.15], [1319, 0.3]].forEach(([f, d]) => {   // ド・ミ・ソ↑ みたいな「できた！」の音
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
+      g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.3, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.5);
+      o.start(t + d); o.stop(t + d + 0.55);
+    });
+  } catch {}
+}
 worker.onmessage = ev => {
   const m = ev.data;
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
   if (m.type === "stats") {
     $("store").style.display = m.n ? "block" : "none";
     $("stv").textContent = `${m.n}件・${(m.bytes / 1048576).toFixed(1)} MB（1年で自動更新）`;
+    cachedKeys = m.keys || []; drawArea();
     return;
   }
   if (m.type === "short") {   // あとから届く「ただの最短」
@@ -1169,9 +1209,10 @@ worker.onmessage = ev => {
     if (first) { $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }   // 地図を見せて、すぐ ◎ を押せるように
     return;
   }
+  if (m.type === "prog" && m.area) { calcKeys = m.area; drawArea(); }
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
   clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
-  if (m.type === "done") $("bar").classList.add("done");   // 終わったら緑
+  if (m.type === "done") { $("bar").classList.add("done"); chime(); }   // 終わったら緑＆音
   if (m.type === "stopped") {
     setBar(0);
     if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); setMsg("止めたよ。「▶ 続きを計算」でここから再開できるよ"); }
@@ -1224,6 +1265,7 @@ function startJob(s, g, jcfg, prefix) {
 }
 $("stop").onclick = () => { $("stop").textContent = "止めてるよ…"; worker.postMessage({ cmd: "stop" }); setTimeout(() => $("stop").textContent = "■ 止める", 3000); };
 $("bResume").onclick = () => {
+  audioUnlock();
   if (!cur || !cur.resume || $("go").disabled) return;
   pendingName = cur.name || pendingName;
   const P = { ...cur, tent: null, partial: false };
@@ -1287,6 +1329,7 @@ async function placeName(input, ll) {
 const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : (looksAddress(t) ? townName(t) : cleanAddr(t)).slice(0, 24);
 
 $("go").onclick = async () => {
+  audioUnlock();
   const fromT = $("from").value.trim(), toT = $("to").value.trim();
   if (!toT) { setMsg("到着地を入れてね", true); return; }
   if (unsavedRoute() && await askSave("新しいルートを作る") === "cancel") return;
