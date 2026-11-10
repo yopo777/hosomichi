@@ -411,7 +411,17 @@ function markUsed(route) {
       for (let k = 1; k <= n; k++) usedNodes.add(usedKey(a + (c - a) * k / (n + 1), b + (d - b) * k / (n + 1))); }
   }
 }
+let easePts = [];   // 寄り道スポット：このまわり200mは大きい道も走ってOK（お店は大きい道ぞいにあるので）
+const EASE_R = 200, EASE_PEN = 1.5;
 function applyBlocks(lat, lon, adj, N) {
+  if (easePts.length) {
+    const c = Math.cos(easePts[0][0] * RAD) * 111320;
+    const near = i => easePts.some(([a, b]) => Math.abs(lat[i] - a) * 111320 < EASE_R && Math.abs(lon[i] - b) * c < EASE_R && hav(lat[i], lon[i], a, b) < EASE_R);
+    for (let u = 0; u < N; u++) {
+      if (!adj[u] || !adj[u].length || !near(u)) continue;
+      for (const e of adj[u]) if (e.c > e.L * EASE_PEN && near(e.v)) e.c = e.L * EASE_PEN;
+    }
+  }
   if (usedNodes && usedNodes.size) {
     const u8 = new Uint8Array(N);
     for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && usedNodes.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
@@ -488,6 +498,7 @@ async function loopRoute(req, prog) {
     if (stops.some(p => p.kind !== "via")) log(`寄り道: ${stops.filter(p => p.kind !== "via").map(p => p.name).join("・")}`);
     const way = [s, ...pts, s], parts = [], nl = way.length - 1;
     usedNodes = new Set(); let dupM = 0, allM = 0;
+    easePts = stops.filter(p => p.kind !== "via").map(p => [p.la, p.lo]);
     log(`--- ${label} ---`, "h");
     try {
       for (let li = 0; li < nl; li++) {
@@ -501,7 +512,8 @@ async function loopRoute(req, prog) {
         markUsed(r.route);
         parts.push(r);
       }
-    } catch (e) { if (stopReq) throw e; log(`${label}は作れなかった: ${e.message}`, "w"); return null; }
+    } catch (e) { easePts = []; if (stopReq) throw e; log(`${label}は作れなかった: ${e.message}`, "w"); return null; }
+    easePts = [];
     const L = joinLegs(parts);
     L.dup = allM ? dupM / allM : 0;
     log(`${label}: ${(L.len / 1000).toFixed(1)}km（目標 ${D / 1000}km）・同じあたりを往復 ${Math.round(L.dup * 100)}%`, "ok");
@@ -556,7 +568,7 @@ async function loopRoute(req, prog) {
         if (out.length === 1 && !out[0].kfSet) { out[0].kfSet = 1; kf = Math.min(1.8, Math.max(1.05, kf * out[0].len / D)); }
       }
     }
-  } finally { usedNodes = null; }
+  } finally { usedNodes = null; easePts = []; }
   if (!out.length) throw new Error("1周するルートが作れなかったよ。長さを変えるか、出発を道の多い所にしてみてね");
   const nStop = o => (o.stops || []).filter(p => p.kind !== "via" && p.d <= 150).length;   // ほんとうに寄れた数
   const score = o => Math.abs(o.len - D) / D + o.dup * 1.5 - nStop(o) * 0.15;   // 長さが目標に近くて、往復が少なくて、寄り道できたもの
