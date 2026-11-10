@@ -381,10 +381,42 @@ function buildGraph(osm, cfg, onProg) {
     if (lvl[i] === 2) xcost[i] = cfg.wideCross === "any" ? 0 : sig ? 0 : (cfg.wideCross === "crosswalk" && xw) ? 0 : HARD;
     else xcost[i] = sig || xw ? 0 : midPen(cfg.midCross);
   }
-  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen,
+  const nBlk = applyBlocks(lat, lon, adj, N);
+  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen,
     hk: Math.min(1, +cfg.kodo || 1) };   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
+// 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
+let blockPts = [];
+const BLOCK_R = 12;
+function applyBlocks(lat, lon, adj, N) {
+  if (!blockPts.length) return 0;
+  const C = 0.002, g = new Map();   // 印を約200mのマスに入れる
+  for (const [la, lo] of blockPts) { const k = Math.floor(la / C) + "," + Math.floor(lo / C); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo]); }
+  const nearBlocks = i => {
+    const a = Math.floor(lat[i] / C), b = Math.floor(lon[i] / C), out = [];
+    for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (const p of g.get((a + x) + "," + (b + y)) || []) out.push(p);
+    return out;
+  };
+  const cosl = Math.cos((blockPts[0][0]) * RAD), M = 111320;
+  const segDist = (p, u, v) => {   // 点 p と 線分 u-v のきょり（m）
+    const ax = (lon[u] - p[1]) * cosl * M, ay = (lat[u] - p[0]) * M, bx = (lon[v] - p[1]) * cosl * M, by = (lat[v] - p[0]) * M;
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+    return Math.hypot(ax + dx * t, ay + dy * t);
+  };
+  let n = 0;
+  for (let u = 0; u < N; u++) {
+    if (!adj[u] || !adj[u].length) continue;
+    const bs = nearBlocks(u); if (!bs.length) continue;
+    for (const e of adj[u].slice()) {
+      if (!bs.some(p => segDist(p, u, e.v) < BLOCK_R)) continue;
+      const v = e.v;
+      adj[u] = adj[u].filter(x => x.v !== v); adj[v] = adj[v].filter(x => x.v !== u); n++;
+    }
+  }
+  return n;
+}
 // 道の「つながりのかたまり」。駅の中の通路や公園の中の小道など、外とつながってない所を見分ける
 function components(G) {
   if (G.comp) return G.comp;
@@ -1128,7 +1160,7 @@ async function routeOnce(req, prog, partial) {
         G = BG({ elements }, cfg);
         tBuild += (Date.now() - tb) / 1000; nNodes = Math.max(nNodes, G.nNodes);
         { let ne = 0; for (const a of G.adj) ne += a.length;
-          log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${G.swLen ? `・歩道のある道 ${(G.swLen / 1000).toFixed(1)}km` : ""}${wide ? "【範囲を広げてやりなおし】" : ""}`); }
+          log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${G.swLen ? `・歩道のある道 ${(G.swLen / 1000).toFixed(1)}km` : ""}${G.nBlk ? `・🚫通れない印で切った所 ${G.nBlk}か所` : ""}${wide ? "【範囲を広げてやりなおし】" : ""}`); }
         sn = confEnd != null ? G.idx.get(confEnd) : undefined;
         if (sn === undefined) {
           const q = nearestGood(G, s[0], s[1]);
@@ -1331,6 +1363,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
         for (const ws of stopWaiters) ws(); return;
       }
       stopReq = false; cancelFetch = false; routing = true; if (pfAc) pfAc.abort();   // 自動でためてる途中なら中断
+      blockPts = Array.isArray(d.blocks) ? d.blocks : [];
       const r = await route(d, p => self.postMessage({ type: "prog", ...p }), p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
       const sh = shortest(); if (sh) self.postMessage({ type: "short", ...sh });

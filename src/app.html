@@ -125,6 +125,12 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <input type="file" id="pfFile" style="display:none">
 
     </div>
+    <div id="blkBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+      <b>🚫 通れない印 <span id="blkN">0</span>個</b>
+      <div style="font-size:11px;color:#666;margin-top:2px">地図をタップ →「🚫 通れない印」でつけるよ。印から12m以内の道は、ルートで通らないよ（この端末の中だけに保存）</div>
+      <div class="btns" style="margin-top:6px"><button class="ib" id="blkQr" style="font-size:12px">📷 QRでほかの端末にうつす</button><button class="ib" id="blkCopy" style="font-size:12px">🔗 URLをコピー</button></div>
+      <div class="btns" style="margin-top:4px"><button class="ib" id="blkShow" style="font-size:12px">🗺 印を全部見る</button><button class="ib" id="blkDel" style="font-size:12px">🗑 全部消す</button></div>
+    </div>
     <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
     </div>
@@ -710,7 +716,7 @@ function startJob(s, g, jcfg, prefix) {
   }
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  worker.postMessage({ s, g, cfg: jcfg });
+  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.map(b => b.p) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
@@ -1286,13 +1292,21 @@ renderCfg();
 $("cfgReset").onclick = () => { if (!confirm("設定をはじめの状態にもどす？")) return; cfg = structuredClone(CFG_DEF); saveCfg(); renderCfg(); };
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
-  div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button>";
+  div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
+    + "<button data-b='1' style='color:#c00'>🚫 通れない印</button>";
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
-  div.onclick = ev => { const k = ev.target.dataset.k; if (!k) return;
+  div.onclick = ev => {
+    if (ev.target.dataset.b) {   // 理由をえらぶ（押したボタンが消えると地図のタップあつかいになるので、少しあとで入れかえる）
+      L.DomEvent.stopPropagation(ev);
+      setTimeout(() => { div.innerHTML = "<b>🚫 なんで通れない？</b><br>" + Object.entries(BLK_R).map(([c, t]) => `<button data-r="${c}">${t}</button>`).join("")
+        + "<div style='font-size:11px;color:#666;margin-top:4px'>印から12m以内の道を、次のルートから通らないよ</div>";
+      pop.update(); }, 0); return;
+    }
+    if (ev.target.dataset.r) { addBlock(L.latLng(ll), ev.target.dataset.r); map.closePopup(pop); return; }
+    const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 }
 map.on("click", e => {
-  if (follow) return;
   pinPopup(e.latlng, e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6));
 });
 // 🔍 地名・駅名で地図を動かす
@@ -1393,6 +1407,73 @@ function setFollow(on) {
   else map.dragging.enable();
 }
 document.addEventListener("visibilitychange", () => { if (wid !== null && document.visibilityState === "visible") wake(); });
+
+// ---------- 🚫 通れない印（自分だけ・この端末に保存） ----------
+const BKEY = "hosomichi_blocks";
+const BLK_R = { s: "階段", p: "人の家・敷地", x: "柵・工事・行き止まり", o: "その他" };
+let blocks = lsGet(BKEY, []).filter(b => b && Array.isArray(b.p));
+const blkLayer = L.layerGroup().addTo(map);
+function blkIcon() { return L.divIcon({ className: "", html: '<div style="font-size:20px;line-height:22px;text-align:center;text-shadow:0 0 3px #fff">🚫</div>', iconSize: [22, 22], iconAnchor: [11, 11] }); }
+function drawBlocks() {
+  blkLayer.clearLayers();
+  blocks.forEach((b, i) => {
+    const m = L.marker(b.p, { icon: blkIcon(), zIndexOffset: 500 }).addTo(blkLayer);
+    const div = document.createElement("div"); div.className = "pin";
+    div.innerHTML = `<b>🚫 ${BLK_R[b.r] || "通れない"}</b>${b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : ""}<br><button>この印を消す</button>`;
+    div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog("🚫 通れない印を1つ消したよ"); };
+    m.bindPopup(div);
+  });
+  $("blkN").textContent = blocks.length;
+}
+function saveBlocks() { lsSet(BKEY, blocks); drawBlocks(); }
+function addBlock(ll, r) {
+  const d = new Date();
+  blocks.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], r, t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
+  saveBlocks(); addLog(`🚫 通れない印をつけたよ（${BLK_R[r]}）。次のルート計算から通らないよ`, "ok");
+}
+// URL・QR用にみじかくする：理由1文字＋緯度経度（10万倍の36進数）
+function blkEncode() { return blocks.map(b => b.r + Math.round(b.p[0] * 1e5).toString(36) + "." + Math.round(b.p[1] * 1e5).toString(36)).join("_"); }
+function blkDecode(t) {
+  return t.split("_").map(x => { const m = /^([spxo])([0-9a-z]+)\.([0-9a-z]+)$/.exec(x); return m && { p: [parseInt(m[2], 36) / 1e5, parseInt(m[3], 36) / 1e5], r: m[1] }; })
+    .filter(b => b && Math.abs(b.p[0]) <= 90 && Math.abs(b.p[1]) <= 180);
+}
+function blkUrl() { return location.origin + location.pathname + "#blk=" + blkEncode(); }
+$("blkCopy").onclick = async () => {
+  if (!blocks.length) return alert("まだ印がないよ");
+  if (!confirm("このURLには印の場所が全部入ってるよ。家のまわりの印もあるかもしれないから、自分の端末にうつすときだけ使ってね。コピーする？")) return;
+  try { await navigator.clipboard.writeText(blkUrl()); alert("コピーしたよ。ほかの端末で開いてね"); } catch { prompt("このURLをコピーしてね", blkUrl()); }
+};
+$("blkQr").onclick = async () => {
+  if (!blocks.length) return alert("まだ印がないよ");
+  const box = $("qr"); box.style.display = "block"; box.innerHTML = "QRを作っています…";
+  try {
+    await loadQrLib();
+    const url = blkUrl();
+    if (url.length > 2900) { box.innerHTML = '<span style="color:#c00">印が多すぎてQRに入らないよ。URLをコピーして送ってね</span><br><button class="ib" data-q="x">✕ とじる</button>'; return; }
+    const qr = qrcode(0, "L"); qr.addData(url, "Byte"); qr.make();
+    const size = Math.floor(Math.min(window.innerWidth - 24, window.innerHeight - 130));
+    box.innerHTML = `<div class="btns" style="margin:0 auto 8px;max-width:420px;display:flex;gap:6px"><button class="ib" data-q="x" style="flex:1">✕ とじる</button></div>` + qrSvg(qr, size)
+      + `<div style="font-size:13px;color:#666;margin-top:6px">🚫 通れない印 ${blocks.length}個。うつしたい端末のカメラで読みとってね<br>（家のまわりの印も入ってるから、人には見せないでね）</div>`;
+  } catch (e) { box.innerHTML = `<span style="color:#c00">${e.message}</span>`; }
+};
+$("blkShow").onclick = () => {
+  if (!blocks.length) return alert("まだ印がないよ");
+  map.fitBounds(L.latLngBounds(blocks.map(b => b.p)), { padding: [40, 40], maxZoom: 17 });
+  $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+};
+$("blkDel").onclick = () => { if (blocks.length && confirm(`通れない印 ${blocks.length}個を全部消す？`)) { blocks = []; saveBlocks(); } };
+drawBlocks();
+// QR・URLで来たとき：今の印に足す（同じ所＝5m以内はかさねない）
+if (location.hash.startsWith("#blk=")) {
+  const add = blkDecode(location.hash.slice(5));
+  history.replaceState(null, "", location.pathname + location.search);
+  if (add.length && confirm(`🚫 通れない印 ${add.length}個を読みこむ？（今の印に足すよ）`)) {
+    let n = 0;
+    for (const b of add) if (!blocks.some(c => Math.abs(c.p[0] - b.p[0]) < 5e-5 && Math.abs(c.p[1] - b.p[1]) < 6e-5)) { blocks.push(b); n++; }
+    saveBlocks(); addLog(`🚫 通れない印を ${n}個 読みこんだよ（ぜんぶで ${blocks.length}個）`, "ok");
+    if (blocks.length) setTimeout(() => map.fitBounds(L.latLngBounds(blocks.map(b => b.p)), { padding: [40, 40], maxZoom: 17 }), 800);   // 地図の準備ができてから
+  }
+}
 
 // ---------- 共有URLから開いたとき ----------
 function loadHash() {
