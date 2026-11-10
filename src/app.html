@@ -316,9 +316,17 @@ async function geocodeExit(text) {
 }
 
 // 駅をさがす：Photon（OpenStreetMap の駅だけにしぼれる）→ Nominatim。名前がぴったり合う駅だけ
+let packStations = null;
 async function stationSearch(q) {
   const base = q.replace(/駅$/, ""), norm = v => String(v || "").normalize("NFKC").replace(/\s/g, "").replace(/駅$/, "");
   const c = map.getCenter();
+  // まずは配布データの駅の一覧（関東・名前がぴったり）
+  try {
+    packStations = packStations || await (await fetch(new URL("../hosomichi-data/stations.json", location.href))).json();
+    const hit = packStations.filter(x => norm(x[0]) === base).sort((a, b) => hav([a[1], a[2]], [c.lat, c.lng]) - hav([b[1], b[2]], [c.lat, c.lng]));
+    addLog(`  駅さがし(配布データ)「${base}」: ${hit.length}件`, "m");
+    if (hit.length) return [[hit[0][1], hit[0][2]], hit[0][0] + "駅"];
+  } catch (e) { packStations = packStations || []; }
   try {
     const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(base)}&osm_tag=railway:station&osm_tag=railway:halt&limit=15&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`;
     const f = ((await (await fetch(u)).json()).features || []).filter(x => x.properties.countrycode === "JP" || !x.properties.countrycode);

@@ -9,6 +9,7 @@
        出力フォルダ/index.json と 出力フォルダ/t/緯度番号_経度番号.json.gz を作る
      （ダウンロードずみの pbf を使うときは: python make_pack.py kanto-latest.osm.pbf 出力フォルダ）
      （index.json だけ作りなおすときは: python make_pack.py --index-only 出力フォルダ）
+     （駅の一覧 stations.json だけ作るときは: python make_pack.py --stations-only kanto-latest.osm.pbf 出力フォルダ）
   3. 出力フォルダの中身を GitHub の hosomichi-data リポジトリに push して GitHub Pages で公開
 
 データ: © OpenStreetMap contributors（ODbL）
@@ -196,6 +197,33 @@ class H(osmium.SimpleHandler):
         self.nw += 1
         if self.nw % 100000 == 0: print(f"  道 {self.nw:,} 本…", flush=True)
 
+class StaH(osmium.SimpleHandler):   # 駅（名前と場所）を集める：アプリの「○○駅」さがし用
+    def __init__(self):
+        super().__init__(); self.st = {}
+    def add(self, tags, la, lo):
+        if tags.get("railway") not in ("station", "halt") and not (tags.get("public_transport") == "station" and tags.get("train") == "yes"): return
+        n = tags.get("name")
+        if not n or not (S0 < la < N0 and W0 < lo < E0): return
+        self.st.setdefault(n, []).append((round(la, 6), round(lo, 6)))
+    def node(self, n):
+        if n.tags and n.location.valid(): self.add(n.tags, n.location.lat, n.location.lon)
+    def area(self, a):   # 駅の建物（面）は、まわりの点の平均
+        try:
+            pts = [(nd.lat, nd.lon) for ring in a.outer_rings() for nd in ring]
+            if pts: self.add(a.tags, sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+        except Exception: pass
+
+def write_stations(src, out):
+    t0 = time.time(); h = StaH(); h.apply_file(src, locations=True, idx="flex_mem")
+    rows = []
+    for n, pts in h.st.items():   # 同じ名前の点が近くに何個もあるときは1つに（ホームごとの点など）
+        keep = []
+        for p in pts:
+            if all(abs(p[0] - q[0]) + abs(p[1] - q[1]) > 0.01 for q in keep): keep.append(p)
+        rows += [[n, la, lo] for (la, lo) in keep]
+    with open(os.path.join(out, "stations.json"), "w", encoding="utf-8") as f: json.dump(rows, f, ensure_ascii=False, separators=(",", ":"))
+    print(f"  駅 {len(rows)}か所（{len(h.st)}種類の名前）→ stations.json（{time.time() - t0:.0f}秒）")
+
 def write_index(out, src_date, keys, total, built=None):
     empty = empty_tiles(keys)
     idx = {"v": src_date, "built": built or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1,
@@ -205,6 +233,9 @@ def write_index(out, src_date, keys, total, built=None):
     with open(os.path.join(out, "index.json"), "w", encoding="utf-8") as f: json.dump(idx, f, ensure_ascii=False, separators=(",", ":"))
 
 def main():
+    if len(sys.argv) in (3, 4) and sys.argv[1] == "--stations-only":   # 駅の一覧だけ作る
+        src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else ("kanto-latest.osm.pbf", sys.argv[2])
+        write_stations(src, out); return
     if len(sys.argv) == 3 and sys.argv[1] == "--index-only":   # マスはそのままで index.json だけ作りなおす
         out = sys.argv[2]; tdir = os.path.join(out, "t")
         names = sorted(n for n in os.listdir(tdir) if n.endswith(".json.gz"))
@@ -255,6 +286,7 @@ def main():
     for name in old: os.remove(os.path.join(out, "t", name))   # はんい外になった古いマス
     v = datetime.datetime.fromtimestamp(os.path.getmtime(src)).strftime("%Y-%m-%d")
     write_index(out, v, keys, total)
+    write_stations(src, out)
     open(os.path.join(out, ".nojekyll"), "w").close()   # GitHub Pages でそのまま配る（変換しない）
     with open(os.path.join(out, "README.md"), "w", encoding="utf-8") as f:
         f.write("# hosomichi-data\n\n[細道ルートナビ](https://yopo777.github.io/hosomichi/) 用の道路データ（約1km角のマスごと）です。\n\n"
