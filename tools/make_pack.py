@@ -10,6 +10,7 @@
      （ダウンロードずみの pbf を使うときは: python make_pack.py kanto-latest.osm.pbf 出力フォルダ）
      （index.json だけ作りなおすときは: python make_pack.py --index-only 出力フォルダ）
      （駅の一覧 stations.json だけ作るときは: python make_pack.py --stations-only kanto-latest.osm.pbf 出力フォルダ）
+     （寄り道スポット pois.json だけ作るときは: python make_pack.py --pois-only kanto-latest.osm.pbf 出力フォルダ）
   3. 出力フォルダの中身を GitHub の hosomichi-data リポジトリに push して GitHub Pages で公開
 
 データ: © OpenStreetMap contributors（ODbL）
@@ -224,6 +225,58 @@ def write_stations(src, out):
     with open(os.path.join(out, "stations.json"), "w", encoding="utf-8") as f: json.dump(rows, f, ensure_ascii=False, separators=(",", ":"))
     print(f"  駅 {len(rows)}か所（{len(h.st)}種類の名前）→ stations.json（{time.time() - t0:.0f}秒）")
 
+# ---- 寄り道スポット（アプリの「🔁 ぐるっと1周」の寄り道用）----
+# pois.json = [[種類, 緯度, 経度, 名前], …]。面（敷地）のものは点の平均を場所にする
+MEISHO_HIST = {"castle", "ruins", "archaeological_site", "monument", "battlefield", "city_gate", "fort", "manor", "building", "milestone"}
+MINI = re.compile(r"ミニストップ|MINISTOP|Ministop", re.I)
+def poi_kind(t, is_area):
+    g = t.get; n = g("name")
+    if g("tourism") == "viewpoint": return "view"
+    if g("man_made") == "tower" and g("tower:type") == "observation": return "tower"
+    if g("shop") == "convenience" and (MINI.search(g("brand", "")) or MINI.search(n or "")): return "mini"
+    if not n: return None
+    if g("railway") == "station": return "station"
+    if g("leisure") == "park": return "park" if is_area else None                       # 公園は敷地のあるものだけ
+    if g("amenity") == "place_of_worship" and g("religion") in ("buddhist", "shinto"):
+        return ("shrine" if g("religion") == "shinto" else "temple") if is_area else None   # 寺・神社も境内のあるものだけ
+    if "商店街" in n and (g("highway") or g("landuse") == "retail" or g("place")): return "shotengai"
+    if g("historic") == "castle": return "castle"
+    if g("historic") in MEISHO_HIST or g("tourism") in ("attraction", "museum") or g("heritage"): return "meisho"
+    return None
+class PoiH(osmium.SimpleHandler):
+    def __init__(self):
+        super().__init__(); self.rows = []
+    def add(self, k, la, lo, t):
+        if not (S0 < la < N0 and W0 < lo < E0): return
+        name = t.get("name") or {"view": "見晴らしのいい所", "tower": "展望塔", "mini": "ミニストップ"}.get(k, "")
+        if k == "station" and not name.endswith("駅"): name += "駅"
+        self.rows.append([k, round(la, 5), round(lo, 5), name])
+    def node(self, n):
+        if not n.tags or not n.location.valid(): return
+        k = poi_kind(n.tags, False)
+        if k: self.add(k, n.location.lat, n.location.lon, n.tags)
+    def way(self, w):
+        if not w.tags: return
+        k = poi_kind(w.tags, w.is_closed())
+        if not k: return
+        pts = [(nd.location.lat, nd.location.lon) for nd in w.nodes if nd.location.valid()]
+        if pts: self.add(k, sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts), w.tags)
+
+def write_pois(src, out):
+    t0 = time.time()
+    print(f"寄り道スポットをさがし中: {src}", flush=True)
+    h = PoiH(); h.apply_file(src, locations=True, idx="flex_mem")
+    rows, seen = [], {}
+    for r in h.rows:   # 同じ名前で近い（500m）ものは1つに（商店街は道ごと、駅はホームごとに分かれているので）
+        key = (r[0], r[3])
+        if any(abs(r[1] - q[1]) + abs(r[2] - q[2]) < 0.005 for q in seen.get(key, ())): continue
+        seen.setdefault(key, []).append(r); rows.append(r)
+    with open(os.path.join(out, "pois.json"), "w", encoding="utf-8") as f: json.dump(rows, f, ensure_ascii=False, separators=(",", ":"))
+    cnt = defaultdict(int)
+    for r in rows: cnt[r[0]] += 1
+    print(f"  寄り道スポット {len(rows):,}か所（{'・'.join(f'{k} {v}' for k, v in sorted(cnt.items()))}）→ pois.json"
+          f"（{os.path.getsize(os.path.join(out, 'pois.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
+
 def write_index(out, src_date, keys, total, built=None):
     empty = empty_tiles(keys)
     idx = {"v": src_date, "built": built or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1,
@@ -236,6 +289,9 @@ def main():
     if len(sys.argv) in (3, 4) and sys.argv[1] == "--stations-only":   # 駅の一覧だけ作る
         src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else ("kanto-latest.osm.pbf", sys.argv[2])
         write_stations(src, out); return
+    if len(sys.argv) in (3, 4) and sys.argv[1] == "--pois-only":   # 寄り道スポットの一覧だけ作る
+        src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else ("kanto-latest.osm.pbf", sys.argv[2])
+        write_pois(src, out); return
     if len(sys.argv) == 3 and sys.argv[1] == "--index-only":   # マスはそのままで index.json だけ作りなおす
         out = sys.argv[2]; tdir = os.path.join(out, "t")
         names = sorted(n for n in os.listdir(tdir) if n.endswith(".json.gz"))
@@ -287,6 +343,7 @@ def main():
     v = datetime.datetime.fromtimestamp(os.path.getmtime(src)).strftime("%Y-%m-%d")
     write_index(out, v, keys, total)
     write_stations(src, out)
+    write_pois(src, out)
     open(os.path.join(out, ".nojekyll"), "w").close()   # GitHub Pages でそのまま配る（変換しない）
     with open(os.path.join(out, "README.md"), "w", encoding="utf-8") as f:
         f.write("# hosomichi-data\n\n[細道ルートナビ](https://yopo777.github.io/hosomichi/) 用の道路データ（約1km角のマスごと）です。\n\n"

@@ -566,9 +566,33 @@ function segM(la, lo, a, b) {
 const POI_ICON = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯", park: "🌳" };
 const LAND = new Set(["station", "temple", "shrine", "shotengai", "meisho", "castle"]);
 const poiMem = new Map();
+// 配布データの寄り道スポット（pois.json）。あればサーバーには聞かない
+let packPois = null;
+async function loadPackPois() {
+  if (packPois) return packPois;
+  if (!packBase) return null;
+  try {
+    const t0 = Date.now(), res = await fetch(packBase + "pois.json"); if (!res.ok) return null;
+    const rows = await res.json();
+    packPois = rows.map(([kind, la, lo, name]) => ({ la, lo, kind, name, big: true }));
+    log(`配布データの寄り道スポット: ${packPois.length}か所（${((Date.now() - t0) / 1000).toFixed(1)}秒）`, "ok");
+    return packPois;
+  } catch { return null; }
+}
+const WANT_KINDS = { view: ["view", "tower"], mini: ["mini"], park: ["park"], station: ["station"], worship: ["temple", "shrine"], shotengai: ["shotengai"], meisho: ["meisho", "castle"] };
 async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
   const b = bb.map(v => v.toFixed(4)).join(","), key = b + JSON.stringify(want);
   if (poiMem.has(key)) return poiMem.get(key);
+  // 配布データのはんいの中なら、配布データの一覧から取る（すぐ・サーバーなし）
+  await packIndex().catch(() => null);
+  const pp = await loadPackPois();
+  const cla = (bb[0] + bb[2]) / 2, clo = (bb[1] + bb[3]) / 2;
+  if (pp && pp.length && (!packAreas.length || packAreas.some(([S, W, N, E]) => S < cla && cla < N && W < clo && clo < E))) {
+    const ks = new Set(Object.entries(WANT_KINDS).filter(([k]) => want[k]).flatMap(([, v]) => v));
+    const out = pp.filter(p => ks.has(p.kind) && bb[0] < p.la && p.la < bb[2] && bb[1] < p.lo && p.lo < bb[3]);
+    log(`寄り道の場所（配布データ）: ${out.length}か所`, "ok");
+    poiMem.set(key, out); return out;
+  }
   const q = `[out:json][timeout:25];(` +
     (want.view ? `nwr["tourism"="viewpoint"](${b});nwr["man_made"="tower"]["tower:type"="observation"](${b});` : "") +
     (want.mini ? `nwr["shop"="convenience"]["brand"~"ミニストップ|MINISTOP|Ministop"](${b});nwr["shop"="convenience"]["name"~"ミニストップ|MINISTOP|Ministop"](${b});` : "") +
