@@ -185,16 +185,17 @@ const $ = id => document.getElementById(id);
 const attr = '地理院タイル | 経路 &copy; OpenStreetMap contributors';
 // 背景の地図（⚙ 設定でえらぶ）
 const BASES = {
-  pale: ["国土地理院 淡色", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
-  std: ["国土地理院 標準", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
   cyclosm: ["CyclOSM（自転車用）", () => L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
     { subdomains: "abc", maxZoom: 20, maxNativeZoom: 20, attribution: "CyclOSM | 地図データ &copy; OpenStreetMap contributors" })],
+  pale: ["国土地理院 淡色", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
+  std: ["国土地理院 標準", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
 };
 const base = {};
 const map = L.map("map", { zoomControl: false, rotate: true, bearing: 0, rotateControl: false, touchRotate: false,
+  zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 120,   // 拡大・縮小をこまかく（1段ずつだと急すぎる）
   shiftKeyRotate: false, compassBearing: false }).setView([35.69, 139.75], 11);
-let baseName = (() => { try { return localStorage.getItem("hosomichi_bg") || "pale"; } catch { return "pale"; } })();
-if (!BASES[baseName]) baseName = "pale";
+let baseName = (() => { try { return localStorage.getItem("hosomichi_bg") || "cyclosm"; } catch { return "cyclosm"; } })();
+if (!BASES[baseName]) baseName = "cyclosm";
 try { localStorage.removeItem("hosomichi_base"); } catch {}
 const baseLayer = n => base[n] || (base[n] = BASES[n][1]());
 baseLayer(baseName).addTo(map);
@@ -340,7 +341,13 @@ async function geocode(text) {
       const rail = x => ["railway", "public_transport"].includes(x.class) && /station|stop|halt/.test(x.type) || (x.class === "building" && x.type === "train_station");
       const base = q.replace(/駅$/, "");
       const good = r.filter(x => !/道の駅/.test(nm(x)));
-      pick = good.find(x => rail(x) && (nm(x) === q || nm(x) === base)) || good.find(rail) || good[0] || r[0];
+      const has = x => nm(x).includes(base);
+      pick = good.find(x => rail(x) && (nm(x) === q || nm(x) === base)) || good.find(x => rail(x) && has(x)) || good.find(has);
+      if (!pick) {   // 「日光」だけでもう一回さがして、その名前の鉄道の駅をさがす
+        const r2 = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=20&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(base))).json();
+        pick = r2.find(x => rail(x) && (nm(x) === q || nm(x) === base));
+      }
+      if (!pick) { addLog(`  「${q}」の鉄道の駅が見つからなかったので、地理院でさがすよ`, "m"); return null; }   // べつの駅（日暮里駅など）にしない
       if (pick !== r[0]) addLog(`  「${q}」は鉄道の駅をえらんだよ: ${pick.display_name.split(",")[0]}（いちばん上の候補は ${r[0].display_name.split(",")[0]}）`, "m");
     }
     return [[+pick.lat, +pick.lon], pick.display_name.split(",").slice(0, 3).join(",")];
