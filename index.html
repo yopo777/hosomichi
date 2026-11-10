@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1430</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1414</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -190,9 +190,9 @@ const DEFAULT_CFG = {
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
   sidewalk: 1.5,         // 歩道（段差・柵）のある道の倍率。1＝気にしない
+  kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
   midCross: 0,           // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
-  kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
 const OTHER_PENALTY = 2.0;
@@ -1721,7 +1721,8 @@ worker.onmessage = ev => {
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
   showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen,
-    alts: job && job.prefix ? null : m.alts,
+    opts: job && job.prefix || !(m.alts || []).length ? null
+      : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len }, ...m.alts], sel: 0,
     name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
   if (job && job.prefix) cur.slen = 0;
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
@@ -1886,7 +1887,6 @@ function legend(r) {
   if ((r.ok || []).length) h += dot("#0a0", "#0a03", 16, "信号で横断");
   if ((r.xw || []).length) h += dot("#1a73e8", "#1a73e840", 15, "横断歩道で横断");
   if ((r.ng || []).length) h += dot("#f00", "#ff09", 18, "設定どおりに渡れなかった所");
-  if ((r.alts || []).length) h += `<div><i style="background:${ALT_COL[0]};opacity:.5"></i>うすい線＝ほかのルート（タップで切りかえ）</div>`;
   if (colorMode !== "red") h += '<div style="border-top:1px solid #ddd;margin:3px 0"></div>';
   if (colorMode === "kind") {
     if (!r.kc) h += "灰色の線：このルートには道の種類の情報がないよ";
@@ -1900,28 +1900,16 @@ function legend(r) {
   }
   lg.innerHTML = h; lg.style.display = "block";
 }
-// ほかのルート（うすい線）。タップするとそっちを使う
-const ALT_COL = ["#7e57c2", "#00897b"];
-function drawAlts(r) {
-  (r.alts || []).forEach((a, i) => {
-    const d = a.len - r.len, tip = `ルート${i + 2}：${fmtKm(a.len)}（${d >= 0 ? "+" : "−"}${fmtKm(Math.abs(d))}）` + (a.turns != null ? `・曲がる${a.turns}回` : "") + "　タップでこっちにする";
-    L.polyline(a.route, { color: "#fff", weight: 9, opacity: .5 }).addTo(layer);
-    L.polyline(a.route, { color: ALT_COL[i % 2], weight: 6, opacity: .45 }).addTo(layer).bindTooltip(tip, { sticky: true })
-      .on("click", ev => { L.DomEvent.stop(ev); useAlt(i); });
-  });
-}
-function useAlt(i) {
-  const r = cur, a = r.alts[i]; if (!a) return;
-  const asAlt = { route: r.route, ek: r.ek, ok: r.ok, xw: r.xw, ng: r.ng, kinds: r.kinds, turns: r.turns, len: r.len, kc: r.kc };
-  const alts = r.alts.slice(); alts[i] = asAlt;
-  const n = { ...a, kc: a.kc || null, name: r.name, alts, short: r.short, slen: r.slen };
-  if (!n.ek) delete n.kc;
-  addLog(`ルート${i + 2}（${fmtKm(a.len)}）に切りかえたよ`);
+// ルートの候補（第2・第3のルート）：パネルのラジオボタンで切りかえる。地図には選んだルートだけ出す
+function selectOpt(i) {
+  const r = cur, o = r && r.opts && r.opts[i]; if (!o || r.sel === i) return;
+  const n = { ...o, name: r.name, opts: r.opts, sel: i, short: r.short, slen: r.slen };
+  delete n.kc; delete n.elev; delete n.elevInfo; delete n.elevErr;
+  addLog(`ルート${i + 1}（${fmtKm(o.len)}）にしたよ`);
   showRoute(n, false); lsSet(LKEY, packRoute(n));
 }
 function drawRoute(r) {
   const R = r.route;
-  drawAlts(r);
   L.polyline(R, { color: "#fff", weight: 11, opacity: .85, interactive: false }).addTo(layer);   // ふちどり
   const seg = (pts, color) => L.polyline(pts, { color, weight: 7, opacity: .95 }).addTo(layer);
   if (colorMode === "kind" && r.kc && r.kc.length === R.length - 1) {
@@ -2014,7 +2002,7 @@ $("colL").textContent = COLOR_NAMES[colorMode];
 let cum = [];
 function showRoute(r, fit) {
   cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn);
-  if (!r.partial && r.len) $("mini").textContent = `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
+  if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
   const tent = r.tent || [];
   r.nav = r.route.length ? r.route.concat(tent.slice(1)) : tent.slice();   // ナビで使う線（確定＋仮）
   if (r.short?.length) L.polyline(r.short, { color: "#777", weight: 4, opacity: .5 }).addTo(layer).bindTooltip("ただの最短");
@@ -2039,10 +2027,17 @@ function showRoute(r, fit) {
     ? `<b style="color:#e37400">途中まで ${fmtKm(r.len)}（ゴールまでまっすぐ約 ${fmtKm(r.restAir || 0)}）</b><br><span style="color:#666">「▶ 続きを計算」でここから先を計算できるよ</span>`
     : `<b>細道ルート ${fmtKm(r.len)}</b>`;
   if (r.slen) h += `（最短 ${fmtKm(r.slen)}、+${Math.round((r.len / r.slen - 1) * 100)}%）`;
+  if (r.opts && r.opts.length > 1 && !r.partial) h += '<div id="opts" style="margin:6px 0;display:flex;flex-direction:column;gap:2px">' + r.opts.map((o, i) =>
+    `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:8px;cursor:pointer;${i === r.sel ? "background:#fdecea;font-weight:bold" : ""}">
+      <input type="radio" name="opt" value="${i}"${i === r.sel ? " checked" : ""}>ルート${i + 1}　${fmtKm(o.len)}` +
+    (i ? `<span style="color:#888;font-weight:normal;font-size:12px">（${o.len >= r.opts[0].len ? "+" : "−"}${fmtKm(Math.abs(o.len - r.opts[0].len))}）</span>` : "") +
+    (o.turns != null ? `<span style="color:#666;font-weight:normal;font-size:12px">曲がる${o.turns}回</span>` : "") + `</label>`).join("") + '</div>';
   if (r.turns != null) h += `<br>曲がる回数 <b>${r.turns}回</b>`;
   if (r.ok || r.ng) h += `<br>道の横断: <span style="color:#0a0">●信号 ${r.ok.length}</span> / <span style="color:#1a73e8">●横断歩道 ${(r.xw || []).length}</span> / <span style="color:${r.ng.length ? "#c00" : "inherit"}">●ルール外 ${r.ng.length}</span>`;
   if (r.kinds) h += "<br><span style='color:#666'>" + Object.entries(r.kinds).sort((a, b) => b[1] - a[1]).map(([k, m]) => `${k} ${fmtKm(m)}`).join(" / ") + "</span>";
+  h = h.replace('</label></div><br>', '</label></div>');
   $("sum").innerHTML = h; $("result").style.display = "block"; $("share").style.display = "none";
+  if ($("opts")) $("opts").onchange = e => selectOpt(+e.target.value);
   $("result").querySelector(".btns").style.display = "";
   $("bResume").style.display = r.resume && !r.partial && !$("go").disabled ? "" : "none";
   $("bNew").style.display = !r.partial && !$("go").disabled ? "" : "none";
