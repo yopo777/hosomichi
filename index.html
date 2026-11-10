@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1430</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1439</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -734,7 +734,7 @@ async function getTile(key) {
     const r = await req(st.get(key));
     if (!r) return null;
     const el = (await unpack(r)).elements;
-    return { el, stale: Date.now() - r.savedAt > MAX_AGE };   // 古くても、取れなかったときの予備に使う
+    return { el, stale: Date.now() - r.savedAt > MAX_AGE, pv: r.pv || null };   // 古くても、取れなかったときの予備に使う
   } catch { return null; }
 }
 // 大きいマス(0.01°)と小さいマス(0.005°)は、どちらかがあれば代わりに使う（先取りは大きいマスでためる）
@@ -752,7 +752,7 @@ async function getTileAny(key) {
 }
 // ==== 配布データ（GitHub Pages に置いた道路データ。Overpass にアクセスしないですむ） ====
 // 形式: <base>index.json（{v:日付, keys:["緯度番号_経度番号", ...]}）と <base>t/緯度番号_経度番号.json.gz（大きいマス 0.01°）
-let packBase = null, packIdx = null, packV = 0, packAt = 0, packBytes = 0;
+let packBase = null, packIdx = null, packV = 0, packAt = 0, packBytes = 0, packId = "";
 const bigOf = k => { const [T, ij] = k.split(":"), [i, j] = ij.split(",").map(Number); return T === "0.01" ? k : `0.01:${Math.floor(i / 2)},${Math.floor(j / 2)}`; };
 const packName = big => big.split(":")[1].replace(",", "_");
 async function packIndex() {
@@ -763,6 +763,7 @@ async function packIndex() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const j = await res.json();
     packIdx = new Set(j.keys); packV = Date.parse(j.v) || Date.now(); packBytes = j.bytes || 0;
+    packId = j.built || `${j.v}:${j.bytes}`;   // 配布データの版。作りなおすと変わる
     log(`配布データ: ${packIdx.size}マス（${j.v} の地図・${(packBytes / 1048576).toFixed(0)}MB）`, "ok");
   } catch (e) { packIdx = packIdx || new Set(); log(`配布データの一覧が読めなかった（${e.message}）。サーバーから取るよ`, "w"); }
   packAt = Date.now();
@@ -778,7 +779,7 @@ async function packTile(big) {   // 大きいマスを配布データから取�
   else { text = await blob.text(); blob = (await pack(text)).blob; }   // ブラウザが先にほどいていたとき
   const json = JSON.parse(text);
   const st = await store("readwrite");
-  if (st) await req(st.put({ key: big, savedAt: packV, gz: true, blob, size: blob.size }));
+  if (st) await req(st.put({ key: big, savedAt: packV, pv: packId, gz: true, blob, size: blob.size }));
   mem.set(big, json.elements);
   return { el: json.elements, bytes: blob.size };
 }
@@ -1033,10 +1034,13 @@ async function route(req, prog, partial) {
   let lastTileAt = Date.now();
   const setTile = (key, el) => { lastTileAt = Date.now(); got.set(key, el); mem.set(key, el); (waiters.get(key) || []).forEach(r => r()); waiters.delete(key); };
   prog({ stage: 1, msg: `保存したデータをさがし中（${N}マス）`, done: 0, total: N, area: tiles.map(t => t.key) });   // 計算する範囲（地図に枠を出す）
-  const stale = new Map();
+  const stale = new Map(); let oldPack = 0;
+  await packIndex();
   await Promise.all(tiles.map(async t => {
     if (mem.has(t.key)) return setTile(t.key, mem.get(t.key));
     const r = await getTileAny(t.key);
+    // 配布データが新しくなっていたら、そのマスは配布データから取りなおす（すぐ取れる）
+    if (r && packIdx && packIdx.has(packName(bigOf(t.key))) && r.pv !== packId) { oldPack++; return; }
     if (r) { setTile(t.key, r.el); if (r.stale) stale.set(t.key, 1); }   // 1年より古くても待たずに使う（取りなおしは「自動でためる」がゆっくりやる）
   }));
   // 配布データにあるマスは、そこから取る（Overpass にアクセスしない）
@@ -1056,6 +1060,7 @@ async function route(req, prog, partial) {
     }
   }
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
+  if (oldPack) log(`配布データが新しくなったので、${oldPack}マスを配布データから取りなおすよ`);
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
   let done = 0, bytes = 0, fetchErr = null, stage = 1, stageMsg = "";
   const active = new Map(), tf0 = Date.now(), fetchingKeys = new Set();   // fetchingKeys＝いま取っているマス（地図で光らせる）

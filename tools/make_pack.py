@@ -206,7 +206,7 @@ def main():
         del h
     for name in old: os.remove(os.path.join(out, "t", name))   # はんい外になった古いマス
     v = datetime.datetime.fromtimestamp(os.path.getmtime(src)).strftime("%Y-%m-%d")
-    idx = {"v": v, "T": T, "kodo": 1, "areas": AREAS, "bytes": total, "keys": keys,
+    idx = {"v": v, "built": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1, "areas": AREAS, "bytes": total, "keys": keys,
            "license": "© OpenStreetMap contributors / ODbL https://www.openstreetmap.org/copyright"}
     with open(os.path.join(out, "index.json"), "w", encoding="utf-8") as f: json.dump(idx, f, ensure_ascii=False, separators=(",", ":"))
     open(os.path.join(out, ".nojekyll"), "w").close()   # GitHub Pages でそのまま配る（変換しない）
