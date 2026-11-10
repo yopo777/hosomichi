@@ -100,7 +100,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1045</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1058</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -122,6 +122,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <div id="list"></div></div>
     <div id="pfBox" style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
       <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="pfAuto">🗺 地図のまわりの道路データを自動でためる</label>
+      <div style="font-size:11px;color:#b45309;font-weight:bold;margin-top:2px">⚠ パソコン（Wi-Fi・光回線）用だよ。スマホではオンにしないでね！ギガをたくさん使っちゃう（1日 最大100MBくらい）</div>
       <div id="pfMsg" style="font-size:11px;color:#666;margin-top:2px">もう持っている道路データのとなりを、いつも使うあたりに近い順に、ゆっくり1マスずつ取るよ（ルート計算中はお休み）</div>
       <div class="btns" style="margin-top:6px"><button class="ib" id="pfExp" style="font-size:12px">⬇ ためたデータを書き出す</button><button class="ib" id="pfImp" style="font-size:12px">⬆ 読みこむ</button></div>
       <input type="file" id="pfFile" style="display:none">
@@ -677,24 +678,32 @@ async function homeCenter() {
   const med = a => { a.sort((x, y) => x - y); return a[a.length >> 1]; };
   return [+med(la).toFixed(4), +med(lo).toFixed(4)];
 }
-async function haveKeys() {   // 持っている大きいマス（小さいマス4つそろっていれば持ってるとみなす）
-  const st = await store("readonly"); if (!st) return new Set();
-  const now = Date.now(), recs = await req(st.getAll()), have = new Set(), small = new Map();
+async function haveKeys() {   // 持っている大きいマス（小さいマス4つそろっていれば持ってるとみなす）と、1年より古いマス
+  const st = await store("readonly"); if (!st) return { have: new Set(), touched: new Set(), old: [] };
+  const now = Date.now(), recs = await req(st.getAll()), have = new Set(), small = new Map(), fresh = new Set(), oldRaw = [];
   for (const r of recs) {
-    if (now - r.savedAt > MAX_AGE) continue;
     const [T, ij] = r.key.split(":"), [i, j] = ij.split(",").map(Number);
+    const big = T === "0.01" ? r.key : `0.01:${Math.floor(i / 2)},${Math.floor(j / 2)}`;
+    if (now - r.savedAt > MAX_AGE) oldRaw.push({ big, t: r.savedAt }); else if (T === "0.01") fresh.add(r.key);
     if (T === "0.01") have.add(r.key);
-    else { const k = `0.01:${Math.floor(i / 2)},${Math.floor(j / 2)}`; small.set(k, (small.get(k) || 0) + 1); }
+    else small.set(big, (small.get(big) || 0) + 1);
   }
   for (const [k, n] of small) if (n >= 4) have.add(k);
-  return { have, touched: new Set([...have, ...small.keys()]) };   // touched＝少しでもデータがある大きいマス
+  // 古いマスは大きいマスごと取りなおす（いちばん古いものから）。もう新しい大きいマスがあればいらない
+  const seen = new Set(), old = [];
+  for (const o of oldRaw.sort((a, b) => a.t - b.t)) if (!fresh.has(o.big) && !seen.has(o.big)) { seen.add(o.big); old.push(o.big); }
+  return { have, touched: new Set([...have, ...small.keys()]), old };
 }
 async function autoPrefetch(post) {
-  const T = 0.01, { have, touched } = await haveKeys(), failed = new Map();
+  const T = 0.01, failed = new Map();
+  let { have, touched, old } = await haveKeys(), reload = false, reloadAt = Date.now();
   let srv = 0, fail = 0, got = 0, bytes = 0, cand = [], candC = null, home = null, homeAt = 0;
-  log(`==== 自動でためる：スタート（持ってる大きいマス ${have.size}個）====`, "h");
+  log(`==== 自動でためる：スタート（持ってる大きいマス ${have.size}個・1年より古くて取りなおすマス ${old.length}個）====`, "h");
   while (!pfStop) {
-    if (routing) { post({ msg: "ルート計算中なのでお休み中" }); await sleep(1000); continue; }
+    if (routing) { reload = true; post({ msg: "ルート計算中なのでお休み中" }); await sleep(1000); continue; }
+    if (reload) {   // ルートを作ったあとは、持っているマスを読みなおす（保存がおわるのを少し待つ）
+      await sleep(3000); ({ have, touched, old } = await haveKeys()); reload = false; reloadAt = Date.now(); home = null;
+    }
     // 「いつも使っているあたり」のまん中（20マスごとに計算しなおす）
     if (!home || got - homeAt >= 20) { home = await homeCenter(); homeAt = got; }
     if (!home) { post({ msg: "まだルートを作ってないので、お休み中（ルートを作ると、そのまわりからためるよ）" }); await sleep(10000); continue; }
@@ -711,19 +720,27 @@ async function autoPrefetch(post) {
     }
     // もう持っているマスのとなり（少しだけ持ってるマスもふくむ）だけを取る＝持ってる所から少しずつ外へ
     const nextTo = x => { for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (touched.has(`${T}:${x.i + a},${x.j + b}`)) return true; return false; };
-    const t = cand.find(x => !have.has(x.key) && !(failed.get(x.key) > Date.now()) && nextTo(x));
+    // 1年より古いマスの取りなおしが先（いちばん古いものから）。なければ持ってる所のとなりを広げる
+    let t = null;
+    while (old.length && !t) {
+      const k = old[0], [i, j] = k.split(":")[1].split(",").map(Number);
+      if (failed.get(k) > Date.now()) { old.push(old.shift()); if (old.every(x => failed.get(x) > Date.now())) break; continue; }
+      t = { key: k, i, j, km: hav(c[0], c[1], (i + 0.5) * T, (j + 0.5) * T) / 1000, bb: { s: i * T, w: j * T, n: (i + 1) * T, e: (j + 1) * T }, refresh: true };
+    }
+    if (!t) t = cand.find(x => !have.has(x.key) && !(failed.get(x.key) > Date.now()) && nextTo(x));
+    if (!t && Date.now() - reloadAt > 60000) { reload = true; continue; }   // 念のため読みなおしてから「ぜんぶたまった」にする
     if (!t) { post({ msg: `いつものあたりから${PF_R}kmまでぜんぶたまってるよ`, haveN: have.size }); await sleep(5000); continue; }
     const url = OVERPASS_URLS[srv % OVERPASS_URLS.length], host = new URL(url).host, t0 = Date.now();
     pfAc = new AbortController(); const ac = pfAc, to = setTimeout(() => { ac.timedOut = true; ac.abort(); }, 60000);
-    post({ msg: `${host} から取得中（いつものあたりから${t.km.toFixed(1)}km）`, haveN: have.size });
+    post({ msg: t.refresh ? `${host} から古いマスを取りなおし中（のこり ${old.length}マス）` : `${host} から取得中（いつものあたりから${t.km.toFixed(1)}km）`, haveN: have.size });
     try {
       const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(overpassQuery(t.bb)), signal: ac.signal, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
       if (!res.ok) throw new Error("HTTP " + res.status);
       const text = await res.text(), json = JSON.parse(text);
       if (json.remark && /error|timed out|memory/i.test(json.remark)) throw new Error(json.remark.slice(0, 60));
       await putTile(t.key, text);
-      have.add(t.key); touched.add(t.key); got++; bytes += text.length; fail = 0;
-      log(`自動でためた ${t.key} ${host} ${kb(text.length)}（${((Date.now() - t0) / 1000).toFixed(1)}秒・まん中から${t.km.toFixed(1)}km）`, "ok");
+      have.add(t.key); touched.add(t.key); got++; if (t.refresh) old.shift(); bytes += text.length; fail = 0;
+      log(`${t.refresh ? "自動で取りなおした" : "自動でためた"} ${t.key} ${host} ${kb(text.length)}（${((Date.now() - t0) / 1000).toFixed(1)}秒・まん中から${t.km.toFixed(1)}km）`, "ok");
       post({ tile: t.key, got, bytes, haveN: have.size });
       for (let s = PF_GAP; s > 0 && !pfStop && !routing; s -= 500) await sleep(500);   // サーバーにやさしく
     } catch (e) {
@@ -862,10 +879,10 @@ async function route(req, prog, partial) {
   await Promise.all(tiles.map(async t => {
     if (mem.has(t.key)) return setTile(t.key, mem.get(t.key));
     const r = await getTileAny(t.key);
-    if (r && !r.stale) setTile(t.key, r.el); else if (r) stale.set(t.key, r.el);
+    if (r) { setTile(t.key, r.el); if (r.stale) stale.set(t.key, 1); }   // 1年より古くても待たずに使う（取りなおしは「自動でためる」がゆっくりやる）
   }));
-  const saved = got.size, need = tiles.filter(t => !got.has(t.key));
-  log(`端末の保存データ: 使える ${saved}マス / 1年より古い ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
+  const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
+  log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
   let done = 0, bytes = 0, fetchErr = null, stage = 1, stageMsg = "";
   const active = new Map(), tf0 = Date.now();
   const report = () => {
@@ -1355,18 +1372,27 @@ let pfDrawT = 0, pfAutoOn = lsGet("hosomichi_autopf", false) === true;
 const today = () => new Date().toLocaleDateString("sv");
 const pfCount = () => { const c = lsGet("hosomichi_pfday", null); return c && c.d === today() ? c.n : 0; };
 let pfWorking = false;
+const isPhone = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (matchMedia("(pointer:coarse)").matches && innerWidth < 900);
+const onCellular = () => { const c = navigator.connection; return !!c && (c.type === "cellular" || c.saveData === true); };
 function pfStart() {
   if (!pfAutoOn || pfWorking) return;
+  if (onCellular()) { $("pfMsg").textContent = "モバイル回線（またはデータセーバー）なので、自動でためるのはお休み中。Wi-Fi になったらまた続けるよ"; return; }
   if (pfCount() >= PF_DAY) { $("pfMsg").textContent = `今日は ${PF_DAY}マスためたので、ここまで。明日また続けるよ`; return; }
   pfWorking = true; worker.postMessage({ cmd: "autoPf" });
 }
 $("pfAuto").checked = pfAutoOn;
 $("pfAuto").onchange = () => {
+  if ($("pfAuto").checked && isPhone() && !confirm("⚠ スマホでオンにすると、ギガ（データ通信量）をたくさん使っちゃうよ（1日 最大100MBくらい）。\nパソコンでためて「⬇ 書き出す」→ スマホで「⬆ 読みこむ」がおすすめだよ。\n\nそれでもオンにする？")) { $("pfAuto").checked = false; return; }
   pfAutoOn = $("pfAuto").checked; lsSet("hosomichi_autopf", pfAutoOn);
   if (pfAutoOn) { addLog("🗺 自動でためる：オン", "h"); pfStart(); }
   else { worker.postMessage({ cmd: "prefetchStop" }); $("pfMsg").textContent = "止めたよ"; }
 };
-setInterval(pfStart, 10 * 60000);   // 日付が変わったらまた始める
+setInterval(pfStart, 10 * 60000);
+if (navigator.connection) navigator.connection.addEventListener("change", () => {
+  if (!pfAutoOn) return;
+  if (onCellular()) { worker.postMessage({ cmd: "prefetchStop" }); addLog("🗺 モバイル回線になったので、自動でためるのを止めたよ", "w"); }
+  else setTimeout(pfStart, 3000);
+});   // 日付が変わったらまた始める
 setTimeout(pfStart, 3000);
 function onPf(m) {
   if (m.tile) {   // 1マス取れた：カラー地図をふやす（重くならないよう2秒に1回だけ描きなおす）
@@ -1376,7 +1402,8 @@ function onPf(m) {
     if (n >= PF_DAY) { worker.postMessage({ cmd: "prefetchStop" }); addLog(`🗺 自動でためる：今日は ${PF_DAY}マスでおしまい`, "i"); }
     return;
   }
-  if (m.fin) { pfWorking = false; drawArea(); if (pfCount() >= PF_DAY) { $("pfMsg").textContent = `今日は ${PF_DAY}マスためたので、ここまで。明日また続けるよ`; return; } }
+  if (m.fin) { pfWorking = false; drawArea();
+    if (pfAutoOn && onCellular()) { $("pfMsg").textContent = "モバイル回線なので、自動でためるのはお休み中。Wi-Fi になったらまた続けるよ"; return; } if (pfCount() >= PF_DAY) { $("pfMsg").textContent = `今日は ${PF_DAY}マスためたので、ここまで。明日また続けるよ`; return; } }
   if (!pfAutoOn) return;
   $("pfMsg").textContent = `今日 ${pfCount()}/${PF_DAY}マス` + (m.haveN != null ? `・ためた大きいマス ${m.haveN}個` : "") + (m.msg ? `・${m.msg}` : "");
 }
