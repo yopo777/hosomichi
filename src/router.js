@@ -444,6 +444,7 @@ async function loopRoute(req, prog) {
   log(`==== 🔁 ぐるっと1周 ${D / 1000}km（出発 ${s[0].toFixed(5)},${s[1].toFixed(5)}） ====`, "h");
   // 寄り道（展望台・丘の上・ミニストップ・ベンチ）：まわる範囲の分を1回だけさがす
   let pois = [];
+  want.land = !!(want.station || want.worship || want.shotengai);   // ランドマーク（駅・寺神社・商店街のどれか）
   if (want.view || want.mini || want.bench || want.vend || want.land) {
     prog({ stage: 1, msg: "🔁 寄り道の場所をさがし中…" });
     const ext = 2.3 * D / 4.5;
@@ -522,8 +523,9 @@ async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
     (want.mini ? `nwr["shop"="convenience"]["brand"~"ミニストップ|MINISTOP|Ministop"](${b});nwr["shop"="convenience"]["name"~"ミニストップ|MINISTOP|Ministop"](${b});` : "") +
     (want.bench ? `node["amenity"="bench"](${b});` : "") +
     (want.vend ? `node["amenity"="vending_machine"]["vending"~"drinks"](${b});` : "") +
-    (want.land ? `nwr["railway"="station"]["name"](${b});nwr["amenity"="place_of_worship"]["religion"~"buddhist|shinto"]["name"](${b});` +
-      `way["highway"]["name"~"商店街"](${b});nwr["landuse"="retail"]["name"~"商店街"](${b});nwr["place"]["name"~"商店街"](${b});` : "") + `);out center tags;`;
+    (want.station ? `nwr["railway"="station"]["name"](${b});` : "") +
+    (want.worship ? `nwr["amenity"="place_of_worship"]["religion"~"buddhist|shinto"]["name"](${b});` : "") +
+    (want.shotengai ? `way["highway"]["name"~"商店街"](${b});nwr["landuse"="retail"]["name"~"商店街"](${b});nwr["place"]["name"~"商店街"](${b});` : "") + `);out center tags;`;
   let last;
   for (const url of OVERPASS_URLS) {
     const ac = new AbortController(), to = setTimeout(() => ac.abort(), 30000); aborts.add(ac);
