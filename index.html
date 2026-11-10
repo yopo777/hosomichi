@@ -100,7 +100,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1008</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1024</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -120,6 +120,13 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <button id="go">ルートを作る</button>
     <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
       <div id="list"></div></div>
+    <div id="pfBox" style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+      🗺 地図のまん中のまわりの道路データをためておく
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px">半径
+        <select id="pfR"><option value="2">2km</option><option value="5" selected>5km</option><option value="10">10km</option><option value="20">20km</option></select>
+        <button class="ib" id="pfGo" style="flex:1">ためはじめる</button></div>
+      <div id="pfMsg" style="font-size:11px;color:#666;margin-top:4px">ゆっくり1マスずつ取るよ。このタブを開いておいてね</div>
+    </div>
     <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
     <div id="result">
@@ -645,6 +652,65 @@ async function getTile(key) {
     return { el, stale: Date.now() - r.savedAt > MAX_AGE };   // 古くても、取れなかったときの予備に使う
   } catch { return null; }
 }
+// 大きいマス(0.01°)と小さいマス(0.005°)は、どちらかがあれば代わりに使う（先取りは大きいマスでためる）
+async function getTileAny(key) {
+  const r = await getTile(key); if (r && !r.stale) return r;
+  const [T, ij] = key.split(":"), [i, j] = ij.split(",").map(Number);
+  if (T === "0.005") {
+    const p = await getTile(`0.01:${Math.floor(i / 2)},${Math.floor(j / 2)}`);
+    if (p && !p.stale) return p;
+  } else if (T === "0.01") {
+    const rs = await Promise.all([[0, 0], [0, 1], [1, 0], [1, 1]].map(([a, b]) => getTile(`0.005:${2 * i + a},${2 * j + b}`)));
+    if (rs.every(x => x && !x.stale)) return { el: rs.flatMap(x => x.el), stale: false };
+  }
+  return r;
+}
+// ==== 先取り：まわりの道路データを少しずつためておく（サーバーにやさしく1マスずつ） ====
+let pfStop = false, pfRun = false, routing = false;
+async function prefetch(c, rkm, post) {
+  const T = 0.01, cl = Math.cos(c[0] * RAD), dl = rkm / 111.32, dg = dl / cl, list = [];
+  for (let i = Math.floor((c[0] - dl) / T); i <= Math.floor((c[0] + dl) / T); i++)
+    for (let j = Math.floor((c[1] - dg) / T); j <= Math.floor((c[1] + dg) / T); j++) {
+      const km = hav(c[0], c[1], (i + 0.5) * T, (j + 0.5) * T) / 1000;
+      if (km <= rkm + 0.5) list.push({ key: `${T}:${i},${j}`, km, bb: { s: i * T, w: j * T, n: (i + 1) * T, e: (j + 1) * T } });
+    }
+  list.sort((a, b) => a.km - b.km);   // 近いところから
+  log(`==== 先取りスタート：半径${rkm}km・${list.length}マス（1マス約1km角）====`, "h");
+  let have = 0, got = 0, fail = 0, srv = 0, bytes = 0;
+  const send = (msg, fin) => post({ done: have + got, total: list.length, got, have, bytes, msg, fin });
+  for (const t of list) {
+    if (pfStop) break;
+    while (routing && !pfStop) { send("ルート計算中なので先取りはお休み中"); await sleep(1000); }
+    if (pfStop) break;
+    const r = await getTileAny(t.key);
+    if (r && !r.stale) { have++; continue; }
+    for (let tries = 0; !pfStop; tries++) {
+      const url = OVERPASS_URLS[srv % OVERPASS_URLS.length], host = new URL(url).host, ac = new AbortController(), t0 = Date.now();
+      const to = setTimeout(() => ac.abort(), 60000);
+      send(`${host} から取得中（${t.km.toFixed(1)}km先）`);
+      try {
+        const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(overpassQuery(t.bb)), signal: ac.signal, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const text = await res.text(), json = JSON.parse(text);
+        if (json.remark && /error|timed out|memory/i.test(json.remark)) throw new Error(json.remark.slice(0, 60));
+        await putTile(t.key, text);
+        got++; bytes += text.length; fail = 0;
+        log(`先取り ${t.key} ${host} ${kb(text.length)}（${((Date.now() - t0) / 1000).toFixed(1)}秒）`, "ok");
+        post({ tile: t.key });
+        break;
+      } catch (e) {
+        fail++; srv++;
+        const w = fail >= OVERPASS_URLS.length ? 60 : 15;
+        log(`先取り 失敗 ${host}: ${e.name === "AbortError" ? "時間切れ" : e.message}。${w}秒待って次のサーバーへ`, "w");
+        for (let s = w; s > 0 && !pfStop; s--) { send(`サーバーが混んでるので ${s}秒お休み`); await sleep(1000); }
+      } finally { clearTimeout(to); }
+    }
+    await sleep(2000);   // 1マスごとに少し休む（サーバーにやさしく）
+  }
+  log(pfStop ? `先取り 止めました（新しく ${got}マス）` : `先取り おわり：新しく ${got}マス・もともと ${have}マス`, "ok");
+  send(pfStop ? "止めたよ" : "おわったよ", true);
+  prune();
+}
 async function putTile(key, text) {
   try {
     const { gz, blob } = await pack(text);
@@ -743,7 +809,7 @@ async function route(req, prog, partial) {
   const stale = new Map();
   await Promise.all(tiles.map(async t => {
     if (mem.has(t.key)) return setTile(t.key, mem.get(t.key));
-    const r = await getTile(t.key);
+    const r = await getTileAny(t.key);
     if (r && !r.stale) setTile(t.key, r.el); else if (r) stale.set(t.key, r.el);
   }));
   const saved = got.size, need = tiles.filter(t => !got.has(t.key));
@@ -926,18 +992,26 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     try {
       if (d.cmd === "stats") return self.postMessage({ type: "stats", ...(await stats()) });
       if (d.cmd === "clear") { await clearAll(); return self.postMessage({ type: "stats", ...(await stats()) }); }
+      if (d.cmd === "prefetch") {
+        if (pfRun) return; pfRun = true; pfStop = false;
+        try { await prefetch(d.c, d.r, p => self.postMessage({ type: "pf", ...p })); } finally { pfRun = false; }
+        return self.postMessage({ type: "stats", ...(await stats()) });
+      }
+      if (d.cmd === "prefetchStop") { pfStop = true; return; }
       if (d.cmd === "stop") {   // 計算中の「止める」
         log("■ 止めるボタンが押されました", "w");
         stopReq = true; for (const ac of aborts) ac.abort(); aborts.clear();
         for (const ws of stopWaiters) ws(); return;
       }
-      stopReq = false; cancelFetch = false;
+      stopReq = false; cancelFetch = false; routing = true;
       const r = await route(d, p => self.postMessage({ type: "prog", ...p }), p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
       const sh = shortest(); if (sh) self.postMessage({ type: "short", ...sh });
+      routing = false;
       await flushSaves();
       self.postMessage({ type: "stats", ...(await stats()) });
     } catch (e) {
+      routing = false;
       if (e && e.stopped) { log("■ 止めました", "w"); self.postMessage({ type: "stopped" }); await flushSaves().catch(() => {}); self.postMessage({ type: "stats", ...(await stats()) }); }
       else { log("エラー: " + e.message, "e"); self.postMessage({ type: "error", msg: e.message }); }
     }
@@ -1138,12 +1212,13 @@ function showProg() {
 let cachedKeys = [], calcKeys = [];
 const areaOn = true;   // いつも表示
 try { localStorage.removeItem("hosomichi_area"); } catch {}
-map.createPane("areaPane"); map.getPane("areaPane").style.zIndex = 350; map.getPane("areaPane").style.pointerEvents = "none";
+// 地図といっしょに回る所に入れる（入れないとタイルの下にかくれる）
+map.createPane("areaPane", map._rotatePane || map.getPane("mapPane")); map.getPane("areaPane").style.zIndex = 350; map.getPane("areaPane").style.pointerEvents = "none";
 const areaLayer = L.layerGroup().addTo(map), areaRend = L.canvas({ pane: "areaPane" });
 const keyBox = k => { const [T, ij] = k.split(":"), t = +T, [i, j] = ij.split(",").map(Number); return [[i * t, j * t], [(i + 1) * t, (j + 1) * t]]; };
 // 保存ずみのマスの形に切りぬいた「標準」地図
 let cachedRects = [];
-map.createPane("colorPane"); map.getPane("colorPane").style.zIndex = 250; map.getPane("colorPane").style.pointerEvents = "none";
+map.createPane("colorPane", map._rotatePane || map.getPane("mapPane")); map.getPane("colorPane").style.zIndex = 250; map.getPane("colorPane").style.pointerEvents = "none";
 const ColorLayer = L.GridLayer.extend({
   createTile(c, done) {
     const cv = document.createElement("canvas"), sz = this.getTileSize(); cv.width = sz.x; cv.height = sz.y;
@@ -1184,6 +1259,33 @@ function drawArea() {
     L.rectangle([[r[0], r[1]], [r[2], r[3]]], { renderer: areaRend, stroke: false, fillColor: "#34a853", fillOpacity: 0.14, interactive: false }).addTo(areaLayer);
   for (const k of calcKeys) L.rectangle(keyBox(k), { renderer: areaRend, color: "#1a73e8", weight: 1.5, dashArray: "5 5", fill: false, interactive: false }).addTo(areaLayer);
 }
+// ==== 先取り（まわりの道路データをためておく） ====
+let pfOn = false, pfCircle = null, pfDrawT = 0;
+$("pfGo").onclick = () => {
+  audioUnlock();
+  if (pfOn) { worker.postMessage({ cmd: "prefetchStop" }); $("pfGo").textContent = "止めてるよ…"; return; }
+  const c = map.getCenter(), r = +$("pfR").value;
+  pfOn = true; $("pfGo").textContent = "■ 止める"; $("pfR").disabled = true;
+  if (pfCircle) map.removeLayer(pfCircle);
+  pfCircle = L.circle(c, { radius: r * 1000, color: "#f29900", weight: 2, dashArray: "6 6", fill: false, interactive: false }).addTo(map);
+  map.fitBounds(pfCircle.getBounds(), { padding: [20, 20] });
+  addLog(`🗺 先取り：半径${r}km`, "h");
+  worker.postMessage({ cmd: "prefetch", c: [c.lat, c.lng], r });
+};
+function onPf(m) {
+  if (m.tile) {   // 1マス取れた：カラー地図をふやす（重くならないよう2秒に1回だけ描きなおす）
+    if (!cachedKeys.includes(m.tile)) cachedKeys.push(m.tile);
+    if (Date.now() - pfDrawT > 2000) { pfDrawT = Date.now(); drawArea(); }
+    return;
+  }
+  const pct = m.total ? Math.floor(m.done / m.total * 100) : 0;
+  $("pfMsg").textContent = `${m.done}/${m.total}マス（${pct}%）・新しく ${m.got}マス ${(m.bytes / 1048576).toFixed(1)}MB ${m.msg ? "・" + m.msg : ""}`;
+  if (m.fin) {
+    pfOn = false; $("pfGo").textContent = "ためはじめる"; $("pfR").disabled = false; drawArea();
+    if (pfCircle) { map.removeLayer(pfCircle); pfCircle = null; }
+    if (m.msg === "おわったよ") chime();
+  }
+}
 // ==== できたら音 ====
 let actx = null;
 function audioUnlock() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {} }
@@ -1201,6 +1303,7 @@ function chime() {
 worker.onmessage = ev => {
   const m = ev.data;
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
+  if (m.type === "pf") { onPf(m); return; }
   if (m.type === "stats") {
     $("store").style.display = m.n ? "block" : "none";
     $("stv").textContent = `${m.n}件・${(m.bytes / 1048576).toFixed(1)} MB（1年で自動更新）`;
