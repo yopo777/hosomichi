@@ -493,7 +493,12 @@ async function loopRoute(req, prog) {
     const L = joinLegs(parts);
     L.dup = allM ? dupM / allM : 0;
     log(`${label}: ${(L.len / 1000).toFixed(1)}km（目標 ${D / 1000}km）・同じあたりを往復 ${Math.round(L.dup * 100)}%`, "ok");
-    L.how = label; L.stops = stops.map(p => ({ p: [p.la, p.lo], kind: p.kind, name: p.name }));
+    // ほんとうに寄れたか：ルートからスポットまでのきょり（地図の点は建物のまん中などなので、150m以内なら「寄れた」）
+    const distTo = p => { let b = Infinity; const R = L.route;
+      for (let i = 1; i < R.length; i++) b = Math.min(b, segM(p.la, p.lo, R[i - 1], R[i])); return Math.round(b); };
+    L.how = label; L.stops = stops.map(p => ({ p: [p.la, p.lo], kind: p.kind, name: p.name, d: p.kind === "via" ? 0 : distTo(p) }));
+    const miss = L.stops.filter(q => q.d > 150);
+    if (miss.length) log(`寄りきれなかった所: ${miss.map(q => `${q.name}（ルートから${q.d}m）`).join("・")}`, "w");
     L.near = poisAlong(pois, L.route, stops.filter(p => p.kind !== "via"));
     out.push(L);
     return L;
@@ -541,12 +546,19 @@ async function loopRoute(req, prog) {
     }
   } finally { usedNodes = null; }
   if (!out.length) throw new Error("1周するルートが作れなかったよ。長さを変えるか、出発を道の多い所にしてみてね");
-  const nStop = o => (o.stops || []).filter(p => p.kind !== "via").length;
+  const nStop = o => (o.stops || []).filter(p => p.kind !== "via" && p.d <= 150).length;   // ほんとうに寄れた数
   const score = o => Math.abs(o.len - D) / D + o.dup * 1.5 - nStop(o) * 0.15;   // 長さが目標に近くて、往復が少なくて、寄り道できたもの
   out.sort((a, b) => score(a) - score(b));
   const [main, ...others] = out.slice(0, 3);
   log(`==== 🔁 完了 ${out.map(o => o.how + " " + (o.len / 1000).toFixed(1) + "km").join("・")}（${((Date.now() - T0) / 1000).toFixed(1)}秒） ====`, "ok");
   return { ...main, alts: others, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
+}
+// 点（緯度経度）と線分 a-b のきょり（m）
+function segM(la, lo, a, b) {
+  const c = Math.cos(la * RAD) * 111320, k = 111320;
+  const ax = (a[1] - lo) * c, ay = (a[0] - la) * k, bx = (b[1] - lo) * c, by = (b[0] - la) * k, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+  const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+  return Math.hypot(ax + dx * t, ay + dy * t);
 }
 // ---- 寄り道スポット ----
 const POI_ICON = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯", park: "🌳" };

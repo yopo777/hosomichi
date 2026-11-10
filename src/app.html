@@ -1056,7 +1056,7 @@ function showRoute(r, fit) {
   // 寄り道スポット（1周ルート）：寄る所は大きく、ついでに通る所は小さく
   const poiMk = (q, big) => L.marker(q.p, { icon: L.divIcon({ className: "", html: `<div style="font-size:${big ? 24 : 15}px;line-height:1;white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);${q.kind === "rest" ? "background:#fffd;border-radius:9px;padding:1px 3px;box-shadow:0 1px 3px #0004;" : "text-shadow:0 0 3px #fff,0 0 3px #fff;"}">${PI[q.kind] || "📍"}</div>`, iconSize: [0, 0], iconAnchor: [0, 0] }), zIndexOffset: big ? 400 : 100 })
     .addTo(layer).bindTooltip((big ? "寄り道: " : "") + q.name);
-  (r.near || []).forEach(q => poiMk(q, false)); (r.stops || []).forEach(q => poiMk(q, true));
+  (r.near || []).forEach(q => poiMk(q, false)); (r.stops || []).forEach(q => poiMk({ ...q, name: q.name + (q.d > 150 ? `（道から${q.d}m・そばまで行けない）` : "") }, true));
   (r.ok || []).forEach(p => L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("信号で横断"));
   (r.xw || []).forEach(p => L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("横断歩道で横断"));
   (r.ng || []).forEach(p => L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).addTo(layer).bindTooltip("⚠ 設定どおりに渡れなかった場所"));
@@ -1077,7 +1077,9 @@ function showRoute(r, fit) {
       <input type="radio" name="opt" value="${i}"${i === r.sel ? " checked" : ""}>ルート${i + 1}　${fmtKm(o.len)}` +
     (i ? `<span style="color:#888;font-weight:normal;font-size:12px">（${o.len >= r.opts[0].len ? "+" : "−"}${fmtKm(Math.abs(o.len - r.opts[0].len))}）</span>` : "") +
     (o.turns != null ? `<span style="color:#666;font-weight:normal;font-size:12px">曲がる${o.turns}回</span>` : "") + `</label>`).join("") + '</div>';
-  if ((r.stops || []).length) h += `<div style="margin:4px 0">🔁 寄り道: ${r.stops.map(q => `${PI[q.kind] || ""}${esc(q.name)}`).join("　")}</div>`;
+  const sp = (r.stops || []).filter(q => q.kind !== "via");
+  if (sp.length) h += `<div style="margin:4px 0">🔁 寄り道: ${sp.map(q => `${PI[q.kind] || ""}${esc(q.name)}` +
+    (q.d == null ? "" : q.d <= 150 ? `<span style="color:#188038;font-size:12px">（寄れる${q.d > 30 ? `・道から${q.d}m` : ""}）</span>` : `<span style="color:#c00;font-size:12px">（道から${q.d}m・そばまで行けない）</span>`)).join("　")}</div>`;
   if ((r.near || []).length) { const c = {}; for (const q of r.near) c[q.kind] = (c[q.kind] || 0) + 1;
     h += `<div style="font-size:12px;color:#666">ルートのそば: ${Object.entries(c).map(([k, n]) => `${PI[k] || ""}${n}`).join("　")}</div>`; }
   if (r.turns != null) h += `<br>曲がる回数 <b>${r.turns}回</b>`;

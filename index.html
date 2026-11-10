@@ -107,7 +107,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2247</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2253</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -695,7 +695,12 @@ async function loopRoute(req, prog) {
     const L = joinLegs(parts);
     L.dup = allM ? dupM / allM : 0;
     log(`${label}: ${(L.len / 1000).toFixed(1)}km（目標 ${D / 1000}km）・同じあたりを往復 ${Math.round(L.dup * 100)}%`, "ok");
-    L.how = label; L.stops = stops.map(p => ({ p: [p.la, p.lo], kind: p.kind, name: p.name }));
+    // ほんとうに寄れたか：ルートからスポットまでのきょり（地図の点は建物のまん中などなので、150m以内なら「寄れた」）
+    const distTo = p => { let b = Infinity; const R = L.route;
+      for (let i = 1; i < R.length; i++) b = Math.min(b, segM(p.la, p.lo, R[i - 1], R[i])); return Math.round(b); };
+    L.how = label; L.stops = stops.map(p => ({ p: [p.la, p.lo], kind: p.kind, name: p.name, d: p.kind === "via" ? 0 : distTo(p) }));
+    const miss = L.stops.filter(q => q.d > 150);
+    if (miss.length) log(`寄りきれなかった所: ${miss.map(q => `${q.name}（ルートから${q.d}m）`).join("・")}`, "w");
     L.near = poisAlong(pois, L.route, stops.filter(p => p.kind !== "via"));
     out.push(L);
     return L;
@@ -743,12 +748,19 @@ async function loopRoute(req, prog) {
     }
   } finally { usedNodes = null; }
   if (!out.length) throw new Error("1周するルートが作れなかったよ。長さを変えるか、出発を道の多い所にしてみてね");
-  const nStop = o => (o.stops || []).filter(p => p.kind !== "via").length;
+  const nStop = o => (o.stops || []).filter(p => p.kind !== "via" && p.d <= 150).length;   // ほんとうに寄れた数
   const score = o => Math.abs(o.len - D) / D + o.dup * 1.5 - nStop(o) * 0.15;   // 長さが目標に近くて、往復が少なくて、寄り道できたもの
   out.sort((a, b) => score(a) - score(b));
   const [main, ...others] = out.slice(0, 3);
   log(`==== 🔁 完了 ${out.map(o => o.how + " " + (o.len / 1000).toFixed(1) + "km").join("・")}（${((Date.now() - T0) / 1000).toFixed(1)}秒） ====`, "ok");
   return { ...main, alts: others, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
+}
+// 点（緯度経度）と線分 a-b のきょり（m）
+function segM(la, lo, a, b) {
+  const c = Math.cos(la * RAD) * 111320, k = 111320;
+  const ax = (a[1] - lo) * c, ay = (a[0] - la) * k, bx = (b[1] - lo) * c, by = (b[0] - la) * k, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+  const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+  return Math.hypot(ax + dx * t, ay + dy * t);
 }
 // ---- 寄り道スポット ----
 const POI_ICON = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯", park: "🌳" };
@@ -2689,7 +2701,7 @@ function showRoute(r, fit) {
   // 寄り道スポット（1周ルート）：寄る所は大きく、ついでに通る所は小さく
   const poiMk = (q, big) => L.marker(q.p, { icon: L.divIcon({ className: "", html: `<div style="font-size:${big ? 24 : 15}px;line-height:1;white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);${q.kind === "rest" ? "background:#fffd;border-radius:9px;padding:1px 3px;box-shadow:0 1px 3px #0004;" : "text-shadow:0 0 3px #fff,0 0 3px #fff;"}">${PI[q.kind] || "📍"}</div>`, iconSize: [0, 0], iconAnchor: [0, 0] }), zIndexOffset: big ? 400 : 100 })
     .addTo(layer).bindTooltip((big ? "寄り道: " : "") + q.name);
-  (r.near || []).forEach(q => poiMk(q, false)); (r.stops || []).forEach(q => poiMk(q, true));
+  (r.near || []).forEach(q => poiMk(q, false)); (r.stops || []).forEach(q => poiMk({ ...q, name: q.name + (q.d > 150 ? `（道から${q.d}m・そばまで行けない）` : "") }, true));
   (r.ok || []).forEach(p => L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("信号で横断"));
   (r.xw || []).forEach(p => L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("横断歩道で横断"));
   (r.ng || []).forEach(p => L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).addTo(layer).bindTooltip("⚠ 設定どおりに渡れなかった場所"));
@@ -2710,7 +2722,9 @@ function showRoute(r, fit) {
       <input type="radio" name="opt" value="${i}"${i === r.sel ? " checked" : ""}>ルート${i + 1}　${fmtKm(o.len)}` +
     (i ? `<span style="color:#888;font-weight:normal;font-size:12px">（${o.len >= r.opts[0].len ? "+" : "−"}${fmtKm(Math.abs(o.len - r.opts[0].len))}）</span>` : "") +
     (o.turns != null ? `<span style="color:#666;font-weight:normal;font-size:12px">曲がる${o.turns}回</span>` : "") + `</label>`).join("") + '</div>';
-  if ((r.stops || []).length) h += `<div style="margin:4px 0">🔁 寄り道: ${r.stops.map(q => `${PI[q.kind] || ""}${esc(q.name)}`).join("　")}</div>`;
+  const sp = (r.stops || []).filter(q => q.kind !== "via");
+  if (sp.length) h += `<div style="margin:4px 0">🔁 寄り道: ${sp.map(q => `${PI[q.kind] || ""}${esc(q.name)}` +
+    (q.d == null ? "" : q.d <= 150 ? `<span style="color:#188038;font-size:12px">（寄れる${q.d > 30 ? `・道から${q.d}m` : ""}）</span>` : `<span style="color:#c00;font-size:12px">（道から${q.d}m・そばまで行けない）</span>`)).join("　")}</div>`;
   if ((r.near || []).length) { const c = {}; for (const q of r.near) c[q.kind] = (c[q.kind] || 0) + 1;
     h += `<div style="font-size:12px;color:#666">ルートのそば: ${Object.entries(c).map(([k, n]) => `${PI[k] || ""}${n}`).join("　")}</div>`; }
   if (r.turns != null) h += `<br>曲がる回数 <b>${r.turns}回</b>`;
