@@ -103,7 +103,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0917</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.0920</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -175,6 +175,7 @@ const DEFAULT_CFG = {
   bridge: 3,             // 歩道橋・地下道（歩行者用）: 倍率 or "no"
   unpaved: 20,           // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
+  bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る
   midCross: 0,           // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
 };
@@ -206,17 +207,28 @@ const OVERPASS_URLS = [
 
 function lanesOf(t) { const n = parseInt(String(t.lanes || "0").split(";")[0]); return isNaN(n) ? 0 : n; }
 function isOneway(t) { return ["yes", "1", "true", "-1"].includes(t.oneway); }
+// 車線数。lanes がなければ lanes:forward+backward、turn:lanes の数も見る（右折レーンで3車線になる所）
+function lanesAll(t) {
+  let n = lanesOf(t);
+  const fb = (parseInt(t["lanes:forward"]) || 0) + (parseInt(t["lanes:backward"]) || 0) + (parseInt(t["lanes:both_ways"]) || 0);
+  const tl = k => t[k] ? String(t[k]).split("|").length : 0;
+  const tf = tl("turn:lanes:forward"), tb = tl("turn:lanes:backward");
+  const tn = isOneway(t) ? tl("turn:lanes") : (tf || tb) ? (tf || 1) + (tb || 1) : 0;
+  return Math.max(n, fb, tn);
+}
 function isWide(t) {
   const hw = t.highway || "", n = lanesOf(t), ow = isOneway(t);
   if (n >= 4) return true;
+  if (!ow && lanesAll(t) >= 3) return true;   // 右折レーンなどで3車線以上＝4車線と同じ扱い
   if ((hw === "trunk" || hw === "trunk_link") && n !== 2 && !(ow && n === 1)) return true;
   if (["trunk", "primary", "secondary"].includes(hw) && ow && n >= 2) return true;
   return false;
 }
 // 横断のときの道の格: 2=4車線以上 / 1=2車線の道（一般道以上 or 2車線） / 0=細い道
-function levelOf(t) {
+function levelOf(t, cfg) {
   if (isWide(t)) return 2;
   const b = BASE[t.highway] || t.highway;
+  if (cfg && cfg.bigCross === "wide" && ["primary", "secondary", "trunk"].includes(b)) return 2;   // 県道・国道は4車線と同じ扱い
   if (MID_ROADS.has(b) || lanesOf(t) >= 2) return 1;
   return 0;
 }
@@ -371,7 +383,7 @@ function buildGraph(osm, cfg, onProg) {
     if (t.access === "no" || t.access === "private" || t.bicycle === "no") continue;
     const nd = e.nodes.map(id => idx.get(id)).filter(x => x !== undefined);
     if (nd.length < 2) continue;
-    const L0 = levelOf(t);
+    const L0 = levelOf(t, cfg);
     if (L0) { mainWays.push([nd, L0]); for (const i of nd) if (L0 > lvl[i]) lvl[i] = L0; }   // 通らない道でも「横断する道」としては数える
     const wc = wayCost(t, cfg);
     if (!wc) continue;
@@ -707,7 +719,7 @@ async function route(req, prog, partial) {
   const tiles = tilesFor(s, g, pad), N = tiles.length;
   log(`==== ルート計算スタート ====`, "h");
   log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 到着 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
-  log(`設定: 計算=${cfg?.mode || "quick"} 広さ=${cfg?.area || "normal"}（余白 ${Math.round(pad * 111000)}m） 曲がる=${cfg?.turn ?? 0} 階段=${cfg?.steps} 4車線=${cfg?.wideCross} 2車線=${cfg?.midCross} 一方通行逆向き=${cfg?.oneway}`);
+  log(`設定: 計算=${cfg?.mode || "quick"} 広さ=${cfg?.area || "normal"}（余白 ${Math.round(pad * 111000)}m） 曲がる=${cfg?.turn ?? 0} 階段=${cfg?.steps} 4車線=${cfg?.wideCross} 県道国道=${cfg?.bigCross} 2車線=${cfg?.midCross} 一方通行逆向き=${cfg?.oneway}`);
   log(`道の倍率: ${Object.entries(cfg?.pen || {}).map(([k, v]) => k + "=" + v).join(" ")}`);
   log(`マス: ${N}個（1マス ${tiles[0] ? tiles[0].key.split(":")[0] : "?"}°）`);
   // スタート→ゴールの線にそった進み具合（m）
@@ -1669,7 +1681,7 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
-  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small" };
+  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small", bigCross: "mid" };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
@@ -1679,6 +1691,7 @@ const OTHER_ROWS = [
   ["bridge", "歩道橋・地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
   ["unpaved", "砂利・土の道", [[1, "気にしない"], [3, "少し避ける"], [20, "かなり避ける"], ["no", "通らない"]]],
   ["wideCross", "4車線以上の道を渡る", [["signal", "信号のある所だけ"], ["crosswalk", "信号か横断歩道"], ["any", "どこでも"]]],
+  ["bigCross", "県道・国道を渡る（2車線でも）", [["mid", "2車線の道と同じ"], ["wide", "4車線と同じ（車が多い・坂が多いなら）"]]],
   ["midCross", "2車線の道を横断歩道以外で渡る", [[0, "どこでも渡る"], [100, "100mまでなら横断歩道へ"], [300, "300mまでなら横断歩道へ"], [500, "500mまでなら横断歩道へ"], [1000, "1kmまでなら横断歩道へ"], [3000, "信号か横断歩道の所だけ"]]],
 ];
 let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) { const m = { must: 3000, prefer: 500, any: 0 }; if (c.midCross in m) c.midCross = m[c.midCross];   // むかしの設定を数字に
@@ -1689,7 +1702,7 @@ function renderCfg() {
   const row = ([k, t, o]) => `<div class="c"><span>${t}</span><select data-k="${k}">${optHtml(o, cfg[k])}</select></div>`;
   const get = ks => OTHER_ROWS.filter(r => ks.includes(r[0])).map(row).join("");
   let h = "<h4>計算</h4>" + get(["mode", "area", "turn"]);
-  h += "<h4>道を渡るとき</h4>" + get(["wideCross", "midCross"]);
+  h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。橋・トンネル・大きい道は逆向きに走らないよ</div>';
   h += "<h4>階段・歩道橋・砂利</h4>" + get(["steps", "bridge", "unpaved"]);
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
