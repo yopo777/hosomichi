@@ -264,11 +264,18 @@ function cleanAddr(t) {
 }
 // Nominatim（OSMの住所さがし）は1秒に1回までのきまり。続けて呼ぶとことわられるので、順番に間をあけて呼ぶ
 let nomiLast = 0, nomiChain = Promise.resolve();
+// 場所さがしの通信：10秒で時間切れ・「■ 止める」で中止できるように
+let geoAbort = null;
+function tfetch(url, opts = {}, ms = 10000) {
+  const ac = new AbortController(), to = setTimeout(() => ac.abort(new Error("時間切れ")), ms);
+  const outer = geoAbort; if (outer) { if (outer.signal.aborted) ac.abort(); else outer.signal.addEventListener("abort", () => ac.abort(new Error("止めたよ")), { once: true }); }
+  return fetch(url, { ...opts, signal: ac.signal }).finally(() => clearTimeout(to));
+}
 function nomiFetch(url) {
   const run = nomiChain.then(async () => {
     const wait = nomiLast + 1100 - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait));
     nomiLast = Date.now();
-    const res = await fetch(url);
+    const res = await tfetch(url);
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res;
   });
@@ -292,9 +299,7 @@ async function geocodeExit(text) {
   );out center 40;`;
   for (const url of ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]) {
     try {
-      const ac = new AbortController(); const to = setTimeout(() => ac.abort(), 15000);
-      const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), signal: ac.signal, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
-      clearTimeout(to);
+      const res = await tfetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } }, 15000);
       if (!res.ok) throw new Error("HTTP " + res.status);
       const els = (await res.json()).elements || [];
       // 出口そのもの → バス停・乗り場 → 広場など の順で、駅に近いものをえらぶ
@@ -322,18 +327,18 @@ async function stationSearch(q) {
   const c = map.getCenter();
   // まずは配布データの駅の一覧（関東・名前がぴったり）
   try {
-    packStations = packStations || await (await fetch(new URL("../hosomichi-data/stations.json", location.href))).json();
+    packStations = packStations || await (await tfetch(new URL("../hosomichi-data/stations.json", location.href))).json();
     const hit = packStations.filter(x => norm(x[0]) === base).sort((a, b) => hav([a[1], a[2]], [c.lat, c.lng]) - hav([b[1], b[2]], [c.lat, c.lng]));
     addLog(`  駅さがし(配布データ)「${base}」: ${hit.length}件`, "m");
     if (hit.length) return [[hit[0][1], hit[0][2]], hit[0][0] + "駅"];
   } catch (e) { packStations = packStations || []; }
   try {
     const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(base)}&osm_tag=railway:station&osm_tag=railway:halt&limit=15&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`;
-    const f = ((await (await fetch(u)).json()).features || []).filter(x => x.properties.countrycode === "JP" || !x.properties.countrycode);
+    const f = ((await (await tfetch(u, {}, 8000)).json()).features || []).filter(x => x.properties.countrycode === "JP" || !x.properties.countrycode);
     const hit = f.filter(x => norm(x.properties.name) === base);
     addLog(`  駅さがし(Photon)「${base}」: 候補 ${f.length}件・名前がぴったり ${hit.length}件` + hit.slice(0, 3).map(x => `｜${x.properties.name}（${x.properties.state || ""}${x.properties.city || ""}）`).join(""), "m");
     if (hit.length) { const x = hit[0], [lo, la] = x.geometry.coordinates; return [[la, lo], `${x.properties.name}駅`.replace(/駅駅$/, "駅")]; }
-  } catch (e) { addLog(`  駅さがし(Photon)失敗: ${e.message}`, "w"); }
+  } catch (e) { if (geoAbort?.signal.aborted) throw new Error("止めたよ"); addLog(`  駅さがし(Photon)失敗: ${e.message}`, "w"); }
   try {
     const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=20&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(base + "駅"))).json();
     const rail = x => ["railway", "public_transport"].includes(x.class) && /station|stop|halt/.test(x.type) || (x.class === "building" && x.type === "train_station");
@@ -341,19 +346,19 @@ async function stationSearch(q) {
     const x = r.find(x => rail(x) && nmx(x) === base) || r.find(x => nmx(x) === base && !/道の駅/.test(x.display_name));
     addLog(`  駅さがし(Nominatim)「${base}駅」: 候補 ${r.length}件${x ? "・見つかった" : ""}`, "m");
     if (x) return [[+x.lat, +x.lon], x.display_name.split(",")[0]];
-  } catch (e) { addLog(`  駅さがし(Nominatim)失敗: ${e.message}`, "w"); }
+  } catch (e) { if (geoAbort?.signal.aborted) throw new Error("止めたよ"); addLog(`  駅さがし(Nominatim)失敗: ${e.message}`, "w"); }
   // さいごは Overpass で「その名前の駅」をさがす（日本の中・名前がぴったり）
   const qn = base.replace(/["\\]/g, "");
   const oq = `[out:json][timeout:20];nwr["railway"~"^(station|halt)$"]["name"="${qn}"](24,122,46,154);out center 10;`;
   for (const url of ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]) {
     try {
-      const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(oq), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      const res = await tfetch(url, { method: "POST", body: "data=" + encodeURIComponent(oq), headers: { "Content-Type": "application/x-www-form-urlencoded" } }, 20000);
       if (!res.ok) throw new Error("HTTP " + res.status);
       const els = ((await res.json()).elements || []).map(e => [e.lat ?? e.center?.lat, e.lon ?? e.center?.lon]).filter(p => p[0] != null);
       addLog(`  駅さがし(Overpass)「${base}」: ${els.length}件`, "m");
       if (els.length) { els.sort((a, b) => hav(a, [c.lat, c.lng]) - hav(b, [c.lat, c.lng])); return [els[0], base + "駅"]; }
       break;
-    } catch (e) { addLog(`  駅さがし(Overpass)失敗: ${e.message}`, "w"); }
+    } catch (e) { if (geoAbort?.signal.aborted) throw new Error("止めたよ"); addLog(`  駅さがし(Overpass)失敗: ${e.message}`, "w"); }
   }
   return null;
 }
@@ -369,7 +374,7 @@ async function geocode(text) {
   if (ll) return [[+ll[1], +ll[2]], "座標"];
   const gsi = async () => {
     const q = cleanAddr(text);
-    const r = await (await fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q=" + encodeURIComponent(q))).json();
+    const r = await (await tfetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q=" + encodeURIComponent(q))).json();
     if (r.length) return [[r[0].geometry.coordinates[1], r[0].geometry.coordinates[0]], r[0].properties.title];
   };
   const nomi = async () => {
@@ -388,7 +393,7 @@ async function geocode(text) {
   }
   const looksAddr = /丁目|番地|番|号|\d+\s*[-‐－―ー−]\s*\d+|[０-９]+[‐－―ー−][０-９]+/.test(text);
   for (const fn of looksAddr ? [gsi, nomi] : [nomi, gsi]) {
-    try { const r = await fn(); if (r) return r; } catch (e) { console.warn(e); }
+    try { const r = await fn(); if (r) return r; } catch (e) { if (geoAbort?.signal.aborted) throw new Error("止めたよ"); console.warn(e); }
   }
   throw new Error(`「${text}」が見つかりませんでした。マンション名やお店の名前は見つからないことがあるよ。住所かGoogleマップのURLで入れてみてね`);
 }
@@ -695,7 +700,9 @@ function startJob(s, g, jcfg, prefix) {
   worker.postMessage({ s, g, cfg: jcfg });
   $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run");
 }
-$("stop").onclick = () => { $("stop").textContent = "止めてるよ…"; worker.postMessage({ cmd: "stop" }); setTimeout(() => $("stop").textContent = "■ 止める", 3000); };
+$("stop").onclick = () => {
+  if (geoAbort) { geoAbort.abort(); return; }   // 場所さがし中なら、それを止める
+  $("stop").textContent = "止めてるよ…"; worker.postMessage({ cmd: "stop" }); setTimeout(() => $("stop").textContent = "■ 止める", 3000); };
 $("bResume").onclick = () => {
   audioUnlock();
   if (!cur || !cur.resume || $("go").disabled) return;
@@ -768,6 +775,7 @@ $("go").onclick = async () => {
   pendingName = (fromT ? shortName(fromT) : "現在地") + " → " + shortName(toT);
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
+  geoAbort = new AbortController(); $("stop").style.display = "";   // 場所さがしの間も「■ 止める」できる
   try {
     addLog(`場所をさがす: 出発「${fromT || "現在地"}」 到着「${toT.slice(0, 60)}」`, "m");
     const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
@@ -782,9 +790,16 @@ $("go").onclick = async () => {
     lastProg = { stage: 1, msg: `出発: ${sn} → 到着: ${gn}` }; showProg();
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発"); L.marker(g).addTo(layer).bindTooltip("到着");
     map.fitBounds([s, g], { padding: [40, 40] });
+    if (geoAbort.signal.aborted) throw new Error("止めたよ");
+    geoAbort = null;
     clearInterval(tickTimer);
     startJob(s, g, structuredClone(cfg), null);
-  } catch (e) { clearInterval(tickTimer); $("go").disabled = false; setBar(0); setMsg(e.message, true); addLog("エラー: " + e.message, "e"); }
+  } catch (e) {
+    const stopped = geoAbort?.signal.aborted; geoAbort = null;
+    clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; setBar(0);
+    if (stopped) { setMsg("止めたよ"); addLog("■ 場所さがしを止めたよ", "w"); }
+    else { setMsg(e.message, true); addLog("エラー: " + e.message, "e"); }
+  }
 };
 
 // ---------- 表示 ----------
