@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1113</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1122</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -181,7 +181,7 @@ const DEFAULT_CFG = {
   unpaved: 20,           // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
-  oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る
+  oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
   midCross: 0,           // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
@@ -195,6 +195,7 @@ const HARD = 3000, SOFT = 500;    // 横断ルールを守れないときの追�
 // 2車線の横断コスト。数字(m)か、むかしの設定の文字
 const ONEWAY_OK = new Set(["residential", "living_street", "service", "unclassified", "road", "cycleway", "footway", "path", "pedestrian", "track"]);
 const ONEWAY_REV = 1.3;           // 一方通行を逆向きに走るときは少しだけ避ける
+const ONEWAY_REV_BIG = 2;         // 太い道の逆向き（反対車線の歩道などを走る）はもう少し避ける
 const midPen = v => typeof v === "number" ? v : ({ must: HARD, prefer: SOFT, any: 0 })[v] ?? (isFinite(+v) ? +v : 0);
 const MID_ROADS = new Set(["tertiary", "secondary", "primary", "trunk"]);
 const CYCLE_OK = new Set(["footway", "path", "pedestrian", "track", "bridleway"]);
@@ -406,9 +407,11 @@ function buildGraph(osm, cfg, onProg) {
     let fwd = ow !== "-1", back = !["yes", "1", "true"].includes(ow);
     // 一方通行の逆向き：細い道なら自転車はだいたい通れる（「自転車を除く」）。橋・トンネル・大きい道・自転車も一方通行の道はだめ
     let rp = pen, rname = name;
-    if (fwd !== back && cfg.oneway === "small" && t["oneway:bicycle"] !== "yes" && !yes(t.bridge) && !yes(t.tunnel)
-        && ONEWAY_OK.has(hw) && lanesOf(t) < 2) {
-      fwd = back = true; rp = pen * ONEWAY_REV; rname = name + "（一方通行を逆向き）";
+    const small = ONEWAY_OK.has(hw) && lanesOf(t) < 2;
+    if (fwd !== back && (cfg.oneway === "small" || cfg.oneway === "all") && t["oneway:bicycle"] !== "yes" && !yes(t.bridge) && !yes(t.tunnel)
+        && (small || cfg.oneway === "all")) {
+      fwd = back = true; rp = pen * (small ? ONEWAY_REV : ONEWAY_REV_BIG);
+      rname = small ? name + "（一方通行を逆向き）" : `歩道（${name}の逆向き）`;   // 太い道の逆向き＝歩道を走る（色も歩道の色）
     }
     const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
     for (let i = 1; i < nd.length; i++) {
@@ -1672,13 +1675,20 @@ let colorMode = (() => { try { return localStorage.getItem("hosomichi_color") ||
 const COLOR_NAMES = { red: "赤", kind: "道の種類", slope: "坂" };
 function legend(r) {
   const lg = $("legend");
-  if (colorMode === "red" || !r || !r.route || r.route.length < 2) { lg.style.display = "none"; return; }
+  if (!r || !r.route || r.route.length < 2) { lg.style.display = "none"; return; }
   let h = "";
+  // 丸の印の意味（このルートに出ているものだけ）
+  const dot = (bd, bg, sz, t) => `<div><b style="display:inline-block;width:${sz}px;height:${sz}px;border-radius:50%;border:3px solid ${bd};background:${bg};box-sizing:border-box;vertical-align:middle;margin:0 6px 0 2px"></b>${t}</div>`;
+  h += dot("#fff", "#188038", 14, "出発") + (r.partial ? "" : dot("#fff", "#d93025", 14, "到着"));
+  if ((r.ok || []).length) h += dot("#0a0", "#0a03", 16, "信号で横断");
+  if ((r.xw || []).length) h += dot("#1a73e8", "#1a73e840", 15, "横断歩道で横断");
+  if ((r.ng || []).length) h += dot("#f00", "#ff09", 18, "設定どおりに渡れなかった所");
+  if (colorMode !== "red") h += '<div style="border-top:1px solid #ddd;margin:3px 0"></div>';
   if (colorMode === "kind") {
-    if (!r.kc) h = "灰色の線：このルートには道の種類の情報がないよ";
-    else { const used = new Set(r.kc); h = CATS.map((c, i) => used.has(i) ? `<div><i style="background:${c[1]}"></i>${c[0]}</div>` : "").join(""); }
-  } else {
-    h = SLOPES.map(c => `<div><i style="background:${c[1]}"></i>${c[0]}</div>`).join("");
+    if (!r.kc) h += "灰色の線：このルートには道の種類の情報がないよ";
+    else { const used = new Set(r.kc); h += CATS.map((c, i) => used.has(i) ? `<div><i style="background:${c[1]}"></i>${c[0]}</div>` : "").join(""); }
+  } else if (colorMode === "slope") {
+    h += SLOPES.map(c => `<div><i style="background:${c[1]}"></i>${c[0]}</div>`).join("");
     if (r.elevInfo) h += `<div style="margin-top:2px;color:#444">${r.elevInfo}</div>`;
     else if (r.elevErr) h += `<div style="color:#c00">${r.elevErr}</div>`;
     else if (r.partial) h += `<div style="color:#666">灰色の線：ルートが最後までできたら坂の色になるよ</div>`;
@@ -2022,7 +2032,7 @@ const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（おそい・まわり道〜2km）"]]],
-  ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["no", "走らない"]]],
+  ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
   ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ"], ["yes", "通る（かついで上がる）"]]],
   ["bridge", "歩道橋・地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
   ["unpaved", "砂利・土の道", [[1, "気にしない"], [3, "少し避ける"], [20, "かなり避ける"], ["no", "通らない"]]],
@@ -2039,7 +2049,7 @@ function renderCfg() {
   const get = ks => OTHER_ROWS.filter(r => ks.includes(r[0])).map(row).join("");
   let h = "<h4>計算</h4>" + get(["mode", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
-  h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。橋・トンネル・大きい道は逆向きに走らないよ</div>';
+  h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
   h += "<h4>階段・歩道橋・砂利</h4>" + get(["steps", "bridge", "unpaved"]);
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
