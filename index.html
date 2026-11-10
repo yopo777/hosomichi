@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1122</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1138</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -128,6 +128,10 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <div id="pfMsg" style="font-size:11px;color:#666;margin-top:2px">もう持っている道路データのとなりを、いつも使うあたりに近い順に、ゆっくり1マスずつ取るよ（ルート計算中はお休み）</div>
       <div class="btns" style="margin-top:6px"><button class="ib" id="pfExp" style="font-size:12px">⬇ ためたデータを書き出す</button><button class="ib" id="pfImp" style="font-size:12px">⬆ 読みこむ</button></div>
       <input type="file" id="pfFile" style="display:none">
+      <div style="margin-top:8px;border-top:1px solid #eee;padding-top:6px">
+        <button class="ib" id="pkAll" style="font-size:12px;width:100%">📦 配布データ（東京・千葉北西部・神奈川東部・埼玉南部）をまとめて入れる</button>
+        <div id="pkMsg" style="font-size:11px;color:#666;margin-top:2px">配布データがある所は、ルートを作るときもサーバーにアクセスしないですぐ取れるよ。まとめて入れるのはパソコン（Wi-Fi）向け</div>
+      </div>
     </div>
     <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
@@ -670,6 +674,59 @@ async function getTileAny(key) {
   }
   return r;
 }
+// ==== 配布データ（GitHub Pages に置いた道路データ。Overpass にアクセスしないですむ） ====
+// 形式: <base>index.json（{v:日付, keys:["緯度番号_経度番号", ...]}）と <base>t/緯度番号_経度番号.json.gz（大きいマス 0.01°）
+let packBase = null, packIdx = null, packV = 0, packAt = 0, packBytes = 0;
+const bigOf = k => { const [T, ij] = k.split(":"), [i, j] = ij.split(",").map(Number); return T === "0.01" ? k : `0.01:${Math.floor(i / 2)},${Math.floor(j / 2)}`; };
+const packName = big => big.split(":")[1].replace(",", "_");
+async function packIndex() {
+  if (!packBase) return null;
+  if (packIdx && Date.now() - packAt < 6 * 3600e3) return packIdx;
+  try {
+    const res = await fetch(packBase + "index.json", { cache: "no-cache" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const j = await res.json();
+    packIdx = new Set(j.keys); packV = Date.parse(j.v) || Date.now(); packBytes = j.bytes || 0;
+    log(`配布データ: ${packIdx.size}マス（${j.v} の地図・${(packBytes / 1048576).toFixed(0)}MB）`, "ok");
+  } catch (e) { packIdx = packIdx || new Set(); log(`配布データの一覧が読めなかった（${e.message}）。サーバーから取るよ`, "w"); }
+  packAt = Date.now();
+  return packIdx;
+}
+const packHas = async big => { const p = await packIndex(); return !!(p && p.has(packName(big))); };
+async function packTile(big) {   // 大きいマスを配布データから取って、端末に保存する（ちぢめたまま保存）
+  const res = await fetch(`${packBase}t/${packName(big)}.json.gz`);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  let blob = await res.blob(), text;
+  const h = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  if (h[0] === 0x1f && h[1] === 0x8b) text = await new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).text();
+  else { text = await blob.text(); blob = (await pack(text)).blob; }   // ブラウザが先にほどいていたとき
+  const json = JSON.parse(text);
+  const st = await store("readwrite");
+  if (st) await req(st.put({ key: big, savedAt: packV, gz: true, blob, size: blob.size }));
+  mem.set(big, json.elements);
+  return { el: json.elements, bytes: blob.size };
+}
+// 配布データをまとめて入れる（パソコン向け）
+let pkStop = false;
+async function packAll(post) {
+  const p = await packIndex(); if (!p || !p.size) return post({ fin: true, msg: "配布データが見つからなかったよ" });
+  const { have } = await haveKeys(), list = [...p].map(n => "0.01:" + n.replace("_", ",")).filter(k => !have.has(k));
+  let done = 0, bytes = 0, next = 0;
+  log(`==== 配布データをまとめて入れる：${list.length}マス（もう持ってる ${p.size - list.length}マス）====`, "h");
+  const run = async () => {
+    while (next < list.length && !pkStop) {
+      const k = list[next++];
+      for (let tries = 0; tries < 3 && !pkStop; tries++) {
+        try { const r = await packTile(k); bytes += r.bytes; done++; post({ tile: k }); break; }
+        catch (e) { await sleep(2000 * (tries + 1)); }
+      }
+      post({ done, total: list.length, bytes });
+    }
+  };
+  await Promise.all([run(), run(), run()]);
+  log(`配布データ：${done}マス入れたよ（${(bytes / 1048576).toFixed(1)}MB）${pkStop ? "・とちゅうで止めた" : ""}`, "ok");
+  post({ fin: true, done, total: list.length, bytes, stopped: pkStop });
+}
 // ==== 自動でためる：地図のまん中に近い、まだ持ってない大きいマス(約1km角)を、ゆっくり1つずつ取る ====
 // ルート計算が始まったら、取ってる途中のものも止めてお休み。終わったらまた続ける
 let pfStop = true, pfRun = false, routing = false, pfAc = null;
@@ -742,15 +799,20 @@ async function autoPrefetch(post0) {
     pfAc = new AbortController(); const ac = pfAc, to = setTimeout(() => { ac.timedOut = true; ac.abort(); }, 60000);
     post({ msg: t.refresh ? `${host} から古いマスを取りなおし中（のこり ${old.length}マス）` : `${host} から取得中（いつものあたりから${t.km.toFixed(1)}km）`, haveN: have.size });
     try {
-      const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(overpassQuery(t.bb)), signal: ac.signal, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const text = await res.text(), json = JSON.parse(text);
-      if (json.remark && /error|timed out|memory/i.test(json.remark)) throw new Error(json.remark.slice(0, 60));
-      await putTile(t.key, text);
-      have.add(t.key); touched.add(t.key); got++; if (t.refresh) old.shift(); bytes += text.length; fail = 0;
-      log(`${t.refresh ? "自動で取りなおした" : "自動でためた"} ${t.key} ${host} ${kb(text.length)}（${((Date.now() - t0) / 1000).toFixed(1)}秒・まん中から${t.km.toFixed(1)}km）`, "ok");
-      post({ tile: t.key, got, bytes, haveN: have.size });
-      for (let s = PF_GAP; s > 0 && !pfStop && !routing; s -= 500) await sleep(500);   // サーバーにやさしく
+      const fromPack = await packHas(t.key) && (!t.refresh || Date.now() - packV < MAX_AGE);
+      let size;
+      if (fromPack) size = (await packTile(t.key)).bytes;   // 配布データにあればそこから（Overpass を使わない）
+      else {
+        const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(overpassQuery(t.bb)), signal: ac.signal, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const text = await res.text(), json = JSON.parse(text);
+        if (json.remark && /error|timed out|memory/i.test(json.remark)) throw new Error(json.remark.slice(0, 60));
+        await putTile(t.key, text); size = text.length;
+      }
+      have.add(t.key); touched.add(t.key); got++; bytes += size; fail = 0; if (t.refresh) old.shift();
+      log(`${t.refresh ? "自動で取りなおした" : "自動でためた"} ${t.key} ${fromPack ? "配布データ" : host} ${kb(size)}（${((Date.now() - t0) / 1000).toFixed(1)}秒・まん中から${t.km.toFixed(1)}km）`, "ok");
+      post({ tile: t.key, got, bytes, haveN: have.size, pack: fromPack });
+      for (let s = fromPack ? 500 : PF_GAP; s > 0 && !pfStop && !routing; s -= 500) await sleep(500);   // サーバーにやさしく
     } catch (e) {
       if (pfStop) break;
       if (routing && !ac.timedOut) { log(`自動でためる：ルート計算が始まったので中断 [${t.key}]`); continue; }
@@ -889,6 +951,22 @@ async function route(req, prog, partial) {
     const r = await getTileAny(t.key);
     if (r) { setTile(t.key, r.el); if (r.stale) stale.set(t.key, 1); }   // 1年より古くても待たずに使う（取りなおしは「自動でためる」がゆっくりやる）
   }));
+  // 配布データにあるマスは、そこから取る（Overpass にアクセスしない）
+  if (await packIndex() && packIdx.size) {
+    const want = new Map();
+    for (const t of tiles) if (!got.has(t.key) || (stale.has(t.key) && Date.now() - packV < MAX_AGE)) {
+      const b = bigOf(t.key); if (packIdx.has(packName(b))) { if (!want.has(b)) want.set(b, []); want.get(b).push(t.key); }
+    }
+    if (want.size) {
+      const bigs = [...want.keys()], tp = Date.now(); let n = 0, nb = 0, bad = 0;
+      const run = async () => { while (bigs.length) { const b = bigs.shift();
+        try { const r = await packTile(b); nb += r.bytes; for (const k of want.get(b)) { setTile(k, r.el); stale.delete(k); } }
+        catch (e) { bad++; }
+        n++; prog({ stage: 1, msg: `配布データから取得 ${n}/${want.size}マス`, done: n, total: want.size }); } };
+      await Promise.all([run(), run(), run(), run(), run(), run()]);
+      log(`配布データから取得: ${want.size - bad}マス（${kb(nb)}・${((Date.now() - tp) / 1000).toFixed(1)}秒）${bad ? `・取れなかった ${bad}マス` : ""}`, bad ? "w" : "ok");
+    }
+  }
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
   let done = 0, bytes = 0, fetchErr = null, stage = 1, stageMsg = "";
@@ -1100,6 +1178,9 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     try {
       if (d.cmd === "stats") return self.postMessage({ type: "stats", ...(await stats()) });
       if (d.cmd === "clear") { await clearAll(); return self.postMessage({ type: "stats", ...(await stats()) }); }
+      if (d.cmd === "pack") { packBase = d.base; packIdx = null; return; }
+      if (d.cmd === "packAll") { pkStop = false; await packAll(p => self.postMessage({ type: "pk", ...p })); return self.postMessage({ type: "stats", ...(await stats()) }); }
+      if (d.cmd === "packStop") { pkStop = true; return; }
       if (d.cmd === "autoPf") {
         pfStop = false;
         if (pfRun) return; pfRun = true;
@@ -1408,7 +1489,7 @@ function onPf(m) {
   if (m.tile) {   // 1マス取れた：カラー地図をふやす（重くならないよう2秒に1回だけ描きなおす）
     if (!cachedKeys.includes(m.tile)) cachedKeys.push(m.tile);
     if (Date.now() - pfDrawT > 2000) { pfDrawT = Date.now(); drawArea(); }
-    const n = pfCount() + 1; lsSet("hosomichi_pfday", { d: today(), n });
+    const n = pfCount() + (m.pack ? 0 : 1); lsSet("hosomichi_pfday", { d: today(), n });   // 配布データから取った分は数えない
     if (n >= PF_DAY) { worker.postMessage({ cmd: "prefetchStop" }); addLog(`🗺 自動でためる：今日は ${PF_DAY}マスでおしまい`, "i"); }
     return;
   }
@@ -1416,6 +1497,20 @@ function onPf(m) {
     if (pfAutoOn && onCellular()) { $("pfMsg").textContent = "モバイル回線なので、自動でためるのはお休み中。Wi-Fi になったらまた続けるよ"; return; } if (pfCount() >= PF_DAY) { $("pfMsg").textContent = `今日は ${PF_DAY}マスためたので、ここまで。明日また続けるよ`; return; } }
   if (!pfAutoOn) return;
   $("pfMsg").textContent = `今日 ${pfCount()}/${PF_DAY}マス` + (m.haveN != null ? `・ためた大きいマス ${m.haveN}個` : "") + (m.msg ? `・${m.msg}` : "");
+}
+// 配布データをまとめて入れる
+let pkOn = false;
+$("pkAll").onclick = () => {
+  if (pkOn) { worker.postMessage({ cmd: "packStop" }); $("pkAll").textContent = "止めてるよ…"; return; }
+  if (isPhone() && !confirm("⚠ まとめて入れると、数百MBダウンロードするよ。スマホならWi-Fiのときだけにしてね。\n\n入れる？")) return;
+  pkOn = true; $("pkAll").textContent = "■ 止める"; audioUnlock();
+  worker.postMessage({ cmd: "packAll" });
+};
+function onPk(m) {
+  if (m.tile) { if (!cachedKeys.includes(m.tile)) cachedKeys.push(m.tile); if (Date.now() - pfDrawT > 2000) { pfDrawT = Date.now(); drawArea(); } return; }
+  if (m.total != null) $("pkMsg").textContent = `${m.done}/${m.total}マス・${((m.bytes || 0) / 1048576).toFixed(1)}MB` + (m.fin ? (m.stopped ? "・止めたよ" : "・ぜんぶ入ったよ！") : "");
+  else if (m.msg) $("pkMsg").textContent = m.msg;
+  if (m.fin) { pkOn = false; $("pkAll").textContent = "📦 配布データ（東京・千葉北西部・神奈川東部・埼玉南部）をまとめて入れる"; drawArea(); if (!m.stopped && m.total) chime(); }
 }
 // 書き出し・読みこみ（ためた道路データをほかの端末や人にわたす）
 $("pfExp").onclick = () => { $("pfExp").textContent = "書き出し中…"; worker.postMessage({ cmd: "export" }); };
@@ -1473,6 +1568,7 @@ worker.onmessage = ev => {
   const m = ev.data;
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
   if (m.type === "pf") { onPf(m); return; }
+  if (m.type === "pk") { onPk(m); return; }
   if (m.type === "export") { onExport(m); return; }
   if (m.type === "imported") { onImported(m); return; }
   if (m.type === "stats") {
@@ -1928,6 +2024,7 @@ $("bGpx").onclick = () => {
   a.download = "hosomichi_" + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "") + ".gpx"; a.click();
 };
 $("bClear").onclick = () => { if (confirm("端末に保存した道路データを消す？（次は取りなおしになるよ）")) worker.postMessage({ cmd: "clear" }); };
+worker.postMessage({ cmd: "pack", base: new URL("../hosomichi-data/", location.href).href });   // 配布データの場所（同じ GitHub Pages の hosomichi-data）
 worker.postMessage({ cmd: "stats" });
 // 「新しく作る」：今のルートを画面から消して、入力欄を空にして、到着地を入れられるようにする
 $("bNew").onclick = async () => {
