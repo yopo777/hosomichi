@@ -100,7 +100,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1035</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1045</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -122,7 +122,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <div id="list"></div></div>
     <div id="pfBox" style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
       <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="pfAuto">🗺 地図のまわりの道路データを自動でためる</label>
-      <div id="pfMsg" style="font-size:11px;color:#666;margin-top:2px">地図のまん中に近いところから、ゆっくり1マスずつ取るよ（ルート計算中はお休み）</div>
+      <div id="pfMsg" style="font-size:11px;color:#666;margin-top:2px">もう持っている道路データのとなりを、いつも使うあたりに近い順に、ゆっくり1マスずつ取るよ（ルート計算中はお休み）</div>
       <div class="btns" style="margin-top:6px"><button class="ib" id="pfExp" style="font-size:12px">⬇ ためたデータを書き出す</button><button class="ib" id="pfImp" style="font-size:12px">⬆ 読みこむ</button></div>
       <input type="file" id="pfFile" style="display:none">
     </div>
@@ -666,8 +666,17 @@ async function getTileAny(key) {
 }
 // ==== 自動でためる：地図のまん中に近い、まだ持ってない大きいマス(約1km角)を、ゆっくり1つずつ取る ====
 // ルート計算が始まったら、取ってる途中のものも止めてお休み。終わったらまた続ける
-let pfStop = true, pfRun = false, routing = false, pfCenter = null, pfAc = null;
-const PF_R = 15, PF_GAP = 5000;   // まん中から15kmまで・1マスごとに5秒休む
+let pfStop = true, pfRun = false, routing = false, pfAc = null;
+const PF_R = 20, PF_GAP = 5000;   // まん中から20kmまで・1マスごとに5秒休む
+// いつも使っているあたり＝ためてあるマス（ルートを作った所）のまん中。中央値なので、たまに遠くへ行っても引っぱられない
+async function homeCenter() {
+  const st = await store("readonly"); if (!st) return null;
+  const keys = await req(st.getAllKeys()); if (!keys.length) return null;
+  const la = [], lo = [];
+  for (const k of keys) { const [T, ij] = String(k).split(":"), t = +T, [i, j] = ij.split(",").map(Number); la.push((i + 0.5) * t); lo.push((j + 0.5) * t); }
+  const med = a => { a.sort((x, y) => x - y); return a[a.length >> 1]; };
+  return [+med(la).toFixed(4), +med(lo).toFixed(4)];
+}
 async function haveKeys() {   // 持っている大きいマス（小さいマス4つそろっていれば持ってるとみなす）
   const st = await store("readonly"); if (!st) return new Set();
   const now = Date.now(), recs = await req(st.getAll()), have = new Set(), small = new Map();
@@ -678,38 +687,42 @@ async function haveKeys() {   // 持っている大きいマス（小さいマ�
     else { const k = `0.01:${Math.floor(i / 2)},${Math.floor(j / 2)}`; small.set(k, (small.get(k) || 0) + 1); }
   }
   for (const [k, n] of small) if (n >= 4) have.add(k);
-  return have;
+  return { have, touched: new Set([...have, ...small.keys()]) };   // touched＝少しでもデータがある大きいマス
 }
 async function autoPrefetch(post) {
-  const T = 0.01, have = await haveKeys(), failed = new Map();
-  let srv = 0, fail = 0, got = 0, bytes = 0, cand = [], candC = null;
+  const T = 0.01, { have, touched } = await haveKeys(), failed = new Map();
+  let srv = 0, fail = 0, got = 0, bytes = 0, cand = [], candC = null, home = null, homeAt = 0;
   log(`==== 自動でためる：スタート（持ってる大きいマス ${have.size}個）====`, "h");
   while (!pfStop) {
     if (routing) { post({ msg: "ルート計算中なのでお休み中" }); await sleep(1000); continue; }
-    const c = pfCenter;
-    if (!c) { post({ msg: "地図をもっと拡大すると、そのまわりをためるよ" }); await sleep(2000); continue; }
-    if (!candC || candC[0] !== c[0] || candC[1] !== c[1]) {   // まん中が変わったら、近い順に並べなおす
+    // 「いつも使っているあたり」のまん中（20マスごとに計算しなおす）
+    if (!home || got - homeAt >= 20) { home = await homeCenter(); homeAt = got; }
+    if (!home) { post({ msg: "まだルートを作ってないので、お休み中（ルートを作ると、そのまわりからためるよ）" }); await sleep(10000); continue; }
+    const c = home;
+    if (!candC || candC[0] !== c[0] || candC[1] !== c[1]) {   // まん中から近い順
       candC = c; cand = [];
       const cl = Math.cos(c[0] * RAD), dl = PF_R / 111.32, dg = dl / cl;
       for (let i = Math.floor((c[0] - dl) / T); i <= Math.floor((c[0] + dl) / T); i++)
         for (let j = Math.floor((c[1] - dg) / T); j <= Math.floor((c[1] + dg) / T); j++) {
           const km = hav(c[0], c[1], (i + 0.5) * T, (j + 0.5) * T) / 1000;
-          if (km <= PF_R) cand.push({ key: `${T}:${i},${j}`, km, bb: { s: i * T, w: j * T, n: (i + 1) * T, e: (j + 1) * T } });
+          if (km <= PF_R) cand.push({ key: `${T}:${i},${j}`, i, j, km, bb: { s: i * T, w: j * T, n: (i + 1) * T, e: (j + 1) * T } });
         }
       cand.sort((a, b) => a.km - b.km);
     }
-    const t = cand.find(x => !have.has(x.key) && !(failed.get(x.key) > Date.now()));
-    if (!t) { post({ msg: `まん中から${PF_R}kmまでぜんぶたまってるよ`, haveN: have.size }); await sleep(5000); continue; }
+    // もう持っているマスのとなり（少しだけ持ってるマスもふくむ）だけを取る＝持ってる所から少しずつ外へ
+    const nextTo = x => { for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (touched.has(`${T}:${x.i + a},${x.j + b}`)) return true; return false; };
+    const t = cand.find(x => !have.has(x.key) && !(failed.get(x.key) > Date.now()) && nextTo(x));
+    if (!t) { post({ msg: `いつものあたりから${PF_R}kmまでぜんぶたまってるよ`, haveN: have.size }); await sleep(5000); continue; }
     const url = OVERPASS_URLS[srv % OVERPASS_URLS.length], host = new URL(url).host, t0 = Date.now();
     pfAc = new AbortController(); const ac = pfAc, to = setTimeout(() => { ac.timedOut = true; ac.abort(); }, 60000);
-    post({ msg: `${host} から取得中（まん中から${t.km.toFixed(1)}km）`, haveN: have.size });
+    post({ msg: `${host} から取得中（いつものあたりから${t.km.toFixed(1)}km）`, haveN: have.size });
     try {
       const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(overpassQuery(t.bb)), signal: ac.signal, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
       if (!res.ok) throw new Error("HTTP " + res.status);
       const text = await res.text(), json = JSON.parse(text);
       if (json.remark && /error|timed out|memory/i.test(json.remark)) throw new Error(json.remark.slice(0, 60));
       await putTile(t.key, text);
-      have.add(t.key); got++; bytes += text.length; fail = 0;
+      have.add(t.key); touched.add(t.key); got++; bytes += text.length; fail = 0;
       log(`自動でためた ${t.key} ${host} ${kb(text.length)}（${((Date.now() - t0) / 1000).toFixed(1)}秒・まん中から${t.km.toFixed(1)}km）`, "ok");
       post({ tile: t.key, got, bytes, haveN: have.size });
       for (let s = PF_GAP; s > 0 && !pfStop && !routing; s -= 500) await sleep(500);   // サーバーにやさしく
@@ -1061,9 +1074,8 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     try {
       if (d.cmd === "stats") return self.postMessage({ type: "stats", ...(await stats()) });
       if (d.cmd === "clear") { await clearAll(); return self.postMessage({ type: "stats", ...(await stats()) }); }
-      if (d.cmd === "pfCenter") { pfCenter = d.c; return; }
       if (d.cmd === "autoPf") {
-        pfCenter = d.c || pfCenter; pfStop = false;
+        pfStop = false;
         if (pfRun) return; pfRun = true;
         try { await autoPrefetch(p => self.postMessage({ type: "pf", ...p })); } finally { pfRun = false; }
         return self.postMessage({ type: "stats", ...(await stats()) });
@@ -1337,17 +1349,16 @@ function drawArea() {
   for (const k of calcKeys) L.rectangle(keyBox(k), { renderer: areaRend, color: "#1a73e8", weight: 1.5, dashArray: "5 5", fill: false, interactive: false }).addTo(areaLayer);
 }
 // ==== 自動でためる（まわりの道路データ） ====
-// サーバーにやさしく：1日 PF_DAY マスまで。地図を拡大（14以上）しているときの、地図のまん中のまわりだけ
-const PF_DAY = 300, PF_ZOOM = 14;
+// サーバーにやさしく：1日 PF_DAY マスまで。もう持っているマスのとなりを「いつも使っているあたり」に近い順に
+const PF_DAY = 300;
 let pfDrawT = 0, pfAutoOn = lsGet("hosomichi_autopf", false) === true;
 const today = () => new Date().toLocaleDateString("sv");
 const pfCount = () => { const c = lsGet("hosomichi_pfday", null); return c && c.d === today() ? c.n : 0; };
-const pfCenterNow = () => map.getZoom() >= PF_ZOOM ? [+map.getCenter().lat.toFixed(4), +map.getCenter().lng.toFixed(4)] : null;
 let pfWorking = false;
 function pfStart() {
   if (!pfAutoOn || pfWorking) return;
   if (pfCount() >= PF_DAY) { $("pfMsg").textContent = `今日は ${PF_DAY}マスためたので、ここまで。明日また続けるよ`; return; }
-  pfWorking = true; worker.postMessage({ cmd: "autoPf", c: pfCenterNow() });
+  pfWorking = true; worker.postMessage({ cmd: "autoPf" });
 }
 $("pfAuto").checked = pfAutoOn;
 $("pfAuto").onchange = () => {
@@ -1355,7 +1366,6 @@ $("pfAuto").onchange = () => {
   if (pfAutoOn) { addLog("🗺 自動でためる：オン", "h"); pfStart(); }
   else { worker.postMessage({ cmd: "prefetchStop" }); $("pfMsg").textContent = "止めたよ"; }
 };
-map.on("moveend zoomend", () => { if (pfAutoOn) worker.postMessage({ cmd: "pfCenter", c: pfCenterNow() }); });
 setInterval(pfStart, 10 * 60000);   // 日付が変わったらまた始める
 setTimeout(pfStart, 3000);
 function onPf(m) {
