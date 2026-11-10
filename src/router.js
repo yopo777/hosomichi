@@ -8,7 +8,7 @@ const DEFAULT_CFG = {
   },
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
   bridge: 3,             // 歩道橋・地下道（歩行者用）: 倍率 or "no"
-  unpaved: 20,           // 砂利・土の道: 倍率 or "no"（1=気にしない）
+  unpaved: "no",         // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
   cemetery: 5,           // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
