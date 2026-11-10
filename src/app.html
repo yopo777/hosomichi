@@ -151,8 +151,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <div id="poiRow" style="display:none;font-size:13px;margin-top:4px;padding-left:4px;gap:10px;flex-wrap:wrap;align-items:center">寄り道：
       <label><input type="checkbox" id="poiView">🔭 見晴らし（展望台・丘の上）</label>
       <label><input type="checkbox" id="poiMini">🏪 ミニストップ</label>
-      <label><input type="checkbox" id="poiBench">🪑 ベンチ</label>
-      <label><input type="checkbox" id="poiVend">🥤 自販機</label>
+      <label><input type="checkbox" id="poiPark">🌳 公園</label>
       <label><input type="checkbox" id="poiSta">🚉 駅</label>
       <label><input type="checkbox" id="poiWor">⛩ 寺・神社</label>
       <label><input type="checkbox" id="poiSho">🛍 商店街</label>
@@ -799,7 +798,7 @@ async function placeName(input, ll) {
 const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : (looksAddress(t) ? townName(t) : cleanAddr(t)).slice(0, 24);
 
 // 🔁 ぐるっと1周：経由・到着の欄はかくす（出発にもどるので）
-const poiWant = () => ({ view: $("poiView").checked, mini: $("poiMini").checked, bench: $("poiBench").checked, vend: $("poiVend").checked, station: $("poiSta").checked, worship: $("poiWor").checked, shotengai: $("poiSho").checked, meisho: $("poiMei").checked });
+const poiWant = () => ({ view: $("poiView").checked, mini: $("poiMini").checked, park: $("poiPark").checked, station: $("poiSta").checked, worship: $("poiWor").checked, shotengai: $("poiSho").checked, meisho: $("poiMei").checked });
 const loopKm = () => $("loopOn").checked ? +$("loopKm").value : 0;
 function loopUi() {
   const on = $("loopOn").checked;
@@ -808,8 +807,8 @@ function loopUi() {
   $("go").textContent = on ? `🔁 ${$("loopKm").value}kmの1周ルートを作る` : "ルートを作る";
   try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value, poi: poiWant() })); } catch {}
 }
-try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; const p = l.poi || {}; $("poiView").checked = !!p.view; $("poiMini").checked = !!p.mini; $("poiBench").checked = !!p.bench; $("poiVend").checked = !!p.vend; $("poiSta").checked = !!(p.station ?? p.land); $("poiWor").checked = !!(p.worship ?? p.land); $("poiSho").checked = !!(p.shotengai ?? p.land); $("poiMei").checked = !!p.meisho; } } catch {}
-for (const id of ["loopOn", "loopKm", "poiView", "poiMini", "poiBench", "poiVend", "poiSta", "poiWor", "poiSho", "poiMei"]) $(id).onchange = loopUi;
+try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; const p = l.poi || {}; $("poiView").checked = !!p.view; $("poiMini").checked = !!p.mini; $("poiPark").checked = !!p.park; $("poiSta").checked = !!(p.station ?? p.land); $("poiWor").checked = !!(p.worship ?? p.land); $("poiSho").checked = !!(p.shotengai ?? p.land); $("poiMei").checked = !!p.meisho; } } catch {}
+for (const id of ["loopOn", "loopKm", "poiView", "poiMini", "poiPark", "poiSta", "poiWor", "poiSho", "poiMei"]) $(id).onchange = loopUi;
 loopUi();
 $("go").onclick = async () => {
   audioUnlock();
@@ -1029,7 +1028,7 @@ $("col").onclick = () => setColorMode({ red: "kind", kind: "slope", slope: "red"
 $("colL").textContent = COLOR_NAMES[colorMode];
 
 let cum = [];
-const PI = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯" };   // 寄り道スポットの印
+const PI = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯", park: "🌳" };   // 寄り道スポットの印
 function showRoute(r, fit) {
   cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
