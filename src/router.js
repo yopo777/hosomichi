@@ -11,6 +11,7 @@ const DEFAULT_CFG = {
   unpaved: 20,           // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
+  station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
   sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
@@ -284,6 +285,27 @@ function buildGraph(osm, cfg, onProg) {
     return hit * 2 >= n;
   };
   let swLen = 0;
+  // 駅の中・駅の自由通路：駅（配布データの駅一覧）から150m以内の、歩道・小道で、
+  // 橋・地下・屋根つき・建物の中・階（level）がある・名前に「通路」「コンコース」「改札」「駅」がある道
+  const stPen = cfg.station === "no" ? null : (+cfg.station || 1), STA_R = 150;
+  const nearSta = (la, lo, R) => {
+    if (!stationGrid) return false;
+    const cx = Math.floor(lo / 0.002), cy = Math.floor(la / 0.002);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const [sl, so] of stationGrid.get((cx + a) + "," + (cy + b)) || [])
+      if (hav(la, lo, sl, so) < R) return true;
+    return false;
+  };
+  const isStaPath = (t, nd) => {
+    if (!["footway", "pedestrian", "path", "corridor"].includes(t.highway)) return false;
+    const inside = yes(t.bridge) || yes(t.tunnel) || t.tunnel === "building_passage" || yes(t.covered) || yes(t.indoor) || t.level != null
+      || (t.layer && t.layer !== "0") || /通路|コンコース|改札|駅/.test(t.name || "");
+    const m = nd[nd.length >> 1], ends = [nd[0], m, nd[nd.length - 1]];
+    if (inside) return ends.some(i => nearSta(lat[i], lon[i], STA_R));
+    // 印のない歩道でも、駅のすぐそば（60m）で歩道（sidewalk）・横断歩道でなければ、駅の中の通路とみる
+    if (t.highway !== "footway" && t.highway !== "corridor") return false;
+    if (t.footway === "sidewalk" || t.footway === "crossing") return false;
+    return ends.every(i => nearSta(lat[i], lon[i], 60));
+  };
   for (const e of osm.elements) {
     if (onProg && (++ei & 0x3fff) === 0) onProg(ei / NE * 0.9);
     if (e.type !== "way") continue;
@@ -297,6 +319,10 @@ function buildGraph(osm, cfg, onProg) {
     const wc = wayCost(t, cfg);
     if (!wc) continue;
     let [pen, name] = wc;
+    if (stationGrid && cfg.station !== 1 && isStaPath(t, nd)) {   // 駅の中の通路
+      if (stPen === null) continue;
+      pen = Math.max(pen, cfg.pen.footway || 1) * stPen; name = "駅の通路";
+    }
     if (["footway", "path", "pedestrian", "cycleway", "track"].includes(hw) && nd.some(i => ntags.get(i)?.railway === "crossing")) {
       let wl = 0; for (let i = 1; i < nd.length; i++) wl += d(nd[i - 1], nd[i]);
       if (wl < 200) { pen = 1.0; name = "歩行者・自転車用踏切"; }
@@ -828,6 +854,17 @@ async function flushSaves() {
 // マスを「スタートからの進み具合」の順に取得して、取れたところまでで途中のルートを決める。
 // 先っぽ（まだ変わるかもしれない所）は点線＝仮のルートとして出す。
 const FIRST_BAND = 700, BAND = 1500, TENTATIVE = 500, BACK = 600;
+// ==== 駅の一覧（配布データの stations.json）：駅の中の通路を見分ける ====
+let stationGrid = null;
+async function loadStations() {
+  if (stationGrid || !packBase) return;
+  try {
+    const res = await fetch(packBase + "stations.json"); if (!res.ok) return;
+    const g = new Map();
+    for (const [, la, lo] of await res.json()) { const k = Math.floor(lo / 0.002) + "," + Math.floor(la / 0.002); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo]); }
+    stationGrid = g; log(`駅の一覧: ${g.size}か所のまわりを「駅の通路」として見るよ`);
+  } catch {}
+}
 // ==== 坂道：国土地理院の標高タイル（dem_png・ズーム14・10mメッシュ）で、のぼりをきらう ====
 const DEMZ = 14, demCache = new Map();
 async function demTile(x, y) {
@@ -923,6 +960,7 @@ async function routeOnce(req, prog, partial) {
   }
   const pad = req.pad || padFor(s, g, area);
   const slopeK = +(cfg && cfg.slope) || 0;
+  if (cfg && cfg.station !== 1) await loadStations();
   const demP = slopeK ? loadDem(s, g, pad + 0.005).catch(() => false) : Promise.resolve(false);
   const noLink = msg => Object.assign(new Error(msg), { noLink: true, usedPad: pad });
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）

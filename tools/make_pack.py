@@ -85,7 +85,7 @@ WAY_KEYS = {"highway", "access", "bicycle", "foot", "oneway", "oneway:bicycle", 
             "lanes:both_ways", "turn:lanes", "turn:lanes:forward", "turn:lanes:backward", "bridge", "tunnel", "layer",
             "surface", "tracktype", "ramp:bicycle", "service", "junction", "sidewalk", "cycleway", "segregated", "name", "ref", "maxspeed",
             "footway", "crossing", "sidewalk:both", "sidewalk:left", "sidewalk:right", "cycleway:both", "cycleway:left", "cycleway:right",
-            "lane_markings", "width", "kerb", "barrier"}
+            "lane_markings", "width", "kerb", "barrier", "indoor", "covered", "level", "area"}
 NODE_KEYS = {"highway", "crossing", "crossing:signals", "railway", "barrier"}
 
 # ---- 旧街道（古道）の目印 ----
@@ -207,14 +207,14 @@ class StaH(osmium.SimpleHandler):   # 駅（名前と場所）を集める：ア
         self.st.setdefault(n, []).append((round(la, 6), round(lo, 6)))
     def node(self, n):
         if n.tags and n.location.valid(): self.add(n.tags, n.location.lat, n.location.lon)
-    def area(self, a):   # 駅の建物（面）は、まわりの点の平均
+    def area_unused(self, a):   # 駅の建物（面）：時間がかかるので使わない（駅はほとんど点でも登録されている）
         try:
             pts = [(nd.lat, nd.lon) for ring in a.outer_rings() for nd in ring]
             if pts: self.add(a.tags, sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
         except Exception: pass
 
 def write_stations(src, out):
-    t0 = time.time(); h = StaH(); h.apply_file(src, locations=True, idx="flex_mem")
+    t0 = time.time(); h = StaH(); h.apply_file(src)
     rows = []
     for n, pts in h.st.items():   # 同じ名前の点が近くに何個もあるときは1つに（ホームごとの点など）
         keep = []
