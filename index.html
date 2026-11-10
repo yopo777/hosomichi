@@ -100,7 +100,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1024</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1027</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -846,6 +846,35 @@ async function route(req, prog, partial) {
     }
   };
   const fetching = Promise.all(Array.from({ length: Math.min(PARALLEL, need.length) }, (_, w) => runner(w)));
+  // 「ぜんぶ計算してから」でも、待っているあいだは取れた所までの仮のルートを出す（4秒に1回・新しいマスが来たときだけ）
+  let pvAt = 0, pvN = -1;
+  const preview = () => {
+    if (got.size === pvN || Date.now() - pvAt < 4000) return;
+    pvAt = Date.now(); pvN = got.size;
+    try {
+      let tEdge = -1;   // スタートからすきまなくそろっている所まで
+      for (const t of tiles) { if (!got.has(t.key)) break; tEdge = t.tc; }
+      if (tEdge < 300) return;
+      const seen = new Set(), elements = [];
+      for (const t of tiles) if (t.tc <= tEdge && got.has(t.key))
+        for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
+      const G = buildGraph({ elements }, cfg), q = nearestGood(G, s[0], s[1]);
+      if (q.n < 0 || q.d > 400) return;
+      const r = search(G, q.n, -1, g, false);
+      let bestSt = -1, bestF = Infinity;
+      for (let st = 0; st < r.closed.length; st++) {
+        if (!r.closed[st]) continue;
+        const u = (st / 3) | 0;
+        if (along(G.lat[u], G.lon[u]) < tEdge - tileHalf - 400) continue;
+        const f = r.best[st] + r.H(u);
+        if (f < bestF) { bestF = f; bestSt = st; }
+      }
+      if (bestSt < 0) return;
+      const pts = pathTo(r.prev, bestSt).map(u => [+G.lat[u].toFixed(6), +G.lon[u].toFixed(6)]);
+      log(`仮のルート（取れた所まで）: ${pts.length}点・スタートから約${(tEdge / 1000).toFixed(1)}km`);
+      prog({ preview: pts });
+    } catch (e) { log("仮のルートを出せなかった: " + e.message, "w"); }
+  };
   // tEnd までのマスを待つ。soft=true なら、8割以上そろって25秒新しいマスが来ないときは「そろってないまま」返す
   const SOFT_WAIT = 25000;
   const waitUpTo = async (tEnd, soft) => {
@@ -854,6 +883,7 @@ async function route(req, prog, partial) {
       checkStop(); if (fetchErr) throw fetchErr;
       const miss = list.filter(t => !got.has(t.key));
       if (!miss.length) return true;
+      if (tEnd === Infinity && cfg && cfg.mode === "full") preview();
       if (soft && (list.length - miss.length) / list.length >= 0.8 && Date.now() - lastTileAt > SOFT_WAIT) {
         log(`${miss.length}マスがなかなか来ないので、手元の ${list.length - miss.length}マスで先に計算してみる`, "w");
         return false;
@@ -1286,6 +1316,15 @@ function onPf(m) {
     if (m.msg === "おわったよ") chime();
   }
 }
+// ==== 「ぜんぶ計算してから」の待ち時間に出す仮のルート（灰色の点線） ====
+const pvLayer = L.layerGroup().addTo(map);
+function drawPreview(pts) {
+  pvLayer.clearLayers();
+  if (!pts || pts.length < 2) return;
+  L.polyline(pts, { color: "#fff", weight: 7, opacity: 0.8, interactive: false }).addTo(pvLayer);
+  L.polyline(pts, { color: "#666", weight: 4, dashArray: "8 8", interactive: false }).addTo(pvLayer)
+    .bindTooltip("仮のルート（取れた所まで）");
+}
 // ==== できたら音 ====
 let actx = null;
 function audioUnlock() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {} }
@@ -1323,7 +1362,12 @@ worker.onmessage = ev => {
     return;
   }
   if (m.type === "prog" && m.area) { calcKeys = m.area; drawArea(); }
+  if (m.type === "prog" && m.preview) {
+    if (!pvLayer.getLayers().length && job && !job.pvShown) { job.pvShown = true; $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }   // 地図を見せる
+    drawPreview(m.preview); return;
+  }
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
+  drawPreview(null);
   clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
   if (m.type === "done") { $("bar").classList.add("done"); chime(); }   // 終わったら緑＆音
   if (m.type === "stopped") {
@@ -1366,6 +1410,7 @@ function merged(m) {
 }
 function startJob(s, g, jcfg, prefix) {
   job = { g, cfg: jcfg, prefix: prefix || null };
+  drawPreview(null);
   if (!prefix) {   // 新しいルート：古いルートは画面から消す（ナビの「のこり」もまちがえないように）
     cur = null; cum = [];
     $("result").style.display = "none"; $("share").style.display = "none"; $("qr").style.display = "none";
