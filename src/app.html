@@ -148,14 +148,6 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row" id="loopRow"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="loopOn">🔁 ぐるっと1周して出発にもどる</label>
       <select id="loopKm" style="padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option>10</option><option>20</option><option selected>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
-    <div id="poiRow" style="display:none;font-size:13px;margin-top:4px;padding-left:4px;gap:10px;flex-wrap:wrap;align-items:center">寄り道：
-      <label><input type="checkbox" id="poiView">🔭 見晴らし（展望台・丘の上）</label>
-      <label><input type="checkbox" id="poiMini">🏪 ミニストップ</label>
-      <label><input type="checkbox" id="poiPark">🌳 公園</label>
-      <label><input type="checkbox" id="poiSta">🚉 駅</label>
-      <label><input type="checkbox" id="poiWor">⛩ 寺・神社</label>
-      <label><input type="checkbox" id="poiSho">🛍 商店街</label>
-      <label><input type="checkbox" id="poiMei">🏛 名所・史跡</label></div>
     <div class="row" id="viaRow"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row" id="toRow"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図をタップしても出発・到着を選べるよ</div>
@@ -682,14 +674,13 @@ worker.onmessage = ev => {
     job = null; return;
   }
   setBar(1);
-  if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${m.sec.toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")
-    + (m.poiErr ? `\n⚠ 寄り道の場所が取れなかったので、寄り道なしだよ（${m.poiErr}）` : "")); else
+  if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${m.sec.toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")); else
   setMsg(`できた！ ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）\n` +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
-  showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: m.stops, near: m.near,
+  showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: m.stops,
     opts: job && job.prefix || !(m.alts || []).length ? null
-      : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len, stops: m.stops, near: m.near }, ...m.alts], sel: 0,
+      : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len, stops: m.stops }, ...m.alts], sel: 0,
     name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
   if (job && job.prefix) cur.slen = 0;
   if (job && job.next) {   // 経由地まで できた → つづけて 経由地から到着地まで
@@ -799,19 +790,17 @@ async function placeName(input, ll) {
 const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : (looksAddress(t) ? townName(t) : cleanAddr(t)).slice(0, 24);
 
 // 🔁 ぐるっと1周：経由・到着の欄はかくす（出発にもどるので）
-const poiWant = () => ({ view: $("poiView").checked, mini: $("poiMini").checked, park: $("poiPark").checked, station: $("poiSta").checked, worship: $("poiWor").checked, shotengai: $("poiSho").checked, meisho: $("poiMei").checked });
 const loopKm = () => $("loopOn").checked ? ($("loopKm").value === "auto" ? "auto" : +$("loopKm").value) : 0;
 // おまかせの長さ：経由地があれば まっすぐの距離 × 2.8（行きと帰りを別の道にできる太さの輪っか。5km単位）、なければ 30km
 const autoKm = (s, v) => v ? Math.max(10, Math.ceil(hav(s, v) * 2.8 / 5000) * 5) : 30;
 function loopUi() {
   const on = $("loopOn").checked;
   $("toRow").style.display = on ? "none" : "";   // 1周でも経由地は1つ入れられる（そこを通って1周）
-  $("poiRow").style.display = on ? "flex" : "none";
   $("go").textContent = on ? ($("loopKm").value === "auto" ? "🔁 おまかせの長さで1周ルートを作る" : `🔁 ${$("loopKm").value}kmの1周ルートを作る`) : "ルートを作る";
-  try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value, poi: poiWant() })); } catch {}
+  try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value })); } catch {}
 }
-try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; const p = l.poi || {}; $("poiView").checked = !!p.view; $("poiMini").checked = !!p.mini; $("poiPark").checked = !!p.park; $("poiSta").checked = !!(p.station ?? p.land); $("poiWor").checked = !!(p.worship ?? p.land); $("poiSho").checked = !!(p.shotengai ?? p.land); $("poiMei").checked = !!p.meisho; } } catch {}
-for (const id of ["loopOn", "loopKm", "poiView", "poiMini", "poiPark", "poiSta", "poiWor", "poiSho", "poiMei"]) $(id).onchange = loopUi;
+try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; } } catch {}
+for (const id of ["loopOn", "loopKm"]) $(id).onchange = loopUi;
 loopUi();
 $("go").onclick = async () => {
   audioUnlock();
@@ -845,7 +834,7 @@ $("go").onclick = async () => {
       else map.setView(s, Math.max(10, Math.min(15, Math.round(15 - Math.log2(LK / 5)))));
       if (geoAbort.signal.aborted) throw new Error("止めたよ");
       geoAbort = null; clearInterval(tickTimer);
-      startJob(s, s, structuredClone(cfg), null, LK, poiWant(), v);
+      startJob(s, s, structuredClone(cfg), null, LK, null, v);
       return;
     }
     const [v, vn] = viaT ? await geocode(viaT) : [null, ""];
@@ -1041,7 +1030,6 @@ $("col").onclick = () => setColorMode({ red: "kind", kind: "slope", slope: "red"
 $("colL").textContent = COLOR_NAMES[colorMode];
 
 let cum = [];
-const PI = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯", park: "🌳", via: "📍" };   // 寄り道スポットの印
 function showRoute(r, fit) {
   cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
@@ -1054,10 +1042,7 @@ function showRoute(r, fit) {
   if (tent.length > 1) L.polyline(tent, { color: "#d93025", weight: 6, opacity: .7, dashArray: "8 10" }).addTo(layer).bindTooltip("計算中（まだ変わるかも）");
   L.circleMarker(r.nav[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(layer).bindTooltip("出発");
   if (!r.partial) L.circleMarker(r.route[r.route.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
-  // 寄り道スポット（1周ルート）：寄る所は大きく、ついでに通る所は小さく
-  const poiMk = (q, big) => L.marker(q.p, { icon: L.divIcon({ className: "", html: `<div style="font-size:${big ? 24 : 15}px;line-height:1;white-space:nowrap;display:inline-block;transform:translate(-50%,-50%);${q.kind === "rest" ? "background:#fffd;border-radius:9px;padding:1px 3px;box-shadow:0 1px 3px #0004;" : "text-shadow:0 0 3px #fff,0 0 3px #fff;"}">${PI[q.kind] || "📍"}</div>`, iconSize: [0, 0], iconAnchor: [0, 0] }), zIndexOffset: big ? 400 : 100 })
-    .addTo(layer).bindTooltip((big ? "寄り道: " : "") + q.name);
-  (r.near || []).forEach(q => poiMk(q, false)); (r.stops || []).forEach(q => poiMk({ ...q, name: q.name + (q.d > 150 ? `（道から${q.d}m・そばまで行けない）` : "") }, true));
+  (r.stops || []).forEach(q => L.marker(q.p, { icon: L.divIcon({ className: "", html: '<div style="font-size:24px;line-height:1;transform:translate(-50%,-90%);text-shadow:0 0 3px #fff">📍</div>', iconSize: [0, 0] }), zIndexOffset: 400 }).addTo(layer).bindTooltip(q.name));   // 1周の経由地
   (r.ok || []).forEach(p => L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("信号で横断"));
   (r.xw || []).forEach(p => L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("横断歩道で横断"));
   (r.ng || []).forEach(p => L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).addTo(layer).bindTooltip("⚠ 設定どおりに渡れなかった場所"));
@@ -1078,11 +1063,6 @@ function showRoute(r, fit) {
       <input type="radio" name="opt" value="${i}"${i === r.sel ? " checked" : ""}>ルート${i + 1}　${fmtKm(o.len)}` +
     (i ? `<span style="color:#888;font-weight:normal;font-size:12px">（${o.len >= r.opts[0].len ? "+" : "−"}${fmtKm(Math.abs(o.len - r.opts[0].len))}）</span>` : "") +
     (o.turns != null ? `<span style="color:#666;font-weight:normal;font-size:12px">曲がる${o.turns}回</span>` : "") + `</label>`).join("") + '</div>';
-  const sp = (r.stops || []).filter(q => q.kind !== "via");
-  if (sp.length) h += `<div style="margin:4px 0">🔁 寄り道: ${sp.map(q => `${PI[q.kind] || ""}${esc(q.name)}` +
-    (q.d == null ? "" : q.d <= 150 ? `<span style="color:#188038;font-size:12px">（寄れる${q.d > 30 ? `・道から${q.d}m` : ""}）</span>` : `<span style="color:#c00;font-size:12px">（道から${q.d}m・そばまで行けない）</span>`)).join("　")}</div>`;
-  if ((r.near || []).length) { const c = {}; for (const q of r.near) c[q.kind] = (c[q.kind] || 0) + 1;
-    h += `<div style="font-size:12px;color:#666">ルートのそば: ${Object.entries(c).map(([k, n]) => `${PI[k] || ""}${n}`).join("　")}</div>`; }
   if (r.turns != null) h += `<br>曲がる回数 <b>${r.turns}回</b>`;
   if (r.ok || r.ng) h += `<br>道の横断: <span style="color:#0a0">●信号 ${r.ok.length}</span> / <span style="color:#1a73e8">●横断歩道 ${(r.xw || []).length}</span> / <span style="color:${r.ng.length ? "#c00" : "inherit"}">●ルール外 ${r.ng.length}</span>`;
   if (r.kinds) h += "<br><span style='color:#666'>" + Object.entries(r.kinds).sort((a, b) => b[1] - a[1]).map(([k, m]) => `${k} ${fmtKm(m)}`).join(" / ") + "</span>";
@@ -1559,12 +1539,12 @@ function packRoute(r) {
   return { name: r.name || "", created: r.created || Date.now(), r: encPoly(sr.pts), k: sr.kc ? encK(sr.kc) : "",
     s: r.short ? encPoly(simplify(r.short, 3)) : "", ok: encPoly(r.ok || []), xw: encPoly(r.xw || []), ng: encPoly(r.ng || []),
     len: r.len, slen: r.slen || 0, kinds: r.kinds || null, rs: r.resume || null, tn: r.turns ?? null,
-    st: r.stops && r.stops.length ? r.stops : undefined, nr: r.near && r.near.length ? r.near : undefined };
+    st: r.stops && r.stops.length ? r.stops : undefined };
 }
 function unpackRoute(o) {
   const route = decPoly(o.r), kc = o.k ? decK(o.k) : null;
   return { name: o.name, created: o.created, route, kc: kc && kc.length === route.length - 1 ? kc : null, short: o.s ? decPoly(o.s) : null,
-    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st, near: o.nr };
+    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st };
 }
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function renderList() {
