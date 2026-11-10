@@ -717,7 +717,7 @@ function merged(m) {
     kinds: sumKinds(P.kinds, m.kinds), turns: P.turns != null && m.turns != null ? P.turns + m.turns : undefined,
     len: (P.len || 0) + (m.len || 0), short: null, slen: 0 };
 }
-function startJob(s, g, jcfg, prefix, loop, poi) {
+function startJob(s, g, jcfg, prefix, loop, poi, loopVia) {
   job = { g, cfg: jcfg, prefix: prefix || null, loop: loop || 0 };
   drawPreview(null);
   if (!prefix) {   // 新しいルート：古いルートは画面から消す（ナビの「のこり」もまちがえないように）
@@ -727,7 +727,7 @@ function startJob(s, g, jcfg, prefix, loop, poi) {
   }
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.map(b => b.p), loop: loop || 0, poi: poi || null });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
@@ -802,7 +802,7 @@ const poiWant = () => ({ view: $("poiView").checked, mini: $("poiMini").checked,
 const loopKm = () => $("loopOn").checked ? +$("loopKm").value : 0;
 function loopUi() {
   const on = $("loopOn").checked;
-  $("viaRow").style.display = $("toRow").style.display = on ? "none" : "";
+  $("toRow").style.display = on ? "none" : "";   // 1周でも経由地は1つ入れられる（そこを通って1周）
   $("poiRow").style.display = on ? "flex" : "none";
   $("go").textContent = on ? `🔁 ${$("loopKm").value}kmの1周ルートを作る` : "ルートを作る";
   try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value, poi: poiWant() })); } catch {}
@@ -813,7 +813,7 @@ loopUi();
 $("go").onclick = async () => {
   audioUnlock();
   const LK = loopKm();
-  const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = LK ? "" : $("via").value.trim();
+  const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = $("via").value.trim();
   if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
   if (unsavedRoute() && await askSave("新しいルートを作る") === "cancel") return;
   pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? ` 1周${LK}km` : " → " + shortName(toT));
@@ -824,15 +824,20 @@ $("go").onclick = async () => {
     addLog(`場所をさがす: 出発「${fromT || "現在地"}」 ` + (LK ? `🔁 1周 ${LK}km` : `到着「${toT.slice(0, 60)}」`), "m");
     const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
     addLog(`  出発 → ${sn}（${s[0].toFixed(5)},${s[1].toFixed(5)}）`, "m");
-    if (LK) {   // 1周：出発のまわりを三角形にまわる。経由地は worker がきめる
-      pendingName = (await placeName(fromT, s)) + ` 1周${LK}km`;
+    if (LK) {   // 1周：出発のまわりを三角形にまわる。経由地が入っていれば、そこを通る1周
+      const [v, vn] = viaT ? await geocode(viaT) : [null, ""];
+      if (v) { addLog(`  経由 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
+        if (hav(s, v) > 75000) throw new Error(`経由地が ${fmtKm(hav(s, v))} もはなれてるよ。1周なら75km以内にしてね`);
+        if (hav(s, v) * 2 > LK * 1000 * 0.9) addLog(`  経由地まで往復するだけで ${LK}km くらいになっちゃうよ。長めにするといい感じの1周になるよ`, "w"); }
+      pendingName = (await placeName(fromT, s)) + ` 1周${LK}km` + (v ? `（${await placeName(viaT, v)}経由）` : "");
       addLog(`  ルート名: ${pendingName}`, "m");
       lastProg = { stage: 1, msg: `🔁 ${sn} から ${LK}km の1周` }; showProg();
       layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発・到着");
-      map.setView(s, Math.max(10, Math.min(15, Math.round(15 - Math.log2(LK / 5)))));
+      if (v) { L.marker(v).addTo(layer).bindTooltip("経由"); map.fitBounds([s, v], { padding: [60, 60] }); }
+      else map.setView(s, Math.max(10, Math.min(15, Math.round(15 - Math.log2(LK / 5)))));
       if (geoAbort.signal.aborted) throw new Error("止めたよ");
       geoAbort = null; clearInterval(tickTimer);
-      startJob(s, s, structuredClone(cfg), null, LK, poiWant());
+      startJob(s, s, structuredClone(cfg), null, LK, poiWant(), v);
       return;
     }
     const [v, vn] = viaT ? await geocode(viaT) : [null, ""];
@@ -1028,7 +1033,7 @@ $("col").onclick = () => setColorMode({ red: "kind", kind: "slope", slope: "red"
 $("colL").textContent = COLOR_NAMES[colorMode];
 
 let cum = [];
-const PI = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯", park: "🌳" };   // 寄り道スポットの印
+const PI = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯", park: "🌳", via: "📍" };   // 寄り道スポットの印
 function showRoute(r, fit) {
   cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える

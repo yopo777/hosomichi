@@ -435,81 +435,118 @@ function applyBlocks(lat, lon, adj, N) {
 // ==== 🔁 ぐるっと1周：出発のまわりに見えない経由地を2つ置いて、三角形にまわって出発にもどる ====
 // 向き（北・東・南・西に張りだす）を変えて候補を作り、走りたい長さに近い順に3本まで出す
 async function loopRoute(req, prog) {
-  const s = req.s, D = Math.max(3, +req.loop || 20) * 1000, cfg = { ...(req.cfg || {}), alts: false };
+  const s = req.s, V = req.via || null, D = Math.max(3, +req.loop || 20) * 1000, cfg = { ...(req.cfg || {}), alts: false };
   const c0 = Math.cos(s[0] * RAD), M = 111320;
   const at = (la, lo, ang, d) => [la + Math.cos(ang) * d / M, lo + Math.sin(ang) * d / (M * c0)];   // ang: 北=0 東=π/2
-  const DIRS = [["北", 0], ["東", 90], ["南", 180], ["西", 270]];
-  let fac = 6.5;   // 道のり ≒ 半径 × fac（三角形の周り 5.2 × 道のくねくね）。1本目の結果で合わせる
   const out = [], T0 = Date.now(), want = req.poi || {};
-  log(`==== 🔁 ぐるっと1周 ${D / 1000}km（出発 ${s[0].toFixed(5)},${s[1].toFixed(5)}） ====`, "h");
-  // 寄り道（展望台・丘の上・ミニストップ・ベンチ）：まわる範囲の分を1回だけさがす
+  const dV = V ? hav(s[0], s[1], V[0], V[1]) : 0;
+  log(`==== 🔁 ぐるっと1周 ${D / 1000}km（出発 ${s[0].toFixed(5)},${s[1].toFixed(5)}${V ? `・経由地まで ${(dV / 1000).toFixed(1)}km` : ""}） ====`, "h");
+  // 寄り道スポット：まわる範囲の分を1回だけさがす
   let pois = [];
-  want.land = !!(want.station || want.worship || want.shotengai || want.meisho);   // ランドマーク（駅・寺神社・商店街のどれか）
+  want.land = !!(want.station || want.worship || want.shotengai || want.meisho);   // ランドマーク（駅・寺神社・商店街・名所のどれか）
   if (want.view || want.mini || want.park || want.land) {
     prog({ stage: 1, msg: "🔁 寄り道の場所をさがし中…" });
-    const ext = 2.3 * D / 4.5;
-    pois = await poiFetch([s[0] - ext / M, s[1] - ext / (M * c0), s[0] + ext / M, s[1] + ext / (M * c0)], want).catch(e => { log("寄り道の場所が取れなかった（寄り道なしで作るよ）: " + e.message, "w"); return []; });
+    const m0 = V ? [(s[0] + V[0]) / 2, (s[1] + V[1]) / 2] : s, ext = V ? Math.max(dV * 0.7, D / 3.5) : 2.3 * D / 4.5;
+    pois = await poiFetch([m0[0] - ext / M, m0[1] - ext / (M * c0), m0[0] + ext / M, m0[1] + ext / (M * c0)], want).catch(e => { log("寄り道の場所が取れなかった（寄り道なしで作るよ）: " + e.message, "w"); return []; });
   }
-  try {
-    for (let di = 0; di < DIRS.length; di++) {
-      if (stopReq) break;
-      const [dn, deg] = DIRS[di], th = deg * RAD;
-      const R = D / fac, c = at(s[0], s[1], th, R);                 // 円の中心（出発から その向きに R）
-      let w1 = at(c[0], c[1], th + Math.PI + 2 * Math.PI / 3, R), w2 = at(c[0], c[1], th + Math.PI - 2 * Math.PI / 3, R);   // 円の上に3点（出発・w1・w2）
-      // 経由地を寄り道スポットに吸い寄せる：1つ目は見晴らし、2つ目はミニストップ（休けい）を優先
-      const stops = [];
-      if (want.view || want.mini || want.land || want.park) {
-        // 1つ目の角：見晴らし → ランドマーク → 公園　2つ目の角：休けい（ミニストップ → 公園）→ ランドマーク → 見晴らし
-        const rest = [...(want.mini ? ["mini"] : []), ...(want.park ? ["park"] : [])];
-        const o1 = [...(want.view ? ["view"] : []), ...(want.land ? ["land"] : []), ...(want.park ? ["park"] : [])];
-        const o2 = [...rest, ...(want.land ? ["land"] : []), ...(want.view ? ["view"] : [])];
-        const rad = 0.4 * R, order = [o1.length ? o1 : [], o2];
-        const ws = [w1, w2];
-        for (let k = 0; k < 2; k++) {
-          let pick = null;
-          for (const kind of order[k]) {
-            if (kind === "mini" || kind === "rest" || kind === "park") pick = nearestPoi(pois, ws[k], rad, p => p.kind === kind, stops);
-            else if (kind === "land") pick = nearestPoi(pois, ws[k], rad, p => LAND.has(p.kind) && (p.kind !== "temple" && p.kind !== "shrine" || p.big), stops)   // 寺・神社は境内（面）がある大きめの所
-              || nearestPoi(pois, ws[k], rad * 0.6, p => LAND.has(p.kind), stops);
-            else pick = nearestPoi(pois, ws[k], rad, p => p.kind === "view" || p.kind === "tower", stops) || await hillNear(ws[k], rad * 0.8, s);
-            if (pick) break;
-          }
-          if (pick) { ws[k] = [pick.la, pick.lo]; stops.push(pick); }
-        }
-        [w1, w2] = ws;
-        if (stops.length) log(`寄り道: ${stops.map(p => p.name).join("・")}`);
+  // 寄り道スポットに吸い寄せる。kindOrder の順にさがす
+  const rest = [...(want.mini ? ["mini"] : []), ...(want.park ? ["park"] : [])];
+  const O1 = [...(want.view ? ["view"] : []), ...(want.land ? ["land"] : []), ...(want.park ? ["park"] : [])];   // 見晴らし → ランドマーク → 公園
+  const O2 = [...rest, ...(want.land ? ["land"] : []), ...(want.view ? ["view"] : [])];                         // 休けい（ミニストップ → 公園）→ ランドマーク → 見晴らし
+  const snap = async (w, rad, order, stops) => {
+    for (const kind of order) {
+      let pick = null;
+      if (kind === "mini" || kind === "park") pick = nearestPoi(pois, w, rad, p => p.kind === kind, stops);
+      else if (kind === "land") pick = nearestPoi(pois, w, rad, p => LAND.has(p.kind) && (p.kind !== "temple" && p.kind !== "shrine" || p.big), stops)   // 寺・神社は境内（面）がある大きめの所
+        || nearestPoi(pois, w, rad * 0.6, p => LAND.has(p.kind), stops);
+      else pick = nearestPoi(pois, w, rad, p => p.kind === "view" || p.kind === "tower", stops) || await hillNear(w, rad * 0.8, s);
+      if (pick) return pick;
+    }
+    return null;
+  };
+  // 候補1本：出発 → pts… → 出発。free[i] = その点を寄せるときのさがす順（null なら動かさない）
+  const runCand = async (label, pts, free, rad, ci, nc) => {
+    const stops = [];
+    for (let k = 0; k < pts.length; k++) {
+      if (pts[k].via) { stops.push({ la: pts[k][0], lo: pts[k][1], kind: "via", name: "経由地" }); continue; }
+      if (!free[k] || !free[k].length) continue;
+      const pick = await snap(pts[k], rad, free[k], stops);
+      if (pick) { pts[k] = [pick.la, pick.lo]; stops.push(pick); }
+    }
+    if (stops.some(p => p.kind !== "via")) log(`寄り道: ${stops.filter(p => p.kind !== "via").map(p => p.name).join("・")}`);
+    const way = [s, ...pts, s], parts = [], nl = way.length - 1;
+    usedNodes = new Set(); let dupM = 0, allM = 0;
+    log(`--- ${label} ---`, "h");
+    try {
+      for (let li = 0; li < nl; li++) {
+        prog({ stage: 2, msg: `🔁 ${label} ${li + 1}/${nl}区間（候補 ${ci + 1}/${nc}）`, done: ci * nl + li, total: nc * nl });
+        const r = await route({ ...req, s: li ? parts[li - 1].route[parts[li - 1].route.length - 1] : way[0], g: way[li + 1], cfg, loop: undefined, via: undefined },
+          p => prog({ ...p, msg: `🔁 ${label} ${li + 1}/${nl}区間\n` + (p.msg || "") }), () => {});
+        if (li) for (let i = 1; i < r.route.length; i++) {   // 前の区間と同じあたりを走る長さ（往復っぽさ）
+          const [a1, b1] = r.route[i - 1], [a2, b2] = r.route[i], m = hav(a1, b1, a2, b2);
+          allM += m; if (usedNodes.has(usedKey((a1 + a2) / 2, (b1 + b2) / 2))) dupM += m;
+        } else allM += r.len || 0;
+        markUsed(r.route);
+        parts.push(r);
       }
-      const legs = [[s, w1], [w1, w2], [w2, s]], parts = [];
-      usedNodes = new Set(); let dupM = 0, allM = 0;
-      log(`--- ${dn}まわり（半径 ${(R / 1000).toFixed(1)}km） ---`, "h");
-      try {
-        for (let li = 0; li < 3; li++) {
-          const [a, b] = legs[li];
-          prog({ stage: 2, msg: `🔁 ${dn}まわり ${li + 1}/3区間（候補 ${out.length + 1}本目）`, done: di * 3 + li, total: DIRS.length * 3 });
-          const r = await route({ ...req, s: li ? parts[li - 1].route[parts[li - 1].route.length - 1] : a, g: b, cfg, loop: undefined }, p => prog({ ...p, msg: `🔁 ${dn}まわり ${li + 1}/3区間\n` + (p.msg || "") }), () => {});
-          if (li) for (let i = 1; i < r.route.length; i++) {   // 前の区間と同じあたりを走る長さ（往復っぽさ）
-            const [a1, b1] = r.route[i - 1], [a2, b2] = r.route[i], m = hav(a1, b1, a2, b2);
-            allM += m; if (usedNodes.has(usedKey((a1 + a2) / 2, (b1 + b2) / 2))) dupM += m;
-          } else allM += r.len || 0;
-          markUsed(r.route);
-          parts.push(r);
+    } catch (e) { if (stopReq) throw e; log(`${label}は作れなかった: ${e.message}`, "w"); return null; }
+    const L = joinLegs(parts);
+    L.dup = allM ? dupM / allM : 0;
+    log(`${label}: ${(L.len / 1000).toFixed(1)}km（目標 ${D / 1000}km）・同じあたりを往復 ${Math.round(L.dup * 100)}%`, "ok");
+    L.how = label; L.stops = stops.map(p => ({ p: [p.la, p.lo], kind: p.kind, name: p.name }));
+    L.near = poisAlong(pois, L.route, stops.filter(p => p.kind !== "via"));
+    out.push(L);
+    return L;
+  };
+  try {
+    if (!V) {
+      // 経由地なし：出発を通る円の上に見えない経由地を2つ（三角形）。向きを変えて4本
+      const DIRS = [["北まわり", 0], ["東まわり", 90], ["南まわり", 180], ["西まわり", 270]];
+      let fac = 6.5;   // 道のり ≒ 半径 × fac（三角形の周り 5.2 × 道のくねくね）。1本目の結果で合わせる
+      for (let di = 0; di < DIRS.length && !stopReq; di++) {
+        const [dn, deg] = DIRS[di], th = deg * RAD, R = D / fac, c = at(s[0], s[1], th, R);   // 円の中心（出発から その向きに R）
+        const w1 = at(c[0], c[1], th + Math.PI + 2 * Math.PI / 3, R), w2 = at(c[0], c[1], th + Math.PI - 2 * Math.PI / 3, R);
+        const L = await runCand(`${dn}（半径 ${(R / 1000).toFixed(1)}km）`, [w1, w2], [O1, O2], 0.4 * R, di, DIRS.length);
+        if (L) L.how = dn;
+        if (L && out.length === 1) fac = Math.min(9, Math.max(4.5, fac * L.len / D));   // 長さのずれを次の候補で直す
+      }
+    } else {
+      // 経由地あり：出発と経由地のまん中から左右に見えない点を出す。①左に三角形 ②右に三角形 ③行きは左・帰りは右（ひし形）
+      // 目標が短すぎるときは 経由地まで行って別の道で帰る
+      let kf = 1.25;   // 道のり ≒ 図形の周り × kf。1本目の結果で合わせる
+      const ex = (V[1] - s[1]) * c0 * M, ny = (V[0] - s[0]) * M, mid = [(s[0] + V[0]) / 2, (s[1] + V[1]) / 2];
+      const Vp = Object.assign([V[0], V[1]], { via: true });
+      const off = (base, side, h) => [base[0] + (ex / dV) * side * h / M, base[1] + (-ny / dV) * side * h / (M * c0)];   // side=1 で左
+      const plan = ["L", "R", "LR"];
+      for (let ci = 0; ci < plan.length && !stopReq; ci++) {
+        const P = D / kf, k = plan[ci];
+        if (k !== "LR") {
+          const h2 = ((P - dV) / 2) ** 2 - dV * dV / 4;
+          if (h2 <= (dV * 0.15) ** 2) {   // 三角形にするほど長さがない
+            if (ci === 0) { log(`目標 ${D / 1000}km だと、経由地まで行って帰るだけで ほぼいっぱい（まっすぐで往復 ${(2 * dV / 1000).toFixed(1)}km）。行きと帰りを別の道にするよ`, "w");
+              await runCand("経由地まで行って別の道で帰る", [Vp], [null], 0, 0, 1); }
+            break;
+          }
+          const h = Math.sqrt(h2), W = off(mid, k === "L" ? 1 : -1, h);
+          await runCand(k === "L" ? "経由地へ行って左まわりで帰る" : "経由地へ行って右まわりで帰る", [Vp, W], [null, O2], 0.35 * h, ci, plan.length);
+        } else {
+          const h2 = (P / 4) ** 2 - dV * dV / 4;
+          if (h2 <= (dV * 0.15) ** 2) continue;
+          const h = Math.sqrt(h2);
+          // ひし形の角は まん中の左右。行きの角は見晴らし・ランドマーク、帰りの角は休けい
+          await runCand("行きは左・帰りは右", [off(mid, 1, h), Vp, off(mid, -1, h)], [O1, null, O2], 0.3 * h, ci, plan.length);
         }
-      } catch (e) { if (stopReq) throw e; log(`${dn}まわりは作れなかった: ${e.message}`, "w"); continue; }
-      const L = joinLegs(parts);
-      L.dup = allM ? dupM / allM : 0;
-      log(`${dn}まわり: ${(L.len / 1000).toFixed(1)}km（目標 ${D / 1000}km）・同じあたりを往復 ${Math.round(L.dup * 100)}%`, "ok");
-      L.how = dn + "まわり"; L.stops = stops.map(p => ({ p: [p.la, p.lo], kind: p.kind, name: p.name }));
-      L.near = poisAlong(pois, L.route, stops);
-      out.push(L);
-      if (out.length === 1) fac = Math.min(9, Math.max(4.5, fac * L.len / D));   // 長さのずれを次の候補で直す
+        if (out.length === 1 && !out[0].kfSet) { out[0].kfSet = 1; kf = Math.min(1.8, Math.max(1.05, kf * out[0].len / D)); }
+      }
     }
   } finally { usedNodes = null; }
   if (!out.length) throw new Error("1周するルートが作れなかったよ。長さを変えるか、出発を道の多い所にしてみてね");
-  const score = o => Math.abs(o.len - D) / D + o.dup * 1.5 - (o.stops || []).length * 0.15;   // 寄り道できたものを少し優先   // 長さが目標に近くて、往復の少ないもの
+  const nStop = o => (o.stops || []).filter(p => p.kind !== "via").length;
+  const score = o => Math.abs(o.len - D) / D + o.dup * 1.5 - nStop(o) * 0.15;   // 長さが目標に近くて、往復が少なくて、寄り道できたもの
   out.sort((a, b) => score(a) - score(b));
-  const [main, ...rest] = out.slice(0, 3);
+  const [main, ...others] = out.slice(0, 3);
   log(`==== 🔁 完了 ${out.map(o => o.how + " " + (o.len / 1000).toFixed(1) + "km").join("・")}（${((Date.now() - T0) / 1000).toFixed(1)}秒） ====`, "ok");
-  return { ...main, alts: rest, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
+  return { ...main, alts: others, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
 }
 // ---- 寄り道スポット ----
 const POI_ICON = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯", park: "🌳" };
