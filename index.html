@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1658</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2101</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -191,6 +191,7 @@ const DEFAULT_CFG = {
   unpaved: 20,           // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
+  slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
   sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
@@ -1007,6 +1008,58 @@ async function flushSaves() {
 // マスを「スタートからの進み具合」の順に取得して、取れたところまでで途中のルートを決める。
 // 先っぽ（まだ変わるかもしれない所）は点線＝仮のルートとして出す。
 const FIRST_BAND = 700, BAND = 1500, TENTATIVE = 500, BACK = 600;
+// ==== 坂道：国土地理院の標高タイル（dem_png・ズーム14・10mメッシュ）で、のぼりをきらう ====
+const DEMZ = 14, demCache = new Map();
+async function demTile(x, y) {
+  const k = x + "/" + y;
+  if (demCache.has(k)) return demCache.get(k);
+  let h = null;
+  try {
+    const res = await fetch(`https://cyberjapandata.gsi.go.jp/xyz/dem_png/${DEMZ}/${x}/${y}.png`);
+    if (res.ok) {
+      const bmp = await createImageBitmap(await res.blob()), cv = new OffscreenCanvas(256, 256), cx = cv.getContext("2d");
+      cx.drawImage(bmp, 0, 0); const d = cx.getImageData(0, 0, 256, 256).data; h = new Float32Array(65536);
+      for (let i = 0; i < 65536; i++) {
+        const R = d[i * 4], G = d[i * 4 + 1], B = d[i * 4 + 2], v = R * 65536 + G * 256 + B;
+        h[i] = (R === 128 && G === 0 && B === 0) ? NaN : (v < 8388608 ? v : v - 16777216) * 0.01;   // 128,0,0 は「データなし」
+      }
+    }
+  } catch {}
+  demCache.set(k, h);
+  if (demCache.size > 3000) demCache.delete(demCache.keys().next().value);
+  return h;
+}
+const demXY = (la, lo) => { const n = 2 ** DEMZ * 256, r = la * RAD;
+  return [(lo + 180) / 360 * n, (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n]; };
+async function loadDem(s, g, pad) {   // ルートの帯ぶんの標高タイルを読んでおく
+  const la0 = Math.min(s[0], g[0]) - pad, la1 = Math.max(s[0], g[0]) + pad, lo0 = Math.min(s[1], g[1]) - pad * 1.25, lo1 = Math.max(s[1], g[1]) + pad * 1.25;
+  const [x0, y0] = demXY(la1, lo0).map(v => Math.floor(v / 256)), [x1, y1] = demXY(la0, lo1).map(v => Math.floor(v / 256));
+  const list = []; for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) if (!demCache.has(x + "/" + y)) list.push([x, y]);
+  if (list.length > 1500) { log(`坂道：範囲が広すぎるので、坂は見ないよ（標高タイル ${list.length}枚）`, "w"); return false; }
+  const t0 = Date.now(); let i = 0;
+  await Promise.all(Array.from({ length: 8 }, async () => { while (i < list.length) { const [x, y] = list[i++]; await demTile(x, y); } }));
+  if (list.length) log(`坂道：標高タイル ${list.length}枚（${((Date.now() - t0) / 1000).toFixed(1)}秒）`);
+  return true;
+}
+function heightAt(la, lo) {
+  const [px, py] = demXY(la, lo), x = Math.floor(px / 256), y = Math.floor(py / 256), h = demCache.get(x + "/" + y);
+  if (!h) return NaN;
+  return h[Math.min(255, Math.floor(py - y * 256)) * 256 + Math.min(255, Math.floor(px - x * 256))];
+}
+// のぼり 1m を k m 分と数える。8% をこえる急な所はその2倍。標高のゆれ（橋・切り通し）に強くするため 15% で頭打ち
+function applySlope(G, k) {
+  if (!k || typeof OffscreenCanvas === "undefined") return G;
+  const n = G.lat.length, h = new Float32Array(n);
+  for (let i = 0; i < n; i++) h[i] = G.inGraph[i] ? heightAt(G.lat[i], G.lon[i]) : NaN;
+  let up = 0;
+  for (let u = 0; u < n; u++) for (const e of G.adj[u]) {
+    let dh = h[e.v] - h[u];
+    if (!(dh > 0) || e.L < 3) continue;
+    dh = Math.min(dh, e.L * 0.15);
+    e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1); up++;
+  }
+  return G;
+}
 // 道がつながらないとき（大きい川の橋が範囲の外にある、など）：データが手元にあれば範囲を広げてやりなおす
 const PAD_STEPS = [0.05, 0.1];   // 約5.5km → 約11km
 async function route(req, prog, partial) {
@@ -1049,6 +1102,8 @@ async function routeOnce(req, prog, partial) {
     log(`地図データを取る広さ: おまかせ → ${ok ? "ひろい（データがぜんぶ手元にある）" : "せまい（ダウンロードが必要なので）"}`);
   }
   const pad = req.pad || padFor(s, g, area);
+  const slopeK = +(cfg && cfg.slope) || 0;
+  const demP = slopeK ? loadDem(s, g, pad + 0.005).catch(() => false) : Promise.resolve(false);
   const noLink = msg => Object.assign(new Error(msg), { noLink: true, usedPad: pad });
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
   { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
@@ -1105,6 +1160,8 @@ async function routeOnce(req, prog, partial) {
       log(`配布データから取得: ${want.size - bad}マス（${kb(nb)}・${((Date.now() - tp) / 1000).toFixed(1)}秒）${bad ? `・取れなかった ${bad}マス` : ""}`, bad ? "w" : "ok");
     }
   }
+  const demOK = await demP;   // 坂道のデータ（あとで道に坂の重みをつける）
+  const BG = (osm, c, p) => { const G0 = buildGraph(osm, c, p); return demOK ? applySlope(G0, slopeK) : G0; };
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   if (oldPack) log(`配布データが新しくなったので、${oldPack}マスを配布データから取りなおすよ`);
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
@@ -1153,7 +1210,7 @@ async function routeOnce(req, prog, partial) {
       const seen = new Set(), elements = [];
       for (const t of tiles) if (t.tc <= tEdge && got.has(t.key))
         for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
-      const G = buildGraph({ elements }, cfg), q = nearestGood(G, s[0], s[1]);
+      const G = BG({ elements }, cfg), q = nearestGood(G, s[0], s[1]);
       if (q.n < 0 || q.d > 400) return;
       const r = search(G, q.n, -1, g, false);
       let bestSt = -1, bestF = Infinity;
@@ -1210,7 +1267,7 @@ async function routeOnce(req, prog, partial) {
         for (const t of tiles) if (t.tc >= lo - tileHalf && (final || t.tc <= bandEnd + tileHalf) && got.has(t.key))
           for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
         const tb = Date.now();
-        G = buildGraph({ elements }, cfg);
+        G = BG({ elements }, cfg);
         tBuild += (Date.now() - tb) / 1000; nNodes = Math.max(nNodes, G.nNodes);
         { let ne = 0; for (const a of G.adj) ne += a.length;
           log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${G.swLen ? `・歩道のある道 ${(G.swLen / 1000).toFixed(1)}km` : ""}${wide ? "【範囲を広げてやりなおし】" : ""}`); }
@@ -1329,7 +1386,7 @@ async function routeOnce(req, prog, partial) {
       }
       const seen = new Set(), elements = [];
       for (const t of altTiles) if (got.has(t.key)) for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
-      const G = buildGraph({ elements }, cfg), qs = nearestGood(G, s[0], s[1]), qg = nearestGood(G, g[0], g[1], qs.n);
+      const G = BG({ elements }, cfg), qs = nearestGood(G, s[0], s[1]), qg = nearestGood(G, g[0], g[1], qs.n);
       if (qs.n >= 0 && qg.n >= 0) {
         const r0 = search(G, qs.n, qg.n, g, false), p0 = r0.goal >= 0 ? pathTo(r0.prev, r0.goal) : null;
         if (p0) {
@@ -2466,13 +2523,14 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1 };
+  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["auto", "おまかせ（データが手元にあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（まわり道 2〜4km）"]]],
   ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
   ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
+  ["slope", "坂道（のぼり）", [[0, "気にしない"], [5, "少し避ける（のぼり1m＝5m）"], [10, "避ける（のぼり1m＝10m）"], [20, "かなり避ける（のぼり1m＝20m）"]]],
   ["sidewalk", "歩道（段差・柵）のある道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [6, "かなり避ける"]]],
   ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ"], ["yes", "通る（かついで上がる）"]]],
   ["bridge", "歩道橋・地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
@@ -2495,6 +2553,7 @@ function renderCfg() {
   h += "<h4>計算</h4>" + get(["mode", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
+  h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか。8%より急なのぼりはその2倍。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div>';
   h += "<h4>旧街道</h4>" + get(["kodo"]) + '<div class="note">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div>';
   h += "<h4>階段・歩道橋・砂利</h4>" + get(["steps", "bridge", "unpaved"]);
