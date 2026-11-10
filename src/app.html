@@ -330,8 +330,20 @@ async function geocode(text) {
   };
   const nomi = async () => {
     const q = text.normalize("NFKC").replace(/〒?\s*\d{3}[-‐－―ー−]\d{4}/, "").trim();
-    const r = await (await nomiFetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&q=" + encodeURIComponent(q))).json();
-    if (r.length) return [[+r[0].lat, +r[0].lon], r[0].display_name.split(",").slice(0, 3).join(",")];
+    // 「○○駅」は、鉄道の駅を先にえらぶ（「日光駅」で「道の駅 日光」にならないように）
+    const isSta = /駅$/.test(q) && !/道の駅/.test(q);
+    const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=${isSta ? 10 : 1}&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(q))).json();
+    if (!r.length) return;
+    let pick = r[0];
+    if (isSta) {
+      const nm = x => (x.name || x.display_name.split(",")[0]).replace(/\s/g, "");
+      const rail = x => ["railway", "public_transport"].includes(x.class) && /station|stop|halt/.test(x.type) || (x.class === "building" && x.type === "train_station");
+      const base = q.replace(/駅$/, "");
+      const good = r.filter(x => !/道の駅/.test(nm(x)));
+      pick = good.find(x => rail(x) && (nm(x) === q || nm(x) === base)) || good.find(rail) || good[0] || r[0];
+      if (pick !== r[0]) addLog(`  「${q}」は鉄道の駅をえらんだよ: ${pick.display_name.split(",")[0]}（いちばん上の候補は ${r[0].display_name.split(",")[0]}）`, "m");
+    }
+    return [[+pick.lat, +pick.lon], pick.display_name.split(",").slice(0, 3).join(",")];
   };
   const looksAddr = /丁目|番地|番|号|\d+\s*[-‐－―ー−]\s*\d+|[０-９]+[‐－―ー−][０-９]+/.test(text);
   for (const fn of looksAddr ? [gsi, nomi] : [nomi, gsi]) {

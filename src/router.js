@@ -1122,34 +1122,76 @@ async function routeOnce(req, prog, partial) {
   await fetching.catch(() => {});
   cancelFetch = false;
   { const miss = tiles.filter(t => !got.has(t.key)).length; if (miss) log(`取れなかったマス ${miss}個（なくてもルートはできたよ）`, "w"); }
-  // 第2・第3のルート：ルートができたときには道路データがそろっているので、いつでも出す（計算はすぐおわる）
+  // 第2・第3のルート：グーグルみたいに「ちがう道すじ」を出したいので、
+  //  ① まん中あたりを左右にずらした地点を通るルート（道すじがちがう）
+  //  ② 使った道を通りにくくしてさがしなおしたルート（近くの別の道）
+  // を作って、メインと半分以上かぶらないものを2本までえらぶ。データが手元にあれば少し広い範囲で考える
   let alts = [];
   if (conf.length > 1 && !(cfg && cfg.alts === false)) {
     try {
-      const ta = Date.now(), seen = new Set(), elements = [];
-      for (const t of tiles) if (got.has(t.key)) for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
+      const ta = Date.now(), Dkm = hav(s[0], s[1], g[0], g[1]) / 1000;
+      const offKm = Math.min(6, Math.max(1, Dkm * 0.15));          // 左右にずらす量
+      let altTiles = tiles;
+      const wpad = Math.max(pad, offKm / 111 + 0.01), wt = tilesFor(s, g, wpad, tiles[0].key.startsWith("0.01") ? 0.01 : 0.005);
+      if (wt.length > tiles.length && wt.length <= 1500) {          // 広げた所のデータを手元から集める（ダウンロードはしない）
+        let ok = true;
+        for (const t of wt) {
+          if (got.has(t.key)) continue;
+          if (mem.has(t.key)) { got.set(t.key, mem.get(t.key)); continue; }
+          const r = await getTileAny(t.key);
+          if (r && !(packIdx && packIdx.has(packName(bigOf(t.key))) && r.pv !== packId)) { got.set(t.key, r.el); continue; }
+          const b = bigOf(t.key);
+          if (packIdx && packIdx.has(packName(b))) { try { got.set(t.key, (await packTile(b)).el); continue; } catch {} }
+          if (packIdx && packEmptyHas(b)) { got.set(t.key, []); continue; }
+          ok = false; break;
+        }
+        if (ok) altTiles = wt;
+      }
+      const seen = new Set(), elements = [];
+      for (const t of altTiles) if (got.has(t.key)) for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
       const G = buildGraph({ elements }, cfg), qs = nearestGood(G, s[0], s[1]), qg = nearestGood(G, g[0], g[1], qs.n);
       if (qs.n >= 0 && qg.n >= 0) {
         const r0 = search(G, qs.n, qg.n, g, false), p0 = r0.goal >= 0 ? pathTo(r0.prev, r0.goal) : null;
         if (p0) {
-          const ek2 = (u, v) => u < v ? u + "," + v : v + "," + u, mainSet = new Set(), paths = [p0];
-          for (let i = 1; i < p0.length; i++) mainSet.add(ek2(p0[i - 1], p0[i]));
-          const mainLen = analyze(G, p0).len;
-          const penal = p => { for (let i = 1; i < p.length; i++) { const u = p[i - 1], v = p[i];
-            for (const e of G.adj[u]) if (e.v === v) e.c *= 1.7; for (const e of G.adj[v]) if (e.v === u) e.c *= 1.7; } };
-          for (let tries = 0; tries < 6 && alts.length < 2; tries++) {
-            penal(paths[paths.length - 1]);
-            const r1 = search(G, qs.n, qg.n, g, false); if (r1.goal < 0) break;
-            const p = pathTo(r1.prev, r1.goal), a = analyze(G, p);
-            let same = 0; for (let i = 1; i < p.length; i++) if (mainSet.has(ek2(p[i - 1], p[i]))) same += hav(G.lat[p[i - 1]], G.lon[p[i - 1]], G.lat[p[i]], G.lon[p[i]]);
-            const dup = alts.some(x => Math.abs(x.len - a.len) < 30 && x.route.length === p.length);
-            paths.push(p);
-            if (same / a.len > 0.75 || a.len > mainLen * 1.4 || dup) continue;   // ほとんど同じ・遠回りすぎはいらない
-            alts.push({ route: p.map(u => [G.lat[u], G.lon[u]]), ek: a.ek, ok: a.ok, xw: a.xw, ng: a.ng, kinds: a.kinds, turns: a.turns, len: a.len });
+          const ek2 = (u, v) => u < v ? u + "," + v : v + "," + u, eLen = (u, v) => hav(G.lat[u], G.lon[u], G.lat[v], G.lon[v]);
+          const setOf = p => { const st = new Set(); for (let i = 1; i < p.length; i++) st.add(ek2(p[i - 1], p[i])); return st; };
+          const shared = (p, st) => { let m = 0, L = 0; for (let i = 1; i < p.length; i++) { const l = eLen(p[i - 1], p[i]); L += l; if (st.has(ek2(p[i - 1], p[i]))) m += l; } return L ? m / L : 1; };
+          const mainLen = analyze(G, p0).len, picked = [setOf(p0)], cands = [];
+          const tryPath = (p, how) => {
+            if (!p || p.length < 2) return;
+            const a = analyze(G, p);
+            if (a.len > mainLen * 1.35) return;                                        // 遠回りすぎ
+            if (picked.some(st => shared(p, st) > 0.5)) return;                         // 半分以上同じ道
+            picked.push(setOf(p)); cands.push({ p, a, how });
+          };
+          // ① まん中を左右にずらした地点を通る
+          const c0 = Math.cos(s[0] * RAD), ex = (g[1] - s[1]) * c0 * 111.32, ny = (g[0] - s[0]) * 111.32, Lk = Math.hypot(ex, ny) || 1;
+          const px = -ny / Lk, py = ex / Lk, mla = (s[0] + g[0]) / 2, mlo = (s[1] + g[1]) / 2;
+          for (const sg of [1, -1]) {
+            const vla = mla + sg * py * offKm / 111.32, vlo = mlo + sg * px * offKm / (111.32 * c0);
+            const qv = nearestGood(G, vla, vlo, qs.n); if (qv.n < 0 || qv.d > 1500) continue;
+            const ra = search(G, qs.n, qv.n, [G.lat[qv.n], G.lon[qv.n]], false); if (ra.goal < 0) continue;
+            const rb = search(G, qv.n, qg.n, g, false); if (rb.goal < 0) continue;
+            const p1 = pathTo(ra.prev, ra.goal), p2 = pathTo(rb.prev, rb.goal);
+            let k = 0; while (k + 1 < p2.length && p1.length - 2 - k >= 0 && p1[p1.length - 2 - k] === p2[1 + k]) k++;   // 行って戻るムダをけずる
+            tryPath(p1.slice(0, p1.length - k).concat(p2.slice(1 + k)), sg > 0 ? "左まわり" : "右まわり");
           }
+          // ② 使った道を通りにくくしてさがしなおす
+          const penal = p => { for (let i = 1; i < p.length; i++) { const u = p[i - 1], v = p[i];
+            for (const e of G.adj[u]) if (e.v === v) e.c *= 3; for (const e of G.adj[v]) if (e.v === u) e.c *= 3; } };
+          let last = p0;
+          for (let tries = 0; tries < 4 && cands.length < 4; tries++) {
+            penal(last);
+            const r1 = search(G, qs.n, qg.n, g, false); if (r1.goal < 0) break;
+            last = pathTo(r1.prev, r1.goal); tryPath(last, "べつの道");
+          }
+          cands.sort((a, b) => a.a.len - b.a.len);
+          for (const { p, a } of cands.slice(0, 2))
+            alts.push({ route: p.map(u => [G.lat[u], G.lon[u]]), ek: a.ek, ok: a.ok, xw: a.xw, ng: a.ng, kinds: a.kinds, turns: a.turns, len: a.len });
+          log(`ほかのルート: 候補 ${cands.length}本（${cands.map(c => c.how + " " + (c.a.len / 1000).toFixed(1) + "km").join("・") || "なし"}）`);
         }
       }
-      log(`ほかのルート: ${alts.length}本（${alts.map(a => (a.len / 1000).toFixed(2) + "km").join("・") || "ちがう道が見つからなかった"}・${Date.now() - ta}ms）`);
+      log(`ほかのルート: ${alts.length}本（${alts.map(a => (a.len / 1000).toFixed(2) + "km").join("・") || "ちがう道が見つからなかった"}・考えた範囲 まわり${(wpad * 111).toFixed(1)}km${altTiles === tiles ? "（広げられなかった）" : ""}・${Date.now() - ta}ms）`);
     } catch (e) { log("ほかのルートを出せなかった: " + e.message, "w"); alts = []; }
   }
   const T = (Date.now() - T0) / 1000;
