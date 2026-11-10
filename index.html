@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1520</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1529</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1005,7 +1005,28 @@ async function flushSaves() {
 // マスを「スタートからの進み具合」の順に取得して、取れたところまでで途中のルートを決める。
 // 先っぽ（まだ変わるかもしれない所）は点線＝仮のルートとして出す。
 const FIRST_BAND = 700, BAND = 1500, TENTATIVE = 500, BACK = 600;
+// 道がつながらないとき（大きい川の橋が範囲の外にある、など）：データが手元にあれば範囲を広げてやりなおす
+const PAD_STEPS = [0.05, 0.1];   // 約5.5km → 約11km
 async function route(req, prog, partial) {
+  let pad = null;
+  for (let k = 0; ; k++) {
+    try { return await routeOnce({ ...req, pad }, prog, partial); }
+    catch (e) {
+      if (!e.noLink || k >= PAD_STEPS.length || e.usedPad >= PAD_STEPS[k]) throw e;
+      const tiles = tilesFor(req.s, req.g, PAD_STEPS[k]);
+      if (!(await allLocalTiles(tiles))) throw e;   // ダウンロードが必要なら広げない（サーバーにやさしく）
+      pad = PAD_STEPS[k];
+      log(`道がつながらなかったので、まわり ${Math.round(pad * 111)}km まで広げてやりなおすよ（大きい川の橋などをさがす）`, "w");
+    }
+  }
+}
+async function allLocalTiles(ts) {   // そのマスがぜんぶ手元（端末か配布データ）にあるか
+  try {
+    const p = await packIndex(), st = await store("readonly"), have = new Set(st ? (await idbReq(st.getAllKeys())).map(String) : []);
+    return ts.every(t => have.has(t.key) || have.has(bigOf(t.key)) || (p && (p.has(packName(bigOf(t.key))) || packEmptyHas(bigOf(t.key)))));
+  } catch { return false; }
+}
+async function routeOnce(req, prog, partial) {
   const { s, g, cfg } = req;
   const T0 = Date.now();
   // 「おまかせ」：ひろい範囲の道路データがぜんぶ手元（端末か配布データ）にあれば ひろい、なければ ダウンロードが少ない せまい
@@ -1025,7 +1046,8 @@ async function route(req, prog, partial) {
     area = ok ? "wide" : "narrow";
     log(`地図データを取る広さ: おまかせ → ${ok ? "ひろい（データがぜんぶ手元にある）" : "せまい（ダウンロードが必要なので）"}`);
   }
-  const pad = padFor(s, g, area);
+  const pad = req.pad || padFor(s, g, area);
+  const noLink = msg => Object.assign(new Error(msg), { noLink: true, usedPad: pad });
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
   { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
     if (km > 30 && !(await allLocal(tilesFor(s, g, pad))))
@@ -1205,7 +1227,7 @@ async function route(req, prog, partial) {
           log(`到着の点: ${Math.round(q.d)}m先の道（出発とつながっている）` + (q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m は出発とつながってないので使わない（つながり ${q.anySize}点）` : ""), q.d > 300 ? "w" : "i");
           if (q.n < 0 || q.d > 600) {
             if (!wide && lo > 0) { log("到着地のそばにつながる道がないので、範囲を広げて探しなおし", "w"); wide = true; continue; }
-            throw new Error("到着地まで道がつながりませんでした。⚙ 設定の「地図データを取る広さ」を「ひろい」にするか、設定で「通らない」にしている道（階段・歩道橋など）をゆるめてみてね");
+            throw noLink("到着地まで道がつながりませんでした。⚙ 設定の「地図データを取る広さ」を「ひろい」にするか、設定で「通らない」にしている道（階段・歩道橋など）をゆるめてみてね");
           }
           gn = q.n;
         }
@@ -1237,7 +1259,7 @@ async function route(req, prog, partial) {
         await waitUpTo(final ? Infinity : bandEnd + tileHalf, false); continue;
       }
       if (!path) {
-        if (final) throw new Error("ルートが見つかりませんでした" + (area !== "wide" ? "。⚙ 設定の「地図データを取る広さ」を広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
+        if (final) throw noLink("ルートが見つかりませんでした" + (area !== "wide" ? "。⚙ 設定の「地図データを取る広さ」を広くするとつながるかも" : "（設定で通れない道が多すぎるかも）"));
         log("この範囲では先に進めないので、もっと先のデータを待つ", "w");
         bandEnd = Math.min(D, bandEnd + BAND); continue;   // 先に進める道がない：もっと先まで取ってから
       }
