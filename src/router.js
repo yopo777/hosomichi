@@ -389,7 +389,22 @@ function buildGraph(osm, cfg, onProg) {
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
 let blockPts = [];
 const BLOCK_R = 12;
+let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
+const USED_PEN = 3;
+const usedKey = (la, lo) => Math.round(la * 600) + "," + Math.round(lo * 490);   // 約180mのマス
+function markUsed(route) {
+  for (let i = 0; i < route.length; i++) {
+    const [a, b] = route[i]; usedNodes.add(usedKey(a, b));
+    if (i + 1 < route.length) { const [c, d] = route[i + 1], n = Math.floor(hav(a, b, c, d) / 40);
+      for (let k = 1; k <= n; k++) usedNodes.add(usedKey(a + (c - a) * k / (n + 1), b + (d - b) * k / (n + 1))); }
+  }
+}
 function applyBlocks(lat, lon, adj, N) {
+  if (usedNodes && usedNodes.size) {
+    const u8 = new Uint8Array(N);
+    for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && usedNodes.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
+    for (let u = 0; u < N; u++) if (u8[u]) for (const e of adj[u]) if (u8[e.v]) e.c *= USED_PEN;
+  }
   if (!blockPts.length) return 0;
   const C = 0.002, g = new Map();   // 印を約200mのマスに入れる
   for (const [la, lo] of blockPts) { const k = Math.floor(la / C) + "," + Math.floor(lo / C); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo]); }
@@ -416,6 +431,72 @@ function applyBlocks(lat, lon, adj, N) {
     }
   }
   return n;
+}
+// ==== 🔁 ぐるっと1周：出発のまわりに見えない経由地を2つ置いて、三角形にまわって出発にもどる ====
+// 向き（北・東・南・西に張りだす）を変えて候補を作り、走りたい長さに近い順に3本まで出す
+async function loopRoute(req, prog) {
+  const s = req.s, D = Math.max(3, +req.loop || 20) * 1000, cfg = { ...(req.cfg || {}), alts: false };
+  const c0 = Math.cos(s[0] * RAD), M = 111320;
+  const at = (la, lo, ang, d) => [la + Math.cos(ang) * d / M, lo + Math.sin(ang) * d / (M * c0)];   // ang: 北=0 東=π/2
+  const DIRS = [["北", 0], ["東", 90], ["南", 180], ["西", 270]];
+  let fac = 6.5;   // 道のり ≒ 半径 × fac（三角形の周り 5.2 × 道のくねくね）。1本目の結果で合わせる
+  const out = [], T0 = Date.now();
+  log(`==== 🔁 ぐるっと1周 ${D / 1000}km（出発 ${s[0].toFixed(5)},${s[1].toFixed(5)}） ====`, "h");
+  try {
+    for (let di = 0; di < DIRS.length; di++) {
+      if (stopReq) break;
+      const [dn, deg] = DIRS[di], th = deg * RAD;
+      const R = D / fac, c = at(s[0], s[1], th, R);                 // 円の中心（出発から その向きに R）
+      const w1 = at(c[0], c[1], th + Math.PI + 2 * Math.PI / 3, R), w2 = at(c[0], c[1], th + Math.PI - 2 * Math.PI / 3, R);   // 円の上に3点（出発・w1・w2）
+      const legs = [[s, w1], [w1, w2], [w2, s]], parts = [];
+      usedNodes = new Set(); let dupM = 0, allM = 0;
+      log(`--- ${dn}まわり（半径 ${(R / 1000).toFixed(1)}km） ---`, "h");
+      try {
+        for (let li = 0; li < 3; li++) {
+          const [a, b] = legs[li];
+          prog({ stage: 2, msg: `🔁 ${dn}まわり ${li + 1}/3区間（候補 ${out.length + 1}本目）`, done: di * 3 + li, total: DIRS.length * 3 });
+          const r = await route({ ...req, s: li ? parts[li - 1].route[parts[li - 1].route.length - 1] : a, g: b, cfg, loop: undefined }, p => prog({ ...p, msg: `🔁 ${dn}まわり ${li + 1}/3区間\n` + (p.msg || "") }), () => {});
+          if (li) for (let i = 1; i < r.route.length; i++) {   // 前の区間と同じあたりを走る長さ（往復っぽさ）
+            const [a1, b1] = r.route[i - 1], [a2, b2] = r.route[i], m = hav(a1, b1, a2, b2);
+            allM += m; if (usedNodes.has(usedKey((a1 + a2) / 2, (b1 + b2) / 2))) dupM += m;
+          } else allM += r.len || 0;
+          markUsed(r.route);
+          parts.push(r);
+        }
+      } catch (e) { if (stopReq) throw e; log(`${dn}まわりは作れなかった: ${e.message}`, "w"); continue; }
+      const L = joinLegs(parts);
+      L.dup = allM ? dupM / allM : 0;
+      log(`${dn}まわり: ${(L.len / 1000).toFixed(1)}km（目標 ${D / 1000}km）・同じあたりを往復 ${Math.round(L.dup * 100)}%`, "ok");
+      L.how = dn + "まわり"; out.push(L);
+      if (out.length === 1) fac = Math.min(9, Math.max(4.5, fac * L.len / D));   // 長さのずれを次の候補で直す
+    }
+  } finally { usedNodes = null; }
+  if (!out.length) throw new Error("1周するルートが作れなかったよ。長さを変えるか、出発を道の多い所にしてみてね");
+  const score = o => Math.abs(o.len - D) / D + o.dup * 1.5;   // 長さが目標に近くて、往復の少ないもの
+  out.sort((a, b) => score(a) - score(b));
+  const [main, ...rest] = out.slice(0, 3);
+  log(`==== 🔁 完了 ${out.map(o => o.how + " " + (o.len / 1000).toFixed(1) + "km").join("・")}（${((Date.now() - T0) / 1000).toFixed(1)}秒） ====`, "ok");
+  return { ...main, alts: rest, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
+}
+// 区間をつなぐ。つなぎ目の「行ってすぐもどる」ムダはけずる
+function joinLegs(parts) {
+  let route = parts[0].route.slice(), ek = (parts[0].ek || []).slice();
+  const res = { ok: [], xw: [], ng: [], kinds: {}, turns: 0, len: 0 };
+  const same = (p, q) => p && q && p[0] === q[0] && p[1] === q[1];
+  for (let i = 0; i < parts.length; i++) {
+    const P = parts[i];
+    if (i) {
+      const R2 = P.route, E2 = P.ek || []; let k = 0;
+      while (k + 1 < R2.length && route.length - 2 - k >= 0 && same(route[route.length - 2 - k], R2[1 + k])) k++;
+      for (let j = 0; j < k; j++) res.len -= 2 * hav(R2[j][0], R2[j][1], R2[j + 1][0], R2[j + 1][1]);
+      route = route.slice(0, route.length - k).concat(R2.slice(1 + k));
+      ek = ek.slice(0, ek.length - k).concat(E2.slice(k));
+    }
+    res.ok.push(...(P.ok || [])); res.xw.push(...(P.xw || [])); res.ng.push(...(P.ng || []));
+    for (const [k, v] of Object.entries(P.kinds || {})) res.kinds[k] = (res.kinds[k] || 0) + v;
+    res.turns += P.turns || 0; res.len += P.len || 0;
+  }
+  return { ...res, route, ek: ek.length === route.length - 1 ? ek : undefined };
 }
 // 道の「つながりのかたまり」。駅の中の通路や公園の中の小道など、外とつながってない所を見分ける
 function components(G) {
@@ -1364,7 +1445,8 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       }
       stopReq = false; cancelFetch = false; routing = true; if (pfAc) pfAc.abort();   // 自動でためてる途中なら中断
       blockPts = Array.isArray(d.blocks) ? d.blocks : [];
-      const r = await route(d, p => self.postMessage({ type: "prog", ...p }), p => self.postMessage({ type: "partial", ...p }));
+      const pr = p => self.postMessage({ type: "prog", ...p });
+      const r = d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
       const sh = shortest(); if (sh) self.postMessage({ type: "short", ...sh });
       routing = false;

@@ -146,8 +146,10 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <div id="tabRoute">
     <div class="row"><label>🔍</label><input type="text" id="jump" enterkeyhint="search" placeholder="地名・駅名で地図を動かす"></div>
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
-    <div class="row"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
-    <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
+    <div class="row" id="loopRow"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="loopOn">🔁 ぐるっと1周して出発にもどる</label>
+      <select id="loopKm" style="padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option>10</option><option>20</option><option selected>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
+    <div class="row" id="viaRow"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
+    <div class="row" id="toRow"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図をタップしても出発・到着を選べるよ</div>
     <button id="go">ルートを作る</button>
     <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
@@ -672,6 +674,7 @@ worker.onmessage = ev => {
     job = null; return;
   }
   setBar(1);
+  if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${m.sec.toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")); else
   setMsg(`できた！ ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）\n` +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
@@ -706,8 +709,8 @@ function merged(m) {
     kinds: sumKinds(P.kinds, m.kinds), turns: P.turns != null && m.turns != null ? P.turns + m.turns : undefined,
     len: (P.len || 0) + (m.len || 0), short: null, slen: 0 };
 }
-function startJob(s, g, jcfg, prefix) {
-  job = { g, cfg: jcfg, prefix: prefix || null };
+function startJob(s, g, jcfg, prefix, loop) {
+  job = { g, cfg: jcfg, prefix: prefix || null, loop: loop || 0 };
   drawPreview(null);
   if (!prefix) {   // 新しいルート：古いルートは画面から消す（ナビの「のこり」もまちがえないように）
     cur = null; cum = [];
@@ -716,7 +719,7 @@ function startJob(s, g, jcfg, prefix) {
   }
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.map(b => b.p) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.map(b => b.p), loop: loop || 0 });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
@@ -786,19 +789,41 @@ async function placeName(input, ll) {
 }
 const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : (looksAddress(t) ? townName(t) : cleanAddr(t)).slice(0, 24);
 
+// 🔁 ぐるっと1周：経由・到着の欄はかくす（出発にもどるので）
+const loopKm = () => $("loopOn").checked ? +$("loopKm").value : 0;
+function loopUi() {
+  const on = $("loopOn").checked;
+  $("viaRow").style.display = $("toRow").style.display = on ? "none" : "";
+  $("go").textContent = on ? `🔁 ${$("loopKm").value}kmの1周ルートを作る` : "ルートを作る";
+  try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value })); } catch {}
+}
+try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; } } catch {}
+$("loopOn").onchange = $("loopKm").onchange = loopUi; loopUi();
 $("go").onclick = async () => {
   audioUnlock();
-  const fromT = $("from").value.trim(), toT = $("to").value.trim(), viaT = $("via").value.trim();
-  if (!toT) { setMsg("到着地を入れてね", true); return; }
+  const LK = loopKm();
+  const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = LK ? "" : $("via").value.trim();
+  if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
   if (unsavedRoute() && await askSave("新しいルートを作る") === "cancel") return;
-  pendingName = (fromT ? shortName(fromT) : "現在地") + " → " + shortName(toT);
+  pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? ` 1周${LK}km` : " → " + shortName(toT));
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   geoAbort = new AbortController(); $("stop").style.display = "";   // 場所さがしの間も「■ 止める」できる
   try {
-    addLog(`場所をさがす: 出発「${fromT || "現在地"}」 到着「${toT.slice(0, 60)}」`, "m");
+    addLog(`場所をさがす: 出発「${fromT || "現在地"}」 ` + (LK ? `🔁 1周 ${LK}km` : `到着「${toT.slice(0, 60)}」`), "m");
     const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
     addLog(`  出発 → ${sn}（${s[0].toFixed(5)},${s[1].toFixed(5)}）`, "m");
+    if (LK) {   // 1周：出発のまわりを三角形にまわる。経由地は worker がきめる
+      pendingName = (await placeName(fromT, s)) + ` 1周${LK}km`;
+      addLog(`  ルート名: ${pendingName}`, "m");
+      lastProg = { stage: 1, msg: `🔁 ${sn} から ${LK}km の1周` }; showProg();
+      layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発・到着");
+      map.setView(s, Math.max(10, Math.min(15, Math.round(15 - Math.log2(LK / 5)))));
+      if (geoAbort.signal.aborted) throw new Error("止めたよ");
+      geoAbort = null; clearInterval(tickTimer);
+      startJob(s, s, structuredClone(cfg), null, LK);
+      return;
+    }
     const [v, vn] = viaT ? await geocode(viaT) : [null, ""];
     if (v) addLog(`  経由 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
     const [g, gn] = await geocode(toT);
