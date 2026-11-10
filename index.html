@@ -85,8 +85,13 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #col{position:absolute;top:calc(50% - 154px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
 #col small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
-#legend{position:absolute;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));pointer-events:none;z-index:999;background:#fffe;border-radius:10px;
+#legend{position:absolute;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));cursor:pointer;-webkit-tap-highlight-color:transparent;z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:6px 8px;font-size:11px;line-height:1.6;display:none;max-width:60%}
+#legend.min{padding:4px 8px;opacity:.75;font-size:12px}   /* タップでたたむ */
+#legend .lgT{float:right;margin-left:6px;color:#999;font-size:11px}
+#alt{position:absolute;top:calc(50% - 82px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:20px;font-weight:bold;color:#d93025;padding:0;display:none}
+#alt small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap;font-weight:normal}
 #legend i{display:inline-block;width:18px;height:6px;border-radius:3px;margin-right:4px;vertical-align:middle}
 .leaflet-bottom.leaflet-right{bottom:0}
 #dir svg{display:block;margin:auto;transition:transform .3s}
@@ -102,7 +107,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2116</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2125</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -173,6 +178,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">📱 X などのアプリの中で開いてるよ。現在地ナビを使うときは「︙」→「ブラウザで開く」で Chrome や Safari で開いてね
   <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
 <button id="gps" title="現在地についていく">◎</button>
+<button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
@@ -2189,10 +2195,18 @@ function simpRoute(pts, kc, tol) {
 }
 let colorMode = (() => { try { return localStorage.getItem("hosomichi_color") || "red"; } catch { return "red"; } })();
 const COLOR_NAMES = { red: "赤", kind: "道の種類", slope: "坂" };
+let legendMin = (() => { try { return localStorage.getItem("hosomichi_lgmin") === "1"; } catch { return false; } })();
+$("legend").onclick = () => {
+  legendMin = !legendMin; try { localStorage.setItem("hosomichi_lgmin", legendMin ? "1" : "0"); } catch {}
+  legend(cur);
+};
 function legend(r) {
   const lg = $("legend");
+  if (!r) $("alt").style.display = "none";
   if (!r || !r.route || r.route.length < 2) { lg.style.display = "none"; return; }
-  let h = "";
+  lg.classList.toggle("min", legendMin); lg.style.display = "block";
+  if (legendMin) { lg.innerHTML = "ⓘ 説明"; return; }
+  let h = '<span class="lgT">▼たたむ</span>';
   // 丸の印の意味（このルートに出ているものだけ）
   const dot = (bd, bg, sz, t) => `<div><b style="display:inline-block;width:${sz}px;height:${sz}px;border-radius:50%;border:3px solid ${bd};background:${bg};box-sizing:border-box;vertical-align:middle;margin:0 6px 0 2px"></b>${t}</div>`;
   h += dot("#fff", "#188038", 14, "出発") + (r.partial ? "" : dot("#fff", "#d93025", 14, "到着"));
@@ -2220,6 +2234,13 @@ function selectOpt(i) {
   addLog(`ルート${i + 1}（${fmtKm(o.len)}）にしたよ`);
   showRoute(n, false); lsSet(LKEY, packRoute(n));
 }
+// 右はしの切りかえボタン（スマホ用）：押すたびに ルート1→2→3→1…
+function altBtn(r) {
+  const b = $("alt"), n = r && !r.partial && r.opts ? r.opts.length : 0;
+  if (n < 2) { b.style.display = "none"; return; }
+  b.style.display = "block"; $("altN").textContent = (r.sel || 0) + 1; $("altL").textContent = `ルート${(r.sel || 0) + 1}/${n}`;
+}
+$("alt").onclick = () => { if (cur && cur.opts && cur.opts.length > 1) selectOpt(((cur.sel || 0) + 1) % cur.opts.length); };
 function drawRoute(r) {
   const R = r.route;
   L.polyline(R, { color: "#fff", weight: 11, opacity: .85, interactive: false }).addTo(layer);   // ふちどり
@@ -2313,7 +2334,7 @@ $("colL").textContent = COLOR_NAMES[colorMode];
 
 let cum = [];
 function showRoute(r, fit) {
-  cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn);
+  cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
   const tent = r.tent || [];
   r.nav = r.route.length ? r.route.concat(tent.slice(1)) : tent.slice();   // ナビで使う線（確定＋仮）
