@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1439</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1449</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1000,17 +1000,22 @@ async function route(req, prog, partial) {
   const T0 = Date.now();
   // 「おまかせ」：ひろい範囲の道路データがぜんぶ手元（端末か配布データ）にあれば ひろい、なければ ダウンロードが少ない せまい
   let area = cfg && cfg.area;
-  if (area === "auto") {
-    const wt = tilesFor(s, g, padFor(s, g, "wide"));
-    let ok = false;
+  const allLocal = async ts => {   // そのマスがぜんぶ手元（端末か配布データ）にあるか
     try {
       const p = await packIndex(), st = await store("readonly"), have = new Set(st ? (await req(st.getAllKeys())).map(String) : []);
-      ok = wt.every(t => have.has(t.key) || have.has(bigOf(t.key)) || (p && p.has(packName(bigOf(t.key)))));
-    } catch {}
+      return ts.every(t => have.has(t.key) || have.has(bigOf(t.key)) || (p && p.has(packName(bigOf(t.key)))));
+    } catch { return false; }
+  };
+  if (area === "auto") {
+    const ok = await allLocal(tilesFor(s, g, padFor(s, g, "wide")));
     area = ok ? "wide" : "narrow";
     log(`地図データを取る広さ: おまかせ → ${ok ? "ひろい（データがぜんぶ手元にある）" : "せまい（ダウンロードが必要なので）"}`);
   }
   const pad = padFor(s, g, area);
+  // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
+  { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
+    if (km > 30 && !(await allLocal(tilesFor(s, g, pad))))
+      throw new Error(`出発と到着が ${km.toFixed(1)}km はなれてるよ。道路データのダウンロードが必要な所があるので、30km以内にしてね（配布データのある関東の中なら150kmまでOK）`); }
   const tiles = tilesFor(s, g, pad), N = tiles.length;
   log(`==== ルート計算スタート ====`, "h");
   log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 到着 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
@@ -1858,7 +1863,7 @@ $("go").onclick = async () => {
     const [sName, gName] = await Promise.all([placeName(fromT, s), placeName(toT, g)]);
     pendingName = sName + " → " + gName;
     addLog(`  ルート名: ${pendingName}`, "m");
-    if (hav(s, g) > 60000) throw new Error(`出発と到着が ${fmtKm(hav(s, g))} もはなれてるよ。60km以内にしてね`);
+    if (hav(s, g) > 150000) throw new Error(`出発と到着が ${fmtKm(hav(s, g))} もはなれてるよ。150km以内にしてね`);
     lastProg = { stage: 1, msg: `出発: ${sn} → 到着: ${gn}` }; showProg();
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発"); L.marker(g).addTo(layer).bindTooltip("到着");
     map.fitBounds([s, g], { padding: [40, 40] });

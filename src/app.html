@@ -697,7 +697,7 @@ $("go").onclick = async () => {
     const [sName, gName] = await Promise.all([placeName(fromT, s), placeName(toT, g)]);
     pendingName = sName + " → " + gName;
     addLog(`  ルート名: ${pendingName}`, "m");
-    if (hav(s, g) > 60000) throw new Error(`出発と到着が ${fmtKm(hav(s, g))} もはなれてるよ。60km以内にしてね`);
+    if (hav(s, g) > 150000) throw new Error(`出発と到着が ${fmtKm(hav(s, g))} もはなれてるよ。150km以内にしてね`);
     lastProg = { stage: 1, msg: `出発: ${sn} → 到着: ${gn}` }; showProg();
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発"); L.marker(g).addTo(layer).bindTooltip("到着");
     map.fitBounds([s, g], { padding: [40, 40] });

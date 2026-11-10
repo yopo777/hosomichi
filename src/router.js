@@ -822,17 +822,22 @@ async function route(req, prog, partial) {
   const T0 = Date.now();
   // 「おまかせ」：ひろい範囲の道路データがぜんぶ手元（端末か配布データ）にあれば ひろい、なければ ダウンロードが少ない せまい
   let area = cfg && cfg.area;
-  if (area === "auto") {
-    const wt = tilesFor(s, g, padFor(s, g, "wide"));
-    let ok = false;
+  const allLocal = async ts => {   // そのマスがぜんぶ手元（端末か配布データ）にあるか
     try {
       const p = await packIndex(), st = await store("readonly"), have = new Set(st ? (await req(st.getAllKeys())).map(String) : []);
-      ok = wt.every(t => have.has(t.key) || have.has(bigOf(t.key)) || (p && p.has(packName(bigOf(t.key)))));
-    } catch {}
+      return ts.every(t => have.has(t.key) || have.has(bigOf(t.key)) || (p && p.has(packName(bigOf(t.key)))));
+    } catch { return false; }
+  };
+  if (area === "auto") {
+    const ok = await allLocal(tilesFor(s, g, padFor(s, g, "wide")));
     area = ok ? "wide" : "narrow";
     log(`地図データを取る広さ: おまかせ → ${ok ? "ひろい（データがぜんぶ手元にある）" : "せまい（ダウンロードが必要なので）"}`);
   }
   const pad = padFor(s, g, area);
+  // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
+  { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
+    if (km > 30 && !(await allLocal(tilesFor(s, g, pad))))
+      throw new Error(`出発と到着が ${km.toFixed(1)}km はなれてるよ。道路データのダウンロードが必要な所があるので、30km以内にしてね（配布データのある関東の中なら150kmまでOK）`); }
   const tiles = tilesFor(s, g, pad), N = tiles.length;
   log(`==== ルート計算スタート ====`, "h");
   log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 到着 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
