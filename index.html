@@ -102,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1351</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1430</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -192,6 +192,7 @@ const DEFAULT_CFG = {
   sidewalk: 1.5,         // 歩道（段差・柵）のある道の倍率。1＝気にしない
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
   midCross: 0,           // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
+  kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
 const OTHER_PENALTY = 2.0;
@@ -255,6 +256,20 @@ function isUnpaved(t) {
   return null;
 }
 const yes = v => v && v !== "no";
+// 旧街道か：2＝旧街道（旧東海道・甲州道中など）/ 1＝バイパスにされた旧道（国道○号旧道など）/ 0＝ちがう
+// 配布データは kodo タグつき（まとまり＝relation も見てある）。Overpass のデータは名前だけで見る
+const KODO2 = /^旧.+(街道|道中|往還|海道|山道)$|.(道中|往還|古道)$/, KODO1 = /旧道$|^旧(国道|県道|都道|道道|府道)/;
+function kodoOf(t) {
+  if (t.kodo) return +t.kodo || 0;
+  if (!t.name || t.highway === "trunk" || t.highway === "trunk_link") return 0;
+  let lv = 0;
+  for (const s0 of String(t.name).split(";")) {
+    const s = s0.replace(/[（(][^）)]*[）)]/g, "").trim();
+    if (KODO2.test(s)) return 2;
+    if (KODO1.test(s)) lv = 1;
+  }
+  return lv;
+}
 // 道1本の倍率と表示名。通らないなら null
 function wayCost(t, cfg) {
   const hw = t.highway, b = BASE[hw] || hw;
@@ -272,6 +287,12 @@ function wayCost(t, cfg) {
     p = cfg.pen[b] ?? OTHER_PENALTY;
     if (p === "no") return null;
     if (lanesOf(t) >= 2 && p > 1) p *= 1.5;
+    const kd = kodoOf(t);
+    if (kd) {
+      const km = Math.min(1, +cfg.kodo || 1);
+      p *= kd === 2 ? km : Math.sqrt(km);
+      name += kd === 2 ? "・旧街道" : "・旧道";
+    }
   }
   if (FOOTLIKE.has(hw) && t.bicycle !== "designated" && (yes(t.bridge) || yes(t.tunnel))) {
     if (cfg.bridge === "no") return null;
@@ -511,7 +532,8 @@ function buildGraph(osm, cfg, onProg) {
     if (lvl[i] === 2) xcost[i] = cfg.wideCross === "any" ? 0 : sig ? 0 : (cfg.wideCross === "crosswalk" && xw) ? 0 : HARD;
     else xcost[i] = sig || xw ? 0 : midPen(cfg.midCross);
   }
-  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen };
+  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen,
+    hk: Math.min(1, +cfg.kodo || 1) };   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
 // 道の「つながりのかたまり」。駅の中の通路や公園の中の小道など、外とつながってない所を見分ける
@@ -580,7 +602,8 @@ class Heap {
 function search(G, s, g, gll, useLen, onProg) {
   const N = G.lat.length, best = new Float64Array(N * 3).fill(Infinity), prev = new Int32Array(N * 3).fill(-1);
   const glat = gll[0], glon = gll[1], kx = Math.cos(glat * RAD) * 111320 * 0.995, ky = 111320 * 0.995;
-  const H = i => Math.hypot((G.lon[i] - glon) * kx, (G.lat[i] - glat) * ky);
+  const hk = useLen ? 1 : (G.hk || 1);
+  const H = i => Math.hypot((G.lon[i] - glon) * kx, (G.lat[i] - glat) * ky) * hk;
   const closed = new Uint8Array(N * 3), inWay = new Float64Array(N * 3).fill(-1);  // その状態に入ってきた道
   const h = new Heap(); best[s * 3] = 0; h.push(H(s), s * 3);
   let goal = -1, pops = 0, far = 0;
@@ -2231,12 +2254,13 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 3, secondary: 5,
-  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small", bigCross: "mid", sidewalk: 1.5 };
+  primary: 8, trunk: 30, footway: 2, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "narrow", steps: "no", bridge: 3, unpaved: 20, wideCross: "crosswalk", midCross: 0, oneway: "small", bigCross: "mid", sidewalk: 1.5, kodo: 1 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（おそい・まわり道〜2km）"]]],
   ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
+  ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
   ["sidewalk", "歩道（段差・柵）のある道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [6, "かなり避ける"]]],
   ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ"], ["yes", "通る（かついで上がる）"]]],
   ["bridge", "歩道橋・地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
@@ -2256,6 +2280,7 @@ function renderCfg() {
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div>';
+  h += "<h4>旧街道</h4>" + get(["kodo"]) + '<div class="note">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div>';
   h += "<h4>階段・歩道橋・砂利</h4>" + get(["steps", "bridge", "unpaved"]);
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
