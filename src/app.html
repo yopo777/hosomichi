@@ -135,6 +135,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
     <div id="tabRoute">
     <div class="row"><label>🔍</label><input type="text" id="jump" enterkeyhint="search" placeholder="地名・駅名で地図を動かす"></div>
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
+    <div class="row"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図をタップしても出発・到着を選べるよ</div>
     <button id="go">ルートを作る</button>
@@ -646,7 +647,7 @@ worker.onmessage = ev => {
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
   drawPreview(null); routeFetch = []; drawFetching();
   clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
-  if (m.type === "done") { $("bar").classList.add("done"); chime(); }   // 終わったら緑＆音
+  if (m.type === "done") { $("bar").classList.add("done"); if (!(job && job.next)) chime(); }   // 終わったら緑＆音（経由地までのときは鳴らさない）
   if (m.type === "stopped") {
     setBar(0);
     if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); setMsg("止めたよ。「▶ 続きを計算」でここから再開できるよ"); }
@@ -667,6 +668,12 @@ worker.onmessage = ev => {
       : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len }, ...m.alts], sel: 0,
     name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
   if (job && job.prefix) cur.slen = 0;
+  if (job && job.next) {   // 経由地まで できた → つづけて 経由地から到着地まで
+    const nx = job.next, P = { ...cur, tent: null, partial: false, opts: null };
+    addLog(`経由地まで ${fmtKm(cur.len)}。つぎは到着地までを計算するよ`, "h");
+    startJob(cur.route[cur.route.length - 1], nx.g, nx.cfg, P);
+    return;
+  }
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
   { const r = cur; fixRouteName(r).then(ch => { if (ch && cur === r) { showRoute(r, false); lsSet(LKEY, packRoute(r)); } }); }
   job = null;
@@ -769,7 +776,7 @@ const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,
 
 $("go").onclick = async () => {
   audioUnlock();
-  const fromT = $("from").value.trim(), toT = $("to").value.trim();
+  const fromT = $("from").value.trim(), toT = $("to").value.trim(), viaT = $("via").value.trim();
   if (!toT) { setMsg("到着地を入れてね", true); return; }
   if (unsavedRoute() && await askSave("新しいルートを作る") === "cancel") return;
   pendingName = (fromT ? shortName(fromT) : "現在地") + " → " + shortName(toT);
@@ -780,20 +787,26 @@ $("go").onclick = async () => {
     addLog(`場所をさがす: 出発「${fromT || "現在地"}」 到着「${toT.slice(0, 60)}」`, "m");
     const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
     addLog(`  出発 → ${sn}（${s[0].toFixed(5)},${s[1].toFixed(5)}）`, "m");
+    const [v, vn] = viaT ? await geocode(viaT) : [null, ""];
+    if (v) addLog(`  経由 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
     const [g, gn] = await geocode(toT);
     addLog(`  到着 → ${gn}（${g[0].toFixed(5)},${g[1].toFixed(5)}）`, "m");
     // 「現在地」「地図の地点」のままだと、あとで見てもどこかわからないので、町名にする
     const [sName, gName] = await Promise.all([placeName(fromT, s), placeName(toT, g)]);
-    pendingName = sName + " → " + gName;
+    const vName = v ? await placeName(viaT, v) : "";
+    pendingName = sName + " → " + gName + (v ? `（${vName}経由）` : "");
     addLog(`  ルート名: ${pendingName}`, "m");
-    if (hav(s, g) > 150000) throw new Error(`出発と到着が ${fmtKm(hav(s, g))} もはなれてるよ。150km以内にしてね`);
+    for (const [a, b, t] of v ? [[s, v, "出発と経由地"], [v, g, "経由地と到着"]] : [[s, g, "出発と到着"]])
+      if (hav(a, b) > 150000) throw new Error(`${t}が ${fmtKm(hav(a, b))} もはなれてるよ。150km以内にしてね`);
     lastProg = { stage: 1, msg: `出発: ${sn} → 到着: ${gn}` }; showProg();
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発"); L.marker(g).addTo(layer).bindTooltip("到着");
-    map.fitBounds([s, g], { padding: [40, 40] });
+    if (v) L.marker(v).addTo(layer).bindTooltip("経由");
+    map.fitBounds(v ? [s, v, g] : [s, g], { padding: [40, 40] });
     if (geoAbort.signal.aborted) throw new Error("止めたよ");
     geoAbort = null;
     clearInterval(tickTimer);
-    startJob(s, g, structuredClone(cfg), null);
+    if (v) { const c2 = structuredClone(cfg); startJob(s, v, c2, null); job.next = { g, cfg: c2 }; job.via = v; }   // まず経由地まで
+    else startJob(s, g, structuredClone(cfg), null);
   } catch (e) {
     const stopped = geoAbort?.signal.aborted; geoAbort = null;
     clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; setBar(0);
@@ -1110,7 +1123,7 @@ $("bNew").onclick = async () => {
   layer.clearLayers(); cur = null; cum = [];
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
   legend(null);
-  $("from").value = ""; $("to").value = ""; setMsg(""); $("prog").style.display = "none";
+  $("from").value = ""; $("via").value = ""; $("to").value = ""; setMsg(""); $("prog").style.display = "none";
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   $("to").focus();
 };
@@ -1175,7 +1188,7 @@ new ResizeObserver(setPtop).observe($("panel")); setPtop();
 
 // ---------- パネル ----------
 // 入力欄で Enter → ルートを作る（日本語の変換確定の Enter はのぞく）
-for (const id of ["from", "to"]) $(id).addEventListener("keydown", e => {
+for (const id of ["from", "via", "to"]) $(id).addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); e.target.blur(); if (!$("go").disabled) $("go").click(); }
 });
 // 全画面（Android の Chrome など。iPhone は「ホーム画面に追加」で全画面っぽく使える）
@@ -1248,7 +1261,7 @@ renderCfg();
 $("cfgReset").onclick = () => { if (!confirm("設定をはじめの状態にもどす？")) return; cfg = structuredClone(CFG_DEF); saveCfg(); renderCfg(); };
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
-  div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + "ここを<br><button data-k='from'>出発にする</button><button data-k='to'>到着にする</button>";
+  div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button>";
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => { const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
