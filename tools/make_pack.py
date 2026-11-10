@@ -10,7 +10,7 @@
      （ダウンロードずみの pbf を使うときは: python make_pack.py kanto-latest.osm.pbf 出力フォルダ）
      （index.json だけ作りなおすときは: python make_pack.py --index-only 出力フォルダ）
      （駅の一覧 stations.json だけ作るときは: python make_pack.py --stations-only kanto-latest.osm.pbf 出力フォルダ）
-     （寄り道スポット pois.json だけ作るときは: python make_pack.py --pois-only kanto-latest.osm.pbf 出力フォルダ）
+     （寄り道スポット pois.json と 霊園のはんい areas.json だけ作るときは: python make_pack.py --pois-only kanto-latest.osm.pbf 出力フォルダ）
   3. 出力フォルダの中身を GitHub の hosomichi-data リポジトリに push して GitHub Pages で公開
 
 データ: © OpenStreetMap contributors（ODbL）
@@ -277,6 +277,26 @@ def write_pois(src, out):
     print(f"  寄り道スポット {len(rows):,}か所（{'・'.join(f'{k} {v}' for k, v in sorted(cnt.items()))}）→ pois.json"
           f"（{os.path.getsize(os.path.join(out, 'pois.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
 
+# ---- 霊園・墓地のはんい（アプリの設定「霊園の中の道」用）----
+# areas.json = {"cemetery": [[[緯度, 経度], …], …]}（外がわの輪だけ・5m より近い点は間引く）
+def write_areas(src, out):
+    t0 = time.time()
+    print(f"霊園・墓地のはんいをさがし中: {src}", flush=True)
+    fp = osmium.FileProcessor(src).with_areas(osmium.filter.TagFilter(("landuse", "cemetery"), ("amenity", "grave_yard"))) \
+        .with_filter(osmium.filter.EntityFilter(osmium.osm.AREA)).with_filter(osmium.filter.TagFilter(("landuse", "cemetery"), ("amenity", "grave_yard")))
+    polys = []
+    for o in fp:
+        for ring in o.outer_rings():
+            pts = []
+            for n in ring:
+                p = (round(n.lat, 5), round(n.lon, 5))
+                if not pts or abs(p[0] - pts[-1][0]) + abs(p[1] - pts[-1][1]) > 0.00005: pts.append(p)
+            if len(pts) < 4: continue
+            if not any(S0 < la < N0 and W0 < lo < E0 for (la, lo) in pts): continue
+            polys.append(pts)
+    with open(os.path.join(out, "areas.json"), "w", encoding="utf-8") as f: json.dump({"cemetery": polys}, f, separators=(",", ":"))
+    print(f"  霊園・墓地 {len(polys):,}か所 → areas.json（{os.path.getsize(os.path.join(out, 'areas.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
+
 def write_index(out, src_date, keys, total, built=None):
     empty = empty_tiles(keys)
     idx = {"v": src_date, "built": built or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1,
@@ -291,7 +311,7 @@ def main():
         write_stations(src, out); return
     if len(sys.argv) in (3, 4) and sys.argv[1] == "--pois-only":   # 寄り道スポットの一覧だけ作る
         src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else ("kanto-latest.osm.pbf", sys.argv[2])
-        write_pois(src, out); return
+        write_pois(src, out); write_areas(src, out); return
     if len(sys.argv) == 3 and sys.argv[1] == "--index-only":   # マスはそのままで index.json だけ作りなおす
         out = sys.argv[2]; tdir = os.path.join(out, "t")
         names = sorted(n for n in os.listdir(tdir) if n.endswith(".json.gz"))
@@ -344,6 +364,7 @@ def main():
     write_index(out, v, keys, total)
     write_stations(src, out)
     write_pois(src, out)
+    write_areas(src, out)
     open(os.path.join(out, ".nojekyll"), "w").close()   # GitHub Pages でそのまま配る（変換しない）
     with open(os.path.join(out, "README.md"), "w", encoding="utf-8") as f:
         f.write("# hosomichi-data\n\n[細道ルートナビ](https://yopo777.github.io/hosomichi/) 用の道路データ（約1km角のマスごと）です。\n\n"
