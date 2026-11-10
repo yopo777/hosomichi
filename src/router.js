@@ -444,7 +444,7 @@ async function loopRoute(req, prog) {
   log(`==== 🔁 ぐるっと1周 ${D / 1000}km（出発 ${s[0].toFixed(5)},${s[1].toFixed(5)}） ====`, "h");
   // 寄り道（展望台・丘の上・ミニストップ・ベンチ）：まわる範囲の分を1回だけさがす
   let pois = [];
-  want.land = !!(want.station || want.worship || want.shotengai);   // ランドマーク（駅・寺神社・商店街のどれか）
+  want.land = !!(want.station || want.worship || want.shotengai || want.meisho);   // ランドマーク（駅・寺神社・商店街のどれか）
   if (want.view || want.mini || want.bench || want.vend || want.land) {
     prog({ stage: 1, msg: "🔁 寄り道の場所をさがし中…" });
     const ext = 2.3 * D / 4.5;
@@ -512,8 +512,8 @@ async function loopRoute(req, prog) {
   return { ...main, alts: rest, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
 }
 // ---- 寄り道スポット ----
-const POI_ICON = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍" };
-const LAND = new Set(["station", "temple", "shrine", "shotengai"]);
+const POI_ICON = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯" };
+const LAND = new Set(["station", "temple", "shrine", "shotengai", "meisho", "castle"]);
 const poiMem = new Map();
 async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
   const b = bb.map(v => v.toFixed(4)).join(","), key = b + JSON.stringify(want);
@@ -525,6 +525,8 @@ async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
     (want.vend ? `node["amenity"="vending_machine"]["vending"~"drinks"](${b});` : "") +
     (want.station ? `nwr["railway"="station"]["name"](${b});` : "") +
     (want.worship ? `nwr["amenity"="place_of_worship"]["religion"~"buddhist|shinto"]["name"](${b});` : "") +
+    (want.meisho ? `nwr["historic"~"^(castle|ruins|archaeological_site|monument|battlefield|city_gate|fort|manor|building|milestone)$"]["name"](${b});` +
+      `nwr["tourism"~"^(attraction|museum)$"]["name"](${b});nwr["heritage"]["name"](${b});` : "") +
     (want.shotengai ? `way["highway"]["name"~"商店街"](${b});nwr["landuse"="retail"]["name"~"商店街"](${b});nwr["place"]["name"~"商店街"](${b});` : "") + `);out center tags;`;
   let last;
   for (const url of OVERPASS_URLS) {
@@ -538,7 +540,8 @@ async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
         const la = e.lat ?? e.center?.lat, lo = e.lon ?? e.center?.lon, t = e.tags || {}; if (la == null) continue;
         const kind = t.shop === "convenience" ? "mini" : t.amenity === "bench" ? "bench" : t.amenity === "vending_machine" ? "vend"
           : t.railway === "station" ? "station" : t.amenity === "place_of_worship" ? (t.religion === "shinto" ? "shrine" : "temple")
-          : /商店街/.test(t.name || "") ? "shotengai" : t.man_made === "tower" ? "tower" : "view";
+          : /商店街/.test(t.name || "") ? "shotengai" : t.historic === "castle" ? "castle"
+          : t.historic || t.heritage || t.tourism === "attraction" || t.tourism === "museum" ? "meisho" : t.man_made === "tower" ? "tower" : "view";
         const pay = kind === "vend" && t["payment:paypay"] === "yes";
         let name = t.name || { mini: "ミニストップ", bench: "ベンチ", tower: "展望塔", view: "見晴らしのいい所", vend: "自販機" }[kind];
         if (kind === "station" && !/駅$/.test(name)) name += "駅";
@@ -605,7 +608,7 @@ function poisAlong(pois, route, stops) {
     if (hit) out.push({ p: [p.la, p.lo], kind: p.kind, name: p.name });
   }
   // 多すぎると地図がうるさいので、休けいセット・ミニストップ・ランドマークを先に、全部で120個まで
-  const pr = { rest: 0, mini: 1, view: 1, tower: 1, station: 2, shotengai: 2, temple: 3, shrine: 3, vend: 4, bench: 5 };
+  const pr = { rest: 0, mini: 1, view: 1, tower: 1, meisho: 1, castle: 1, station: 2, shotengai: 2, temple: 3, shrine: 3, vend: 4, bench: 5 };
   return out.sort((a, b) => (pr[a.kind] ?? 9) - (pr[b.kind] ?? 9)).slice(0, 120);
 }
 // 区間をつなぐ。つなぎ目の「行ってすぐもどる」ムダはけずる

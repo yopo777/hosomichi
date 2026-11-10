@@ -107,7 +107,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2223</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.2225</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -155,7 +155,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
       <label><input type="checkbox" id="poiVend">🥤 自販機</label>
       <label><input type="checkbox" id="poiSta">🚉 駅</label>
       <label><input type="checkbox" id="poiWor">⛩ 寺・神社</label>
-      <label><input type="checkbox" id="poiSho">🛍 商店街</label></div>
+      <label><input type="checkbox" id="poiSho">🛍 商店街</label>
+      <label><input type="checkbox" id="poiMei">🏛 名所・史跡</label></div>
     <div class="row" id="viaRow"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row" id="toRow"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図をタップしても出発・到着を選べるよ</div>
@@ -646,7 +647,7 @@ async function loopRoute(req, prog) {
   log(`==== 🔁 ぐるっと1周 ${D / 1000}km（出発 ${s[0].toFixed(5)},${s[1].toFixed(5)}） ====`, "h");
   // 寄り道（展望台・丘の上・ミニストップ・ベンチ）：まわる範囲の分を1回だけさがす
   let pois = [];
-  want.land = !!(want.station || want.worship || want.shotengai);   // ランドマーク（駅・寺神社・商店街のどれか）
+  want.land = !!(want.station || want.worship || want.shotengai || want.meisho);   // ランドマーク（駅・寺神社・商店街のどれか）
   if (want.view || want.mini || want.bench || want.vend || want.land) {
     prog({ stage: 1, msg: "🔁 寄り道の場所をさがし中…" });
     const ext = 2.3 * D / 4.5;
@@ -714,8 +715,8 @@ async function loopRoute(req, prog) {
   return { ...main, alts: rest, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
 }
 // ---- 寄り道スポット ----
-const POI_ICON = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍" };
-const LAND = new Set(["station", "temple", "shrine", "shotengai"]);
+const POI_ICON = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯" };
+const LAND = new Set(["station", "temple", "shrine", "shotengai", "meisho", "castle"]);
 const poiMem = new Map();
 async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
   const b = bb.map(v => v.toFixed(4)).join(","), key = b + JSON.stringify(want);
@@ -727,6 +728,8 @@ async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
     (want.vend ? `node["amenity"="vending_machine"]["vending"~"drinks"](${b});` : "") +
     (want.station ? `nwr["railway"="station"]["name"](${b});` : "") +
     (want.worship ? `nwr["amenity"="place_of_worship"]["religion"~"buddhist|shinto"]["name"](${b});` : "") +
+    (want.meisho ? `nwr["historic"~"^(castle|ruins|archaeological_site|monument|battlefield|city_gate|fort|manor|building|milestone)$"]["name"](${b});` +
+      `nwr["tourism"~"^(attraction|museum)$"]["name"](${b});nwr["heritage"]["name"](${b});` : "") +
     (want.shotengai ? `way["highway"]["name"~"商店街"](${b});nwr["landuse"="retail"]["name"~"商店街"](${b});nwr["place"]["name"~"商店街"](${b});` : "") + `);out center tags;`;
   let last;
   for (const url of OVERPASS_URLS) {
@@ -740,7 +743,8 @@ async function poiFetch(bb, want) {   // bb = [南, 西, 北, 東]
         const la = e.lat ?? e.center?.lat, lo = e.lon ?? e.center?.lon, t = e.tags || {}; if (la == null) continue;
         const kind = t.shop === "convenience" ? "mini" : t.amenity === "bench" ? "bench" : t.amenity === "vending_machine" ? "vend"
           : t.railway === "station" ? "station" : t.amenity === "place_of_worship" ? (t.religion === "shinto" ? "shrine" : "temple")
-          : /商店街/.test(t.name || "") ? "shotengai" : t.man_made === "tower" ? "tower" : "view";
+          : /商店街/.test(t.name || "") ? "shotengai" : t.historic === "castle" ? "castle"
+          : t.historic || t.heritage || t.tourism === "attraction" || t.tourism === "museum" ? "meisho" : t.man_made === "tower" ? "tower" : "view";
         const pay = kind === "vend" && t["payment:paypay"] === "yes";
         let name = t.name || { mini: "ミニストップ", bench: "ベンチ", tower: "展望塔", view: "見晴らしのいい所", vend: "自販機" }[kind];
         if (kind === "station" && !/駅$/.test(name)) name += "駅";
@@ -807,7 +811,7 @@ function poisAlong(pois, route, stops) {
     if (hit) out.push({ p: [p.la, p.lo], kind: p.kind, name: p.name });
   }
   // 多すぎると地図がうるさいので、休けいセット・ミニストップ・ランドマークを先に、全部で120個まで
-  const pr = { rest: 0, mini: 1, view: 1, tower: 1, station: 2, shotengai: 2, temple: 3, shrine: 3, vend: 4, bench: 5 };
+  const pr = { rest: 0, mini: 1, view: 1, tower: 1, meisho: 1, castle: 1, station: 2, shotengai: 2, temple: 3, shrine: 3, vend: 4, bench: 5 };
   return out.sort((a, b) => (pr[a.kind] ?? 9) - (pr[b.kind] ?? 9)).slice(0, 120);
 }
 // 区間をつなぐ。つなぎ目の「行ってすぐもどる」ムダはけずる
@@ -2390,7 +2394,7 @@ async function placeName(input, ll) {
 const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : (looksAddress(t) ? townName(t) : cleanAddr(t)).slice(0, 24);
 
 // 🔁 ぐるっと1周：経由・到着の欄はかくす（出発にもどるので）
-const poiWant = () => ({ view: $("poiView").checked, mini: $("poiMini").checked, bench: $("poiBench").checked, vend: $("poiVend").checked, station: $("poiSta").checked, worship: $("poiWor").checked, shotengai: $("poiSho").checked });
+const poiWant = () => ({ view: $("poiView").checked, mini: $("poiMini").checked, bench: $("poiBench").checked, vend: $("poiVend").checked, station: $("poiSta").checked, worship: $("poiWor").checked, shotengai: $("poiSho").checked, meisho: $("poiMei").checked });
 const loopKm = () => $("loopOn").checked ? +$("loopKm").value : 0;
 function loopUi() {
   const on = $("loopOn").checked;
@@ -2399,8 +2403,8 @@ function loopUi() {
   $("go").textContent = on ? `🔁 ${$("loopKm").value}kmの1周ルートを作る` : "ルートを作る";
   try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value, poi: poiWant() })); } catch {}
 }
-try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; const p = l.poi || {}; $("poiView").checked = !!p.view; $("poiMini").checked = !!p.mini; $("poiBench").checked = !!p.bench; $("poiVend").checked = !!p.vend; $("poiSta").checked = !!(p.station ?? p.land); $("poiWor").checked = !!(p.worship ?? p.land); $("poiSho").checked = !!(p.shotengai ?? p.land); } } catch {}
-for (const id of ["loopOn", "loopKm", "poiView", "poiMini", "poiBench", "poiVend", "poiSta", "poiWor", "poiSho"]) $(id).onchange = loopUi;
+try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; const p = l.poi || {}; $("poiView").checked = !!p.view; $("poiMini").checked = !!p.mini; $("poiBench").checked = !!p.bench; $("poiVend").checked = !!p.vend; $("poiSta").checked = !!(p.station ?? p.land); $("poiWor").checked = !!(p.worship ?? p.land); $("poiSho").checked = !!(p.shotengai ?? p.land); $("poiMei").checked = !!p.meisho; } } catch {}
+for (const id of ["loopOn", "loopKm", "poiView", "poiMini", "poiBench", "poiVend", "poiSta", "poiWor", "poiSho", "poiMei"]) $(id).onchange = loopUi;
 loopUi();
 $("go").onclick = async () => {
   audioUnlock();
@@ -2620,7 +2624,7 @@ $("col").onclick = () => setColorMode({ red: "kind", kind: "slope", slope: "red"
 $("colL").textContent = COLOR_NAMES[colorMode];
 
 let cum = [];
-const PI = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍" };   // 寄り道スポットの印
+const PI = { view: "🔭", tower: "🗼", hill: "⛰", mini: "🏪", bench: "🪑", vend: "🥤", rest: "🪑🥤", station: "🚉", temple: "🛕", shrine: "⛩", shotengai: "🛍", meisho: "🏛", castle: "🏯" };   // 寄り道スポットの印
 function showRoute(r, fit) {
   cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
