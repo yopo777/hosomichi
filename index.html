@@ -80,6 +80,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #dir{position:absolute;top:calc(50% - 10px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0;display:none}
 #dir.on{background:#1a73e8}
+.fetchBox{animation:fbk 1s ease-in-out infinite}
+@keyframes fbk{50%{opacity:.25}}
 #col{position:absolute;top:calc(50% - 154px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
 #col small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
@@ -100,7 +102,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1058</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1110.1113</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -694,7 +696,9 @@ async function haveKeys() {   // 持っている大きいマス（小さいマ�
   for (const o of oldRaw.sort((a, b) => a.t - b.t)) if (!fresh.has(o.big) && !seen.has(o.big)) { seen.add(o.big); old.push(o.big); }
   return { have, touched: new Set([...have, ...small.keys()]), old };
 }
-async function autoPrefetch(post) {
+async function autoPrefetch(post0) {
+  let curKey = null;
+  const post = m => post0({ ...m, fetching: curKey });
   const T = 0.01, failed = new Map();
   let { have, touched, old } = await haveKeys(), reload = false, reloadAt = Date.now();
   let srv = 0, fail = 0, got = 0, bytes = 0, cand = [], candC = null, home = null, homeAt = 0;
@@ -731,6 +735,7 @@ async function autoPrefetch(post) {
     if (!t && Date.now() - reloadAt > 60000) { reload = true; continue; }   // 念のため読みなおしてから「ぜんぶたまった」にする
     if (!t) { post({ msg: `いつものあたりから${PF_R}kmまでぜんぶたまってるよ`, haveN: have.size }); await sleep(5000); continue; }
     const url = OVERPASS_URLS[srv % OVERPASS_URLS.length], host = new URL(url).host, t0 = Date.now();
+    curKey = t.key;
     pfAc = new AbortController(); const ac = pfAc, to = setTimeout(() => { ac.timedOut = true; ac.abort(); }, 60000);
     post({ msg: t.refresh ? `${host} から古いマスを取りなおし中（のこり ${old.length}マス）` : `${host} から取得中（いつものあたりから${t.km.toFixed(1)}km）`, haveN: have.size });
     try {
@@ -751,7 +756,7 @@ async function autoPrefetch(post) {
       const w = fail >= OVERPASS_URLS.length ? 120 : 20;
       log(`自動でためる 失敗 ${host}: ${ac.timedOut ? "時間切れ" : e.message}。${w}秒お休み`, "w");
       for (let s = w; s > 0 && !pfStop; s--) { if (!routing) post({ msg: `サーバーが混んでるので ${s}秒お休み` }); await sleep(1000); }
-    } finally { clearTimeout(to); pfAc = null; }
+    } finally { clearTimeout(to); pfAc = null; curKey = null; post({}); }
   }
   log(`自動でためる：止めました（新しく ${got}マス）`);
   post({ msg: "止めてるよ", fin: true });
@@ -884,7 +889,7 @@ async function route(req, prog, partial) {
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
   let done = 0, bytes = 0, fetchErr = null, stage = 1, stageMsg = "";
-  const active = new Map(), tf0 = Date.now();
+  const active = new Map(), tf0 = Date.now(), fetchingKeys = new Set();   // fetchingKeys＝いま取っているマス（地図で光らせる）
   const report = () => {
     const el = (Date.now() - tf0) / 1000;
     let eta = "";
@@ -894,23 +899,24 @@ async function route(req, prog, partial) {
     }
     const cur = [...active.values()].join(" / ");
     prog({ stage, msg: (stageMsg ? stageMsg + "\n" : "") + `道路データ ${saved + done}/${N}マス` + (saved ? `（保存済み ${saved}）` : "") + (eta ? `  ${eta}` : "") + (cur ? `\n${cur}` : ""),
-      done: saved + done, total: N, bytes });
+      done: saved + done, total: N, bytes, fetching: [...fetchingKeys] });
   };
   const timer = setInterval(report, 1000);
   let next = 0;
   const runner = async w => {
     while (next < need.length && !fetchErr && !stopReq) {
       const t = need[next++];
-      active.set(w, "取得中…");
+      active.set(w, "取得中…"); fetchingKeys.add(t.key); report();
       try {
         const r = await fetchOSM(t.bb, p => { active.set(w, p.msg); }, w, stale.has(t.key), `${t.key.split(":")[1]} 進み${Math.round(t.tc)}m`);
         bytes += r.text.length; pendingSaves.push([t.key, r.text]);
-        done++; active.delete(w); setTile(t.key, r.json.elements); report();
+        done++; active.delete(w); fetchingKeys.delete(t.key); setTile(t.key, r.json.elements); report();
       } catch (e) {
         if (!e.stopped && stale.has(t.key)) {   // 取れなかったけど、1年より前のデータがあるならそれを使う
           log(`取れなかったので古いデータを使う [${t.key}]`, "w");
           setTile(t.key, stale.get(t.key)); done++; active.delete(w); report(); continue;
         }
+        fetchingKeys.delete(t.key);
         if (!e.stopped) fetchErr = e; active.delete(w); [...waiters.values()].flat().forEach(r => r()); if (e.stopped) return; }
     }
   };
@@ -1395,6 +1401,7 @@ if (navigator.connection) navigator.connection.addEventListener("change", () => 
 });   // 日付が変わったらまた始める
 setTimeout(pfStart, 3000);
 function onPf(m) {
+  if ("fetching" in m) { const k = m.fetching ? [m.fetching] : []; if (String(k) !== String(pfFetch)) { pfFetch = k; drawFetching(); } }
   if (m.tile) {   // 1マス取れた：カラー地図をふやす（重くならないよう2秒に1回だけ描きなおす）
     if (!cachedKeys.includes(m.tile)) cachedKeys.push(m.tile);
     if (Date.now() - pfDrawT > 2000) { pfDrawT = Date.now(); drawArea(); }
@@ -1436,6 +1443,15 @@ function drawPreview(pts) {
   L.polyline(pts, { color: "#666", weight: 4, dashArray: "8 8", interactive: false }).addTo(pvLayer)
     .bindTooltip("仮のルート（取れた所まで）");
 }
+// ==== いま取っているマスを光らせる（ルート計算＝赤・自動でためる＝オレンジ） ====
+let routeFetch = [], pfFetch = [];
+const fetchLayer = L.layerGroup().addTo(map);
+function drawFetching() {
+  fetchLayer.clearLayers();
+  const box = (k, c) => L.rectangle(keyBox(k), { pane: "areaPane", className: "fetchBox", color: c, weight: 3, fillColor: c, fillOpacity: 0.25, interactive: false }).addTo(fetchLayer);
+  for (const k of routeFetch) box(k, "#d93025");
+  for (const k of pfFetch) box(k, "#f29900");
+}
 // ==== できたら音 ====
 let actx = null;
 function audioUnlock() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {} }
@@ -1475,12 +1491,13 @@ worker.onmessage = ev => {
     return;
   }
   if (m.type === "prog" && m.area) { calcKeys = m.area; drawArea(); }
+  if (m.type === "prog" && m.fetching) { routeFetch = m.fetching; drawFetching(); }
   if (m.type === "prog" && m.preview) {
     if (!pvLayer.getLayers().length && job && !job.pvShown) { job.pvShown = true; $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }   // 地図を見せる
     drawPreview(m.preview); return;
   }
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
-  drawPreview(null);
+  drawPreview(null); routeFetch = []; drawFetching();
   clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
   if (m.type === "done") { $("bar").classList.add("done"); chime(); }   // 終わったら緑＆音
   if (m.type === "stopped") {
