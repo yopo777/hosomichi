@@ -1956,7 +1956,8 @@ const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
 let spotHide = lsGet("hosomichi_spothide", false);   // 右はしの📍ボタンで、えらんだマークをまとめて かくす／出す
-let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null, spotFx = lsGet("hosomichi_spotfx", true), spotSz = lsGet("hosomichi_spotsz", "M");
+// はじめて使う人は、一方通行の矢印だけオン
+let spotOn = new Set(lsGet("hosomichi_spots", ["oneway"])), spotAt = null, spotFx = lsGet("hosomichi_spotfx", true), spotSz = lsGet("hosomichi_spotsz", "M");
 const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
 spotSize();   // spotFx：出たときぴょこぴょこ・近づいたら点滅
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
