@@ -1632,7 +1632,6 @@ $("list").onclick = ev => {
     const n = prompt("ルートの名前", rs[i].name); if (n == null) return;
     rs[i].name = n.trim() || rs[i].name; lsSet(RKEY, rs); renderList();
   } else if (a === "del") {
-    if (!confirm(`「${rs[i].name}」を消す？`)) return;
     rs.splice(i, 1); lsSet(RKEY, rs); renderList();
     if (cur && String(cur.savedId) === it.dataset.id) { cur.savedId = null; updSaveBtn(); }
   }
@@ -1870,7 +1869,7 @@ $("qList").onclick = e => {
   else if (a === "list") { const d = it.querySelector(".sts"); d.style.display = d.style.display === "block" ? "none" : "block"; }
   else if (a === "del") {
     const qs = lsGet(QKEY, []), q = qs.find(x => x.id === id);
-    if (!q || !confirm(`「${q.name}」クエストを消す？（スタンプの記録は残るよ）`)) return;
+    if (!q) return;
     lsSet(QKEY, qs.filter(x => x.id !== id)); if (qShown === id) { qShown = null; qDraw(); } qRender();
   }
 };
