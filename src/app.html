@@ -103,6 +103,11 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   box-shadow:0 2px 8px #0003;padding:4px 10px;font-size:14px;font-weight:bold;display:none;pointer-events:none;text-align:right}   /* 一番下・見えなくてもいい */
 #nav.off{color:#c00}
 .pin{font-size:13px}
+.spot{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #888;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;box-shadow:0 1px 4px #0007}
+.spot.new{animation:spotPop .45s ease-out 3}   /* 出てきたときだけ3回ぴょこぴょこ */
+.spot.near{animation:spotBlink 1s ease-in-out infinite;border-color:#fbbc04 !important}   /* 150m以内は点滅 */
+@keyframes spotPop{0%,100%{transform:scale(1)}40%{transform:translateY(-6px) scale(1.35)}}
+@keyframes spotBlink{0%,100%{transform:scale(1);box-shadow:0 1px 4px #0007}50%{transform:scale(1.4);box-shadow:0 0 0 7px #fbbc0477}}
 .qtt{font-size:11px;padding:1px 4px}
 #qCand .c,#qList .q{padding:6px 4px;border-bottom:1px solid #eee;font-size:13px}
 #qCand .c{display:flex;align-items:center;gap:6px}#qCand .c div{flex:1}
@@ -1459,7 +1464,7 @@ function onPos(p) {
     me = L.marker(ll, { icon: icDot, interactive: false, zIndexOffset: 1000, rotateWithView: true, rotation: 0 }).addTo(map);
   }
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
-  qCheck(ll, p.coords.accuracy); spotUpdate(false);
+  qCheck(ll, p.coords.accuracy); spotUpdate(false); spotNear(ll);
   applyBearing();
   if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
   if (cur && cur.nav && cur.nav.length > 1) {
@@ -1874,7 +1879,10 @@ const SPOT_KINDS = [
   ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["ramen", "🍜", "ラーメン"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
   ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
     ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"]]]];
-const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(g => g[1]).map(([k, ic, nm]) => [k, [ic, nm]]));
+const SPOT_COL = { "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
+const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_COL[g]]])));
+const SPOT_NEAR = 150;
+let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
 let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null;
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
@@ -1905,13 +1913,22 @@ async function spotUpdate(force) {
   if (spotAt !== p) return;   // 読んでいるあいだに次の場所になった
   for (const t of tiles) for (const k of on) for (const s of t[k] || []) { const d = hav(p, [s[1], s[2]]); if (d < SPOT_R) got.push([d, k, s]); }
   got.sort((a, b) => a[0] - b[0]);
-  spotLayer.clearLayers();
+  spotLayer.clearLayers(); spotMk = [];
+  const shown = new Set();
   for (const [, k, s] of got.slice(0, SPOT_MAX)) {
-    const [ic, nm] = SPOT_INFO[k], ll = [s[1], s[2]];
-    L.marker(ll, { icon: L.divIcon({ className: "", html: `<div style="font-size:18px;line-height:1;transform:translate(-50%,-50%);text-shadow:0 0 3px #fff,0 0 3px #fff">${ic}</div>`, iconSize: [0, 0] }), zIndexOffset: 200 })
-      .bindTooltip(s[0] || nm, { direction: "top", offset: [0, -10] })
+    const [ic, nm, col] = SPOT_INFO[k], ll = [s[1], s[2]], id = k + s[1] + "," + s[2];
+    shown.add(id);
+    const m = L.marker(ll, { icon: L.divIcon({ className: "", iconSize: [0, 0],
+        html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot${spotShown.has(id) ? "" : " new"}" style="border-color:${col}">${ic}</div></div>` }), zIndexOffset: 200 })
+      .bindTooltip(s[0] || nm, { direction: "top", offset: [0, -14] })
       .on("click", () => pinPopup(L.latLng(ll), s[1].toFixed(6) + "," + s[2].toFixed(6), `${ic} ${s[0] || nm}`)).addTo(spotLayer);
+    spotMk.push([m, ll]);
   }
+  spotShown = shown;
+  if (wid !== null && me) spotNear([me.getLatLng().lat, me.getLatLng().lng]);
+}
+function spotNear(p) {   // 150m以内のスポットだけ点滅（GPSが来るたび。多くても60個しか見ない）
+  for (const [m, ll] of spotMk) { const el = m.getElement()?.querySelector(".spot"); if (el) el.classList.toggle("near", hav(p, ll) < SPOT_NEAR); }
 }
 map.on("moveend", () => { if (!(wid !== null && me)) spotUpdate(false); });
 renderSpots(); spotUpdate(true);
