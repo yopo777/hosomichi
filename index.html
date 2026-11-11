@@ -105,11 +105,19 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 .pin{font-size:13px}
 .pin button{margin:4px 2px 0;padding:6px 10px;border-radius:6px;border:1px solid #ccc;background:#fff}
 .leaflet-control-attribution{font-size:10px;pointer-events:none}
-</style></head>
+</style>
+<!-- アクセス数（GoatCounter）：ページの場所だけ送る。#のあとのルート（自宅の位置など）は送らない -->
+<script>
+window.goatcounter = { path: () => location.pathname };
+const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれたか
+</script>
+<script data-goatcounter="https://hosomichi.goatcounter.com/count" async src="//gc.zgo.at/count.js"
+  onload="GC_SHARED && window.goatcounter.count({ path: 'shared-route', title: '共有ルートで開いた', event: true })"></script>
+</head>
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1140</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1150</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
