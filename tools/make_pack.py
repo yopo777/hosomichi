@@ -324,5 +324,15 @@ def main():
                 "Geofabrik の OpenStreetMap データ（https://download.geofabrik.de/）から作っています。\n")
     print(f"できた！ {len(keys)}マス・{total / 1048576:.1f}MB（データの日付 {v}・{time.time() - t0:.0f}秒）→ {out}")
 
+def beep(ok=True):   # 終わったら音で知らせる（成功：ピッピッピー／失敗：ブー）
+    try:
+        import winsound
+        for f, ms in ([(1200, 150), (1200, 150), (1600, 400)] if ok else [(300, 800)]): winsound.Beep(f, ms)
+    except Exception:
+        print("\a", end="", flush=True)
+
 if __name__ == "__main__":
-    main()
+    try: main()
+    except BaseException:
+        beep(False); raise
+    beep(True)

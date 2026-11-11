@@ -255,4 +255,15 @@ def main():
     print(f"できた！ 路線 {len(lines)}・市区町村 {len(cities)}（" + "・".join(f"{k} {v}" for k, v in sorted(c.items(), key=lambda x: -x[1])) + "）"
           f" → quests.json {os.path.getsize(path) / 1048576:.1f}MB（{time.time() - T0:.0f}秒）")
 
-if __name__ == "__main__": main()
+def beep(ok=True):   # 終わったら音で知らせる（成功：ピッピッピー／失敗：ブー）
+    try:
+        import winsound
+        for f, ms in ([(1200, 150), (1200, 150), (1600, 400)] if ok else [(300, 800)]): winsound.Beep(f, ms)
+    except Exception:
+        print("\a", end="", flush=True)
+
+if __name__ == "__main__":
+    try: main()
+    except BaseException:
+        beep(False); raise
+    beep(True)
