@@ -1415,7 +1415,9 @@ async function routeOnce(req, prog, partial) {
   //  ② 使った道を通りにくくしてさがしなおしたルート（近くの別の道）
   // を作って、メインと半分以上かぶらないものを2本までえらぶ。データが手元にあれば少し広い範囲で考える
   let alts = [];
-  if (conf.length > 1 && !(cfg && cfg.alts === false)) {
+  if (need.length && conf.length > 1 && !(cfg && cfg.alts === false))   // ダウンロードしたときは1本だけ（サーバーにやさしく・早く）
+    log(`第2・第3のルートは出さないよ（道路データを ${need.length}マス ダウンロードしたので）`);
+  else if (conf.length > 1 && !(cfg && cfg.alts === false)) {
     try {
       const ta = Date.now(), Dkm = hav(s[0], s[1], g[0], g[1]) / 1000;
       const offKm = Math.min(6, Math.max(1, Dkm * 0.15));          // 左右にずらす量
