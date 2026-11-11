@@ -131,7 +131,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1653</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1657</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3496,6 +3496,9 @@ const SPOT_KINDS = [
   ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["ramen", "🍜", "ラーメン"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
   ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
     ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"]]]];
+// 絵文字にないアイコン（横断歩道＝上から見たしましま）
+const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#333"><rect x="0.5" y="1" width="2.2" height="12"/><rect x="4.7" y="1" width="2.2" height="12"/><rect x="8.9" y="1" width="2.2" height="12"/><rect x="13.1" y="1" width="2.2" height="12"/></g></svg>' };
+const spotIc = (k, ic) => SPOT_SVG[k] || ic;
 const SPOT_COL = { "道": "#188038", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
@@ -3506,7 +3509,7 @@ const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
   $("spotBox").innerHTML = `<b>📍 まわりのスポット</b><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ</div>`
     + SPOT_KINDS.map(([g, ks]) => `<div style="margin-top:4px"><span style="color:#666">${g}：</span>` + ks.map(([k, ic, nm]) =>
-      `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${ic}${nm}</label>`).join("") + "</div>").join("");
+      `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("") + "</div>").join("");
 }
 $("cfgBox").addEventListener("change", e => {
   const k = e.target.dataset.sk; if (!k) return;
@@ -3558,9 +3561,9 @@ async function spotUpdate(force) {
     const [ic, nm, col] = SPOT_INFO[k], ll = [s[1], s[2]], id = k + s[1] + "," + s[2];
     shown.add(id);
     const m = L.marker(ll, { icon: L.divIcon({ className: "", iconSize: [0, 0],
-        html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot${spotShown.has(id) ? "" : " new"}" style="border-color:${col}">${ic}</div></div>` }), zIndexOffset: 200 })
+        html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot${spotShown.has(id) ? "" : " new"}" style="border-color:${col}">${spotIc(k, ic)}</div></div>` }), zIndexOffset: 200 })
       .bindTooltip(s[0] || nm, { direction: "top", offset: [0, -14] })
-      .on("click", () => pinPopup(L.latLng(ll), s[1].toFixed(6) + "," + s[2].toFixed(6), `${ic} ${s[0] || nm}`)).addTo(spotLayer);
+      .on("click", () => pinPopup(L.latLng(ll), s[1].toFixed(6) + "," + s[2].toFixed(6), (SPOT_SVG[k] ? "" : ic + " ") + (s[0] || nm))).addTo(spotLayer);
     spotMk.push([m, ll]);
   }
   spotShown = shown;
