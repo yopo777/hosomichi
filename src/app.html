@@ -175,6 +175,13 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div id="tabCfg" style="display:none">
       <div id="cfgBox"></div>
       <div class="btns" style="margin-top:8px"><button class="ib" id="cfgReset">はじめの設定にもどす</button></div>
+      <div style="margin-top:10px;padding:8px;border-radius:8px;background:#e8f0fe;font-size:12px;line-height:1.6">
+        <b>🔒 データについて</b><br>
+        🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、<b>この端末の中だけ</b>に保存していて、どこにも送らないよ。<br>
+        ただし、地図の画像・道路データ・住所や地名をさがすときは、見ている場所や入れた地名を、それぞれの地図サービス（OpenStreetMap・国土地理院など）に問い合わせるよ。
+        アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>
+        共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。
+      </div>
     </div>
     <div id="tabLog" style="display:none">
       <div class="btns" style="margin:6px 0"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
@@ -229,6 +236,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="legend"></div>
 <div id="qToast"></div>
 <div id="cdot" style="position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#000;box-shadow:0 0 0 1.5px #fff;z-index:950;pointer-events:none"></div>
+<div id="homeD" style="position:absolute;left:50%;bottom:36px;transform:translateX(-50%);z-index:1000;font-size:12px;font-weight:bold;color:#1a73e8;background:#fffffff0;border:1px solid #1a73e8;border-radius:12px;padding:2px 10px;white-space:nowrap;display:none;cursor:pointer"></div>
 <div id="addr" style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:1000;font-size:11px;color:#333;background:#ffffffcc;border-radius:6px;padding:1px 6px;pointer-events:none;white-space:nowrap;display:none"></div>
 <div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
@@ -468,7 +476,7 @@ function geoErrText(e) {
 function onGeoErr(e) {
   addLog(`現在地エラー: code=${e && e.code} ${e && e.message}`, "e");
   if (wid !== null) navigator.geolocation.clearWatch(wid);
-  wid = null; follow = false; $("gps").classList.remove("on"); $("gpsL").classList.remove("on"); $("gpsL").textContent = "現在地"; $("dir").style.display = "none";
+  wid = null; follow = false; $("homeD").style.display = "none"; $("gps").classList.remove("on"); $("gpsL").classList.remove("on"); $("gpsL").textContent = "現在地"; $("dir").style.display = "none";
   map.dragging.enable();
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   setMsg(geoErrText(e), true);
@@ -1403,11 +1411,13 @@ function openStreetView(ll) {
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
+    + "<button data-home='1'>🏠 ここを家にする</button><br>"
     + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button>";
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
     if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), ev.target.dataset.b); map.closePopup(pop); return; }   // 🚫／⚠ その場でつける
     if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
+    if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 }
@@ -1474,7 +1484,7 @@ function onPos(p) {
     me = L.marker(ll, { icon: icDot, interactive: false, zIndexOffset: 1000, rotateWithView: true, rotation: 0 }).addTo(map);
   }
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
-  qCheck(ll, p.coords.accuracy); spotUpdate(false); spotNear(ll);
+  qCheck(ll, p.coords.accuracy); spotUpdate(false); spotNear(ll); homeDist();
   applyBearing();
   if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
   if (cur && cur.nav && cur.nav.length > 1) {
@@ -2076,6 +2086,39 @@ async function showAddr() {
 }
 map.on("moveend", () => { clearTimeout(addrTimer); addrTimer = setTimeout(showAddr, 700); });
 showAddr();
+
+
+// ---------- 🏠 家（この端末の中だけ。共有URL・QRには入れない）と「家まで約○km」 ----------
+let home = lsGet("hosomichi_home", null);
+const homeLayer = L.layerGroup().addTo(map);
+function drawHome() {
+  homeLayer.clearLayers();
+  if (home) L.marker(home, { interactive: false, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:20px;text-shadow:0 0 3px #fff,0 0 3px #fff">🏠</div>' }) }).addTo(homeLayer);
+}
+function setHome(ll) {
+  if (home && hav(home, [ll.lat, ll.lng]) > 30 && !confirm("家の場所を、ここに変える？")) return;
+  home = [+ll.lat.toFixed(6), +ll.lng.toFixed(6)]; lsSet("hosomichi_home", home); drawHome(); homeDist();
+  setMsg("🏠 ここを家にしたよ（この端末の中だけに保存するよ）");
+}
+function homeDist() {   // まっすぐの距離 ×1.3 で見つもる（計算はほぼ0なので、GPSが来るたびでOK）
+  if (!home || !me || wid === null) { $("homeD").style.display = "none"; return; }
+  const c = me.getLatLng(), d = hav([c.lat, c.lng], home);
+  $("homeD").textContent = d < 150 ? "🏠 家のすぐ近くだよ" : `🏠 家まで 約${fmtKm(d * 1.3)}`;
+  $("homeD").style.display = "block";
+}
+$("homeD").onclick = () => {   // タップで、家までの細道ルートを作る（押したときだけ計算）
+  if (!home || !me) return;
+  const div = document.createElement("div"); div.className = "pin";
+  div.innerHTML = "<b>🏠 家に帰る</b><br>今のルートのかわりに、ここから家までのルートを作る？<br><button data-go='1' style='font-weight:bold'>作る</button>";
+  const pop = L.popup().setLatLng(me.getLatLng()).setContent(div).openOn(map);
+  div.onclick = ev => {
+    if (!ev.target.dataset.go) return; map.closePopup(pop);
+    $("from").value = ""; $("via").value = ""; $("to").value = home[0].toFixed(6) + "," + home[1].toFixed(6);
+    if ($("loopOn").checked) { $("loopOn").checked = false; $("loopOn").dispatchEvent(new Event("change")); }
+    $("go").click();
+  };
+};
+drawHome();
 
 // ---------- 開いたとき：共有URL → なければ前回のルート ----------
 if (location.hash.includes("r=")) loadHash();
