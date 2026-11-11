@@ -131,7 +131,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1545</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1554</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3494,7 +3494,7 @@ const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
 let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null;
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
-  $("spotBox").innerHTML = `<b>📍 まわりのスポット</b><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中（少し拡大したとき）。なにもチェックしなければデータも読まないよ</div>`
+  $("spotBox").innerHTML = `<b>📍 まわりのスポット</b><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ</div>`
     + SPOT_KINDS.map(([g, ks]) => `<div style="margin-top:4px"><span style="color:#666">${g}：</span>` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${ic}${nm}</label>`).join("") + "</div>").join("");
 }
@@ -3503,13 +3503,19 @@ $("cfgBox").addEventListener("change", e => {
   if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
   lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true);
 });
+let spotOv = null;
+function spotOverview() {   // 引いたとき用（関東まるごと・間引いたもの）
+  return spotOv || (spotOv = tfetch(new URL("../hosomichi-data/spots_overview.json", location.href), {}, 30000)
+    .then(r => r.ok ? r.json() : {}).catch(() => { spotOv = null; return {}; }));
+}
 function spotTile(key) {   // 1回読んだマスはおぼえておく（ない所は空）
   if (!spotTiles.has(key)) spotTiles.set(key, tfetch(new URL(`../hosomichi-data/spots/${key}.json`, location.href), {}, 15000)
     .then(r => r.ok ? r.json() : {}).catch(() => { spotTiles.delete(key); return {}; }));
   return spotTiles.get(key);
 }
 // 現在地に固定しているとき：現在地から2km・60個まで（500m動いたら入れかえ）
-// 固定していないとき：見えている地図の中・近い順に150個まで（ズーム12より引いたら出さない）
+// 固定していないとき：見えている地図の中に150個まで（ズーム12より引いたら「引いたとき用」の間引いたデータ）
+// どちらも、画面を指1本分（48px・引いたときは64px）のマスに分けて、マスごとに1個だけ（有名なもの → 近いもの の順にえらぶ）
 async function spotUpdate(force) {
   if (!spotOn.size) { spotLayer.clearLayers(); spotAt = null; return; }
   const fixed = follow && me, c = fixed ? me.getLatLng() : map.getCenter(), p = [c.lat, c.lng];
@@ -3518,23 +3524,27 @@ async function spotUpdate(force) {
   let S, N, W, E;
   if (fixed) { const dla = SPOT_R / 111000, dlo = SPOT_R / (111000 * Math.cos(p[0] * RAD)); S = p[0] - dla; N = p[0] + dla; W = p[1] - dlo; E = p[1] + dlo; }
   else {
-    if (map.getZoom() < 12) { spotLayer.clearLayers(); spotMk = []; return; }   // 広すぎると読むマスが多すぎるので
     const b = map.getBounds(); S = b.getSouth(); N = b.getNorth(); W = b.getWest(); E = b.getEast();
   }
-  const keys = [];
+  const over = !fixed && map.getZoom() < 12, keys = [];
   for (let i = Math.floor(S / SPOT_T); i <= Math.floor(N / SPOT_T); i++)
     for (let j = Math.floor(W / SPOT_T); j <= Math.floor(E / SPOT_T); j++) keys.push(i + "_" + j);
-  if (keys.length > 60) return;
-  const tiles = await Promise.all(keys.map(spotTile)), on = [...spotOn], got = [];
+  const tiles = over ? [await spotOverview()] : keys.length > 60 ? [] : await Promise.all(keys.map(spotTile)), on = [...spotOn], got = [];
   if (spotAt !== p) return;   // 読んでいるあいだに次の場所になった
   for (const t of tiles) for (const k of on) for (const s of t[k] || []) {
     if (fixed) { const d = hav(p, [s[1], s[2]]); if (d < SPOT_R) got.push([d, k, s]); }
     else if (s[1] > S && s[1] < N && s[2] > W && s[2] < E) got.push([hav(p, [s[1], s[2]]), k, s]);
   }
-  got.sort((a, b) => a[0] - b[0]);
+  got.sort((a, b) => (b[2][3] || 0) - (a[2][3] || 0) || a[0] - b[0]);   // 有名なもの → 近いもの
+  const cells = new Set(), pick = [], G = over ? 64 : 48, max = fixed ? SPOT_MAX : 150;
+  for (const g of got) {   // 画面のマスごとに1個（重なって見えなくならないように）
+    const pt = map.latLngToContainerPoint([g[2][1], g[2][2]]), ck = Math.floor(pt.x / G) + "_" + Math.floor(pt.y / G);
+    if (cells.has(ck)) continue;
+    cells.add(ck); pick.push(g); if (pick.length >= max) break;
+  }
   spotLayer.clearLayers(); spotMk = [];
   const shown = new Set();
-  for (const [, k, s] of got.slice(0, fixed ? SPOT_MAX : 150)) {
+  for (const [, k, s] of pick) {
     const [ic, nm, col] = SPOT_INFO[k], ll = [s[1], s[2]], id = k + s[1] + "," + s[2];
     shown.add(id);
     const m = L.marker(ll, { icon: L.divIcon({ className: "", iconSize: [0, 0],
@@ -3550,6 +3560,7 @@ function spotNear(p) {   // 150m以内のスポットだけ点滅（GPSが来る
   for (const [m, ll] of spotMk) { const el = m.getElement()?.querySelector(".spot"); if (el) el.classList.toggle("near", hav(p, ll) < SPOT_NEAR); }
 }
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
+map.on("zoomend", () => { if (follow && me) spotUpdate(true); });   // 固定中もズームしたら間引きなおす
 renderSpots(); spotUpdate(true);
 
 // ---------- 開いたとき：共有URL → なければ前回のルート ----------

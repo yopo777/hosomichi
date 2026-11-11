@@ -78,6 +78,7 @@ def spot_kind(t, is_way=False):
     if g("leisure") == "park": return "park"
     if to == "attraction" or hi: return "sight"
     return None
+def famous(t): return 1 if (t.get("wikidata") or t.get("wikipedia")) else 0
 QUEST_KINDS = {"station", "shrine", "temple", "church", "castle", "kofun", "monument", "view", "michi", "sight", "bridge", "bath"}
 
 # ---- 1回目：relation（市区町村の境界・路線）----
@@ -104,7 +105,7 @@ class WayH(osmium.SimpleHandler):
         if w.id in self.need: self.ways[w.id] = [n.ref for n in w.nodes]
         if not w.tags: return
         k = spot_kind(w.tags, True)
-        if k: self.pow.append((k, w.tags.get("name") or "", [n.ref for n in w.nodes]))
+        if k: self.pow.append((k, w.tags.get("name") or "", [n.ref for n in w.nodes], famous(w.tags)))
 
 # ---- 3回目：node（座標・駅・点の神社とお寺）----
 class NodeH(osmium.SimpleHandler):
@@ -119,7 +120,7 @@ class NodeH(osmium.SimpleHandler):
         if not n.tags: return
         if is_station(n.tags) and n.tags.get("name"): self.sta.append((sta_name(n.tags["name"]), la, lo))
         k = spot_kind(n.tags)
-        if k: self.pow.append((k, n.tags.get("name") or "", la, lo))
+        if k: self.pow.append((k, n.tags.get("name") or "", la, lo, famous(n.tags)))
 
 def rings(way_ids, ways):   # way をつないで輪にする（端と端が同じ node のものをつなぐ）
     segs = [list(ways[w]) for w in way_ids if w in ways and len(ways[w]) > 1]
@@ -175,7 +176,7 @@ def main():
     need_w = {w for _, ms in rh.city.values() for w, _ in ms}
     print("2/3 way（境界の線・面になっているスポット・橋）を読んでるよ…", flush=True)
     wh = WayH(need_w); wh.apply_file(src)
-    need_n = {n for ns in wh.ways.values() for n in ns} | {n for _, _, ns in wh.pow for n in ns}
+    need_n = {n for ns in wh.ways.values() for n in ns} | {n for _, _, ns, _ in wh.pow for n in ns}
     need_n |= {n for _, _, ms in rh.route.values() for n, _ in ms}
     print(f"3/3 node（座標 {len(need_n):,}点・駅・スポット）を読んでるよ…", flush=True)
     nh = NodeH(need_n); nh.apply_file(src)
@@ -200,12 +201,12 @@ def main():
     lines.sort(key=lambda x: x[0])
 
     # 市区町村
-    pts = [("station", n, la, lo) for n, la, lo in nh.sta] + nh.pow
-    for k, n, ns in wh.pow:   # 面のスポットは、まわりの点の平均（橋は まん中の点）
+    pts = [("station", n, la, lo, 0) for n, la, lo in nh.sta] + nh.pow
+    for k, n, ns, imp in wh.pow:   # 面のスポットは、まわりの点の平均（橋は まん中の点）
         ps = [L[x] for x in ns if x in L]
         if not ps: continue
-        if k == "bridge": pts.append((k, n) + ps[len(ps) // 2])
-        else: pts.append((k, n, sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps)))
+        if k == "bridge": pts.append((k, n) + ps[len(ps) // 2] + (imp,))
+        else: pts.append((k, n, sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps), imp))
     print(f"  スポット {len(pts):,}か所", flush=True)
     cities = []
     for cid, (nm, ms) in rh.city.items():
@@ -215,16 +216,18 @@ def main():
         S = min(p[0] for r in polys for p in r); N = max(p[0] for r in polys for p in r)
         W = min(p[1] for r in polys for p in r); E = max(p[1] for r in polys for p in r)
         got = defaultdict(list)
-        for k, n, la, lo in pts:
+        for k, n, la, lo, _ in pts:
             if k in QUEST_KINDS and n and S <= la <= N and W <= lo <= E and inside(polys, la, lo): got[k].append((n, round(la, 5), round(lo, 5)))
         if got: cities.append([nm, {k: [list(p) for p in dedup(v, 0.01 if k == "station" else 0.003)] for k, v in got.items()}])
     cities.sort(key=lambda x: x[0])
 
     # まわりのスポット：0.05°のマスに分ける（同じ名前・同じジャンルで 30m 以内は1つに）
     T = 0.05; tiles = defaultdict(lambda: defaultdict(list))
-    for k, n, la, lo in pts:
+    # 有名なもの（Wikipedia・Wikidata にのっているもの）は4つ目に 1 をつける。アプリは引いたとき有名なものから出す
+    pts.sort(key=lambda x: -x[4])   # 同じ所に2つあったら有名なほうをのこす
+    for k, n, la, lo, imp in pts:
         if k == "station": continue
-        tiles[f"{int(la // T)}_{int(lo // T)}"][k].append((n, round(la, 5), round(lo, 5)))
+        tiles[f"{int(la // T)}_{int(lo // T)}"][k].append((n, round(la, 5), round(lo, 5)) + ((1,) if imp else ()))
     sdir = os.path.join(out, "spots"); os.makedirs(sdir, exist_ok=True)
     for f in os.listdir(sdir):
         if f.endswith(".json"): os.remove(os.path.join(sdir, f))
@@ -233,6 +236,16 @@ def main():
         d = {k: [list(p) for p in dedup(v, 0.0003)] for k, v in kinds.items()}; nsp += sum(len(v) for v in d.values())
         with open(os.path.join(sdir, key + ".json"), "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False, separators=(",", ":"))
     print(f"  まわりのスポット {nsp:,}か所 → spots/ {len(tiles)}マス", flush=True)
+    # 引いたとき用（ズーム12より引いたとき）：0.1°のマスごと・ジャンルごとに、有名なもの3つまで（なければ1つ）
+    OT = 0.1; cell = defaultdict(list)
+    for k, n, la, lo, imp in pts:
+        if k != "station": cell[(k, int(la // OT), int(lo // OT))].append((n, round(la, 5), round(lo, 5)) + ((1,) if imp else ()))
+    ov = defaultdict(list)
+    for (k, _, _), v in cell.items():
+        fam = [p for p in v if len(p) > 3]
+        ov[k] += fam[:3] if fam else [next((p for p in v if p[0]), v[0])]   # 有名なのがなければ、名前のあるものを1つ
+    with open(os.path.join(out, "spots_overview.json"), "w", encoding="utf-8") as f: json.dump(ov, f, ensure_ascii=False, separators=(",", ":"))
+    print(f"  引いたとき用 {sum(len(v) for v in ov.values()):,}か所 → spots_overview.json（{os.path.getsize(os.path.join(out, 'spots_overview.json')) / 1048576:.1f}MB）", flush=True)
     o = {"v": datetime.date.today().isoformat(), "lines": lines, "cities": cities, "spots": {"T": T, "keys": sorted(tiles)}}
     path = os.path.join(out, "quests.json")
     with open(path, "w", encoding="utf-8") as f: json.dump(o, f, ensure_ascii=False, separators=(",", ":"))
