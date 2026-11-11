@@ -126,7 +126,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1447</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1450</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3351,7 +3351,8 @@ async function qTour(id, back, skipDone) {
   if ($("go").disabled) return alert("いまルートを計算中だよ");
   const pts = q.st.filter(s => !skipDone || !qVisitOf(s));
   if (!pts.length) return alert("回る所がないよ");
-  if (pts.length > 40) return alert(`${pts.length}${qUnit(q)}は多すぎるよ。40までにしてね（「行った所はとばす」で減らせるよ）`);
+  if (pts.length > 200) return alert(`${pts.length}${qUnit(q)}は多すぎるよ。200までにしてね（「行った所はとばす」で減らせるよ）`);
+  if (pts.length > 40 && !confirm(`${pts.length}${qUnit(q)}を回るルートは、計算に数分かかるかも（パソコン向け）。\nとちゅうで「■ 止める」もできるよ。作る？`)) return;
   audioUnlock();
   const fromT = $("from").value.trim();
   try {

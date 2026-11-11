@@ -1745,7 +1745,8 @@ async function qTour(id, back, skipDone) {
   if ($("go").disabled) return alert("いまルートを計算中だよ");
   const pts = q.st.filter(s => !skipDone || !qVisitOf(s));
   if (!pts.length) return alert("回る所がないよ");
-  if (pts.length > 40) return alert(`${pts.length}${qUnit(q)}は多すぎるよ。40までにしてね（「行った所はとばす」で減らせるよ）`);
+  if (pts.length > 200) return alert(`${pts.length}${qUnit(q)}は多すぎるよ。200までにしてね（「行った所はとばす」で減らせるよ）`);
+  if (pts.length > 40 && !confirm(`${pts.length}${qUnit(q)}を回るルートは、計算に数分かかるかも（パソコン向け）。\nとちゅうで「■ 止める」もできるよ。作る？`)) return;
   audioUnlock();
   const fromT = $("from").value.trim();
   try {
