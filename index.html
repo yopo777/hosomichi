@@ -94,6 +94,10 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 @keyframes fbk{50%{opacity:.25}}
 #col{position:absolute;top:calc(50% - 154px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
+#mk{position:absolute;top:calc(50% - 226px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0;display:none}
+#mk.off{opacity:.45;filter:grayscale(1)}
+#mk small{position:absolute;right:0;left:0;bottom:-16px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 #col small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 #legend{position:absolute;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));cursor:pointer;-webkit-tap-highlight-color:transparent;z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:6px 8px;font-size:11px;line-height:1.6;display:none;max-width:60%}
@@ -143,7 +147,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.2339</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.2343</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -240,6 +244,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
+<button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qToast"></div>
@@ -3581,6 +3586,7 @@ const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k,
 const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
+let spotHide = lsGet("hosomichi_spothide", false);   // 右はしの📍ボタンで、えらんだマークをまとめて かくす／出す
 let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null, spotFx = lsGet("hosomichi_spotfx", true), spotSz = lsGet("hosomichi_spotsz", "M");
 const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
 spotSize();   // spotFx：出たときぴょこぴょこ・近づいたら点滅
@@ -3596,7 +3602,7 @@ $("tabSpot").addEventListener("change", e => {
   if (e.target.dataset.fx) { spotFx = e.target.checked; lsSet("hosomichi_spotfx", spotFx); for (const el of document.querySelectorAll(".spot.near,.spot.new")) el.classList.remove("near", "new"); return; }
   const k = e.target.dataset.sk; if (!k) return;
   if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
-  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true);
+  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn();
 });
 let spotOv = null;
 function spotOverview() {   // 引いたとき用（関東まるごと・間引いたもの）
@@ -3616,6 +3622,7 @@ function spotTile(key) {   // 1回読んだマスはおぼえておく（ない�
 const ROAD_GROUPS = ["道", "車止め"], SPOT_ROAD_Z = 16;
 const SPOT_ROAD = new Set(SPOT_KINDS.filter(g => ROAD_GROUPS.includes(g[0])).flatMap(g => g[1].map(x => x[0])));
 async function spotUpdate(force) {
+  if (spotHide) return;   // かくし中は読みも描きもしない
   if (!spotOn.size) { spotLayer.clearLayers(); spotAt = null; return; }
   const fixed = follow && me, c = fixed ? me.getLatLng() : map.getCenter(), p = [c.lat, c.lng];
   const onAll = [...spotOn].filter(k => k !== "oneway"), roadOn = map.getZoom() >= SPOT_ROAD_Z ? onAll.filter(k => SPOT_ROAD.has(k)) : [];
@@ -3673,6 +3680,7 @@ renderSpots(); spotUpdate(true);
 const owLayer = L.layerGroup().addTo(map);
 let owAt = null, owZ = 0, owId = 0;
 function owUpdate(force) {
+  if (spotHide) return;
   if (!spotOn.has("oneway") || map.getZoom() < 16) { owLayer.clearLayers(); owAt = null; return; }
   const c = map.getCenter(), p = [c.lat, c.lng];
   if (!force && owAt && owZ === map.getZoom() && hav(owAt, p) < 150) return;   // 少ししか動いていない
@@ -3707,6 +3715,15 @@ function owDraw(m) {
   }
 }
 map.on("moveend", () => owUpdate(false));
+// 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印）をまとめて かくす／出す。えらんだジャンルはそのまま
+function mkBtn() {
+  $("mk").style.display = spotOn.size ? "block" : "none";
+  $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
+  for (const ly of [spotLayer, owLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
+}
+$("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } };
+mkBtn();
+
 owUpdate(true);
 
 
