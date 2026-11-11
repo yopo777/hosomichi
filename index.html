@@ -126,7 +126,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1414</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1443</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3448,7 +3448,7 @@ function qRender() {
         <div style="color:#888;margin-top:2px">出発は「🚲 ルート」タブの出発（空なら現在地）。回る順番は自動で決めるよ</div>
         <button class="ib" data-a="tgo" style="margin-top:6px;width:100%;border-color:#188038;color:#188038;font-weight:bold">ルートを作る</button></div>
       <div class="sts">${q.st.map(s => qVisitOf(s) ? `<span class="v">✓${esc(s[0])}</span>` : `<span class="n">${esc(s[0])}</span>`).join("")}</div></div>`;
-  }).join("") : '<div style="font-size:12px;color:#888;padding:6px">まだクエストがないよ。上で路線をさがしてね</div>';
+  }).join("") : '<div style="font-size:12px;color:#888;padding:6px">まだクエストがないよ。上で市の名前か路線名をさがしてね</div>';
 }
 $("qFind").onclick = qFind;
 $("qLine").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) qFind(); });
