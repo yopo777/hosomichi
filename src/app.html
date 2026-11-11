@@ -1701,10 +1701,11 @@ async function qFind() {
   $("qCand").innerHTML = '<div style="font-size:12px;color:#888;padding:6px">さがしてるよ…（10〜20秒かかることがあるよ）</div>';
   const re = t.replace(/[\\\\"]/g, "").replace(/[.*+?^${}()|[\]]/g, "\\\\$&");
   const K = '"^(subway|train|light_rail|monorail|tram)$"';
-  const oq = `[out:json][timeout:25];(rel["type"="route_master"]["route_master"~${K}]["name"~"${re}"](24,122,46,154);rel["type"="route"]["route"~${K}]["name"~"${re}"](24,122,46,154););out tags;`;
+  // 範囲（bbox）でしぼると route_master（中身が路線だけ）はヒットしないので、名前だけでさがす
+  const oq = `[out:json][timeout:40];(rel["type"="route_master"]["route_master"~${K}]["name"~"${re}"];rel["type"="route"]["route"~${K}]["name"~"${re}"];);out tags;`;
   addLog(`🏁 路線さがし「${t}」`, "h");
   try {
-    const els = await overpass(oq);
+    const els = await overpass(oq, 45000);
     const ms = els.filter(e => e.tags.type === "route_master"), rs = els.filter(e => e.tags.type === "route");
     const list = (ms.length ? ms : rs).slice(0, 15);
     addLog(`  路線: ${ms.length}件・方向べつ: ${rs.length}件`, "m");

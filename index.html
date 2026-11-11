@@ -126,7 +126,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1403</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1407</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3307,10 +3307,11 @@ async function qFind() {
   $("qCand").innerHTML = '<div style="font-size:12px;color:#888;padding:6px">さがしてるよ…（10〜20秒かかることがあるよ）</div>';
   const re = t.replace(/[\\\\"]/g, "").replace(/[.*+?^${}()|[\]]/g, "\\\\$&");
   const K = '"^(subway|train|light_rail|monorail|tram)$"';
-  const oq = `[out:json][timeout:25];(rel["type"="route_master"]["route_master"~${K}]["name"~"${re}"](24,122,46,154);rel["type"="route"]["route"~${K}]["name"~"${re}"](24,122,46,154););out tags;`;
+  // 範囲（bbox）でしぼると route_master（中身が路線だけ）はヒットしないので、名前だけでさがす
+  const oq = `[out:json][timeout:40];(rel["type"="route_master"]["route_master"~${K}]["name"~"${re}"];rel["type"="route"]["route"~${K}]["name"~"${re}"];);out tags;`;
   addLog(`🏁 路線さがし「${t}」`, "h");
   try {
-    const els = await overpass(oq);
+    const els = await overpass(oq, 45000);
     const ms = els.filter(e => e.tags.type === "route_master"), rs = els.filter(e => e.tags.type === "route");
     const list = (ms.length ? ms : rs).slice(0, 15);
     addLog(`  路線: ${ms.length}件・方向べつ: ${rs.length}件`, "m");
