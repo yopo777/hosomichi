@@ -131,7 +131,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1717</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1741</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="spot">📍 マーク</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -1089,6 +1089,30 @@ async function packTile(big) {   // 大きいマスを配布データから取�
   mem.set(big, json.elements);
   return { el: json.elements, bytes: blob.size };
 }
+// 📍 一方通行の矢印用：見えている範囲の一方通行の道（端末にある道路データか配布データだけ。サーバーには取りにいかない）
+async function onewayIn(bb) {
+  const [S, W, N, E] = bb, T = 0.01, keys = [];
+  for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
+  if (keys.length > 30) return { ways: [], tooWide: true };
+  const nodes = new Map(), ways = [], seen = new Set();
+  for (const k of keys) {
+    let el = mem.get(k);
+    if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+    if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+    if (!el) continue;
+    for (const e of el) if (e.type === "node") nodes.set(e.id, [e.lat, e.lon]);
+    for (const e of el) {
+      const t = e.type === "way" && e.tags; if (!t || seen.has(e.id) || !t.highway) continue;
+      const ow = t.oneway; if (!["yes", "1", "true", "-1"].includes(ow)) continue;
+      seen.add(e.id);
+      let pts = e.nodes.map(n => nodes.get(n)).filter(Boolean); if (pts.length < 2) continue;
+      if (ow === "-1") pts = pts.reverse();
+      if (!pts.some(p => p[0] > S && p[0] < N && p[1] > W && p[1] < E)) continue;
+      ways.push([pts.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]), t["oneway:bicycle"] === "no" ? 1 : 0]);   // 1 = 自転車は両方向OK
+    }
+  }
+  return { ways };
+}
 // 配布データをまとめて入れる（パソコン向け）
 let pkStop = false;
 async function packAll(post) {
@@ -1799,6 +1823,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       }
       if (d.cmd === "packAll") { pkStop = false; await packAll(p => self.postMessage({ type: "pk", ...p })); return self.postMessage({ type: "stats", ...(await stats()) }); }
       if (d.cmd === "packStop") { pkStop = true; return; }
+      if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
         if (pfRun) return; pfRun = true;
@@ -2281,6 +2306,7 @@ worker.onmessage = ev => {
   const m = ev.data;
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
   if (m.type === "pf") { onPf(m); return; }
+  if (m.type === "oneway") { owDraw(m); return; }
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
   if (m.type === "pk") { onPk(m); return; }
   if (m.type === "export") { onExport(m); return; }
@@ -3498,7 +3524,8 @@ const SPOT_KINDS = [
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"]]],
   ["こまったとき", [["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
-    ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"]]],
+    ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
+    ["oneway", "➡", "一方通行"]]],
   ["車止め", [["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
   ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["ramen", "🍜", "ラーメン"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
   ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
@@ -3523,14 +3550,14 @@ const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
 let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null;
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
-  $("spotBox").innerHTML = `<div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ</div>`
+  $("spotBox").innerHTML = `<div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
     + SPOT_KINDS.map(([g, ks]) => `<div style="margin-top:4px"><span style="color:#666">${g}：</span>` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("") + "</div>").join("");
 }
 $("tabSpot").addEventListener("change", e => {
   const k = e.target.dataset.sk; if (!k) return;
   if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
-  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true);
+  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true);
 });
 let spotOv = null;
 function spotOverview() {   // 引いたとき用（関東まるごと・間引いたもの）
@@ -3591,6 +3618,45 @@ function spotNear(p) {   // 150m以内のスポットだけ点滅（GPSが来る
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
 map.on("zoomend", () => { if (follow && me) spotUpdate(true); });   // 固定中もズームしたら間引きなおす
 renderSpots(); spotUpdate(true);
+// ---------- ➡ 一方通行の矢印（拡大したとき。道路データは端末にあるもの・配布データから） ----------
+const owLayer = L.layerGroup().addTo(map);
+let owAt = null, owZ = 0, owId = 0;
+function owUpdate(force) {
+  if (!spotOn.has("oneway") || map.getZoom() < 16) { owLayer.clearLayers(); owAt = null; return; }
+  const c = map.getCenter(), p = [c.lat, c.lng];
+  if (!force && owAt && owZ === map.getZoom() && hav(owAt, p) < 150) return;   // 少ししか動いていない
+  owAt = p; owZ = map.getZoom();
+  const b = map.getBounds().pad(0.2);
+  worker.postMessage({ cmd: "oneway", id: ++owId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()] });
+}
+function owDraw(m) {
+  if (m.id !== owId) return;   // 古い返事
+  owLayer.clearLayers();
+  if (!spotOn.has("oneway") || map.getZoom() < 16) return;
+  const step = map.getZoom() >= 17 ? 45 : 80, MAXN = 500; let n = 0;
+  for (const [pts, free] of m.ways) {
+    const col = free ? "#4fc3f7" : "#d93025";
+    let next = step / 2, acc = 0;
+    for (let i = 1; i < pts.length && n < MAXN; i++) {
+      const a = pts[i - 1], b = pts[i], d = hav(a, b);
+      while (acc + d >= next && n < MAXN) {   // 道にそって step m ごとに矢印
+        const t = (next - acc) / d, ll = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        L.marker(ll, { interactive: false, rotateWithView: true, rotation: (bearingDeg(a, b) - 90) * RAD,
+          icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="transform:translate(-50%,-50%);color:${col};font-size:15px;font-weight:bold;line-height:1;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff">➜</div>` }) }).addTo(owLayer);
+        next += step; n++;
+      }
+      acc += d;
+    }
+    if (acc < step / 2 && pts.length > 1 && n < MAXN) {   // 短い道も1つは出す
+      const a = pts[0], b = pts[pts.length - 1];
+      L.marker([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], { interactive: false, rotateWithView: true, rotation: (bearingDeg(a, b) - 90) * RAD,
+        icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="transform:translate(-50%,-50%);color:${col};font-size:15px;font-weight:bold;line-height:1;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff">➜</div>` }) }).addTo(owLayer);
+      n++;
+    }
+  }
+}
+map.on("moveend", () => owUpdate(false));
+owUpdate(true);
 
 
 // ---------- 地図のまん中（固定中は現在地）の住所を下に小さく出す（国土地理院の住所さがし） ----------

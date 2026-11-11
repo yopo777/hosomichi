@@ -858,6 +858,30 @@ async function packTile(big) {   // 大きいマスを配布データから取�
   mem.set(big, json.elements);
   return { el: json.elements, bytes: blob.size };
 }
+// 📍 一方通行の矢印用：見えている範囲の一方通行の道（端末にある道路データか配布データだけ。サーバーには取りにいかない）
+async function onewayIn(bb) {
+  const [S, W, N, E] = bb, T = 0.01, keys = [];
+  for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
+  if (keys.length > 30) return { ways: [], tooWide: true };
+  const nodes = new Map(), ways = [], seen = new Set();
+  for (const k of keys) {
+    let el = mem.get(k);
+    if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+    if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+    if (!el) continue;
+    for (const e of el) if (e.type === "node") nodes.set(e.id, [e.lat, e.lon]);
+    for (const e of el) {
+      const t = e.type === "way" && e.tags; if (!t || seen.has(e.id) || !t.highway) continue;
+      const ow = t.oneway; if (!["yes", "1", "true", "-1"].includes(ow)) continue;
+      seen.add(e.id);
+      let pts = e.nodes.map(n => nodes.get(n)).filter(Boolean); if (pts.length < 2) continue;
+      if (ow === "-1") pts = pts.reverse();
+      if (!pts.some(p => p[0] > S && p[0] < N && p[1] > W && p[1] < E)) continue;
+      ways.push([pts.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]), t["oneway:bicycle"] === "no" ? 1 : 0]);   // 1 = 自転車は両方向OK
+    }
+  }
+  return { ways };
+}
 // 配布データをまとめて入れる（パソコン向け）
 let pkStop = false;
 async function packAll(post) {
@@ -1568,6 +1592,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       }
       if (d.cmd === "packAll") { pkStop = false; await packAll(p => self.postMessage({ type: "pk", ...p })); return self.postMessage({ type: "stats", ...(await stats()) }); }
       if (d.cmd === "packStop") { pkStop = true; return; }
+      if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
         if (pfRun) return; pfRun = true;
