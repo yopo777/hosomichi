@@ -1917,14 +1917,15 @@ const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k,
 const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
-let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null;
+let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null, spotFx = lsGet("hosomichi_spotfx", true);   // spotFx：出たときぴょこぴょこ・近づいたら点滅
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
-  $("spotBox").innerHTML = `<div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
+  $("spotBox").innerHTML = `<label style="display:flex;align-items:center;gap:4px;font-weight:bold;margin:2px 0 4px"><input type="checkbox" data-fx="1"${spotFx ? " checked" : ""}>✨ 目立たせる（出たときぴょこぴょこ・150m以内は点滅）</label><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
     + SPOT_KINDS.map(([g, ks]) => `<div style="margin-top:4px"><span style="color:#666">${g}：</span>` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("") + "</div>").join("");
 }
 $("tabSpot").addEventListener("change", e => {
+  if (e.target.dataset.fx) { spotFx = e.target.checked; lsSet("hosomichi_spotfx", spotFx); for (const el of document.querySelectorAll(".spot.near,.spot.new")) el.classList.remove("near", "new"); return; }
   const k = e.target.dataset.sk; if (!k) return;
   if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
   lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true);
@@ -1984,7 +1985,7 @@ async function spotUpdate(force) {
     const [ic, nm, col] = SPOT_INFO[k], ll = [s[1], s[2]], id = k + s[1] + "," + s[2], isRoad = SPOT_ROAD.has(k);
     shown.add(id);
     const m = L.marker(ll, { icon: L.divIcon({ className: "", iconSize: [0, 0],
-        html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot${spotShown.has(id) || isRoad ? "" : " new"}${isRoad ? " road" : ""}" style="border-color:${col}">${spotIc(k, ic)}</div></div>` }), zIndexOffset: 200 })
+        html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot${spotShown.has(id) || isRoad || !spotFx ? "" : " new"}${isRoad ? " road" : ""}" style="border-color:${col}">${spotIc(k, ic)}</div></div>` }), zIndexOffset: 200 })
       .bindTooltip(s[0] || nm, { direction: "top", offset: [0, -14] })
       .on("click", () => pinPopup(L.latLng(ll), s[1].toFixed(6) + "," + s[2].toFixed(6), (SPOT_SVG[k] ? "" : ic + " ") + (s[0] || nm))).addTo(spotLayer);
     if (!isRoad) spotMk.push([m, ll]);   // 道・車止めは点滅させない（たくさんあるので）
@@ -1993,6 +1994,7 @@ async function spotUpdate(force) {
   if (wid !== null && me) spotNear([me.getLatLng().lat, me.getLatLng().lng]);
 }
 function spotNear(p) {   // 150m以内のスポットだけ点滅（GPSが来るたび。多くても60個しか見ない）
+  if (!spotFx) return;
   for (const [m, ll] of spotMk) { const el = m.getElement()?.querySelector(".spot"); if (el) el.classList.toggle("near", hav(p, ll) < SPOT_NEAR); }
 }
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
