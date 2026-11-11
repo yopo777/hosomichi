@@ -17,7 +17,21 @@
 """
 import sys, os, re, json, time, datetime
 from collections import defaultdict
-import osmium
+try:
+    import osmium
+except ImportError as e:
+    # Windows のスマートアプリコントロールが osmium の「area」部品（DLL）だけ止めることがある。
+    # このスクリプトは area を使わないので、身代わりを置いて読みこまないようにする
+    if "area" not in str(e) and "アプリケーション制御" not in str(e): raise
+    import types
+    for k in [k for k in sys.modules if k == "osmium" or k.startswith("osmium.")]: del sys.modules[k]
+    stub = types.ModuleType("osmium.area")
+    class AreaManager:
+        def __init__(self, *a, **k): raise RuntimeError("osmium の area 部品が Windows に止められているので使えないよ")
+    stub.AreaManager = AreaManager
+    sys.modules["osmium.area"] = stub
+    import osmium
+    print("（osmium の area 部品は Windows に止められていたので、使わずに動かすよ）", flush=True)
 
 RAIL = {"train", "subway", "light_rail", "monorail", "tram"}
 def clean(v): return re.sub(r"\s*[（(][^）)]*[）)]\s*", "", v or "").strip()   # 「千代田線（綾瀬→代々木上原）」→「千代田線」
