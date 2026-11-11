@@ -126,7 +126,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1407</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1410</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3291,7 +3291,9 @@ async function overpass(q, ms = 30000) {
     try {
       const res = await tfetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } }, ms);
       if (!res.ok) throw new Error("HTTP " + res.status);
-      return (await res.json()).elements || [];
+      const j = await res.json();
+      if (j.remark && /runtime error|timed out|out of memory/i.test(j.remark)) throw new Error("時間切れ・重すぎ（" + j.remark.slice(0, 80) + "）");
+      return j.elements || [];
     } catch (e) { last = e; addLog(`  Overpass(${new URL(url).host}) 失敗: ${e.message}`, "w"); }
   }
   throw last || new Error("Overpass に つながらなかった");
@@ -3305,20 +3307,22 @@ async function qFind() {
   const t = $("qLine").value.trim(); if (!t || qBusy) return;
   $("qLine").blur(); qBusy = true;
   $("qCand").innerHTML = '<div style="font-size:12px;color:#888;padding:6px">さがしてるよ…（10〜20秒かかることがあるよ）</div>';
-  const re = t.replace(/[\\\\"]/g, "").replace(/[.*+?^${}()|[\]]/g, "\\\\$&");
-  const K = '"^(subway|train|light_rail|monorail|tram)$"';
-  // 範囲（bbox）でしぼると route_master（中身が路線だけ）はヒットしないので、名前だけでさがす
-  const oq = `[out:json][timeout:40];(rel["type"="route_master"]["route_master"~${K}]["name"~"${re}"];rel["type"="route"]["route"~${K}]["name"~"${re}"];);out tags;`;
+  // 名前の一部で日本中をさがすと Overpass が時間切れになるので、地図のまわり（±60km くらい）の鉄道の路線をまとめて取って、名前はここでしぼる
+  const K = '"^(subway|train|light_rail|monorail|tram)$"', c = map.getCenter();
+  const bb = [c.lat - 0.55, c.lng - 0.7, c.lat + 0.55, c.lng + 0.7].map(v => v.toFixed(3)).join(",");
+  const oq = `[out:json][timeout:60];rel["type"="route"]["route"~${K}](${bb})->.r;rel(br.r)["type"="route_master"]->.m;(.r;.m;);out tags;`;
   addLog(`🏁 路線さがし「${t}」`, "h");
   try {
-    const els = await overpass(oq, 45000);
+    const T0 = Date.now(), all = await overpass(oq, 70000), key = qNorm(t);
+    const els = all.filter(e => qNorm(e.tags.name).includes(key));
+    addLog(`  地図のまわりの路線 ${all.length}件を取った（${((Date.now() - T0) / 1000).toFixed(1)}秒）`, "m");
     const ms = els.filter(e => e.tags.type === "route_master"), rs = els.filter(e => e.tags.type === "route");
     const list = (ms.length ? ms : rs).slice(0, 15);
     addLog(`  路線: ${ms.length}件・方向べつ: ${rs.length}件`, "m");
     $("qCand").innerHTML = list.length ? '<div style="font-size:11px;color:#666;margin-top:4px">どれにする？</div>' + list.map(e =>
       `<div class="c"><div><b>${esc(e.tags.name)}</b><br><small style="color:#888">${esc(e.tags.operator || "")}${e.tags.type === "route" ? "（片方向だけ）" : ""}</small></div>` +
       `<button class="ib" data-id="${e.id}" data-n="${esc(e.tags.name)}" data-o="${esc(e.tags.operator || "")}" style="font-size:12px">＋ クエストにする</button></div>`).join("")
-      : '<div style="font-size:12px;color:#c00;padding:6px">見つからなかったよ。「千代田線」「常磐線」みたいに、路線名だけで入れてみてね</div>';
+      : '<div style="font-size:12px;color:#c00;padding:6px">見つからなかったよ。「千代田線」「常磐線」みたいに、路線名だけで入れてみてね。地図のまわり60kmくらいの路線をさがすよ</div>';
   } catch (e) { $("qCand").innerHTML = `<div style="font-size:12px;color:#c00;padding:6px">さがせなかったよ（${esc(e.message)}）。少したってからもう一回ためしてね</div>`; }
   qBusy = false;
 }
