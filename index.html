@@ -147,7 +147,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0014</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0016</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2374,7 +2374,8 @@ worker.onmessage = ev => {
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes, frac: m.frac ?? lastProg.frac }; showProg(); return; }
   drawPreview(null); routeFetch = []; drawFetching();
   clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
-  if (m.type === "done" && !(job && job.next)) { $("bar").classList.add("done"); chime(); }   // 終わったら緑＆音（経由地までのときは鳴らさない）
+  if (m.type === "done" && !(job && job.next)) { $("bar").classList.add("done"); chime(); }
+  if ((m.type === "done" && !(job && job.next)) || m.type === "stopped" || m.type === "error") { calcKeys = []; drawArea(); }   // 計算に使った範囲（青い点線の四角）は、終わったら消す   // 終わったら緑＆音（経由地までのときは鳴らさない）
   if (m.type === "stopped") {
     setBar(0);
     if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); setMsg("止めたよ。「▶ 続きを計算」でここから再開できるよ"); }

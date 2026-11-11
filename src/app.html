@@ -743,7 +743,8 @@ worker.onmessage = ev => {
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes, frac: m.frac ?? lastProg.frac }; showProg(); return; }
   drawPreview(null); routeFetch = []; drawFetching();
   clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
-  if (m.type === "done" && !(job && job.next)) { $("bar").classList.add("done"); chime(); }   // 終わったら緑＆音（経由地までのときは鳴らさない）
+  if (m.type === "done" && !(job && job.next)) { $("bar").classList.add("done"); chime(); }
+  if ((m.type === "done" && !(job && job.next)) || m.type === "stopped" || m.type === "error") { calcKeys = []; drawArea(); }   // 計算に使った範囲（青い点線の四角）は、終わったら消す   // 終わったら緑＆音（経由地までのときは鳴らさない）
   if (m.type === "stopped") {
     setBar(0);
     if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); setMsg("止めたよ。「▶ 続きを計算」でここから再開できるよ"); }
