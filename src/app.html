@@ -105,6 +105,9 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 .pin{font-size:13px}
 .spot{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #888;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;box-shadow:0 1px 4px #0007}
 .spot.road{width:22px;height:22px;border-width:2px;font-size:12px}
+.spotS .spot{width:17px;height:17px;border-width:2px;font-size:10px}.spotS .spot.road{width:14px;height:14px;border-width:1.5px;font-size:8px}
+.spotS .spot svg{transform:scale(.62)}.spotS .spot.road svg{transform:scale(.5)}
+.spotL .spot{width:34px;height:34px;border-width:3px;font-size:20px}.spotL .spot.road{width:28px;height:28px;font-size:16px}.spotL .spot svg{transform:scale(1.25)}
 .spot.new{animation:spotPop .45s ease-out 3}   /* 出てきたときだけ3回ぴょこぴょこ */
 .spot.near{animation:spotBlink 1s ease-in-out infinite;border-color:#fbbc04 !important}   /* 150m以内は点滅 */
 @keyframes spotPop{0%,100%{transform:scale(1)}40%{transform:translateY(-6px) scale(1.35)}}
@@ -1917,14 +1920,18 @@ const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k,
 const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
-let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null, spotFx = lsGet("hosomichi_spotfx", true);   // spotFx：出たときぴょこぴょこ・近づいたら点滅
+let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null, spotFx = lsGet("hosomichi_spotfx", true), spotSz = lsGet("hosomichi_spotsz", "M");
+const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
+spotSize();   // spotFx：出たときぴょこぴょこ・近づいたら点滅
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
-  $("spotBox").innerHTML = `<label style="display:flex;align-items:center;gap:4px;font-weight:bold;margin:2px 0 4px"><input type="checkbox" data-fx="1"${spotFx ? " checked" : ""}>✨ 目立たせる（出たときぴょこぴょこ・150m以内は点滅）</label><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
+  $("spotBox").innerHTML = `<label style="display:flex;align-items:center;gap:4px;font-weight:bold;margin:2px 0 4px"><input type="checkbox" data-fx="1"${spotFx ? " checked" : ""}>✨ 目立たせる（出たときぴょこぴょこ・150m以内は点滅）</label>
+    <div style="margin:0 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
     + SPOT_KINDS.map(([g, ks]) => `<div style="margin-top:4px"><span style="color:#666">${g}：</span>` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("") + "</div>").join("");
 }
 $("tabSpot").addEventListener("change", e => {
+  if (e.target.dataset.sz) { spotSz = e.target.dataset.sz; lsSet("hosomichi_spotsz", spotSz); spotSize(); return; }
   if (e.target.dataset.fx) { spotFx = e.target.checked; lsSet("hosomichi_spotfx", spotFx); for (const el of document.querySelectorAll(".spot.near,.spot.new")) el.classList.remove("near", "new"); return; }
   const k = e.target.dataset.sk; if (!k) return;
   if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
