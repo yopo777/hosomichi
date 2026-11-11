@@ -131,7 +131,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1554</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1558</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -220,6 +220,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qToast"></div>
+<div id="addr" style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:1000;font-size:11px;color:#333;background:#ffffffcc;border-radius:6px;padding:1px 6px;pointer-events:none;white-space:nowrap;display:none"></div>
 <div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
 
@@ -3562,6 +3563,35 @@ function spotNear(p) {   // 150m以内のスポットだけ点滅（GPSが来る
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
 map.on("zoomend", () => { if (follow && me) spotUpdate(true); });   // 固定中もズームしたら間引きなおす
 renderSpots(); spotUpdate(true);
+
+
+// ---------- 地図のまん中（固定中は現在地）の住所を下に小さく出す（国土地理院の住所さがし） ----------
+let addrAt = null, addrT = 0, addrTimer = null, muni = null;
+async function muniTable() {   // 市区町村コード → 名前（地理院の muni.js を1回だけ読む）
+  if (muni) return muni;
+  muni = {};
+  try {
+    const t = await (await tfetch("https://maps.gsi.go.jp/js/muni.js", {}, 10000)).text();
+    for (const m of t.matchAll(/MUNI_ARRAY\["(\d+)"\]\s*=\s*'[^,]*,([^,]*),\d+,([^']*)'/g)) muni[+m[1]] = m[3].replace(/[\s　]/g, "");
+  } catch {}
+  return muni;
+}
+async function showAddr() {
+  const c = follow && me ? me.getLatLng() : map.getCenter(), p = [c.lat, c.lng];
+  if (addrAt && hav(addrAt, p) < 30) return;   // ほとんど動いていない
+  if (follow && Date.now() - addrT < 15000) return;   // ナビ中は15秒に1回まで
+  addrAt = p; addrT = Date.now();
+  try {
+    const r = await (await tfetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${p[0].toFixed(6)}&lon=${p[1].toFixed(6)}`, {}, 6000)).json();
+    if (addrAt !== p) return;
+    const t = r.results; if (!t) { $("addr").style.display = "none"; return; }
+    const city = (await muniTable())[+t.muniCd] || "";
+    $("addr").textContent = "📍 " + city + (t.lv01Nm && t.lv01Nm !== "－" ? t.lv01Nm : "");
+    $("addr").style.display = "block";
+  } catch { addrAt = null; }
+}
+map.on("moveend", () => { clearTimeout(addrTimer); addrTimer = setTimeout(showAddr, 700); });
+showAddr();
 
 // ---------- 開いたとき：共有URL → なければ前回のルート ----------
 if (location.hash.includes("r=")) loadHash();
