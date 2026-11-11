@@ -556,7 +556,7 @@ async function loopRoute(req, prog) {
   return { ...main, alts: others, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
 }
 // 区間をつなぐ。つなぎ目の「行ってすぐもどる」ムダはけずる
-function joinLegs(parts) {
+function joinLegs(parts, keepSpur) {   // keepSpur：行って同じ道で戻る所も消さない（🏁 ぜんぶ回る は駅の前まで行きたいので）
   let route = parts[0].route.slice(), ek = (parts[0].ek || []).slice();
   const res = { ok: [], xw: [], ng: [], kinds: {}, turns: 0, len: 0 };
   const same = (p, q) => p && q && p[0] === q[0] && p[1] === q[1];
@@ -564,7 +564,7 @@ function joinLegs(parts) {
     const P = parts[i];
     if (i) {
       const R2 = P.route, E2 = P.ek || []; let k = 0;
-      while (k + 1 < R2.length && route.length - 2 - k >= 0 && same(route[route.length - 2 - k], R2[1 + k])) k++;
+      while (!keepSpur && k + 1 < R2.length && route.length - 2 - k >= 0 && same(route[route.length - 2 - k], R2[1 + k])) k++;
       for (let j = 0; j < k; j++) res.len -= 2 * hav(R2[j][0], R2[j][1], R2[j + 1][0], R2[j + 1][1]);
       route = route.slice(0, route.length - k).concat(R2.slice(1 + k));
       ek = ek.slice(0, ek.length - k).concat(E2.slice(k));
@@ -597,7 +597,7 @@ async function tourRoute(req, prog) {
     }
   } finally { usedNodes = null; }
   if (!parts.length) throw new Error("ルートが1区間も作れなかったよ");
-  const L = joinLegs(parts), sec = (Date.now() - T0) / 1000;
+  const L = joinLegs(parts, true), sec = (Date.now() - T0) / 1000;
   log(`==== 🏁 完了 ${(L.len / 1000).toFixed(1)}km（${sec.toFixed(1)}秒）${skip.length ? `・とばした所: ${skip.join("、")}` : ""} ====`, "ok");
   return { ...L, stops: P.map((p, i) => ({ p: [p[0], p[1]], kind: "via", name: `${i + 1}. ${p[2]}` })), tour: P.length, skip, sec };
 }
