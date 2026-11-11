@@ -107,7 +107,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.0919</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.0927</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -205,6 +205,7 @@ const DEFAULT_CFG = {
   unpaved: "no",         // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
+  park: 5,               // 公園の中の道（園路など）："no"=通らない / 倍率 / 1=気にしない
   cemetery: 5,           // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
@@ -483,11 +484,12 @@ function buildGraph(osm, cfg, onProg) {
   // 駅の中・駅の自由通路：駅（配布データの駅一覧）から150m以内の、歩道・小道で、
   // 橋・地下・屋根つき・建物の中・階（level）がある・名前に「通路」「コンコース」「改札」「駅」がある道
   const stPen = cfg.station === "no" ? null : (+cfg.station || 1), STA_R = 150;
-  const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1);
-  const inCemetery = nd => {   // 道のまん中の点（と両はし）が霊園のはんいの中か
+  const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1), parkPen = cfg.park === "no" ? null : (+cfg.park || 1);
+  const inArea = (kind, nd) => {   // 道のまん中の点（と両はし）が はんいの中か
     const m = nd[nd.length >> 1];
-    return cemHas(lat[m], lon[m]) || (nd.length > 2 && cemHas(lat[nd[0]], lon[nd[0]]) && cemHas(lat[nd[nd.length - 1]], lon[nd[nd.length - 1]]));
+    return areaHas(kind, lat[m], lon[m]) || (nd.length > 2 && areaHas(kind, lat[nd[0]], lon[nd[0]]) && areaHas(kind, lat[nd[nd.length - 1]], lon[nd[nd.length - 1]]));
   };
+  const wayLen = nd => { let L = 0; for (let i = 1; i < nd.length; i++) L += hav(lat[nd[i - 1]], lon[nd[i - 1]], lat[nd[i]], lon[nd[i]]); return L; };
   const nearSta = (la, lo, R) => {
     if (!stationGrid) return false;
     const cx = Math.floor(lo / 0.002), cy = Math.floor(la / 0.002);
@@ -523,9 +525,16 @@ function buildGraph(osm, cfg, onProg) {
       if (stPen === null) continue;
       pen = Math.max(pen, cfg.pen.footway || 1) * stPen; name = "駅の通路";
     }
-    if (cemGrid && cfg.cemetery !== 1 && !BIG_HW.has(hw) && inCemetery(nd)) {   // 霊園・墓地の中の道
+    if (areaGrids && cfg.cemetery !== 1 && !BIG_HW.has(hw) && inArea("cemetery", nd)) {   // 霊園・墓地の中の道
       if (cemPen === null) continue;
       pen *= cemPen; name = "霊園の中";
+    }
+    // 公園の中の道（園路・交通公園のコースなど）。川ぞいのサイクリングロードみたいな
+    // 長い（400m以上）自転車道と、ふつうの道（住宅街の道など）は、公園の中でもそのまま通る
+    else if (areaGrids && areaGrids.park && cfg.park !== 1 && !BIG_HW.has(hw) && inArea("park", nd)
+      && !(["residential", "unclassified", "living_street"].includes(hw) || (hw === "cycleway" && wayLen(nd) >= 400))) {
+      if (parkPen === null) continue;
+      pen = Math.max(pen, 1) * parkPen; name = "公園の中";
     }
     if (["footway", "path", "pedestrian", "cycleway", "track"].includes(hw) && nd.some(i => ntags.get(i)?.railway === "crossing")) {
       let wl = 0; for (let i = 1; i < nd.length; i++) wl += d(nd[i - 1], nd[i]);
@@ -1228,28 +1237,34 @@ async function loadStations() {
     stationGrid = g; log(`駅の一覧: ${g.size}か所のまわりを「駅の通路」として見るよ`);
   } catch {}
 }
-// ==== 霊園・墓地のはんい（配布データの areas.json）====
-let cemGrid = null, cemTried = false;
+// ==== 霊園・墓地／公園のはんい（配布データの areas.json）====
+let areaGrids = null, areaTried = false;   // { cemetery: Map, park: Map }
 const BIG_HW = new Set(["tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link"]);
 async function loadAreas() {
-  if (cemGrid || cemTried || !packBase) return;
-  cemTried = true;
+  if (areaGrids || areaTried || !packBase) return;
+  areaTried = true;
   try {
-    const res = await fetch(packBase + "areas.json"); if (!res.ok) { cemTried = false; return; }
-    const j = await res.json(), g = new Map(); let n = 0;
-    for (const pts of j.cemetery || []) {
-      let s = 90, w = 180, nn = -90, e = -180;
-      for (const [a, b] of pts) { s = Math.min(s, a); nn = Math.max(nn, a); w = Math.min(w, b); e = Math.max(e, b); }
-      const P = { pts, s, w, n: nn, e }; n++;
-      for (let i = Math.floor(s * 100); i <= Math.floor(nn * 100); i++) for (let k = Math.floor(w * 100); k <= Math.floor(e * 100); k++) {
-        const key = i + "," + k; if (!g.has(key)) g.set(key, []); g.get(key).push(P);
+    const res = await fetch(packBase + "areas.json"); if (!res.ok) { areaTried = false; return; }
+    const j = await res.json(), out = {}, cnt = [];
+    for (const kind of ["cemetery", "park"]) {
+      const g = new Map(); let n = 0;
+      for (const pts of j[kind] || []) {
+        let s = 90, w = 180, nn = -90, e = -180;
+        for (const [a, b] of pts) { s = Math.min(s, a); nn = Math.max(nn, a); w = Math.min(w, b); e = Math.max(e, b); }
+        const P = { pts, s, w, n: nn, e }; n++;
+        for (let i = Math.floor(s * 100); i <= Math.floor(nn * 100); i++) for (let k = Math.floor(w * 100); k <= Math.floor(e * 100); k++) {
+          const key = i + "," + k; if (!g.has(key)) g.set(key, []); g.get(key).push(P);
+        }
       }
+      if (n) out[kind] = g;
+      cnt.push(`${kind === "park" ? "公園" : "霊園・墓地"} ${n}か所`);
     }
-    cemGrid = g; log(`霊園・墓地のはんい: ${n}か所`);
-  } catch { cemTried = false; }
+    areaGrids = out; log(`はんいのデータ: ${cnt.join("・")}`);
+  } catch { areaTried = false; }
 }
-function cemHas(la, lo) {
-  for (const P of cemGrid.get(Math.floor(la * 100) + "," + Math.floor(lo * 100)) || []) {
+function areaHas(kind, la, lo) {
+  const g = areaGrids && areaGrids[kind]; if (!g) return false;
+  for (const P of g.get(Math.floor(la * 100) + "," + Math.floor(lo * 100)) || []) {
     if (la < P.s || la > P.n || lo < P.w || lo > P.e) continue;
     let inside = false; const p = P.pts;
     for (let i = 0, j = p.length - 1; i < p.length; j = i++)
@@ -1354,7 +1369,7 @@ async function routeOnce(req, prog, partial) {
   const pad = req.pad || padFor(s, g, area);
   const slopeK = +(cfg && cfg.slope) || 0;
   if (cfg && cfg.station !== 1) await loadStations();
-  if (cfg && cfg.cemetery !== 1) await loadAreas();
+  if (cfg && (cfg.cemetery !== 1 || cfg.park !== 1)) await loadAreas();
   const demP = slopeK ? loadDem(s, g, pad + 0.005).catch(() => false) : Promise.resolve(false);
   const noLink = msg => Object.assign(new Error(msg), { noLink: true, usedPad: pad });
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
@@ -2428,11 +2443,11 @@ $("go").onclick = async () => {
 // ---------- 表示 ----------
 // ---------- ルートの色分け（赤 / 道の種類 / 坂） ----------
 const CATS = [["細い道", "#188038"], ["自転車道", "#00acc1"], ["歩道・小道（押す所も）", "#8e24aa"], ["一般道・県道", "#f29900"],
-  ["国道・幹線", "#d93025"], ["歩道橋・階段・踏切・駅の通路・霊園", "#6d4c41"], ["砂利・舗装不明・農道", "#757575"], ["そのほか", "#9e9e9e"]];
+  ["国道・幹線", "#d93025"], ["歩道橋・階段・踏切・駅の通路・公園・霊園", "#6d4c41"], ["砂利・舗装不明・農道", "#757575"], ["そのほか", "#9e9e9e"]];
 function catOf(n) {
   if (/住宅街|生活道路|私道|細めの一般道/.test(n)) return 0;
   if (/自転車道/.test(n)) return 1;
-  if (/歩道橋|地下道|階段|踏切|駅の通路|霊園の中/.test(n)) return 5;
+  if (/歩道橋|地下道|階段|踏切|駅の通路|霊園の中|公園の中/.test(n)) return 5;
   if (/歩道|歩行者|小道$/.test(n) && !/舗装不明/.test(n)) return 2;
   if (/砂利|舗装不明|農道/.test(n)) return 6;
   if (/国道|幹線/.test(n)) return 4;
@@ -2840,7 +2855,7 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, station: 5, cemetery: 5 };
+  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, station: 5, cemetery: 5, park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
@@ -2848,6 +2863,7 @@ const OTHER_ROWS = [
   ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
   ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
   ["slope", "坂道（のぼり）", [[0, "気にしない"], [5, "少し避ける（のぼり1m＝5m）"], [10, "避ける（のぼり1m＝10m）"], [20, "かなり避ける（のぼり1m＝20m）"]]],
+  ["park", "公園の中の道", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
   ["cemetery", "霊園・墓地の中の道", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
   ["station", "駅の中の通路", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
   ["sidewalk", "歩道（段差・柵）のある道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [6, "かなり避ける"]]],
@@ -2873,7 +2889,7 @@ function renderCfg() {
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか。8%より急なのぼりはその2倍。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div>';
-  h += "<h4>霊園・墓地</h4>" + get(["cemetery"]) + '<div class="note">霊園や墓地の敷地の中を通る道のこと。関東の配布データのはんいで見分けるよ</div>';
+  h += "<h4>公園・霊園</h4>" + get(["park", "cemetery"]) + '<div class="note">公園や霊園・墓地の敷地の中を通る道のこと（人が歩いていて、自転車はひんしゅく）。川ぞいのサイクリングロードみたいな長い自転車道（400m以上）と、住宅街の道は、公園の中でも気にしないよ。関東の配布データのはんいで見分けるよ</div>';
   h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。関東の配布データの駅一覧で見分けるよ</div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div>';
   h += "<h4>旧街道</h4>" + get(["kodo"]) + '<div class="note">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div>';

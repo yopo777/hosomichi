@@ -10,7 +10,7 @@
      （ダウンロードずみの pbf を使うときは: python make_pack.py kanto-latest.osm.pbf 出力フォルダ）
      （index.json だけ作りなおすときは: python make_pack.py --index-only 出力フォルダ）
      （駅の一覧 stations.json だけ作るときは: python make_pack.py --stations-only kanto-latest.osm.pbf 出力フォルダ）
-     （霊園のはんい areas.json だけ作るときは: python make_pack.py --areas-only kanto-latest.osm.pbf 出力フォルダ）
+     （霊園・公園のはんい areas.json だけ作るときは: python make_pack.py --areas-only kanto-latest.osm.pbf 出力フォルダ）
   3. 出力フォルダの中身を GitHub の hosomichi-data リポジトリに push して GitHub Pages で公開
 
 データ: © OpenStreetMap contributors（ODbL）
@@ -225,15 +225,18 @@ def write_stations(src, out):
     with open(os.path.join(out, "stations.json"), "w", encoding="utf-8") as f: json.dump(rows, f, ensure_ascii=False, separators=(",", ":"))
     print(f"  駅 {len(rows)}か所（{len(h.st)}種類の名前）→ stations.json（{time.time() - t0:.0f}秒）")
 
-# ---- 霊園・墓地のはんい（アプリの設定「霊園の中の道」用）----
-# areas.json = {"cemetery": [[[緯度, 経度], …], …]}（外がわの輪だけ・5m より近い点は間引く）
+# ---- 霊園・墓地／公園のはんい（アプリの設定「霊園の中の道」「公園の中の道」用）----
+# areas.json = {"cemetery": [[[緯度, 経度], …], …], "park": […]}（外がわの輪だけ・5m より近い点は間引く）
 def write_areas(src, out):
     t0 = time.time()
-    print(f"霊園・墓地のはんいをさがし中: {src}", flush=True)
-    fp = osmium.FileProcessor(src).with_areas(osmium.filter.TagFilter(("landuse", "cemetery"), ("amenity", "grave_yard"))) \
-        .with_filter(osmium.filter.EntityFilter(osmium.osm.AREA)).with_filter(osmium.filter.TagFilter(("landuse", "cemetery"), ("amenity", "grave_yard")))
-    polys = []
+    print(f"霊園・墓地／公園のはんいをさがし中: {src}", flush=True)
+    TF = (("landuse", "cemetery"), ("amenity", "grave_yard"), ("leisure", "park"))
+    fp = osmium.FileProcessor(src).with_areas(osmium.filter.TagFilter(*TF)) \
+        .with_filter(osmium.filter.EntityFilter(osmium.osm.AREA)).with_filter(osmium.filter.TagFilter(*TF))
+    found = {"cemetery": [], "park": []}
     for o in fp:
+        kind = "park" if o.tags.get("leisure") == "park" else "cemetery"
+        polys = found[kind]
         for ring in o.outer_rings():
             pts = []
             for n in ring:
@@ -242,8 +245,8 @@ def write_areas(src, out):
             if len(pts) < 4: continue
             if not any(S0 < la < N0 and W0 < lo < E0 for (la, lo) in pts): continue
             polys.append(pts)
-    with open(os.path.join(out, "areas.json"), "w", encoding="utf-8") as f: json.dump({"cemetery": polys}, f, separators=(",", ":"))
-    print(f"  霊園・墓地 {len(polys):,}か所 → areas.json（{os.path.getsize(os.path.join(out, 'areas.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
+    with open(os.path.join(out, "areas.json"), "w", encoding="utf-8") as f: json.dump(found, f, separators=(",", ":"))
+    print(f"  霊園・墓地 {len(found['cemetery']):,}か所・公園 {len(found['park']):,}か所 → areas.json（{os.path.getsize(os.path.join(out, 'areas.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
 
 def write_index(out, src_date, keys, total, built=None):
     empty = empty_tiles(keys)

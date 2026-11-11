@@ -11,6 +11,7 @@ const DEFAULT_CFG = {
   unpaved: "no",         // 砂利・土の道: 倍率 or "no"（1=気にしない）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
+  park: 5,               // 公園の中の道（園路など）："no"=通らない / 倍率 / 1=気にしない
   cemetery: 5,           // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
@@ -289,11 +290,12 @@ function buildGraph(osm, cfg, onProg) {
   // 駅の中・駅の自由通路：駅（配布データの駅一覧）から150m以内の、歩道・小道で、
   // 橋・地下・屋根つき・建物の中・階（level）がある・名前に「通路」「コンコース」「改札」「駅」がある道
   const stPen = cfg.station === "no" ? null : (+cfg.station || 1), STA_R = 150;
-  const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1);
-  const inCemetery = nd => {   // 道のまん中の点（と両はし）が霊園のはんいの中か
+  const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1), parkPen = cfg.park === "no" ? null : (+cfg.park || 1);
+  const inArea = (kind, nd) => {   // 道のまん中の点（と両はし）が はんいの中か
     const m = nd[nd.length >> 1];
-    return cemHas(lat[m], lon[m]) || (nd.length > 2 && cemHas(lat[nd[0]], lon[nd[0]]) && cemHas(lat[nd[nd.length - 1]], lon[nd[nd.length - 1]]));
+    return areaHas(kind, lat[m], lon[m]) || (nd.length > 2 && areaHas(kind, lat[nd[0]], lon[nd[0]]) && areaHas(kind, lat[nd[nd.length - 1]], lon[nd[nd.length - 1]]));
   };
+  const wayLen = nd => { let L = 0; for (let i = 1; i < nd.length; i++) L += hav(lat[nd[i - 1]], lon[nd[i - 1]], lat[nd[i]], lon[nd[i]]); return L; };
   const nearSta = (la, lo, R) => {
     if (!stationGrid) return false;
     const cx = Math.floor(lo / 0.002), cy = Math.floor(la / 0.002);
@@ -329,9 +331,16 @@ function buildGraph(osm, cfg, onProg) {
       if (stPen === null) continue;
       pen = Math.max(pen, cfg.pen.footway || 1) * stPen; name = "駅の通路";
     }
-    if (cemGrid && cfg.cemetery !== 1 && !BIG_HW.has(hw) && inCemetery(nd)) {   // 霊園・墓地の中の道
+    if (areaGrids && cfg.cemetery !== 1 && !BIG_HW.has(hw) && inArea("cemetery", nd)) {   // 霊園・墓地の中の道
       if (cemPen === null) continue;
       pen *= cemPen; name = "霊園の中";
+    }
+    // 公園の中の道（園路・交通公園のコースなど）。川ぞいのサイクリングロードみたいな
+    // 長い（400m以上）自転車道と、ふつうの道（住宅街の道など）は、公園の中でもそのまま通る
+    else if (areaGrids && areaGrids.park && cfg.park !== 1 && !BIG_HW.has(hw) && inArea("park", nd)
+      && !(["residential", "unclassified", "living_street"].includes(hw) || (hw === "cycleway" && wayLen(nd) >= 400))) {
+      if (parkPen === null) continue;
+      pen = Math.max(pen, 1) * parkPen; name = "公園の中";
     }
     if (["footway", "path", "pedestrian", "cycleway", "track"].includes(hw) && nd.some(i => ntags.get(i)?.railway === "crossing")) {
       let wl = 0; for (let i = 1; i < nd.length; i++) wl += d(nd[i - 1], nd[i]);
@@ -1034,28 +1043,34 @@ async function loadStations() {
     stationGrid = g; log(`駅の一覧: ${g.size}か所のまわりを「駅の通路」として見るよ`);
   } catch {}
 }
-// ==== 霊園・墓地のはんい（配布データの areas.json）====
-let cemGrid = null, cemTried = false;
+// ==== 霊園・墓地／公園のはんい（配布データの areas.json）====
+let areaGrids = null, areaTried = false;   // { cemetery: Map, park: Map }
 const BIG_HW = new Set(["tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link"]);
 async function loadAreas() {
-  if (cemGrid || cemTried || !packBase) return;
-  cemTried = true;
+  if (areaGrids || areaTried || !packBase) return;
+  areaTried = true;
   try {
-    const res = await fetch(packBase + "areas.json"); if (!res.ok) { cemTried = false; return; }
-    const j = await res.json(), g = new Map(); let n = 0;
-    for (const pts of j.cemetery || []) {
-      let s = 90, w = 180, nn = -90, e = -180;
-      for (const [a, b] of pts) { s = Math.min(s, a); nn = Math.max(nn, a); w = Math.min(w, b); e = Math.max(e, b); }
-      const P = { pts, s, w, n: nn, e }; n++;
-      for (let i = Math.floor(s * 100); i <= Math.floor(nn * 100); i++) for (let k = Math.floor(w * 100); k <= Math.floor(e * 100); k++) {
-        const key = i + "," + k; if (!g.has(key)) g.set(key, []); g.get(key).push(P);
+    const res = await fetch(packBase + "areas.json"); if (!res.ok) { areaTried = false; return; }
+    const j = await res.json(), out = {}, cnt = [];
+    for (const kind of ["cemetery", "park"]) {
+      const g = new Map(); let n = 0;
+      for (const pts of j[kind] || []) {
+        let s = 90, w = 180, nn = -90, e = -180;
+        for (const [a, b] of pts) { s = Math.min(s, a); nn = Math.max(nn, a); w = Math.min(w, b); e = Math.max(e, b); }
+        const P = { pts, s, w, n: nn, e }; n++;
+        for (let i = Math.floor(s * 100); i <= Math.floor(nn * 100); i++) for (let k = Math.floor(w * 100); k <= Math.floor(e * 100); k++) {
+          const key = i + "," + k; if (!g.has(key)) g.set(key, []); g.get(key).push(P);
+        }
       }
+      if (n) out[kind] = g;
+      cnt.push(`${kind === "park" ? "公園" : "霊園・墓地"} ${n}か所`);
     }
-    cemGrid = g; log(`霊園・墓地のはんい: ${n}か所`);
-  } catch { cemTried = false; }
+    areaGrids = out; log(`はんいのデータ: ${cnt.join("・")}`);
+  } catch { areaTried = false; }
 }
-function cemHas(la, lo) {
-  for (const P of cemGrid.get(Math.floor(la * 100) + "," + Math.floor(lo * 100)) || []) {
+function areaHas(kind, la, lo) {
+  const g = areaGrids && areaGrids[kind]; if (!g) return false;
+  for (const P of g.get(Math.floor(la * 100) + "," + Math.floor(lo * 100)) || []) {
     if (la < P.s || la > P.n || lo < P.w || lo > P.e) continue;
     let inside = false; const p = P.pts;
     for (let i = 0, j = p.length - 1; i < p.length; j = i++)
@@ -1160,7 +1175,7 @@ async function routeOnce(req, prog, partial) {
   const pad = req.pad || padFor(s, g, area);
   const slopeK = +(cfg && cfg.slope) || 0;
   if (cfg && cfg.station !== 1) await loadStations();
-  if (cfg && cfg.cemetery !== 1) await loadAreas();
+  if (cfg && (cfg.cemetery !== 1 || cfg.park !== 1)) await loadAreas();
   const demP = slopeK ? loadDem(s, g, pad + 0.005).catch(() => false) : Promise.resolve(false);
   const noLink = msg => Object.assign(new Error(msg), { noLink: true, usedPad: pad });
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
