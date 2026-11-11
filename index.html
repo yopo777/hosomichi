@@ -104,6 +104,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #nav.off{color:#c00}
 .pin{font-size:13px}
 .spot{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #888;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;box-shadow:0 1px 4px #0007}
+.spot.road{width:22px;height:22px;border-width:2px;font-size:12px}
 .spot.new{animation:spotPop .45s ease-out 3}   /* 出てきたときだけ3回ぴょこぴょこ */
 .spot.near{animation:spotBlink 1s ease-in-out infinite;border-color:#fbbc04 !important}   /* 150m以内は点滅 */
 @keyframes spotPop{0%,100%{transform:scale(1)}40%{transform:translateY(-6px) scale(1.35)}}
@@ -131,7 +132,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1741</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1835</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="spot">📍 マーク</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3572,25 +3573,35 @@ function spotTile(key) {   // 1回読んだマスはおぼえておく（ない�
 // 現在地に固定しているとき：現在地から2km・60個まで（500m動いたら入れかえ）
 // 固定していないとき：見えている地図の中に150個まで（ズーム12より引いたら「引いたとき用」の間引いたデータ）
 // どちらも、画面を指1本分（48px・引いたときは64px）のマスに分けて、マスごとに1個だけ（有名なもの → 近いもの の順にえらぶ）
+// 道・車止めのマーク（横断歩道・信号・階段・柵…）は、ズーム16より拡大したときだけ、見えている所に間引かずぜんぶ出す
+// （引いたときに間引くと、出たり消えたりしてかえってわかりにくいので）
+const ROAD_GROUPS = ["道", "車止め"], SPOT_ROAD_Z = 16;
+const SPOT_ROAD = new Set(SPOT_KINDS.filter(g => ROAD_GROUPS.includes(g[0])).flatMap(g => g[1].map(x => x[0])));
 async function spotUpdate(force) {
   if (!spotOn.size) { spotLayer.clearLayers(); spotAt = null; return; }
   const fixed = follow && me, c = fixed ? me.getLatLng() : map.getCenter(), p = [c.lat, c.lng];
-  if (!force && fixed && spotAt && hav(spotAt, p) < 500) return;   // 500m 動くまでは入れかえない（電池にやさしく）
+  const onAll = [...spotOn].filter(k => k !== "oneway"), roadOn = map.getZoom() >= SPOT_ROAD_Z ? onAll.filter(k => SPOT_ROAD.has(k)) : [];
+  const on = onAll.filter(k => !SPOT_ROAD.has(k));
+  if (!force && fixed && spotAt && hav(spotAt, p) < (roadOn.length ? 120 : 500)) return;   // 少し動くまでは入れかえない（電池にやさしく）
   spotAt = p;
   let S, N, W, E;
+  const vb = map.getBounds().pad(0.15);
   if (fixed) { const dla = SPOT_R / 111000, dlo = SPOT_R / (111000 * Math.cos(p[0] * RAD)); S = p[0] - dla; N = p[0] + dla; W = p[1] - dlo; E = p[1] + dlo; }
-  else {
-    const b = map.getBounds(); S = b.getSouth(); N = b.getNorth(); W = b.getWest(); E = b.getEast();
-  }
+  else { S = vb.getSouth(); N = vb.getNorth(); W = vb.getWest(); E = vb.getEast(); }
+  if (roadOn.length) { S = Math.min(S, vb.getSouth()); N = Math.max(N, vb.getNorth()); W = Math.min(W, vb.getWest()); E = Math.max(E, vb.getEast()); }
   const over = !fixed && map.getZoom() < 12, keys = [];
   for (let i = Math.floor(S / SPOT_T); i <= Math.floor(N / SPOT_T); i++)
     for (let j = Math.floor(W / SPOT_T); j <= Math.floor(E / SPOT_T); j++) keys.push(i + "_" + j);
-  const tiles = over ? [await spotOverview()] : keys.length > 60 ? [] : await Promise.all(keys.map(spotTile)), on = [...spotOn], got = [];
+  const tiles = over ? [await spotOverview()] : keys.length > 60 ? [] : await Promise.all(keys.map(spotTile)), got = [], road = [];
   if (spotAt !== p) return;   // 読んでいるあいだに次の場所になった
-  for (const t of tiles) for (const k of on) for (const s of t[k] || []) {
-    if (fixed) { const d = hav(p, [s[1], s[2]]); if (d < SPOT_R) got.push([d, k, s]); }
-    else if (s[1] > S && s[1] < N && s[2] > W && s[2] < E) got.push([hav(p, [s[1], s[2]]), k, s]);
+  for (const t of tiles) {
+    for (const k of on) for (const s of t[k] || []) {
+      if (fixed) { const d = hav(p, [s[1], s[2]]); if (d < SPOT_R) got.push([d, k, s]); }
+      else if (s[1] > S && s[1] < N && s[2] > W && s[2] < E) got.push([hav(p, [s[1], s[2]]), k, s]);
+    }
+    if (!over) for (const k of roadOn) for (const s of t[k] || []) if (vb.contains([s[1], s[2]])) road.push([hav(p, [s[1], s[2]]), k, s]);
   }
+  road.sort((a, b) => a[0] - b[0]); road.length = Math.min(road.length, 400);
   got.sort((a, b) => (b[2][3] || 0) - (a[2][3] || 0) || a[0] - b[0]);   // 有名なもの → 近いもの
   const cells = new Set(), pick = [], G = over ? 64 : 48, max = fixed ? SPOT_MAX : 150;
   for (const g of got) {   // 画面のマスごとに1個（重なって見えなくならないように）
@@ -3600,14 +3611,14 @@ async function spotUpdate(force) {
   }
   spotLayer.clearLayers(); spotMk = [];
   const shown = new Set();
-  for (const [, k, s] of pick) {
-    const [ic, nm, col] = SPOT_INFO[k], ll = [s[1], s[2]], id = k + s[1] + "," + s[2];
+  for (const [, k, s] of pick.concat(road)) {
+    const [ic, nm, col] = SPOT_INFO[k], ll = [s[1], s[2]], id = k + s[1] + "," + s[2], isRoad = SPOT_ROAD.has(k);
     shown.add(id);
     const m = L.marker(ll, { icon: L.divIcon({ className: "", iconSize: [0, 0],
-        html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot${spotShown.has(id) ? "" : " new"}" style="border-color:${col}">${spotIc(k, ic)}</div></div>` }), zIndexOffset: 200 })
+        html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot${spotShown.has(id) || isRoad ? "" : " new"}${isRoad ? " road" : ""}" style="border-color:${col}">${spotIc(k, ic)}</div></div>` }), zIndexOffset: 200 })
       .bindTooltip(s[0] || nm, { direction: "top", offset: [0, -14] })
       .on("click", () => pinPopup(L.latLng(ll), s[1].toFixed(6) + "," + s[2].toFixed(6), (SPOT_SVG[k] ? "" : ic + " ") + (s[0] || nm))).addTo(spotLayer);
-    spotMk.push([m, ll]);
+    if (!isRoad) spotMk.push([m, ll]);   // 道・車止めは点滅させない（たくさんあるので）
   }
   spotShown = shown;
   if (wid !== null && me) spotNear([me.getLatLng().lat, me.getLatLng().lng]);
@@ -3616,7 +3627,8 @@ function spotNear(p) {   // 150m以内のスポットだけ点滅（GPSが来る
   for (const [m, ll] of spotMk) { const el = m.getElement()?.querySelector(".spot"); if (el) el.classList.toggle("near", hav(p, ll) < SPOT_NEAR); }
 }
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
-map.on("zoomend", () => { if (follow && me) spotUpdate(true); });   // 固定中もズームしたら間引きなおす
+map.on("zoomend", () => { if (follow && me) spotUpdate(true); });
+map.on("moveend", () => { if (follow && me && spotOn.size && map.getZoom() >= SPOT_ROAD_Z) spotUpdate(false); });   // 固定中も、道のマークは見えている所を出す   // 固定中もズームしたら間引きなおす
 renderSpots(); spotUpdate(true);
 // ---------- ➡ 一方通行の矢印（拡大したとき。道路データは端末にあるもの・配布データから） ----------
 const owLayer = L.layerGroup().addTo(map);
