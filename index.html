@@ -147,7 +147,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0016</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0019</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3805,14 +3805,14 @@ function flowPrep() {
     else if (run) { run.push(R[i]); runs.push(run); run = null; }
   }
   if (run) runs.push(run);
-  const mpp = 40075016 * Math.cos(map.getCenter().lat * RAD) / 2 ** (map.getZoom() + 8), gap = 110 * mpp;   // 110px おき
+  const mpp = 40075016 * Math.cos(map.getCenter().lat * RAD) / 2 ** (map.getZoom() + 8), gap = 170 * mpp;   // 170px おき
   flowSpeed = 70 * mpp;   // 1秒に 70px くらい
   for (const r of runs) {
     const cs = [0]; for (let i = 1; i < r.length; i++) cs.push(cs[i - 1] + hav(r[i - 1], r[i]));
     const len = cs[cs.length - 1]; if (len < gap * 0.6) continue;
     const n = Math.max(1, Math.floor(len / gap));
     for (let k = 0; k < n && flowBalls.length < 150; k++)
-      flowBalls.push({ r, cs, len, base: k * len / n, m: L.circleMarker(r[0], { radius: 5.5, color: "#111", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(flowLayer) });
+      flowBalls.push({ r, cs, len, base: k * len / n, m: L.circleMarker(r[0], { radius: 5.5, color: "#111", weight: 2, fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025", fillOpacity: 1, interactive: false }).addTo(flowLayer) });   // 赤と白をこうごに
   }
   if (flowBalls.length) { flowT0 = performance.now(); flowRaf = requestAnimationFrame(flowTick); }
 }
