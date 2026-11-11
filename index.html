@@ -126,7 +126,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1450</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1506</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -2963,9 +2963,11 @@ function renderCfg() {
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
   h += '<div class="note" style="margin-top:6px">設定はこの端末におぼえておくよ。変えたらもう一度「ルートを作る」を押してね</div>';
-  $("cfgBox").innerHTML = h;
+  $("cfgBox").innerHTML = '<div id="spotBox" style="margin:4px 0 6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:12px;background:#fff"></div>' + h;
+  try { renderSpots(); } catch {}   // まわりのスポットの欄（はじめの1回は、まだ用意できていないので後で）
 }
 $("cfgBox").onchange = e => {
+  if (e.target.dataset.sk) return;   // まわりのスポットのチェックは別でうけとる
   if (e.target.name === "bg") return setBase(e.target.value);
   const el = e.target, v = isNaN(+el.value) ? el.value : +el.value;
   if (el.dataset.pen) cfg.pen[el.dataset.pen] = v; else cfg[el.dataset.k] = v;
@@ -3063,7 +3065,7 @@ function onPos(p) {
     me = L.marker(ll, { icon: icDot, interactive: false, zIndexOffset: 1000, rotateWithView: true, rotation: 0 }).addTo(map);
   }
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
-  qCheck(ll, p.coords.accuracy);
+  qCheck(ll, p.coords.accuracy); spotUpdate(false);
   applyBearing();
   if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
   if (cur && cur.nav && cur.nav.length > 1) {
@@ -3299,7 +3301,8 @@ async function qLoad() {
   addLog(`🏁 クエストのデータ: 路線 ${qData.lines.length}・市区町村 ${qData.cities.length}（${qData.v}）`, "m");
   return qData;
 }
-const Q_KIND = { station: ["🚉", "駅"], shrine: ["⛩", "神社"], temple: ["🛕", "お寺"] };
+const Q_KIND = { station: ["🚉", "駅"], shrine: ["⛩", "神社"], temple: ["🛕", "お寺"], church: ["⛪", "教会"], castle: ["🏯", "城・城あと"], kofun: ["🪦", "古墳・遺跡"],
+  monument: ["🗿", "記念碑・石碑"], sight: ["🌸", "名所・史跡"], view: ["🔭", "展望スポット"], michi: ["🛣", "道の駅"], bridge: ["🌉", "橋"], bath: ["♨", "銭湯・温泉"] };
 async function qFind() {
   const t = $("qLine").value.trim(); if (!t) return;
   $("qLine").blur();
@@ -3308,7 +3311,7 @@ async function qFind() {
     const d = await qLoad();
     qCands = [];
     for (const [nm, kinds] of d.cities) if (qNorm(nm).includes(key))
-      for (const k of ["station", "shrine", "temple"]) if (kinds[k] && kinds[k].length)
+      for (const k of Object.keys(Q_KIND)) if (kinds[k] && kinds[k].length)
         qCands.push({ ic: Q_KIND[k][0], name: `${nm}の${Q_KIND[k][1]}ぜんぶ`, op: "", st: kinds[k].map(p => k === "station" ? p : [p[0], p[1], p[2], 1]) });
     for (const [nm, op, st] of d.lines) if (qNorm(nm).includes(key)) qCands.push({ ic: "🚃", name: nm, op, st });
     qCands = qCands.slice(0, 30);
@@ -3468,6 +3471,56 @@ $("qList").onclick = e => {
     lsSet(QKEY, qs.filter(x => x.id !== id)); if (qShown === id) { qShown = null; qDraw(); } qRender();
   }
 };
+
+
+// ---------- 📍 まわりのスポット（設定でえらんだジャンルだけ、現在地のまわりに出す） ----------
+// データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
+const SPOT_KINDS = [
+  ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["bike", "🔧", "自転車屋"], ["bikepark", "🅿", "駐輪場"]]],
+  ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["ramen", "🍜", "ラーメン"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
+  ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
+    ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"]]]];
+const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(g => g[1]).map(([k, ic, nm]) => [k, [ic, nm]]));
+const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
+let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null;
+const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
+function renderSpots() {
+  $("spotBox").innerHTML = `<b>📍 まわりのスポット</b><div style="color:#888;margin:2px 0 4px">チェックしたものだけ、現在地（なければ地図のまん中）から${SPOT_R / 1000}km以内に、近い順に${SPOT_MAX}個まで出すよ。なにもチェックしなければデータも読まないよ</div>`
+    + SPOT_KINDS.map(([g, ks]) => `<div style="margin-top:4px"><span style="color:#666">${g}：</span>` + ks.map(([k, ic, nm]) =>
+      `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${ic}${nm}</label>`).join("") + "</div>").join("");
+}
+$("cfgBox").addEventListener("change", e => {
+  const k = e.target.dataset.sk; if (!k) return;
+  if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
+  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true);
+});
+function spotTile(key) {   // 1回読んだマスはおぼえておく（ない所は空）
+  if (!spotTiles.has(key)) spotTiles.set(key, tfetch(new URL(`../hosomichi-data/spots/${key}.json`, location.href), {}, 15000)
+    .then(r => r.ok ? r.json() : {}).catch(() => { spotTiles.delete(key); return {}; }));
+  return spotTiles.get(key);
+}
+async function spotUpdate(force) {
+  if (!spotOn.size) { spotLayer.clearLayers(); spotAt = null; return; }
+  const c = wid !== null && me ? me.getLatLng() : map.getCenter(), p = [c.lat, c.lng];
+  if (!force && spotAt && hav(spotAt, p) < 500) return;   // 500m 動くまでは入れかえない（電池にやさしく）
+  spotAt = p;
+  const dla = SPOT_R / 111000, dlo = SPOT_R / (111000 * Math.cos(p[0] * RAD)), keys = [];
+  for (let i = Math.floor((p[0] - dla) / SPOT_T); i <= Math.floor((p[0] + dla) / SPOT_T); i++)
+    for (let j = Math.floor((p[1] - dlo) / SPOT_T); j <= Math.floor((p[1] + dlo) / SPOT_T); j++) keys.push(i + "_" + j);
+  const tiles = await Promise.all(keys.map(spotTile)), on = [...spotOn], got = [];
+  if (spotAt !== p) return;   // 読んでいるあいだに次の場所になった
+  for (const t of tiles) for (const k of on) for (const s of t[k] || []) { const d = hav(p, [s[1], s[2]]); if (d < SPOT_R) got.push([d, k, s]); }
+  got.sort((a, b) => a[0] - b[0]);
+  spotLayer.clearLayers();
+  for (const [, k, s] of got.slice(0, SPOT_MAX)) {
+    const [ic, nm] = SPOT_INFO[k], ll = [s[1], s[2]];
+    L.marker(ll, { icon: L.divIcon({ className: "", html: `<div style="font-size:18px;line-height:1;transform:translate(-50%,-50%);text-shadow:0 0 3px #fff,0 0 3px #fff">${ic}</div>`, iconSize: [0, 0] }), zIndexOffset: 200 })
+      .bindTooltip(s[0] || nm, { direction: "top", offset: [0, -10] })
+      .on("click", () => pinPopup(L.latLng(ll), s[1].toFixed(6) + "," + s[2].toFixed(6), `${ic} ${s[0] || nm}`)).addTo(spotLayer);
+  }
+}
+map.on("moveend", () => { if (!(wid !== null && me)) spotUpdate(false); });
+renderSpots(); spotUpdate(true);
 
 // ---------- 開いたとき：共有URL → なければ前回のルート ----------
 if (location.hash.includes("r=")) loadHash();
