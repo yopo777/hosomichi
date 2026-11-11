@@ -1909,11 +1909,11 @@ $("cfgBox").addEventListener("change", e => {
 });
 let spotOv = null;
 function spotOverview() {   // 引いたとき用（関東まるごと・間引いたもの）
-  return spotOv || (spotOv = tfetch(new URL("../hosomichi-data/spots_overview.json", location.href), {}, 30000)
+  return spotOv || (spotOv = tfetch(new URL("../hosomichi-data/spots_overview.json", location.href), { cache: "no-cache" }, 30000)
     .then(r => r.ok ? r.json() : {}).catch(() => { spotOv = null; return {}; }));
 }
 function spotTile(key) {   // 1回読んだマスはおぼえておく（ない所は空）
-  if (!spotTiles.has(key)) spotTiles.set(key, tfetch(new URL(`../hosomichi-data/spots/${key}.json`, location.href), {}, 15000)
+  if (!spotTiles.has(key)) spotTiles.set(key, tfetch(new URL(`../hosomichi-data/spots/${key}.json`, location.href), { cache: "no-cache" }, 15000)   // 古いデータのままにならないように（変わってなければ 304 で軽い）
     .then(r => r.ok ? r.json() : {}).catch(() => { spotTiles.delete(key); return {}; }));
   return spotTiles.get(key);
 }

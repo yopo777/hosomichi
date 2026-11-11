@@ -131,7 +131,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1640</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1653</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3515,11 +3515,11 @@ $("cfgBox").addEventListener("change", e => {
 });
 let spotOv = null;
 function spotOverview() {   // 引いたとき用（関東まるごと・間引いたもの）
-  return spotOv || (spotOv = tfetch(new URL("../hosomichi-data/spots_overview.json", location.href), {}, 30000)
+  return spotOv || (spotOv = tfetch(new URL("../hosomichi-data/spots_overview.json", location.href), { cache: "no-cache" }, 30000)
     .then(r => r.ok ? r.json() : {}).catch(() => { spotOv = null; return {}; }));
 }
 function spotTile(key) {   // 1回読んだマスはおぼえておく（ない所は空）
-  if (!spotTiles.has(key)) spotTiles.set(key, tfetch(new URL(`../hosomichi-data/spots/${key}.json`, location.href), {}, 15000)
+  if (!spotTiles.has(key)) spotTiles.set(key, tfetch(new URL(`../hosomichi-data/spots/${key}.json`, location.href), { cache: "no-cache" }, 15000)   // 古いデータのままにならないように（変わってなければ 304 で軽い）
     .then(r => r.ok ? r.json() : {}).catch(() => { spotTiles.delete(key); return {}; }));
   return spotTiles.get(key);
 }
