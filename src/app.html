@@ -1886,12 +1886,14 @@ $("qList").onclick = e => {
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["bike", "🔧", "自転車屋"], ["bikepark", "🅿", "駐輪場"]]],
-  ["道", [["xsig", "🚦", "横断歩道（信号あり）"], ["xing", "🚸", "横断歩道（信号なし）"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"]]],
+  ["道", [["xing", "🚸", "横断歩道"], ["xsig", "🚦", "横断歩道＋信号"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"]]],
   ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["ramen", "🍜", "ラーメン"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
   ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
     ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"]]]];
 // 絵文字にないアイコン（横断歩道＝上から見たしましま）
-const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#333"><rect x="0.5" y="1" width="2.2" height="12"/><rect x="4.7" y="1" width="2.2" height="12"/><rect x="8.9" y="1" width="2.2" height="12"/><rect x="13.1" y="1" width="2.2" height="12"/></g></svg>' };
+const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#333"><rect x="0.5" y="1" width="2.2" height="12"/><rect x="4.7" y="1" width="2.2" height="12"/><rect x="8.9" y="1" width="2.2" height="12"/><rect x="13.1" y="1" width="2.2" height="12"/></g></svg>',
+  // 横断歩道＋信号：しましまの右に、赤と青の歩行者用信号
+  xsig: '<svg width="19" height="16" viewBox="0 0 19 16" style="display:block"><g fill="#333"><rect x="0.3" y="4" width="2" height="11"/><rect x="3.8" y="4" width="2" height="11"/><rect x="7.3" y="4" width="2" height="11"/></g><rect x="11.2" y="0.5" width="7.3" height="15" rx="2" fill="#333"/><circle cx="14.85" cy="4.4" r="2.3" fill="#ea4335"/><circle cx="14.85" cy="11.4" r="2.3" fill="#34a853"/></svg>' };
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
 const SPOT_COL = { "道": "#188038", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_COL[g]]])));
