@@ -103,6 +103,15 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   box-shadow:0 2px 8px #0003;padding:4px 10px;font-size:14px;font-weight:bold;display:none;pointer-events:none;text-align:right}   /* 一番下・見えなくてもいい */
 #nav.off{color:#c00}
 .pin{font-size:13px}
+.qtt{font-size:11px;padding:1px 4px}
+#qCand .c,#qList .q{padding:6px 4px;border-bottom:1px solid #eee;font-size:13px}
+#qCand .c{display:flex;align-items:center;gap:6px}#qCand .c div{flex:1}
+#qList .q .bar{height:8px;background:#eee;border-radius:4px;margin:4px 0;overflow:hidden}#qList .q .bar div{height:100%;background:#188038}
+#qList .q .btns button{font-size:12px;padding:5px 8px}
+#qList .sts{display:none;font-size:12px;line-height:1.8;margin-top:4px}#qList .sts span{display:inline-block;margin-right:8px}
+#qList .sts .v{color:#188038;font-weight:bold}#qList .sts .n{color:#999}
+#qList .tour{display:none;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:12px}
+#qToast{display:none;position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);z-index:2600;background:#fff;border:3px solid #188038;border-radius:14px;padding:14px 18px;font-size:16px;font-weight:bold;text-align:center;box-shadow:0 4px 16px #0006;white-space:pre-line}
 .pin button{margin:4px 2px 0;padding:6px 10px;border-radius:6px;border:1px solid #ccc;background:#fff}
 .leaflet-control-attribution{font-size:10px;pointer-events:none}
 </style>
@@ -120,7 +129,13 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v__VER__</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div id="tabQuest" style="display:none">
+      <div style="font-size:11px;color:#666;margin-top:6px">路線の駅をぜんぶ回る「駅踏破クエスト」だよ。◎ で走っていて駅の近く（80m）に来ると、自動でスタンプがもらえるよ。記録はこの端末の中だけ</div>
+      <div class="row"><input type="text" id="qLine" enterkeyhint="search" placeholder="路線名（例：流山線・千代田線）"><button class="ib" id="qFind" style="font-size:13px;white-space:nowrap">🔍 さがす</button></div>
+      <div id="qCand"></div>
+      <div id="qList"></div>
+    </div>
     <div id="tabData" style="display:none">
       <div style="font-size:11px;color:#666;margin-top:6px">ルートを作るのに使う道路データのこと。地図がカラーの所は、もう端末に入っているよ</div>
     <div id="pfBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -199,6 +214,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
+<div id="qToast"></div>
 <div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
 
@@ -692,6 +708,7 @@ worker.onmessage = ev => {
     job = null; return;
   }
   if (job && job.next) { barMax = 0.5; setBar(0.5); } else { barMax = 0; setBar(1); }   // 経由地まで できた所は まん中
+  if (m.tour) setMsg(`🏁 できた！ ${m.tour}か所をまわる ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）` + ((m.skip || []).length ? `\n⚠ 行けなかった所: ${m.skip.join("、")}` : "")); else
   if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${m.sec.toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")); else
   setMsg(`できた！ ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）\n` +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
@@ -727,7 +744,7 @@ function merged(m) {
     kinds: sumKinds(P.kinds, m.kinds), turns: P.turns != null && m.turns != null ? P.turns + m.turns : undefined,
     len: (P.len || 0) + (m.len || 0), short: null, slen: 0 };
 }
-function startJob(s, g, jcfg, prefix, loop, poi, loopVia) {
+function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   job = { g, cfg: jcfg, prefix: prefix || null, loop: loop || 0 };
   drawPreview(null);
   if (!prefix) {   // 新しいルート：古いルートは画面から消す（ナビの「のこり」もまちがえないように）
@@ -737,7 +754,7 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia) {
   }
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
@@ -1236,6 +1253,8 @@ function showTab(t) {
   $("tabCfg").style.display = t === "cfg" ? "" : "none";
   $("tabData").style.display = t === "data" ? "" : "none";
   $("tabLog").style.display = t === "log" ? "" : "none";
+  $("tabQuest").style.display = t === "quest" ? "" : "none";
+  if (t === "quest") qRender();
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
 }
@@ -1438,6 +1457,7 @@ function onPos(p) {
     me = L.marker(ll, { icon: icDot, interactive: false, zIndexOffset: 1000, rotateWithView: true, rotation: 0 }).addTo(map);
   }
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
+  qCheck(ll, p.coords.accuracy);
   applyBearing();
   if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
   if (cur && cur.nav && cur.nav.length > 1) {
@@ -1650,6 +1670,234 @@ function askSave(what) {
 }
 
 if (IN_APP) $("inapp").style.display = "block";
+
+// ---------- 🏁 駅踏破クエスト ----------
+// 路線（OpenStreetMap の route_master / route）の駅をぜんぶ回る。◎ で走っていて駅の 80m 以内に入るとスタンプ
+// 保存：hosomichi_quests = [{id, name, op, osm, st:[[駅名, 緯度, 経度], …], created}]
+//       hosomichi_visits = [[駅名, 緯度, 経度, 時刻], …]（どの路線でも共通。同じ名前で1.5km以内なら同じ駅とみなす）
+const QKEY = "hosomichi_quests", QVKEY = "hosomichi_visits", Q_R = 80, Q_ACC = 60;
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
+const qNorm = v => String(v || "").normalize("NFKC").replace(/\s/g, "").replace(/駅$/, "");
+let qShown = null, qLayer = L.layerGroup().addTo(map), qBusy = false;
+async function overpass(q, ms = 30000) {
+  let last;
+  for (const url of OVERPASS) {
+    try {
+      const res = await tfetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } }, ms);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return (await res.json()).elements || [];
+    } catch (e) { last = e; addLog(`  Overpass(${new URL(url).host}) 失敗: ${e.message}`, "w"); }
+  }
+  throw last || new Error("Overpass に つながらなかった");
+}
+const qVisits = () => lsGet(QVKEY, []);
+function qVisitOf(st) { const n = qNorm(st[0]); return qVisits().find(v => qNorm(v[0]) === n && hav([v[1], v[2]], [st[1], st[2]]) < 1500) || null; }
+function qProg(q) { const v = q.st.filter(s => qVisitOf(s)).length; return [v, q.st.length]; }
+
+// 路線さがし
+async function qFind() {
+  const t = $("qLine").value.trim(); if (!t || qBusy) return;
+  $("qLine").blur(); qBusy = true;
+  $("qCand").innerHTML = '<div style="font-size:12px;color:#888;padding:6px">さがしてるよ…（10〜20秒かかることがあるよ）</div>';
+  const re = t.replace(/[\\\\"]/g, "").replace(/[.*+?^${}()|[\]]/g, "\\\\$&");
+  const K = '"^(subway|train|light_rail|monorail|tram)$"';
+  const oq = `[out:json][timeout:25];(rel["type"="route_master"]["route_master"~${K}]["name"~"${re}"](24,122,46,154);rel["type"="route"]["route"~${K}]["name"~"${re}"](24,122,46,154););out tags;`;
+  addLog(`🏁 路線さがし「${t}」`, "h");
+  try {
+    const els = await overpass(oq);
+    const ms = els.filter(e => e.tags.type === "route_master"), rs = els.filter(e => e.tags.type === "route");
+    const list = (ms.length ? ms : rs).slice(0, 15);
+    addLog(`  路線: ${ms.length}件・方向べつ: ${rs.length}件`, "m");
+    $("qCand").innerHTML = list.length ? '<div style="font-size:11px;color:#666;margin-top:4px">どれにする？</div>' + list.map(e =>
+      `<div class="c"><div><b>${esc(e.tags.name)}</b><br><small style="color:#888">${esc(e.tags.operator || "")}${e.tags.type === "route" ? "（片方向だけ）" : ""}</small></div>` +
+      `<button class="ib" data-id="${e.id}" data-n="${esc(e.tags.name)}" data-o="${esc(e.tags.operator || "")}" style="font-size:12px">＋ クエストにする</button></div>`).join("")
+      : '<div style="font-size:12px;color:#c00;padding:6px">見つからなかったよ。「千代田線」「常磐線」みたいに、路線名だけで入れてみてね</div>';
+  } catch (e) { $("qCand").innerHTML = `<div style="font-size:12px;color:#c00;padding:6px">さがせなかったよ（${esc(e.message)}）。少したってからもう一回ためしてね</div>`; }
+  qBusy = false;
+}
+// 配布データの駅一覧があれば、駅の真ん中にそろえる（停車位置はホームのはしっこのことがあるので）
+async function qPackStations() {
+  if (packStations) return packStations;
+  try { const res = await tfetch(new URL("../hosomichi-data/stations.json", location.href), { cache: "no-cache" }); if (res.ok) packStations = await res.json(); } catch {}
+  return packStations;
+}
+async function qAdd(id, name, op) {
+  if (qBusy) return; qBusy = true;
+  setMsg(`🏁 「${name}」の駅を集めてるよ…`); setBar(null);
+  try {
+    const els = await overpass(`[out:json][timeout:25];rel(${id})->.m;rel(r.m)->.c;(.m;.c;)->.a;.a out body;node(r.a);out;`);
+    const nodes = new Map(els.filter(e => e.type === "node").map(e => [e.id, e]));
+    const routes = els.filter(e => e.type === "relation" && e.tags.type === "route").map(r => {
+      const nm = r.members.filter(m => m.type === "node");
+      let st = nm.filter(m => /^stop/.test(m.role)); if (!st.length) st = nm.filter(m => /^platform/.test(m.role));
+      return st.map(m => nodes.get(m.ref)).filter(n => n && n.tags && n.tags.name).map(n => [qNorm(n.tags.name), n.lat, n.lon]);
+    }).filter(r => r.length).sort((a, b) => b.length - a.length);
+    // いちばん駅が多い向きを土台に、支線などの駅を「ひとつ前の駅」のうしろに入れていく
+    const out = [];
+    for (const r of routes) {
+      let prev = -1;
+      for (const s of r) {
+        const i = out.findIndex(o => o[0] === s[0]);
+        if (i >= 0) { prev = i; continue; }
+        out.splice(prev + 1, 0, s); prev = prev + 1;
+      }
+    }
+    if (!out.length) throw new Error("駅が見つからなかった（この路線は OpenStreetMap に駅の情報がないみたい）");
+    const ps = await qPackStations();
+    if (ps) for (const s of out) {
+      const near = ps.filter(x => qNorm(x[0]) === s[0]).map(x => [hav([x[1], x[2]], [s[1], s[2]]), x]).sort((a, b) => a[0] - b[0])[0];
+      if (near && near[0] < 1000) { s[1] = near[1][1]; s[2] = near[1][2]; }
+    }
+    for (const s of out) { s[1] = +s[1].toFixed(6); s[2] = +s[2].toFixed(6); }
+    const qs = lsGet(QKEY, []);
+    const q = { id: Date.now(), name, op, osm: id, st: out, created: Date.now() };
+    qs.push(q); lsSet(QKEY, qs);
+    addLog(`🏁 クエスト追加: ${name}（${out.length}駅）`, "ok");
+    const [v, n] = qProg(q);
+    setMsg(`🏁 「${name}」クエスト開始！ ${n}駅（もう行った駅 ${v}）`); setBar(1);
+    $("qCand").innerHTML = ""; $("qLine").value = "";
+    qShow(q.id); qRender();
+  } catch (e) { setMsg(`🏁 駅を集められなかったよ：${e.message}`, true); setBar(0); }
+  qBusy = false;
+}
+
+
+// 🔁 ぜんぶ回る：回る順番（まっすぐの距離で「近い順」→ 入れかえて短く）を決めて、区間ごとに計算
+function qOrder(s, pts, back) {
+  const n = pts.length, P = [s, ...pts.map(p => [p[1], p[2]])], D = (i, j) => hav(P[i], P[j]);
+  let o = [0], left = new Set(pts.map((_, i) => i + 1));
+  while (left.size) { const a = o[o.length - 1]; let b = -1, bd = Infinity; for (const j of left) if (D(a, j) < bd) { bd = D(a, j); b = j; } o.push(b); left.delete(b); }
+  const len = t => { let L = 0; for (let i = 1; i < t.length; i++) L += D(t[i - 1], t[i]); return back ? L + D(t[t.length - 1], 0) : L; };
+  for (let imp = true, k = 0; imp && k < 200; k++) {   // 2-opt：あいだを逆向きにして短くなれば入れかえる
+    imp = false;
+    for (let i = 1; i < n; i++) for (let j = i + 1; j <= n; j++) {
+      const t = o.slice(0, i).concat(o.slice(i, j + 1).reverse(), o.slice(j + 1));
+      if (len(t) < len(o) - 1) { o = t; imp = true; }
+    }
+  }
+  return { order: o.slice(1).map(i => pts[i - 1]), crow: len(o) };
+}
+async function qTour(id, back, skipDone) {
+  const q = lsGet(QKEY, []).find(x => x.id === id); if (!q) return;
+  if ($("go").disabled) return alert("いまルートを計算中だよ");
+  const pts = q.st.filter(s => !skipDone || !qVisitOf(s));
+  if (!pts.length) return alert("回る駅がないよ");
+  if (pts.length > 40) return alert(`${pts.length}駅は多すぎるよ。40駅までにしてね`);
+  audioUnlock();
+  const fromT = $("from").value.trim();
+  try {
+    setMsg("出発の場所をさがしてるよ…");
+    const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
+    const { order, crow } = qOrder(s, pts, back);
+    addLog(`🔁 ${q.name} ぜんぶ回る: 出発 ${sn} → ${order.map(p => p[0]).join(" → ")}${back ? " → 出発" : ""}（まっすぐで ${fmtKm(crow)}）`, "h");
+    pendingName = `${q.name} ${order.length}駅ぜんぶ` + (back ? "（1周）" : "");
+    showTab("route");
+    layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip(back ? "出発・到着" : "出発");
+    map.fitBounds([s, ...order.map(p => [p[1], p[2]])], { padding: [40, 40] });
+    startJob(s, back ? s : [order[order.length - 1][1], order[order.length - 1][2]], structuredClone(cfg), null, 0, null, null,
+      { tour: order.map(p => [p[1], p[2], p[0] + "駅"]), back });
+  } catch (e) { setMsg(e.message, true); }
+}
+// 地図に駅を出す
+function qDraw() {
+  qLayer.clearLayers();
+  const q = lsGet(QKEY, []).find(x => x.id === qShown); if (!q) return;
+  for (const s of q.st) {
+    const v = qVisitOf(s);
+    L.circleMarker([s[1], s[2]], { radius: v ? 8 : 7, color: v ? "#fff" : "#666", weight: 2, fillColor: v ? "#188038" : "#fff", fillOpacity: 1, bubblingMouseEvents: false })
+      .bindTooltip((v ? "✓ " : "") + s[0], { direction: "right", offset: [8, 0], permanent: map.getZoom() >= 13, className: "qtt" })
+      .on("click", () => qPopup(s)).addTo(qLayer);
+  }
+}
+map.on("zoomend", () => { if (qShown) qDraw(); });
+function qShow(id, fit = true) {
+  qShown = qShown === id && !fit ? null : id; qDraw();
+  const q = lsGet(QKEY, []).find(x => x.id === id);
+  if (q && qShown && fit) { if (follow) setFollow(false); map.fitBounds(q.st.map(s => [s[1], s[2]]), { padding: [30, 30] }); $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }
+  qRender();
+}
+function qPopup(s) {
+  const v = qVisitOf(s), div = document.createElement("div"); div.className = "pin";
+  div.innerHTML = `<b>${esc(s[0])}駅</b><br>` + (v ? `✓ ${new Date(v[3]).toLocaleDateString("ja-JP")} に来たよ<br>` : "まだ来てないよ<br>")
+    + (follow ? "" : "<button data-a='to'>到着にする</button>") + (v ? "<button data-a='un'>取り消す</button>" : "<button data-a='set'>✓ 行ったことにする</button>");
+  const pop = L.popup().setLatLng([s[1], s[2]]).setContent(div).openOn(map);
+  div.onclick = ev => {
+    const a = ev.target.dataset.a; if (!a) return; map.closePopup(pop);
+    if (a === "to") qGoTo(s);
+    else if (a === "set") qStamp(s, false);
+    else if (a === "un" && confirm(`${s[0]}駅のスタンプを取り消す？`)) { const n = qNorm(s[0]); lsSet(QVKEY, qVisits().filter(x => !(qNorm(x[0]) === n && hav([x[1], x[2]], [s[1], s[2]]) < 1500))); qDraw(); qRender(); }
+  };
+}
+function qGoTo(s) {
+  $("to").value = s[1].toFixed(6) + "," + s[2].toFixed(6);
+  showTab("route");
+  setMsg(`到着に「${s[0]}駅」を入れたよ。「ルートを作る」を押してね`);
+}
+// いちばん近い、まだ行ってない駅へ
+function qNext(id) {
+  const q = lsGet(QKEY, []).find(x => x.id === id); if (!q) return;
+  const here = me ? me.getLatLng() : map.getCenter(), h = [here.lat, here.lng];
+  const s = q.st.filter(s => !qVisitOf(s)).sort((a, b) => hav([a[1], a[2]], h) - hav([b[1], b[2]], h))[0];
+  if (!s) return alert("もうぜんぶ回ったよ！🏆");
+  qGoTo(s);
+}
+
+// スタンプ
+function qStamp(s, auto) {
+  if (qVisitOf(s)) return;
+  const vs = qVisits(); vs.push([s[0], s[1], s[2], Date.now()]); lsSet(QVKEY, vs);
+  const lines = lsGet(QKEY, []).filter(q => q.st.some(x => qNorm(x[0]) === qNorm(s[0]) && hav([x[1], x[2]], [s[1], s[2]]) < 1500));
+  const prog = lines.map(q => { const [v, n] = qProg(q); return v === n ? `🏆 ${q.name} 制覇！！` : `${q.name} ${v}/${n}`; }).join("\n");
+  addLog(`🏁 スタンプ: ${s[0]}駅${auto ? "（自動）" : ""}　${prog.replace(/\n/g, "・")}`, "ok");
+  if (auto) {
+    chime(); try { navigator.vibrate?.([120, 80, 120]); } catch {}
+    const t = $("qToast"); t.textContent = `🎉 ${s[0]}駅 ゲット！\n${prog}`; t.style.display = "block";
+    clearTimeout(qStamp.tm); qStamp.tm = setTimeout(() => t.style.display = "none", 4000);
+  }
+  qDraw(); qRender();
+}
+$("qToast").onclick = () => $("qToast").style.display = "none";
+function qCheck(ll, accM) {
+  if (accM > Q_ACC) return;
+  for (const q of lsGet(QKEY, [])) for (const s of q.st)
+    if (hav(ll, [s[1], s[2]]) < Q_R && !qVisitOf(s)) qStamp(s, true);
+}
+
+// 一覧
+function qRender() {
+  const qs = lsGet(QKEY, []);
+  $("qList").innerHTML = qs.length ? qs.map(q => {
+    const [v, n] = qProg(q), done = v === n;
+    return `<div class="q" data-id="${q.id}"><b>${done ? "🏆 " : ""}${esc(q.name)}</b> <small style="color:#888">${esc(q.op || "")}</small>
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>${v} / ${n} 駅</span><span>${Math.floor(v / n * 100)}%</span></div>
+      <div class="bar"><div style="width:${v / n * 100}%"></div></div>
+      <div class="btns"><button class="ib" data-a="map"${qShown === q.id ? ' style="border-color:#188038;color:#188038"' : ""}>🗺 ${qShown === q.id ? "地図に出てる" : "地図に出す"}</button>
+        ${done ? "" : '<button class="ib" data-a="next">▶ 近いまだの駅へ</button>'}<button class="ib" data-a="list">📋 駅</button><button class="ib" data-a="tour">🔁 ぜんぶ回る</button><button class="ib" data-a="del">🗑</button></div>
+      <div class="tour"><b>🔁 ぜんぶ回るルート</b>
+        <div style="margin-top:4px"><label><input type="radio" name="qb${q.id}" value="1" checked> 出発にもどる</label>　<label><input type="radio" name="qb${q.id}" value="0"> 最後の駅で終わり</label></div>
+        <div><label><input type="checkbox" class="qskip"${v && v < n ? " checked" : ""}> 行った駅はとばす</label></div>
+        <div style="color:#888;margin-top:2px">出発は「🚲 ルート」タブの出発（空なら現在地）。回る順番は自動で決めるよ</div>
+        <button class="ib" data-a="tgo" style="margin-top:6px;width:100%;border-color:#188038;color:#188038;font-weight:bold">ルートを作る</button></div>
+      <div class="sts">${q.st.map(s => qVisitOf(s) ? `<span class="v">✓${esc(s[0])}</span>` : `<span class="n">${esc(s[0])}</span>`).join("")}</div></div>`;
+  }).join("") : '<div style="font-size:12px;color:#888;padding:6px">まだクエストがないよ。上で路線をさがしてね</div>';
+}
+$("qFind").onclick = qFind;
+$("qLine").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) qFind(); });
+$("qCand").onclick = e => { const b = e.target.closest("button[data-id]"); if (b) qAdd(+b.dataset.id, b.dataset.n, b.dataset.o); };
+$("qList").onclick = e => {
+  const a = e.target.closest("[data-a]")?.dataset.a, it = e.target.closest(".q"); if (!a || !it) return;
+  const id = +it.dataset.id;
+  if (a === "map") { if (qShown === id) { qShown = null; qDraw(); qRender(); } else qShow(id); }
+  else if (a === "next") qNext(id);
+  else if (a === "tour") { const d = it.querySelector(".tour"); d.style.display = d.style.display === "block" ? "none" : "block"; }
+  else if (a === "tgo") qTour(id, it.querySelector(`input[name="qb${id}"]:checked`).value === "1", it.querySelector(".qskip").checked);
+  else if (a === "list") { const d = it.querySelector(".sts"); d.style.display = d.style.display === "block" ? "none" : "block"; }
+  else if (a === "del") {
+    const qs = lsGet(QKEY, []), q = qs.find(x => x.id === id);
+    if (!q || !confirm(`「${q.name}」クエストを消す？（スタンプの記録は残るよ）`)) return;
+    lsSet(QKEY, qs.filter(x => x.id !== id)); if (qShown === id) { qShown = null; qDraw(); } qRender();
+  }
+};
 
 // ---------- 開いたとき：共有URL → なければ前回のルート ----------
 if (location.hash.includes("r=")) loadHash();

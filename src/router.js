@@ -575,6 +575,32 @@ function joinLegs(parts) {
   }
   return { ...res, route, ek: ek.length === route.length - 1 ? ek : undefined };
 }
+// 🏁 ぜんぶ回る：出発 → 点1 → 点2 → … （→ 出発）。順番は画面側で決めてわたす。区間ごとに細道ルートを作ってつなぐ
+async function tourRoute(req, prog) {
+  const s = req.s, P = req.tour || [], back = !!req.back, cfg = { ...(req.cfg || {}), alts: false }, T0 = Date.now();
+  const way = [s, ...P.map(p => [p[0], p[1]])].concat(back ? [s] : []), nl = way.length - 1, parts = [], skip = [];
+  log(`==== 🏁 ぜんぶ回る ${P.length}か所${back ? "（出発にもどる）" : ""} ====`, "h");
+  usedNodes = new Set();
+  try {
+    let from = s;
+    for (let li = 0; li < nl; li++) {
+      const nm = li < P.length ? P[li][2] : "出発";
+      log(`--- 区間 ${li + 1}/${nl}：→ ${nm} ---`, "h");
+      prog({ msg: `🏁 ${li + 1}/${nl}区間（→ ${nm}）`, frac: li / nl });
+      try {
+        const r = await route({ ...req, s: from, g: way[li + 1], cfg, loop: undefined, via: undefined, tour: undefined },
+          p => { const f = stageFrac(p); prog({ ...p, stage: undefined, msg: `🏁 ${li + 1}/${nl}区間（→ ${nm}）\n` + (p.msg || ""), frac: f == null ? undefined : (li + f) / nl }); }, () => {});
+        const e = r.route[r.route.length - 1], dd = hav(e[0], e[1], way[li + 1][0], way[li + 1][1]);
+        log(`区間 ${li + 1}：${(r.len / 1000).toFixed(1)}km・${nm}から ${Math.round(dd)}m の道まで`, dd > 150 ? "w" : "ok");
+        markUsed(r.route); parts.push(r); from = e;
+      } catch (e) { if (stopReq) throw e; log(`区間 ${li + 1}（→ ${nm}）は作れなかったので、とばすよ: ${e.message}`, "w"); skip.push(nm); }
+    }
+  } finally { usedNodes = null; }
+  if (!parts.length) throw new Error("ルートが1区間も作れなかったよ");
+  const L = joinLegs(parts), sec = (Date.now() - T0) / 1000;
+  log(`==== 🏁 完了 ${(L.len / 1000).toFixed(1)}km（${sec.toFixed(1)}秒）${skip.length ? `・とばした所: ${skip.join("、")}` : ""} ====`, "ok");
+  return { ...L, stops: P.map((p, i) => ({ p: [p[0], p[1]], kind: "via", name: `${i + 1}. ${p[2]}` })), tour: P.length, skip, sec };
+}
 // 道の「つながりのかたまり」。駅の中の通路や公園の中の小道など、外とつながってない所を見分ける
 function components(G) {
   if (G.comp) return G.comp;
@@ -1564,7 +1590,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       blockPts = Array.isArray(d.blocks) ? d.blocks : [];
       avoidPts = Array.isArray(d.avoids) ? d.avoids : [];
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
-      const r = d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
+      const r = d.tour ? await tourRoute(d, pr) : d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
       const sh = shortest(); if (sh) self.postMessage({ type: "short", ...sh });
       routing = false;
