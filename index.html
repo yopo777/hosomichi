@@ -131,13 +131,13 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1623</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1625</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
     <div id="tabQuest" style="display:none">
       <div style="font-size:11px;color:#666;margin-top:6px">市の駅・神社・お寺や、路線の駅をぜんぶ回るクエストだよ。◎ で走っていて近く（80m）に来ると、自動でスタンプがもらえるよ。記録はこの端末の中だけ</div>
-      <div class="row"><input type="text" id="qLine" enterkeyhint="search" placeholder="市の名前か路線名（例：千代田区・さいたま市・銀座線）"><button class="ib" id="qFind" style="font-size:13px;white-space:nowrap">🔍 さがす</button></div>
+      <div class="row"><input type="text" id="qLine" enterkeyhint="search" placeholder="例：さいたま市、銀座線"><button class="ib" id="qFind" style="font-size:13px;white-space:nowrap">🔍 さがす</button></div>
       <div id="qCand"></div>
       <div id="qList"></div>
     </div>
@@ -3327,7 +3327,7 @@ async function qFind() {
     $("qCand").innerHTML = qCands.length ? '<div style="font-size:11px;color:#666;margin-top:4px">どれにする？</div>' + qCands.map((c, i) =>
       `<div class="c"><div>${c.ic} <b>${esc(c.name)}</b><br><small style="color:#888">${esc(c.op ? c.op + "・" : "")}${c.st.length}${c.st.some(s => s[3]) ? "か所" : "駅"}</small></div>` +
       `<button class="ib" data-i="${i}" style="font-size:12px">＋ クエストにする</button></div>`).join("")
-      : '<div style="font-size:12px;color:#c00;padding:6px">見つからなかったよ。「千代田区」「さいたま市」「銀座線」みたいに入れてみてね（関東だけ）</div>';
+      : '<div style="font-size:12px;color:#c00;padding:6px">見つからなかったよ。「さいたま市」「銀座線」みたいに入れてみてね（関東だけ）</div>';
   } catch (e) { $("qCand").innerHTML = `<div style="font-size:12px;color:#c00;padding:6px">${esc(e.message)}</div>`; }
 }
 function qAdd(i) {
