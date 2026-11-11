@@ -77,6 +77,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #gps{position:absolute;top:calc(50% + 60px);right:12px;z-index:1000;width:60px;height:60px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:28px;line-height:60px;text-align:center}
 #gps.on{background:#1a73e8;color:#fff}
+#gpsL{position:absolute;top:calc(50% + 122px);right:4px;z-index:1000;width:76px;text-align:center;font-size:11px;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff;pointer-events:none;white-space:nowrap}
+#gpsL.on{color:#1a73e8;font-weight:bold}
 #dir{position:absolute;top:calc(50% - 10px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0;display:none}
 #dir.on{background:#1a73e8}
@@ -185,7 +187,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <div id="inapp" style="display:none;position:absolute;left:8px;right:8px;top:calc(var(--ptop) + 8px);z-index:1001;background:#333;color:#fff;
   border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">📱 X などのアプリの中で開いてるよ。現在地ナビを使うときは「︙」→「ブラウザで開く」で Chrome や Safari で開いてね
   <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
-<button id="gps" title="現在地についていく">◎</button>
+<button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
@@ -427,7 +429,7 @@ function geoErrText(e) {
 function onGeoErr(e) {
   addLog(`現在地エラー: code=${e && e.code} ${e && e.message}`, "e");
   if (wid !== null) navigator.geolocation.clearWatch(wid);
-  wid = null; follow = false; $("gps").classList.remove("on"); $("dir").style.display = "none";
+  wid = null; follow = false; $("gps").classList.remove("on"); $("gpsL").classList.remove("on"); $("gpsL").textContent = "現在地"; $("dir").style.display = "none";
   map.dragging.enable();
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   setMsg(geoErrText(e), true);
@@ -1468,6 +1470,7 @@ $("dir").onclick = () => {
 function setFollow(on) {
   follow = on;
   $("gps").classList.toggle("on", on);
+  $("gpsL").classList.toggle("on", on); $("gpsL").textContent = on ? "現在地に固定中" : wid !== null ? "押すと固定" : "現在地";
   const z = on ? "center" : true;
   map.options.touchZoom = z; map.options.scrollWheelZoom = z; map.options.doubleClickZoom = z;
   if (on) { map.dragging.disable(); if (me) map.setView(me.getLatLng(), Math.max(map.getZoom(), 16)); }
