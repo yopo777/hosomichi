@@ -817,7 +817,6 @@ $("go").onclick = async () => {
   let LK = loopKm();
   const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = $("via").value.trim();
   if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
-  if (unsavedRoute() && await askSave("新しいルートを作る") === "cancel") return;
   pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? " 1周" : " → " + shortName(toT));
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" }; barMax = 0; setBar(0); $("bar").classList.remove("done");
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
@@ -1194,7 +1193,6 @@ worker.postMessage({ cmd: "stats" });
 // 「新しく作る」：今のルートを画面から消して、入力欄を空にして、到着地を入れられるようにする
 $("bNew").onclick = async () => {
   if ($("go").disabled) return;
-  if (unsavedRoute() && await askSave("消す") === "cancel") return;
   history.replaceState(null, "", location.pathname);
   layer.clearLayers(); cur = null; cum = [];
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";

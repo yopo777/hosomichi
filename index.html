@@ -109,7 +109,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.0952</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1140</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -2397,7 +2397,6 @@ $("go").onclick = async () => {
   let LK = loopKm();
   const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = $("via").value.trim();
   if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
-  if (unsavedRoute() && await askSave("新しいルートを作る") === "cancel") return;
   pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? " 1周" : " → " + shortName(toT));
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" }; barMax = 0; setBar(0); $("bar").classList.remove("done");
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
@@ -2774,7 +2773,6 @@ worker.postMessage({ cmd: "stats" });
 // 「新しく作る」：今のルートを画面から消して、入力欄を空にして、到着地を入れられるようにする
 $("bNew").onclick = async () => {
   if ($("go").disabled) return;
-  if (unsavedRoute() && await askSave("消す") === "cancel") return;
   history.replaceState(null, "", location.pathname);
   layer.clearLayers(); cur = null; cum = [];
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
