@@ -1993,7 +1993,8 @@ showAddr();
 if (location.hash.includes("r=")) loadHash();
 else {
   const last = lsGet(LKEY, null);
-  if (last) { try { const lr = unpackRoute(last); showRoute(lr, true); setMsg(lr.resume ? "前回の計算が途中だったよ。「▶ 続きを計算」で再開できるよ" : "前回のルートを表示してるよ"); } catch {} }
+  // 前回のルートは出さない（新しい版を読むたびに出てじゃまなので）。計算が途中だったときだけ、続きができるように出す
+  if (last && last.rs) { try { const lr = unpackRoute(last); showRoute(lr, true); setMsg("前回の計算が途中だったよ。「▶ 続きを計算」で再開できるよ"); } catch {} }
 }
 </script>
 </body></html>

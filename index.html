@@ -131,7 +131,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1604</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1613</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3599,7 +3599,8 @@ showAddr();
 if (location.hash.includes("r=")) loadHash();
 else {
   const last = lsGet(LKEY, null);
-  if (last) { try { const lr = unpackRoute(last); showRoute(lr, true); setMsg(lr.resume ? "前回の計算が途中だったよ。「▶ 続きを計算」で再開できるよ" : "前回のルートを表示してるよ"); } catch {} }
+  // 前回のルートは出さない（新しい版を読むたびに出てじゃまなので）。計算が途中だったときだけ、続きができるように出す
+  if (last && last.rs) { try { const lr = unpackRoute(last); showRoute(lr, true); setMsg("前回の計算が途中だったよ。「▶ 続きを計算」で再開できるよ"); } catch {} }
 }
 </script>
 </body></html>
