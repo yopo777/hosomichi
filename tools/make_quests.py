@@ -48,7 +48,8 @@ def clean(v): return re.sub(r"\s*[（(][^）)]*[）)]\s*", "", v or "").strip() 
 def sta_name(v): return re.sub(r"駅$", "", (v or "").strip())
 def is_station(t): return t.get("railway") in ("station", "halt") or (t.get("public_transport") == "station" and t.get("train") == "yes")
 # スポットのジャンル（アプリの SPOT_KINDS と同じ名前）。名前がなくてもいいもの = NONAME
-NONAME = {"toilet", "water", "bikepark", "bike", "xsig", "xing", "ramp", "elev"}
+NONAME = {"toilet", "water", "bikepark", "bike", "xing", "signal", "steps", "ramp", "elev", "cbar", "bollard", "gate"}
+MID_KINDS = ("bridge", "ramp", "steps", "cbar", "bollard", "gate")   # 線（way）のスポットは まん中の点
 def spot_kind(t, is_way=False):
     g = t.get; a, sh, hi, to = g("amenity"), g("shop"), g("historic"), g("tourism")
     n = g("name")
@@ -57,12 +58,16 @@ def spot_kind(t, is_way=False):
         return "shrine" if r == "shinto" else "temple" if r == "buddhist" else "church" if r == "christian" else None
     if is_way and g("bridge") and g("highway") and n and "橋" in n: return "bridge"
     hw = g("highway")
-    if hw == "crossing" and not is_way:   # 横断歩道（信号あり／なし）
+    if hw == "crossing" and not is_way:   # 横断歩道（しまもようのあるもの。信号のあるなしは関係なく）
         c = g("crossing") or ""
-        if c == "traffic_signals" or g("crossing:signals") == "yes": return "xsig"
-        if c in ("marked", "uncontrolled", "zebra") or g("crossing:markings") not in (None, "no"): return "xing"
+        if c in ("marked", "uncontrolled", "zebra", "traffic_signals") or g("crossing:markings") not in (None, "no"): return "xing"
         return None
-    if is_way and hw == "steps" and g("ramp:bicycle") == "yes": return "ramp"   # 自転車を押して上がれるスロープ（溝）つき階段
+    if hw == "traffic_signals" and not is_way: return "signal"   # 信号機
+    if is_way and hw == "steps": return "ramp" if g("ramp:bicycle") == "yes" else "steps"   # スロープ（溝）つき階段／ふつうの階段
+    b = g("barrier")
+    if b == "cycle_barrier": return "cbar"   # 自転車止めの柵（くねくね）
+    if b == "bollard": return "bollard"      # ポール
+    if b in ("gate", "lift_gate", "swing_gate"): return "gate"   # ゲート・遮断機
     if hw == "elevator": return "elev"
     if a == "toilets": return "toilet"
     if a == "drinking_water": return "water"
@@ -216,7 +221,7 @@ def main():
     for k, n, ns, imp in wh.pow:   # 面のスポットは、まわりの点の平均（橋は まん中の点）
         ps = [L[x] for x in ns if x in L]
         if not ps: continue
-        if k in ("bridge", "ramp"): pts.append((k, n) + ps[len(ps) // 2] + (imp,))
+        if k in MID_KINDS: pts.append((k, n) + ps[len(ps) // 2] + (imp,))
         else: pts.append((k, n, sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps), imp))
     print(f"  スポット {len(pts):,}か所", flush=True)
     cities = []

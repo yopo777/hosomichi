@@ -131,7 +131,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1700</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1711</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3492,16 +3492,23 @@ $("qList").onclick = e => {
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["bike", "🔧", "自転車屋"], ["bikepark", "🅿", "駐輪場"]]],
-  ["道", [["xing", "🚸", "横断歩道"], ["xsig", "🚦", "横断歩道＋信号"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"]]],
+  ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"]]],
+  ["車止め", [["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
   ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["ramen", "🍜", "ラーメン"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
   ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
     ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"]]]];
 // 絵文字にないアイコン（横断歩道＝上から見たしましま）
 const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#333"><rect x="0.5" y="1" width="2.2" height="12"/><rect x="4.7" y="1" width="2.2" height="12"/><rect x="8.9" y="1" width="2.2" height="12"/><rect x="13.1" y="1" width="2.2" height="12"/></g></svg>',
-  // 横断歩道＋信号：しましまの右に、赤と青の歩行者用信号
-  xsig: '<svg width="19" height="16" viewBox="0 0 19 16" style="display:block"><g fill="#333"><rect x="0.3" y="4" width="2" height="11"/><rect x="3.8" y="4" width="2" height="11"/><rect x="7.3" y="4" width="2" height="11"/></g><rect x="11.2" y="0.5" width="7.3" height="15" rx="2" fill="#333"/><circle cx="14.85" cy="4.4" r="2.3" fill="#ea4335"/><circle cx="14.85" cy="11.4" r="2.3" fill="#34a853"/></svg>' };
+  // 階段（横から見た段々）
+  steps: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1 13H5V9.5H8.5V6H12V2.5H15.5" fill="none" stroke="#333" stroke-width="2.2" stroke-linejoin="round"/></svg>',
+  // 自転車止めの柵（くいちがいの柵を上から）
+  cbar: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1.5 3.5H10M6 10.5H14.5" stroke="#d93025" stroke-width="2.6" stroke-linecap="round"/><path d="M1.5 2v3M6 9v3M14.5 9v3M10 2v3" stroke="#555" stroke-width="1.6"/></svg>',
+  // ポール（車止めの棒が3本）
+  bollard: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#555"><rect x="1.5" y="2" width="2.8" height="11" rx="1.2"/><rect x="6.6" y="2" width="2.8" height="11" rx="1.2"/><rect x="11.7" y="2" width="2.8" height="11" rx="1.2"/></g><g fill="#fbbc04"><rect x="1.5" y="4.5" width="2.8" height="2"/><rect x="6.6" y="4.5" width="2.8" height="2"/><rect x="11.7" y="4.5" width="2.8" height="2"/></g></svg>',
+  // ゲート・遮断機（柱と、赤白のバー）
+  gate: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><rect x="0.8" y="2" width="2.6" height="11" rx="1" fill="#555"/><rect x="3" y="5" width="12.4" height="3" fill="#d93025"/><g fill="#fff"><rect x="5.6" y="5" width="2.2" height="3"/><rect x="10" y="5" width="2.2" height="3"/></g></svg>' };
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
-const SPOT_COL = { "道": "#188038", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
+const SPOT_COL = { "道": "#188038", "車止め": "#d93025", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];
