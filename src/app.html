@@ -157,7 +157,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
     <div id="blkBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
       <b>🚫 通れない <span id="blkN">0</span>個</b>
-      <div style="font-size:11px;color:#666;margin-top:2px">地図をタップ →「🚫 通れない」か「⚠ 通りたくない」でつけるよ。🚫はいちばん近い道を通らない、⚠はその道まるごとを ×5 で避けるよ（車が多い・坂が急など）。この端末の中だけに保存</div>
+      <div style="font-size:11px;color:#666;margin-top:2px">地図を長おし（パソコンは右クリック）→「🚫 通れない」か「⚠ 通りたくない」でつけるよ。🚫はいちばん近い道を通らない、⚠はその道まるごとを ×5 で避けるよ（車が多い・坂が急など）。この端末の中だけに保存</div>
       <div class="btns" style="margin-top:6px"><button class="ib" id="blkQr" style="font-size:12px">📷 QRでほかの端末にうつす</button><button class="ib" id="blkCopy" style="font-size:12px">🔗 URLをコピー</button></div>
       <div class="btns" style="margin-top:4px"><button class="ib" id="blkShow" style="font-size:12px">🗺 印を全部見る</button><button class="ib" id="blkDel" style="font-size:12px">🗑 全部消す</button></div>
     </div>
@@ -180,7 +180,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <select id="loopKm" style="padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option>10</option><option>20</option><option selected>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
     <div class="row" id="viaRow"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row" id="toRow"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
-    <div style="font-size:11px;color:#888;margin-top:4px">地図をタップしても出発・到着を選べるよ</div>
+    <div style="font-size:11px;color:#888;margin-top:4px">地図を長おし（パソコンは右クリック）しても出発・到着を選べるよ</div>
     <button id="go">ルートを作る</button>
     <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
       <div id="list"></div></div>
@@ -220,7 +220,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qToast"></div>
-<div id="addr" style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:1000;font-size:11px;color:#333;background:#ffffffcc;border-radius:6px;padding:1px 6px;cursor:pointer;white-space:nowrap;display:none"></div>
+<div id="cdot" style="position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#000;box-shadow:0 0 0 1.5px #fff;z-index:950;pointer-events:none"></div>
+<div id="addr" style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:1000;font-size:11px;color:#333;background:#ffffffcc;border-radius:6px;padding:1px 6px;pointer-events:none;white-space:nowrap;display:none"></div>
 <div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
 
@@ -1402,7 +1403,7 @@ function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着に�
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 }
-map.on("click", e => {
+map.on("contextmenu", e => {   // 長おし（パソコンは右クリック）で「ここを出発・到着にする」。タップでふいに出ないように
   pinPopup(e.latlng, e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6));
 });
 // 🔍 地名・駅名で地図を動かす
@@ -1503,6 +1504,7 @@ function setFollow(on) {
   map.options.touchZoom = z; map.options.scrollWheelZoom = z; map.options.doubleClickZoom = z;
   if (on) { map.dragging.disable(); if (me) map.setView(me.getLatLng(), Math.max(map.getZoom(), 16)); }
   else map.dragging.enable();
+  $("cdot").style.display = on ? "none" : "";   // まん中の黒い点は、現在地に固定中はいらない
   try { spotUpdate(true); } catch {}   // まわりのスポット：固定（現在地のまわり）⇔ 見えている地図の中 を切りかえ
 }
 document.addEventListener("visibilitychange", () => { if (wid !== null && document.visibilityState === "visible") wake(); });
@@ -1960,9 +1962,7 @@ renderSpots(); spotUpdate(true);
 
 
 // ---------- 地図のまん中（固定中は現在地）の住所を下に小さく出す（国土地理院の住所さがし） ----------
-let addrAt = null, addrT = 0, addrTimer = null, muni = null, addrTxt = "", addrMin = lsGet("hosomichi_addrmin", false);
-function addrShow() { $("addr").textContent = addrMin ? "📍" : addrTxt; $("addr").title = addrMin ? "タップで住所を出す" : "タップでかくす"; }
-$("addr").onclick = e => { e.stopPropagation(); addrMin = !addrMin; lsSet("hosomichi_addrmin", addrMin); addrShow(); };   // タップで「📍」だけにする／もどす
+let addrAt = null, addrT = 0, addrTimer = null, muni = null;
 async function muniTable() {   // 市区町村コード → 名前（地理院の muni.js を1回だけ読む）
   if (muni) return muni;
   muni = {};
@@ -1982,7 +1982,7 @@ async function showAddr() {
     if (addrAt !== p) return;
     const t = r.results; if (!t) { $("addr").style.display = "none"; return; }
     const city = (await muniTable())[+t.muniCd] || "";
-    addrTxt = "📍 " + city + (t.lv01Nm && t.lv01Nm !== "－" ? t.lv01Nm : ""); addrShow();
+    $("addr").textContent = "📍 " + city + (t.lv01Nm && t.lv01Nm !== "－" ? t.lv01Nm : "");
     $("addr").style.display = "block";
   } catch { addrAt = null; }
 }
