@@ -58,7 +58,9 @@ def spot_kind(t, is_way=False):
     if is_way and g("bridge") and g("highway") and n and "橋" in n: return "bridge"
     if a == "toilets": return "toilet"
     if a == "drinking_water": return "water"
-    if a == "bicycle_parking": return "bikepark"
+    if a == "bicycle_parking":   # 月極・定期・関係者だけの駐輪場は出さない（ちょっと止めるのに使えないので）
+        if g("access") in ("private", "no", "permissive_monthly") or re.search(r"月極|定期|契約|専用|関係者", (n or "") + (g("description") or "") + (g("note") or "")): return None
+        return "bikepark"
     if sh == "bicycle": return "bike"
     if not n: return None
     if sh == "convenience": return "conv"
