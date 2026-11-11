@@ -134,7 +134,10 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v__VER__</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="spot">📍 マーク</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div id="tabSpot" style="display:none">
+      <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
+    </div>
     <div id="tabQuest" style="display:none">
       <div style="font-size:11px;color:#666;margin-top:6px">市の駅・神社・お寺や、路線の駅をぜんぶ回るクエストだよ。◎ で走っていて近く（80m）に来ると、自動でスタンプがもらえるよ。記録はこの端末の中だけ</div>
       <div class="row"><input type="text" id="qLine" enterkeyhint="search" placeholder="例：さいたま市、銀座線"><button class="ib" id="qFind" style="font-size:13px;white-space:nowrap">🔍 さがす</button></div>
@@ -1262,6 +1265,7 @@ function showTab(t) {
   $("tabData").style.display = t === "data" ? "" : "none";
   $("tabLog").style.display = t === "log" ? "" : "none";
   $("tabQuest").style.display = t === "quest" ? "" : "none";
+  $("tabSpot").style.display = t === "spot" ? "" : "none";
   if (t === "quest") qRender();
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
@@ -1365,11 +1369,9 @@ function renderCfg() {
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
   h += '<div class="note" style="margin-top:6px">設定はこの端末におぼえておくよ。変えたらもう一度「ルートを作る」を押してね</div>';
-  $("cfgBox").innerHTML = '<div id="spotBox" style="margin:4px 0 6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:12px;background:#fff"></div>' + h;
-  try { renderSpots(); } catch {}   // まわりのスポットの欄（はじめの1回は、まだ用意できていないので後で）
+  $("cfgBox").innerHTML = h;
 }
 $("cfgBox").onchange = e => {
-  if (e.target.dataset.sk) return;   // まわりのスポットのチェックは別でうけとる
   if (e.target.name === "bg") return setBase(e.target.value);
   const el = e.target, v = isNaN(+el.value) ? el.value : +el.value;
   if (el.dataset.pen) cfg.pen[el.dataset.pen] = v; else cfg[el.dataset.k] = v;
@@ -1711,7 +1713,8 @@ async function qLoad() {
   return qData;
 }
 const Q_KIND = { station: ["🚉", "駅"], shrine: ["⛩", "神社"], temple: ["🛕", "お寺"], church: ["⛪", "教会"], castle: ["🏯", "城・城あと"], kofun: ["🪦", "古墳・遺跡"],
-  monument: ["🗿", "記念碑・石碑"], sight: ["🌸", "名所・史跡"], view: ["🔭", "展望スポット"], michi: ["🛣", "道の駅"], bridge: ["🌉", "橋"], bath: ["♨", "銭湯・温泉"] };
+  monument: ["🗿", "記念碑・石碑"], sight: ["🌸", "名所・史跡"], view: ["🔭", "展望スポット"], michi: ["🛣", "道の駅"], bridge: ["🌉", "橋"], bath: ["♨", "銭湯・温泉"],
+  jizo: ["🙏", "お地蔵さん・道祖神"], ichiri: ["🌲", "一里塚"], tree: ["🌳", "大きな木"], spring: ["🫧", "湧き水"], fall: ["🏞", "滝"], ferry: ["⛴", "渡し船"] };
 async function qFind() {
   const t = $("qLine").value.trim(); if (!t) return;
   $("qLine").blur();
@@ -1885,12 +1888,16 @@ $("qList").onclick = e => {
 // ---------- 📍 まわりのスポット（設定でえらんだジャンルだけ、現在地のまわりに出す） ----------
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
-  ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["bike", "🔧", "自転車屋"], ["bikepark", "🅿", "駐輪場"]]],
-  ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"]]],
+  ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
+    ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"]]],
+  ["こまったとき", [["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
+  ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
+    ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"]]],
   ["車止め", [["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
   ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["ramen", "🍜", "ラーメン"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
   ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
-    ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"]]]];
+    ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"],
+    ["jizo", "🙏", "お地蔵さん・道祖神"], ["ichiri", "🌲", "一里塚"], ["tree", "🌳", "大きな木"], ["spring", "🫧", "湧き水"], ["fall", "🏞", "滝"], ["ferry", "⛴", "渡し船"]]]];
 // 絵文字にないアイコン（横断歩道＝上から見たしましま）
 const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#333"><rect x="0.5" y="1" width="2.2" height="12"/><rect x="4.7" y="1" width="2.2" height="12"/><rect x="8.9" y="1" width="2.2" height="12"/><rect x="13.1" y="1" width="2.2" height="12"/></g></svg>',
   // 階段（横から見た段々）
@@ -1902,7 +1909,7 @@ const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style=
   // ゲート・遮断機（柱と、赤白のバー）
   gate: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><rect x="0.8" y="2" width="2.6" height="11" rx="1" fill="#555"/><rect x="3" y="5" width="12.4" height="3" fill="#d93025"/><g fill="#fff"><rect x="5.6" y="5" width="2.2" height="3"/><rect x="10" y="5" width="2.2" height="3"/></g></svg>' };
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
-const SPOT_COL = { "道": "#188038", "車止め": "#d93025", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
+const SPOT_COL = { "道": "#188038", "車止め": "#d93025", "こまったとき": "#d01884", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];
@@ -1910,11 +1917,11 @@ const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
 let spotOn = new Set(lsGet("hosomichi_spots", [])), spotAt = null;
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
-  $("spotBox").innerHTML = `<b>📍 まわりのスポット</b><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ</div>`
+  $("spotBox").innerHTML = `<div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ</div>`
     + SPOT_KINDS.map(([g, ks]) => `<div style="margin-top:4px"><span style="color:#666">${g}：</span>` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("") + "</div>").join("");
 }
-$("cfgBox").addEventListener("change", e => {
+$("tabSpot").addEventListener("change", e => {
   const k = e.target.dataset.sk; if (!k) return;
   if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
   lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true);

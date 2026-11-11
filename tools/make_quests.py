@@ -48,8 +48,9 @@ def clean(v): return re.sub(r"\s*[（(][^）)]*[）)]\s*", "", v or "").strip() 
 def sta_name(v): return re.sub(r"駅$", "", (v or "").strip())
 def is_station(t): return t.get("railway") in ("station", "halt") or (t.get("public_transport") == "station" and t.get("train") == "yes")
 # スポットのジャンル（アプリの SPOT_KINDS と同じ名前）。名前がなくてもいいもの = NONAME
-NONAME = {"toilet", "water", "bikepark", "bike", "xing", "signal", "steps", "ramp", "elev", "cbar", "bollard", "gate"}
-MID_KINDS = ("bridge", "ramp", "steps", "cbar", "bollard", "gate")   # 線（way）のスポットは まん中の点
+NONAME = {"toilet", "water", "bikepark", "bike", "xing", "signal", "steps", "ramp", "elev", "cbar", "bollard", "gate",
+          "railx", "footbr", "underpass", "stop", "bump", "constr", "bench", "shelter", "vending", "repair", "police", "aed", "jizo", "tree", "spring", "fall"}
+MID_KINDS = ("bridge", "ramp", "steps", "cbar", "bollard", "gate", "footbr", "underpass", "constr")   # 線（way）のスポットは まん中の点
 def spot_kind(t, is_way=False):
     g = t.get; a, sh, hi, to = g("amenity"), g("shop"), g("historic"), g("tourism")
     n = g("name")
@@ -68,6 +69,22 @@ def spot_kind(t, is_way=False):
     if b == "cycle_barrier": return "cbar"   # 自転車止めの柵（くねくね）
     if b == "bollard": return "bollard"      # ポール
     if b in ("gate", "lift_gate", "swing_gate"): return "gate"   # ゲート・遮断機
+    if g("railway") in ("level_crossing", "crossing") and not is_way: return "railx"   # 踏切
+    if is_way and hw in ("footway", "path", "cycleway", "pedestrian") and g("bridge") not in (None, "no"): return "footbr"   # 歩道橋
+    if is_way and hw in ("footway", "path", "cycleway", "pedestrian") and g("tunnel") == "yes": return "underpass"   # 地下道
+    if hw == "stop" and not is_way: return "stop"   # 一時停止
+    if g("traffic_calming") in ("bump", "hump", "table", "cushion"): return "bump"   # 減速の段差
+    if is_way and hw == "construction": return "constr"   # 工事中の道
+    if a == "bench": return "bench"
+    if a == "shelter": return "shelter"   # 東屋・屋根つきの休けい所
+    if a == "vending_machine" and "drink" in (g("vending") or ""): return "vending"   # 飲み物の自販機
+    if a in ("bicycle_repair_station", "compressed_air"): return "repair"   # 空気入れ・修理スタンド
+    if a == "police": return "police"
+    if g("emergency") == "defibrillator": return "aed"
+    if hi == "wayside_shrine": return "jizo"   # お地蔵さん・道祖神・庚申塔
+    if g("natural") == "spring": return "spring"   # 湧き水
+    if g("waterway") == "waterfall": return "fall"
+    if g("natural") == "tree" and (n or g("denotation") == "natural_monument"): return "tree"   # 名前のある木・天然記念物
     if hw == "elevator": return "elev"
     if a == "toilets": return "toilet"
     if a == "drinking_water": return "water"
@@ -76,6 +93,9 @@ def spot_kind(t, is_way=False):
         return "bikepark"
     if sh == "bicycle": return "bike"
     if not n: return None
+    if a == "hospital": return "hospital"
+    if a == "ferry_terminal" or (g("route") == "ferry"): return "ferry"   # 渡し船
+    if hi == "milestone" and "一里塚" in n: return "ichiri"
     if sh == "convenience": return "conv"
     if a == "cafe": return "cafe"
     if a in ("restaurant", "fast_food") and "ramen" in (g("cuisine") or ""): return "ramen"
@@ -92,7 +112,7 @@ def spot_kind(t, is_way=False):
     if to == "attraction" or hi: return "sight"
     return None
 def famous(t): return 1 if (t.get("wikidata") or t.get("wikipedia")) else 0
-QUEST_KINDS = {"station", "shrine", "temple", "church", "castle", "kofun", "monument", "view", "michi", "sight", "bridge", "bath"}
+QUEST_KINDS = {"jizo", "tree", "spring", "fall", "ichiri", "ferry", "station", "shrine", "temple", "church", "castle", "kofun", "monument", "view", "michi", "sight", "bridge", "bath"}
 
 # ---- 1回目：relation（市区町村の境界・路線）----
 class RelH(osmium.SimpleHandler):
