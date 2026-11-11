@@ -1364,13 +1364,7 @@ function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着に�
     + "<button data-b='1' style='color:#c00'>🚫 通れない印</button><button data-sv='1'>📷 ストビュー</button>";
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
-    if (ev.target.dataset.b) {   // 理由をえらぶ（押したボタンが消えると地図のタップあつかいになるので、少しあとで入れかえる）
-      L.DomEvent.stopPropagation(ev);
-      setTimeout(() => { div.innerHTML = "<b>🚫 なんで通れない？</b><br>" + Object.entries(BLK_R).map(([c, t]) => `<button data-r="${c}">${t}</button>`).join("")
-        + "<div style='font-size:11px;color:#666;margin-top:4px'>印から12m以内の道を、次のルートから通らないよ</div>";
-      pop.update(); }, 0); return;
-    }
-    if (ev.target.dataset.r) { addBlock(L.latLng(ll), ev.target.dataset.r); map.closePopup(pop); return; }
+    if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), "o"); map.closePopup(pop); return; }   // 🚫 その場でつける
     if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
@@ -1487,9 +1481,10 @@ function blkIcon() { return L.divIcon({ className: "", html: '<div style="font-s
 function drawBlocks() {
   blkLayer.clearLayers();
   blocks.forEach((b, i) => {
+    L.circle(b.p, { radius: 12, color: "#c00", weight: 1.5, fillColor: "#f00", fillOpacity: 0.15, interactive: false }).addTo(blkLayer);   // 通らない範囲（12m）
     const m = L.marker(b.p, { icon: blkIcon(), zIndexOffset: 500 }).addTo(blkLayer);
     const div = document.createElement("div"); div.className = "pin";
-    div.innerHTML = `<b>🚫 ${BLK_R[b.r] || "通れない"}</b>${b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : ""}<br><button>この印を消す</button>`;
+    div.innerHTML = `<b>🚫 通れない</b>${b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : ""}<br><span style="font-size:11px;color:#666">赤い円の中で、いちばん近い道だけ通らないよ</span><br><button>この印を消す</button>`;
     div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog("🚫 通れない印を1つ消したよ"); };
     m.bindPopup(div);
   });
@@ -1499,7 +1494,7 @@ function saveBlocks() { lsSet(BKEY, blocks); drawBlocks(); }
 function addBlock(ll, r) {
   const d = new Date();
   blocks.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], r, t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
-  saveBlocks(); addLog(`🚫 通れない印をつけたよ（${BLK_R[r]}）。次のルート計算から通らないよ`, "ok");
+  saveBlocks(); addLog(`🚫 通れない印をつけたよ。次のルート計算から通らないよ`, "ok");
 }
 // URL・QR用にみじかくする：理由1文字＋緯度経度（10万倍の36進数）
 function blkEncode() { return blocks.map(b => b.r + Math.round(b.p[0] * 1e5).toString(36) + "." + Math.round(b.p[1] * 1e5).toString(36)).join("_"); }

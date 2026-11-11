@@ -441,15 +441,23 @@ function applyBlocks(lat, lon, adj, N) {
     const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
     return Math.hypot(ax + dx * t, ay + dy * t);
   };
-  let n = 0;
+  // 印ごとに、いちばん近い道（とそれと同じくらい近い道＝交差点なら全部）だけを切る。
+  // 12m 以内でも、となりの道（いちばん近い道より 4m 以上はなれている）は切らない
+  const hits = [], dmin = new Map();
   for (let u = 0; u < N; u++) {
     if (!adj[u] || !adj[u].length) continue;
     const bs = nearBlocks(u); if (!bs.length) continue;
-    for (const e of adj[u].slice()) {
-      if (!bs.some(p => segDist(p, u, e.v) < BLOCK_R)) continue;
-      const v = e.v;
-      adj[u] = adj[u].filter(x => x.v !== v); adj[v] = adj[v].filter(x => x.v !== u); n++;
+    for (const e of adj[u]) for (const p of bs) {
+      const d = segDist(p, u, e.v); if (d >= BLOCK_R) continue;
+      hits.push([u, e.v, p, d]); if (!(dmin.get(p) <= d)) dmin.set(p, d);
     }
+  }
+  let n = 0;
+  for (const [u, v, p, d] of hits) {
+    if (d > dmin.get(p) + 4) continue;
+    const before = adj[u].length;
+    adj[u] = adj[u].filter(x => x.v !== v); adj[v] = adj[v].filter(x => x.v !== u);
+    if (adj[u].length < before) n++;
   }
   return n;
 }
