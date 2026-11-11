@@ -1113,7 +1113,7 @@ $("colL").textContent = COLOR_NAMES[colorMode];
 
 let cum = [];
 function showRoute(r, fit) {
-  cur = r; layer.clearLayers(); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
+  cur = r; layer.clearLayers(); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
   const tent = r.tent || [];
   r.nav = r.route.length ? r.route.concat(tent.slice(1)) : tent.slice();   // ナビで使う線（確定＋仮）
@@ -1267,7 +1267,7 @@ worker.postMessage({ cmd: "stats" });
 $("bNew").onclick = async () => {
   if ($("go").disabled) return;
   history.replaceState(null, "", location.pathname);
-  layer.clearLayers(); cur = null; cum = [];
+  layer.clearLayers(); cur = null; cum = []; flowPrep();
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
   legend(null);
   $("from").value = ""; $("via").value = ""; $("to").value = ""; setMsg(""); $("prog").style.display = "none";
@@ -1547,7 +1547,8 @@ function setFollow(on) {
   map.options.touchZoom = z; map.options.scrollWheelZoom = z; map.options.doubleClickZoom = z;
   if (on) { map.dragging.disable(); if (me) map.setView(me.getLatLng(), Math.max(map.getZoom(), 16)); }
   else map.dragging.enable();
-  $("cdot").style.display = on ? "none" : "";   // まん中の黒い点は、現在地に固定中はいらない
+  $("cdot").style.display = on ? "none" : "";
+  try { flowPrep(); } catch {}   // ルートのボール：現在地に固定中は止める   // まん中の黒い点は、現在地に固定中はいらない
   try { spotUpdate(true); } catch {}   // まわりのスポット：固定（現在地のまわり）⇔ 見えている地図の中 を切りかえ
 }
 document.addEventListener("visibilitychange", () => { if (wid !== null && document.visibilityState === "visible") wake(); });
@@ -2157,6 +2158,46 @@ $("homeD").onclick = () => {   // タップで、家までの細道ルートを�
   };
 };
 drawHome();
+
+
+// ---------- ルートの上を白いボールが流れる（進む向きがわかるように。見えている所だけ・ナビで現在地に固定中は止める） ----------
+const flowLayer = L.layerGroup().addTo(map);
+let flowBalls = [], flowRaf = 0, flowT0 = 0, flowSpeed = 0, flowLast = 0;
+function flowStop() { cancelAnimationFrame(flowRaf); flowRaf = 0; flowLayer.clearLayers(); flowBalls = []; }
+function flowPrep() {
+  flowStop();
+  if (!cur || !cur.route || cur.route.length < 2 || (follow && me) || document.hidden) return;
+  const R = cur.route, b = map.getBounds().pad(0.1), runs = []; let run = null;
+  for (let i = 0; i < R.length; i++) {   // ルートのうち、見えている所のつながり（何回も通る所は、それぞれ別に）
+    if (b.contains(R[i])) { if (!run) { run = i > 0 ? [R[i - 1]] : []; } run.push(R[i]); }
+    else if (run) { run.push(R[i]); runs.push(run); run = null; }
+  }
+  if (run) runs.push(run);
+  const mpp = 40075016 * Math.cos(map.getCenter().lat * RAD) / 2 ** (map.getZoom() + 8), gap = 110 * mpp;   // 110px おき
+  flowSpeed = 70 * mpp;   // 1秒に 70px くらい
+  for (const r of runs) {
+    const cs = [0]; for (let i = 1; i < r.length; i++) cs.push(cs[i - 1] + hav(r[i - 1], r[i]));
+    const len = cs[cs.length - 1]; if (len < gap * 0.6) continue;
+    const n = Math.max(1, Math.floor(len / gap));
+    for (let k = 0; k < n && flowBalls.length < 150; k++)
+      flowBalls.push({ r, cs, len, base: k * len / n, m: L.circleMarker(r[0], { radius: 5.5, color: "#111", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(flowLayer) });
+  }
+  if (flowBalls.length) { flowT0 = performance.now(); flowRaf = requestAnimationFrame(flowTick); }
+}
+function flowTick(now) {
+  flowRaf = requestAnimationFrame(flowTick);
+  if (now - flowLast < 33) return; flowLast = now;   // 1秒に30回くらいで十分
+  const t = (now - flowT0) / 1000;
+  for (const f of flowBalls) {
+    const d = (f.base + t * flowSpeed) % f.len, cs = f.cs;
+    let lo = 0, hi = cs.length - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cs[mid] <= d) lo = mid; else hi = mid; }
+    const a = f.r[lo], c = f.r[hi], u = (d - cs[lo]) / ((cs[hi] - cs[lo]) || 1);
+    f.m.setLatLng([a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u]);
+  }
+}
+map.on("movestart zoomstart", flowStop);
+map.on("moveend", () => flowPrep());
+document.addEventListener("visibilitychange", () => document.hidden ? flowStop() : flowPrep());
 
 // ---------- 開いたとき：共有URL → なければ前回のルート ----------
 if (location.hash.includes("r=")) loadHash();
