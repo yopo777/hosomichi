@@ -17,21 +17,29 @@
 """
 import sys, os, re, json, time, datetime
 from collections import defaultdict
-try:
-    import osmium
-except ImportError as e:
-    # Windows のスマートアプリコントロールが osmium の「area」部品（DLL）だけ止めることがある。
-    # このスクリプトは area を使わないので、身代わりを置いて読みこまないようにする
-    if "area" not in str(e) and "アプリケーション制御" not in str(e): raise
+def load_osmium():
+    # Windows のスマートアプリコントロールが osmium の部品（DLL）をいくつか止めることがある。
+    # このスクリプトが使うのは SimpleHandler（読むところ）だけなので、止められた部品は身代わりを置いて読みこまない
     import types
-    for k in [k for k in sys.modules if k == "osmium" or k.startswith("osmium.")]: del sys.modules[k]
-    stub = types.ModuleType("osmium.area")
-    class AreaManager:
-        def __init__(self, *a, **k): raise RuntimeError("osmium の area 部品が Windows に止められているので使えないよ")
-    stub.AreaManager = AreaManager
-    sys.modules["osmium.area"] = stub
-    import osmium
-    print("（osmium の area 部品は Windows に止められていたので、使わずに動かすよ）", flush=True)
+    stubbed = []
+    for _ in range(12):
+        try:
+            import osmium
+            if stubbed: print(f"（Windows に止められた osmium の部品 {', '.join(stubbed)} は使わずに動かすよ）", flush=True)
+            return osmium
+        except ImportError as e:
+            m = re.search(r"importing (\w+)", str(e))
+            name = m.group(1) if m else ""
+            if not name or name.startswith("_") or name in ("io", "osm") or name in stubbed: raise   # 本体・読むのに使う部品は身代わりにできない
+            stubbed.append(name)
+            for k in [k for k in sys.modules if k == "osmium" or k.startswith("osmium.")]:
+                if k[7:] not in stubbed: del sys.modules[k]   # 身代わりはのこして、ほかは読みなおす
+            stub = types.ModuleType("osmium." + name)
+            def _no(*a, **k): raise RuntimeError(f"osmium の {name} 部品は Windows に止められているので使えないよ")
+            stub.__getattr__ = lambda attr: _no
+            sys.modules["osmium." + name] = stub
+    raise ImportError("osmium が読みこめなかったよ")
+osmium = load_osmium()
 
 RAIL = {"train", "subway", "light_rail", "monorail", "tram"}
 def clean(v): return re.sub(r"\s*[（(][^）)]*[）)]\s*", "", v or "").strip()   # 「千代田線（綾瀬→代々木上原）」→「千代田線」
