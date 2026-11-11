@@ -131,7 +131,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1625</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.1634</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -3485,10 +3485,11 @@ $("qList").onclick = e => {
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["bike", "🔧", "自転車屋"], ["bikepark", "🅿", "駐輪場"]]],
+  ["道", [["xsig", "🚦", "横断歩道（信号あり）"], ["xing", "🚸", "横断歩道（信号なし）"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"]]],
   ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["ramen", "🍜", "ラーメン"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
   ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
     ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"]]]];
-const SPOT_COL = { "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
+const SPOT_COL = { "道": "#188038", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];

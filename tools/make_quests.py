@@ -48,7 +48,7 @@ def clean(v): return re.sub(r"\s*[（(][^）)]*[）)]\s*", "", v or "").strip() 
 def sta_name(v): return re.sub(r"駅$", "", (v or "").strip())
 def is_station(t): return t.get("railway") in ("station", "halt") or (t.get("public_transport") == "station" and t.get("train") == "yes")
 # スポットのジャンル（アプリの SPOT_KINDS と同じ名前）。名前がなくてもいいもの = NONAME
-NONAME = {"toilet", "water", "bikepark", "bike"}
+NONAME = {"toilet", "water", "bikepark", "bike", "xsig", "xing", "ramp", "elev"}
 def spot_kind(t, is_way=False):
     g = t.get; a, sh, hi, to = g("amenity"), g("shop"), g("historic"), g("tourism")
     n = g("name")
@@ -56,6 +56,14 @@ def spot_kind(t, is_way=False):
         r = g("religion")
         return "shrine" if r == "shinto" else "temple" if r == "buddhist" else "church" if r == "christian" else None
     if is_way and g("bridge") and g("highway") and n and "橋" in n: return "bridge"
+    hw = g("highway")
+    if hw == "crossing" and not is_way:   # 横断歩道（信号あり／なし）
+        c = g("crossing") or ""
+        if c == "traffic_signals" or g("crossing:signals") == "yes": return "xsig"
+        if c in ("marked", "uncontrolled", "zebra") or g("crossing:markings") not in (None, "no"): return "xing"
+        return None
+    if is_way and hw == "steps" and g("ramp:bicycle") == "yes": return "ramp"   # 自転車を押して上がれるスロープ（溝）つき階段
+    if hw == "elevator": return "elev"
     if a == "toilets": return "toilet"
     if a == "drinking_water": return "water"
     if a == "bicycle_parking":   # 月極・定期・関係者だけの駐輪場は出さない（ちょっと止めるのに使えないので）
@@ -161,10 +169,13 @@ def merge_line(stop_lists):   # いちばん駅が多い向きを土台に、支
             out.insert(prev + 1, s); prev += 1
     return out
 
-def dedup(pts, d=0.01):   # 同じ名前で近い点は1つに（ホームごとの点・JRと私鉄の同じ駅など）
-    keep = []
+def dedup(pts, d=0.01):   # 同じ名前で近い点は1つに（ホームごとの点・JRと私鉄の同じ駅など）。マス目で近くだけ見るので数が多くても速い
+    keep, grid = [], defaultdict(list)
     for p in pts:
-        if all(p[0] != q[0] or abs(p[1] - q[1]) + abs(p[2] - q[2]) > d for q in keep): keep.append(p)
+        gi, gj = int(p[1] // d), int(p[2] // d)
+        near = [q for a in (gi - 1, gi, gi + 1) for b in (gj - 1, gj, gj + 1) for q in grid[(a, b)]]
+        if all(p[0] != q[0] or abs(p[1] - q[1]) + abs(p[2] - q[2]) > d for q in near):
+            keep.append(p); grid[(gi, gj)].append(p)
     return keep
 
 def main():
@@ -205,7 +216,7 @@ def main():
     for k, n, ns, imp in wh.pow:   # 面のスポットは、まわりの点の平均（橋は まん中の点）
         ps = [L[x] for x in ns if x in L]
         if not ps: continue
-        if k == "bridge": pts.append((k, n) + ps[len(ps) // 2] + (imp,))
+        if k in ("bridge", "ramp"): pts.append((k, n) + ps[len(ps) // 2] + (imp,))
         else: pts.append((k, n, sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps), imp))
     print(f"  スポット {len(pts):,}か所", flush=True)
     cities = []
