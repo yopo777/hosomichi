@@ -82,30 +82,35 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #list .it button{border:1px solid #ccc;background:#fff;border-radius:6px;padding:4px 8px;font-size:13px}
 #share{display:none;margin-top:8px;font-size:13px;background:#f6f6f6;border-radius:8px;padding:8px}
 #share textarea{width:100%;height:60px;font-size:11px}
-#gps{position:absolute;top:calc(50% + 60px);right:12px;z-index:1000;width:60px;height:60px;border-radius:50%;
-  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:28px;line-height:60px;text-align:center}
+#gps{position:absolute;top:calc(50% + 96px);right:12px;z-index:1000;width:50px;height:50px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:24px;line-height:50px;text-align:center}
 #gps.on{background:#1a73e8;color:#fff}
-#gpsL{position:absolute;top:calc(50% + 122px);right:4px;z-index:1000;width:76px;text-align:center;font-size:11px;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff;pointer-events:none;white-space:nowrap}
+#gpsL{position:absolute;top:calc(50% + 148px);right:4px;z-index:1000;width:76px;text-align:center;font-size:11px;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff;pointer-events:none;white-space:nowrap}
 #gpsL.on{color:#1a73e8;font-weight:bold}
-#dir{position:absolute;top:calc(50% - 10px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
+#dir{position:absolute;top:calc(50% + 34px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0;display:none}
 #dir.on{background:#1a73e8}
 .fetchBox{animation:fbk 1s ease-in-out infinite}
 @keyframes fbk{50%{opacity:.25}}
-#col{position:absolute;top:calc(50% - 154px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
-  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0}
-#mk{position:absolute;top:calc(50% - 226px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
-  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:22px;padding:0;display:none}
+#col{position:absolute;top:calc(50% - 86px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
+#fl,#flr{position:absolute;right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0;display:none}
+#fl{top:calc(50% - 206px)}#flr{top:calc(50% - 146px)}
+#fl.off{opacity:.45;filter:grayscale(1)}
+#fl small,#flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+#mk{position:absolute;top:calc(50% - 266px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0;display:none}
 #mk.off{opacity:.45;filter:grayscale(1)}
-#mk small{position:absolute;right:0;left:0;bottom:-16px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
-#col small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+#mk small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+#col small{position:absolute;right:-6px;left:-6px;text-align:center;bottom:-15px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 #legend{position:absolute;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));cursor:pointer;-webkit-tap-highlight-color:transparent;z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:6px 8px;font-size:11px;line-height:1.6;display:none;max-width:60%}
 #legend.min{padding:4px 8px;opacity:.75;font-size:12px}   /* タップでたたむ */
 #legend .lgT{float:right;margin-left:6px;color:#999;font-size:11px}
-#alt{position:absolute;top:calc(50% - 82px);right:18px;z-index:1000;width:48px;height:48px;border-radius:50%;
-  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:20px;font-weight:bold;color:#d93025;padding:0;display:none}
-#alt small{position:absolute;right:0;bottom:-16px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap;font-weight:normal}
+#alt{position:absolute;top:calc(50% - 26px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:17px;font-weight:bold;color:#d93025;padding:0;display:none}
+#alt small{position:absolute;right:-6px;left:-6px;text-align:center;bottom:-15px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap;font-weight:normal}
 #legend i{display:inline-block;width:18px;height:6px;border-radius:3px;margin-right:4px;vertical-align:middle}
 .leaflet-bottom.leaflet-right{bottom:0}
 #dir svg{display:block;margin:auto;transition:transform .3s}
@@ -147,7 +152,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0019</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0025</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -245,6 +250,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
+<button id="fl" title="ルートのボールを出す／消す">⚪<small id="flL">ボール</small></button>
+<button id="flr" title="ボールの向きを逆にする">⇄<small id="flrL">向き</small></button>
 <button id="col" title="ルートの色">🎨<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qToast"></div>
@@ -2604,7 +2611,7 @@ function simpRoute(pts, kc, tol) {
   const out = keep.map(i => pts[i]);
   return { pts: out, kc: kc && kc.length === pts.length - 1 ? keep.slice(0, -1).map(i => kc[i]) : null };
 }
-let colorMode = (() => { try { return localStorage.getItem("hosomichi_color") || "red"; } catch { return "red"; } })();
+let colorMode = (() => { try { const c = localStorage.getItem("hosomichi_color"); return c === "slope" ? "slope" : "kind"; } catch { return "kind"; } })();   // 「赤」一色はやめた
 const COLOR_NAMES = { red: "赤", kind: "道の種類", slope: "坂" };
 let legendMin = (() => { try { return localStorage.getItem("hosomichi_lgmin") === "1"; } catch { return false; } })();
 $("legend").onclick = () => {
@@ -2740,7 +2747,7 @@ function setColorMode(m) {
   try { localStorage.setItem("hosomichi_color", m); } catch {}
   if (cur) showRoute(cur, false); else legend(null);
 }
-$("col").onclick = () => setColorMode({ red: "kind", kind: "slope", slope: "red" }[colorMode]);
+$("col").onclick = () => setColorMode(colorMode === "kind" ? "slope" : "kind");
 $("colL").textContent = COLOR_NAMES[colorMode];
 
 let cum = [];
@@ -3795,10 +3802,19 @@ drawHome();
 // ---------- ルートの上を白いボールが流れる（進む向きがわかるように。見えている所だけ・ナビで現在地に固定中は止める） ----------
 const flowLayer = L.layerGroup().addTo(map);
 let flowBalls = [], flowRaf = 0, flowT0 = 0, flowSpeed = 0, flowLast = 0;
+let flowOn = lsGet("hosomichi_flow", true), flowRev = false;   // 右はしのボタン：ボールを出す／消す・向きを逆に（逆はそのときだけ）
+function flowBtns() {
+  const has = !!(cur && cur.route && cur.route.length > 1);
+  $("fl").style.display = has ? "block" : "none"; $("flr").style.display = has && flowOn ? "block" : "none";
+  $("fl").classList.toggle("off", !flowOn); $("flL").textContent = flowOn ? "ボール" : "消し中";
+  $("flrL").textContent = flowRev ? "逆向き" : "向き";
+}
+$("fl").onclick = () => { flowOn = !flowOn; lsSet("hosomichi_flow", flowOn); flowPrep(); };
+$("flr").onclick = () => { flowRev = !flowRev; flowPrep(); };
 function flowStop() { cancelAnimationFrame(flowRaf); flowRaf = 0; flowLayer.clearLayers(); flowBalls = []; }
 function flowPrep() {
-  flowStop();
-  if (!cur || !cur.route || cur.route.length < 2 || (follow && me) || document.hidden) return;
+  flowStop(); flowBtns();
+  if (!flowOn || !cur || !cur.route || cur.route.length < 2 || (follow && me) || document.hidden) return;
   const R = cur.route, b = map.getBounds().pad(0.1), runs = []; let run = null;
   for (let i = 0; i < R.length; i++) {   // ルートのうち、見えている所のつながり（何回も通る所は、それぞれ別に）
     if (b.contains(R[i])) { if (!run) { run = i > 0 ? [R[i - 1]] : []; } run.push(R[i]); }
@@ -3821,7 +3837,8 @@ function flowTick(now) {
   if (now - flowLast < 33) return; flowLast = now;   // 1秒に30回くらいで十分
   const t = (now - flowT0) / 1000;
   for (const f of flowBalls) {
-    const d = (f.base + t * flowSpeed) % f.len, cs = f.cs;
+    let d = (f.base + t * flowSpeed) % f.len; if (flowRev) d = f.len - d;
+    const cs = f.cs;
     let lo = 0, hi = cs.length - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cs[mid] <= d) lo = mid; else hi = mid; }
     const a = f.r[lo], c = f.r[hi], u = (d - cs[lo]) / ((cs[hi] - cs[lo]) || 1);
     f.m.setLatLng([a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u]);
