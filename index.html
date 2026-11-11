@@ -135,7 +135,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.2325</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.2331</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="spot">📍 マーク</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -2112,11 +2112,22 @@ function onGeoErr(e) {
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   setMsg(geoErrText(e), true);
 }
-function getHere(timeout = 15000) {
-  return new Promise((ok, ng) => {
+// 現在地：◎で取れている新しい位置があればそれを使う。なければ GPS（10秒）→ だめなら Wi-Fi などのおおまかな位置（数分前のものでもOK）
+let hereFix = null;   // [[緯度, 経度], 時刻, 精度m]（onPos で入れる）
+function getHere(timeout = 10000) {
+  if (hereFix && Date.now() - hereFix[1] < 60000 && hereFix[2] < 100) return Promise.resolve(hereFix[0]);
+  const once = opt => new Promise((ok, ng) => navigator.geolocation.getCurrentPosition(ok, ng, opt));
+  return new Promise(async (ok, ng) => {
     if (!navigator.geolocation) return ng(new Error("位置情報が使えません"));
-    navigator.geolocation.getCurrentPosition(p => ok([p.coords.latitude, p.coords.longitude]),
-      e => ng(new Error(geoErrText(e))), { enableHighAccuracy: true, timeout });
+    try { const p = await once({ enableHighAccuracy: true, timeout, maximumAge: 30000 }); return ok([p.coords.latitude, p.coords.longitude]); }
+    catch (e) {
+      if (e.code === 1) return ng(new Error(geoErrText(e)));   // 位置情報が許可されていない
+      try {
+        const p = await once({ enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+        addLog(`現在地：GPSが取れなかったので、おおまかな位置（±${Math.round(p.coords.accuracy)}m）を使ったよ`, "w");
+        return ok([p.coords.latitude, p.coords.longitude]);
+      } catch (e2) { ng(new Error(geoErrText(e2))); }
+    }
   });
 }
 
@@ -3108,6 +3119,7 @@ function nearestOnRoute(p) {
 }
 function onPos(p) {
   const ll = [p.coords.latitude, p.coords.longitude];
+  hereFix = [ll, Date.now(), p.coords.accuracy];
   updHeading(p.coords, ll);
   const first = !me;
   if (!me) {
