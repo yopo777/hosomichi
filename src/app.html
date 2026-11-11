@@ -128,8 +128,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 
     </div>
     <div id="blkBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-      <b>🚫 通れない印 <span id="blkN">0</span>個</b>
-      <div style="font-size:11px;color:#666;margin-top:2px">地図をタップ →「🚫 通れない印」でつけるよ。印から12m以内の道は、ルートで通らないよ（この端末の中だけに保存）</div>
+      <b>🚫 通れない <span id="blkN">0</span>個</b>
+      <div style="font-size:11px;color:#666;margin-top:2px">地図をタップ →「🚫 通れない」か「⚠ 通りたくない」でつけるよ。🚫はいちばん近い道を通らない、⚠はその道まるごとを ×5 で避けるよ（車が多い・坂が急など）。この端末の中だけに保存</div>
       <div class="btns" style="margin-top:6px"><button class="ib" id="blkQr" style="font-size:12px">📷 QRでほかの端末にうつす</button><button class="ib" id="blkCopy" style="font-size:12px">🔗 URLをコピー</button></div>
       <div class="btns" style="margin-top:4px"><button class="ib" id="blkShow" style="font-size:12px">🗺 印を全部見る</button><button class="ib" id="blkDel" style="font-size:12px">🗑 全部消す</button></div>
     </div>
@@ -729,7 +729,7 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia) {
   }
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
@@ -1361,10 +1361,10 @@ function openStreetView(ll) {
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
-    + "<button data-b='1' style='color:#c00'>🚫 通れない印</button><button data-sv='1'>📷 ストビュー</button>";
+    + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button>";
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
-    if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), "o"); map.closePopup(pop); return; }   // 🚫 その場でつける
+    if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), ev.target.dataset.b); map.closePopup(pop); return; }   // 🚫／⚠ その場でつける
     if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
@@ -1477,29 +1477,31 @@ const BKEY = "hosomichi_blocks";
 const BLK_R = { s: "階段", p: "人の家・敷地", x: "柵・工事・行き止まり", o: "その他" };
 let blocks = lsGet(BKEY, []).filter(b => b && Array.isArray(b.p));
 const blkLayer = L.layerGroup().addTo(map);
-function blkIcon() { return L.divIcon({ className: "", html: '<div style="font-size:20px;line-height:22px;text-align:center;text-shadow:0 0 3px #fff">🚫</div>', iconSize: [22, 22], iconAnchor: [11, 11] }); }
+function blkIcon(a) { return L.divIcon({ className: "", html: `<div style="font-size:${a ? 17 : 20}px;line-height:22px;text-align:center;text-shadow:0 0 3px #fff">${a ? "⚠️" : "🚫"}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }); }
 function drawBlocks() {
   blkLayer.clearLayers();
   blocks.forEach((b, i) => {
-    L.circle(b.p, { radius: 4, stroke: false, fillColor: "#f00", fillOpacity: 0.08, interactive: false }).addTo(blkLayer);   // 印の場所（うすく）
-    const m = L.marker(b.p, { icon: blkIcon(), zIndexOffset: 500 }).addTo(blkLayer);
+    const av = b.r === "a";
+    L.circle(b.p, { radius: 4, stroke: false, fillColor: av ? "#f90" : "#f00", fillOpacity: 0.08, interactive: false }).addTo(blkLayer);   // 印の場所（うすく）
+    const m = L.marker(b.p, { icon: blkIcon(av), zIndexOffset: 500 }).addTo(blkLayer);
     const div = document.createElement("div"); div.className = "pin";
-    div.innerHTML = `<b>🚫 通れない</b>${b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : ""}<br><span style="font-size:11px;color:#666">印からいちばん近い道（12m以内）だけ通らないよ</span><br><button>この印を消す</button>`;
+    div.innerHTML = (av ? `<b>⚠ 通りたくない</b>` : `<b>🚫 通れない</b>`) + (b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : "")
+      + `<br><span style="font-size:11px;color:#666">${av ? "印からいちばん近い道（12m以内）を、その道まるごと ×5 で避けるよ" : "印からいちばん近い道（12m以内）だけ通らないよ"}</span><br><button>この印を消す</button>`;
     div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog("🚫 通れない印を1つ消したよ"); };
     m.bindPopup(div);
   });
-  $("blkN").textContent = blocks.length;
+  const na = blocks.filter(b => b.r === "a").length; $("blkN").textContent = `${blocks.length - na}個・⚠ 通りたくない ${na}`;
 }
 function saveBlocks() { lsSet(BKEY, blocks); drawBlocks(); }
 function addBlock(ll, r) {
   const d = new Date();
   blocks.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], r, t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
-  saveBlocks(); addLog(`🚫 通れない印をつけたよ。次のルート計算から通らないよ`, "ok");
+  saveBlocks(); addLog(r === "a" ? `⚠ 通りたくない印をつけたよ。次のルート計算から、その道を避けるよ` : `🚫 通れない印をつけたよ。次のルート計算から通らないよ`, "ok");
 }
 // URL・QR用にみじかくする：理由1文字＋緯度経度（10万倍の36進数）
 function blkEncode() { return blocks.map(b => b.r + Math.round(b.p[0] * 1e5).toString(36) + "." + Math.round(b.p[1] * 1e5).toString(36)).join("_"); }
 function blkDecode(t) {
-  return t.split("_").map(x => { const m = /^([spxo])([0-9a-z]+)\.([0-9a-z]+)$/.exec(x); return m && { p: [parseInt(m[2], 36) / 1e5, parseInt(m[3], 36) / 1e5], r: m[1] }; })
+  return t.split("_").map(x => { const m = /^([spxoa])([0-9a-z]+)\.([0-9a-z]+)$/.exec(x); return m && { p: [parseInt(m[2], 36) / 1e5, parseInt(m[3], 36) / 1e5], r: m[1] }; })
     .filter(b => b && Math.abs(b.p[0]) <= 90 && Math.abs(b.p[1]) <= 180);
 }
 function blkUrl() { return location.origin + location.pathname + "#blk=" + blkEncode(); }

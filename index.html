@@ -109,7 +109,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.0944</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1111.0952</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
@@ -128,8 +128,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 
     </div>
     <div id="blkBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-      <b>🚫 通れない印 <span id="blkN">0</span>個</b>
-      <div style="font-size:11px;color:#666;margin-top:2px">地図をタップ →「🚫 通れない印」でつけるよ。印から12m以内の道は、ルートで通らないよ（この端末の中だけに保存）</div>
+      <b>🚫 通れない <span id="blkN">0</span>個</b>
+      <div style="font-size:11px;color:#666;margin-top:2px">地図をタップ →「🚫 通れない」か「⚠ 通りたくない」でつけるよ。🚫はいちばん近い道を通らない、⚠はその道まるごとを ×5 で避けるよ（車が多い・坂が急など）。この端末の中だけに保存</div>
       <div class="btns" style="margin-top:6px"><button class="ib" id="blkQr" style="font-size:12px">📷 QRでほかの端末にうつす</button><button class="ib" id="blkCopy" style="font-size:12px">🔗 URLをコピー</button></div>
       <div class="btns" style="margin-top:4px"><button class="ib" id="blkShow" style="font-size:12px">🗺 印を全部見る</button><button class="ib" id="blkDel" style="font-size:12px">🗑 全部消す</button></div>
     </div>
@@ -604,7 +604,8 @@ function buildGraph(osm, cfg, onProg) {
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
-let blockPts = [];
+let blockPts = [], avoidPts = [];   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）
+const AVOID_PEN = 5;
 const BLOCK_R = 12;
 let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
 const USED_PEN = 2;
@@ -622,15 +623,16 @@ function applyBlocks(lat, lon, adj, N) {
     for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && usedNodes.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
     for (let u = 0; u < N; u++) if (u8[u]) for (const e of adj[u]) if (u8[e.v]) e.c *= USED_PEN;
   }
-  if (!blockPts.length) return 0;
+  if (!blockPts.length && !avoidPts.length) return 0;
+  const allPts = [...blockPts.map(p => [p[0], p[1], 0]), ...avoidPts.map(p => [p[0], p[1], 1])];
   const C = 0.002, g = new Map();   // 印を約200mのマスに入れる
-  for (const [la, lo] of blockPts) { const k = Math.floor(la / C) + "," + Math.floor(lo / C); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo]); }
+  for (const [la, lo, kind] of allPts) { const k = Math.floor(la / C) + "," + Math.floor(lo / C); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo, kind]); }
   const nearBlocks = i => {
     const a = Math.floor(lat[i] / C), b = Math.floor(lon[i] / C), out = [];
     for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (const p of g.get((a + x) + "," + (b + y)) || []) out.push(p);
     return out;
   };
-  const cosl = Math.cos((blockPts[0][0]) * RAD), M = 111320;
+  const cosl = Math.cos((allPts[0][0]) * RAD), M = 111320;
   const segDist = (p, u, v) => {   // 点 p と 線分 u-v のきょり（m）
     const ax = (lon[u] - p[1]) * cosl * M, ay = (lat[u] - p[0]) * M, bx = (lon[v] - p[1]) * cosl * M, by = (lat[v] - p[0]) * M;
     const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
@@ -648,13 +650,15 @@ function applyBlocks(lat, lon, adj, N) {
       hits.push([u, e.v, p, d]); if (!(dmin.get(p) <= d)) dmin.set(p, d);
     }
   }
-  let n = 0;
+  let n = 0; const avoidW = new Set();
   for (const [u, v, p, d] of hits) {
     if (d > dmin.get(p) + 4) continue;
+    if (p[2]) { const e = adj[u].find(x => x.v === v); if (e) avoidW.add(e.w); continue; }   // ⚠ 通りたくない：その道（OSMの1本）をまるごと
     const before = adj[u].length;
     adj[u] = adj[u].filter(x => x.v !== v); adj[v] = adj[v].filter(x => x.v !== u);
     if (adj[u].length < before) n++;
   }
+  if (avoidW.size) { for (let u = 0; u < N; u++) if (adj[u]) for (const e of adj[u]) if (avoidW.has(e.w)) e.c *= AVOID_PEN; n += avoidW.size; }
   return n;
 }
 // ゲージ用：処理ぜんたいのどこまで来たか（0〜1）。1=道路データ 2=つながり 3=探索 4=ほかのルート
@@ -1547,7 +1551,7 @@ async function routeOnce(req, prog, partial) {
         G = BG({ elements }, cfg);
         tBuild += (Date.now() - tb) / 1000; nNodes = Math.max(nNodes, G.nNodes);
         { let ne = 0; for (const a of G.adj) ne += a.length;
-          log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${G.swLen ? `・歩道のある道 ${(G.swLen / 1000).toFixed(1)}km` : ""}${G.nBlk ? `・🚫通れない印で切った所 ${G.nBlk}か所` : ""}${wide ? "【範囲を広げてやりなおし】" : ""}`); }
+          log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${G.swLen ? `・歩道のある道 ${(G.swLen / 1000).toFixed(1)}km` : ""}${G.nBlk ? `・🚫⚠印で変えた所 ${G.nBlk}か所` : ""}${wide ? "【範囲を広げてやりなおし】" : ""}`); }
         sn = confEnd != null ? G.idx.get(confEnd) : undefined;
         if (sn === undefined) {
           const q = nearestGood(G, s[0], s[1]);
@@ -1754,6 +1758,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       }
       stopReq = false; cancelFetch = false; routing = true; if (pfAc) pfAc.abort();   // 自動でためてる途中なら中断
       blockPts = Array.isArray(d.blocks) ? d.blocks : [];
+      avoidPts = Array.isArray(d.avoids) ? d.avoids : [];
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
       const r = d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
@@ -2304,7 +2309,7 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia) {
   }
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
@@ -2936,10 +2941,10 @@ function openStreetView(ll) {
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
-    + "<button data-b='1' style='color:#c00'>🚫 通れない印</button><button data-sv='1'>📷 ストビュー</button>";
+    + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button>";
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
-    if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), "o"); map.closePopup(pop); return; }   // 🚫 その場でつける
+    if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), ev.target.dataset.b); map.closePopup(pop); return; }   // 🚫／⚠ その場でつける
     if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
@@ -3052,29 +3057,31 @@ const BKEY = "hosomichi_blocks";
 const BLK_R = { s: "階段", p: "人の家・敷地", x: "柵・工事・行き止まり", o: "その他" };
 let blocks = lsGet(BKEY, []).filter(b => b && Array.isArray(b.p));
 const blkLayer = L.layerGroup().addTo(map);
-function blkIcon() { return L.divIcon({ className: "", html: '<div style="font-size:20px;line-height:22px;text-align:center;text-shadow:0 0 3px #fff">🚫</div>', iconSize: [22, 22], iconAnchor: [11, 11] }); }
+function blkIcon(a) { return L.divIcon({ className: "", html: `<div style="font-size:${a ? 17 : 20}px;line-height:22px;text-align:center;text-shadow:0 0 3px #fff">${a ? "⚠️" : "🚫"}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }); }
 function drawBlocks() {
   blkLayer.clearLayers();
   blocks.forEach((b, i) => {
-    L.circle(b.p, { radius: 4, stroke: false, fillColor: "#f00", fillOpacity: 0.08, interactive: false }).addTo(blkLayer);   // 印の場所（うすく）
-    const m = L.marker(b.p, { icon: blkIcon(), zIndexOffset: 500 }).addTo(blkLayer);
+    const av = b.r === "a";
+    L.circle(b.p, { radius: 4, stroke: false, fillColor: av ? "#f90" : "#f00", fillOpacity: 0.08, interactive: false }).addTo(blkLayer);   // 印の場所（うすく）
+    const m = L.marker(b.p, { icon: blkIcon(av), zIndexOffset: 500 }).addTo(blkLayer);
     const div = document.createElement("div"); div.className = "pin";
-    div.innerHTML = `<b>🚫 通れない</b>${b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : ""}<br><span style="font-size:11px;color:#666">印からいちばん近い道（12m以内）だけ通らないよ</span><br><button>この印を消す</button>`;
+    div.innerHTML = (av ? `<b>⚠ 通りたくない</b>` : `<b>🚫 通れない</b>`) + (b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : "")
+      + `<br><span style="font-size:11px;color:#666">${av ? "印からいちばん近い道（12m以内）を、その道まるごと ×5 で避けるよ" : "印からいちばん近い道（12m以内）だけ通らないよ"}</span><br><button>この印を消す</button>`;
     div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog("🚫 通れない印を1つ消したよ"); };
     m.bindPopup(div);
   });
-  $("blkN").textContent = blocks.length;
+  const na = blocks.filter(b => b.r === "a").length; $("blkN").textContent = `${blocks.length - na}個・⚠ 通りたくない ${na}`;
 }
 function saveBlocks() { lsSet(BKEY, blocks); drawBlocks(); }
 function addBlock(ll, r) {
   const d = new Date();
   blocks.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], r, t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
-  saveBlocks(); addLog(`🚫 通れない印をつけたよ。次のルート計算から通らないよ`, "ok");
+  saveBlocks(); addLog(r === "a" ? `⚠ 通りたくない印をつけたよ。次のルート計算から、その道を避けるよ` : `🚫 通れない印をつけたよ。次のルート計算から通らないよ`, "ok");
 }
 // URL・QR用にみじかくする：理由1文字＋緯度経度（10万倍の36進数）
 function blkEncode() { return blocks.map(b => b.r + Math.round(b.p[0] * 1e5).toString(36) + "." + Math.round(b.p[1] * 1e5).toString(36)).join("_"); }
 function blkDecode(t) {
-  return t.split("_").map(x => { const m = /^([spxo])([0-9a-z]+)\.([0-9a-z]+)$/.exec(x); return m && { p: [parseInt(m[2], 36) / 1e5, parseInt(m[3], 36) / 1e5], r: m[1] }; })
+  return t.split("_").map(x => { const m = /^([spxoa])([0-9a-z]+)\.([0-9a-z]+)$/.exec(x); return m && { p: [parseInt(m[2], 36) / 1e5, parseInt(m[3], 36) / 1e5], r: m[1] }; })
     .filter(b => b && Math.abs(b.p[0]) <= 90 && Math.abs(b.p[1]) <= 180);
 }
 function blkUrl() { return location.origin + location.pathname + "#blk=" + blkEncode(); }

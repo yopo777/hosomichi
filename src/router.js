@@ -408,7 +408,8 @@ function buildGraph(osm, cfg, onProg) {
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
-let blockPts = [];
+let blockPts = [], avoidPts = [];   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）
+const AVOID_PEN = 5;
 const BLOCK_R = 12;
 let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
 const USED_PEN = 2;
@@ -426,15 +427,16 @@ function applyBlocks(lat, lon, adj, N) {
     for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && usedNodes.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
     for (let u = 0; u < N; u++) if (u8[u]) for (const e of adj[u]) if (u8[e.v]) e.c *= USED_PEN;
   }
-  if (!blockPts.length) return 0;
+  if (!blockPts.length && !avoidPts.length) return 0;
+  const allPts = [...blockPts.map(p => [p[0], p[1], 0]), ...avoidPts.map(p => [p[0], p[1], 1])];
   const C = 0.002, g = new Map();   // 印を約200mのマスに入れる
-  for (const [la, lo] of blockPts) { const k = Math.floor(la / C) + "," + Math.floor(lo / C); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo]); }
+  for (const [la, lo, kind] of allPts) { const k = Math.floor(la / C) + "," + Math.floor(lo / C); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo, kind]); }
   const nearBlocks = i => {
     const a = Math.floor(lat[i] / C), b = Math.floor(lon[i] / C), out = [];
     for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (const p of g.get((a + x) + "," + (b + y)) || []) out.push(p);
     return out;
   };
-  const cosl = Math.cos((blockPts[0][0]) * RAD), M = 111320;
+  const cosl = Math.cos((allPts[0][0]) * RAD), M = 111320;
   const segDist = (p, u, v) => {   // 点 p と 線分 u-v のきょり（m）
     const ax = (lon[u] - p[1]) * cosl * M, ay = (lat[u] - p[0]) * M, bx = (lon[v] - p[1]) * cosl * M, by = (lat[v] - p[0]) * M;
     const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
@@ -452,13 +454,15 @@ function applyBlocks(lat, lon, adj, N) {
       hits.push([u, e.v, p, d]); if (!(dmin.get(p) <= d)) dmin.set(p, d);
     }
   }
-  let n = 0;
+  let n = 0; const avoidW = new Set();
   for (const [u, v, p, d] of hits) {
     if (d > dmin.get(p) + 4) continue;
+    if (p[2]) { const e = adj[u].find(x => x.v === v); if (e) avoidW.add(e.w); continue; }   // ⚠ 通りたくない：その道（OSMの1本）をまるごと
     const before = adj[u].length;
     adj[u] = adj[u].filter(x => x.v !== v); adj[v] = adj[v].filter(x => x.v !== u);
     if (adj[u].length < before) n++;
   }
+  if (avoidW.size) { for (let u = 0; u < N; u++) if (adj[u]) for (const e of adj[u]) if (avoidW.has(e.w)) e.c *= AVOID_PEN; n += avoidW.size; }
   return n;
 }
 // ゲージ用：処理ぜんたいのどこまで来たか（0〜1）。1=道路データ 2=つながり 3=探索 4=ほかのルート
@@ -1351,7 +1355,7 @@ async function routeOnce(req, prog, partial) {
         G = BG({ elements }, cfg);
         tBuild += (Date.now() - tb) / 1000; nNodes = Math.max(nNodes, G.nNodes);
         { let ne = 0; for (const a of G.adj) ne += a.length;
-          log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${G.swLen ? `・歩道のある道 ${(G.swLen / 1000).toFixed(1)}km` : ""}${G.nBlk ? `・🚫通れない印で切った所 ${G.nBlk}か所` : ""}${wide ? "【範囲を広げてやりなおし】" : ""}`); }
+          log(`道のつながり: データ ${elements.length}件 → 点 ${G.nNodes}個・道のつなぎ ${ne}本（${Date.now() - tb}ms）${G.swLen ? `・歩道のある道 ${(G.swLen / 1000).toFixed(1)}km` : ""}${G.nBlk ? `・🚫⚠印で変えた所 ${G.nBlk}か所` : ""}${wide ? "【範囲を広げてやりなおし】" : ""}`); }
         sn = confEnd != null ? G.idx.get(confEnd) : undefined;
         if (sn === undefined) {
           const q = nearestGood(G, s[0], s[1]);
@@ -1558,6 +1562,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       }
       stopReq = false; cancelFetch = false; routing = true; if (pfAc) pfAc.abort();   // 自動でためてる途中なら中断
       blockPts = Array.isArray(d.blocks) ? d.blocks : [];
+      avoidPts = Array.isArray(d.avoids) ? d.avoids : [];
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
       const r = d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
