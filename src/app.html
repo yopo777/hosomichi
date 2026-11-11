@@ -43,6 +43,14 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 .tabs{display:flex;gap:4px;margin-top:8px;border-bottom:2px solid #eee}
 .tabs button{flex:1;border:none;background:none;padding:6px 2px;font-size:13px;white-space:nowrap;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px}
 .tabs button.on{color:#d93025;border-bottom-color:#d93025;font-weight:bold}
+.tabs .ti{margin-right:3px}
+@media (max-width:460px){   /* スマホ：アイコンを上・名前を下にして、6つのタブを1行におさめる */
+  .tabs{gap:0}
+  .tabs button{min-width:0;display:flex;flex-direction:column;align-items:center;padding:3px 0 4px;font-size:10px;line-height:1.2}
+  .tabs .ti{font-size:16px;margin:0}
+  .tabs .tl{overflow:hidden;text-overflow:clip;max-width:100%}
+  #logN{display:none}
+}
 #logN{font-size:11px;color:#999;font-weight:normal}
 #log{height:55vh;overflow:auto;background:#1e1e1e;color:#ddd;border-radius:8px;padding:6px 8px;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
 #log .w{color:#ffb74d} #log .e{color:#ff6e6e;font-weight:bold} #log .ok{color:#81c784} #log .h{color:#64b5f6;font-weight:bold} #log .m{color:#ce93d8}
@@ -138,7 +146,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v__VER__</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on">🚲 ルート</button><button data-t="cfg">⚙ 設定</button><button data-t="quest">🏁 クエスト</button><button data-t="spot">📍 マーク</button><button data-t="data">🗺 データ</button><button data-t="log">📜 ログ <span id="logN"></span></button></div>
+    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
     <div id="tabSpot" style="display:none">
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
