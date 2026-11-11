@@ -444,6 +444,12 @@ function applyBlocks(lat, lon, adj, N) {
   }
   return n;
 }
+// ゲージ用：処理ぜんたいのどこまで来たか（0〜1）。1=道路データ 2=つながり 3=探索 4=ほかのルート
+function stageFrac(p) {
+  if (!p || !p.stage) return null;
+  if (p.stage === 1) return 0.03 + 0.57 * (p.total ? Math.min(1, p.done / p.total) : 0);
+  return [0, 0, 0.65, 0.8, 0.9][p.stage] ?? null;
+}
 // ==== 🔁 ぐるっと1周：出発のまわりに見えない経由地を2つ置いて、三角形にまわって出発にもどる ====
 // 向き（北・東・南・西に張りだす）を変えて候補を作り、走りたい長さに近い順に3本まで出す
 async function loopRoute(req, prog) {
@@ -461,9 +467,10 @@ async function loopRoute(req, prog) {
     log(`--- ${label} ---`, "h");
     try {
       for (let li = 0; li < nl; li++) {
-        prog({ stage: 2, msg: `🔁 ${label} ${li + 1}/${nl}区間（候補 ${ci + 1}/${nc}）`, done: ci * nl + li, total: nc * nl });
+        const k0 = ci * nl + li, K = nc * nl;   // ゲージ：候補×区間 の何番目か
+        prog({ msg: `🔁 ${label} ${li + 1}/${nl}区間（候補 ${ci + 1}/${nc}）`, frac: k0 / K });
         const r = await route({ ...req, s: li ? parts[li - 1].route[parts[li - 1].route.length - 1] : way[0], g: way[li + 1], cfg, loop: undefined, via: undefined },
-          p => prog({ ...p, msg: `🔁 ${label} ${li + 1}/${nl}区間\n` + (p.msg || "") }), () => {});
+          p => { const f = stageFrac(p); prog({ ...p, stage: undefined, msg: `🔁 ${label} ${li + 1}/${nl}区間（候補 ${ci + 1}/${nc}）\n` + (p.msg || ""), frac: f == null ? undefined : (k0 + f) / K }); }, () => {});
         if (li) for (let i = 1; i < r.route.length; i++) {   // 前の区間と同じあたりを走る長さ（往復っぽさ）
           const [a1, b1] = r.route[i - 1], [a2, b2] = r.route[i], m = hav(a1, b1, a2, b2);
           allM += m; if (usedNodes.has(usedKey((a1 + a2) / 2, (b1 + b2) / 2))) dupM += m;
@@ -1415,6 +1422,7 @@ async function routeOnce(req, prog, partial) {
   //  ② 使った道を通りにくくしてさがしなおしたルート（近くの別の道）
   // を作って、メインと半分以上かぶらないものを2本までえらぶ。データが手元にあれば少し広い範囲で考える
   let alts = [];
+  if (!need.length && conf.length > 1 && !(cfg && cfg.alts === false)) prog({ stage: 4, msg: "ほかのルート（第2・第3）を計算中" });
   if (need.length && conf.length > 1 && !(cfg && cfg.alts === false))   // ダウンロードしたときは1本だけ（サーバーにやさしく・早く）
     log(`第2・第3のルートは出さないよ（道路データを ${need.length}マス ダウンロードしたので）`);
   else if (conf.length > 1 && !(cfg && cfg.alts === false)) {
@@ -1527,7 +1535,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       }
       stopReq = false; cancelFetch = false; routing = true; if (pfAc) pfAc.abort();   // 自動でためてる途中なら中断
       blockPts = Array.isArray(d.blocks) ? d.blocks : [];
-      const pr = p => self.postMessage({ type: "prog", ...p });
+      const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
       const r = d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
       const sh = shortest(); if (sh) self.postMessage({ type: "short", ...sh });

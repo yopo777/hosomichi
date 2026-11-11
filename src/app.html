@@ -450,7 +450,15 @@ function showProg() {
   let t = `${STAGES[p.stage] || ""}  経過 ${el}秒` + (p.bytes ? `  受信 ${(p.bytes / 1048576).toFixed(1)} MB` : "") + `\n${p.msg || ""}`;
   setMsg(t, false);
   if (cur && cur.partial) $("mini").textContent = `✅ スタートから ${fmtKm(cur.len)} 確定　残りを計算中（${el}秒）`;
-  if (p.total) setBar(p.done / p.total); else setBar(null);
+  progBar(p.frac);
+}
+// ゲージ：処理スタートで0、ぜんぶ終わって右はし。もどらない。経由地ありは 前半（経由地まで）0〜50%・後半 50〜100%
+let barMax = 0;
+function progBar(f) {
+  if (f == null) { setBar(barMax); return; }
+  const span = job && job.next ? [0, 0.5] : job && job.leg2 ? [0.5, 1] : [0, 1];
+  barMax = Math.max(barMax, Math.min(0.99, span[0] + (span[1] - span[0]) * f));
+  setBar(barMax);
 }
 // ==== 道路データの範囲：端末に保存ずみ＝うすい緑でぬる / 今の計算の範囲＝青い点線の枠 ====
 let cachedKeys = [], calcKeys = [];
@@ -658,10 +666,10 @@ worker.onmessage = ev => {
     if (!pvLayer.getLayers().length && job && !job.pvShown) { job.pvShown = true; $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }   // 地図を見せる
     drawPreview(m.preview); return;
   }
-  if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes }; showProg(); return; }
+  if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes, frac: m.frac ?? lastProg.frac }; showProg(); return; }
   drawPreview(null); routeFetch = []; drawFetching();
   clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
-  if (m.type === "done") { $("bar").classList.add("done"); if (!(job && job.next)) chime(); }   // 終わったら緑＆音（経由地までのときは鳴らさない）
+  if (m.type === "done" && !(job && job.next)) { $("bar").classList.add("done"); chime(); }   // 終わったら緑＆音（経由地までのときは鳴らさない）
   if (m.type === "stopped") {
     setBar(0);
     if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); setMsg("止めたよ。「▶ 続きを計算」でここから再開できるよ"); }
@@ -673,7 +681,7 @@ worker.onmessage = ev => {
     if (cur && cur.partial) { cur.partial = false; cur.tent = null; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); }
     job = null; return;
   }
-  setBar(1);
+  if (job && job.next) { barMax = 0.5; setBar(0.5); } else { barMax = 0; setBar(1); }   // 経由地まで できた所は まん中
   if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${m.sec.toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")); else
   setMsg(`できた！ ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）\n` +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
@@ -686,7 +694,7 @@ worker.onmessage = ev => {
   if (job && job.next) {   // 経由地まで できた → つづけて 経由地から到着地まで
     const nx = job.next, P = { ...cur, tent: null, partial: false, opts: null };
     addLog(`経由地まで ${fmtKm(cur.len)}。つぎは到着地までを計算するよ`, "h");
-    startJob(cur.route[cur.route.length - 1], nx.g, nx.cfg, P);
+    startJob(cur.route[cur.route.length - 1], nx.g, nx.cfg, P); job.leg2 = true;
     return;
   }
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
@@ -726,7 +734,7 @@ $("stop").onclick = () => {
   if (geoAbort) { geoAbort.abort(); return; }   // 場所さがし中なら、それを止める
   $("stop").textContent = "止めてるよ…"; worker.postMessage({ cmd: "stop" }); setTimeout(() => $("stop").textContent = "■ 止める", 3000); };
 $("bResume").onclick = () => {
-  audioUnlock();
+  audioUnlock(); barMax = 0;
   if (!cur || !cur.resume || $("go").disabled) return;
   pendingName = cur.name || pendingName;
   const P = { ...cur, tent: null, partial: false };
@@ -809,7 +817,7 @@ $("go").onclick = async () => {
   if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
   if (unsavedRoute() && await askSave("新しいルートを作る") === "cancel") return;
   pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? " 1周" : " → " + shortName(toT));
-  $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" };
+  $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" }; barMax = 0; setBar(0); $("bar").classList.remove("done");
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   geoAbort = new AbortController(); $("stop").style.display = "";   // 場所さがしの間も「■ 止める」できる
   try {
