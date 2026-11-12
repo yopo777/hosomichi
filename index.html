@@ -171,7 +171,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2133</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2142</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3742,6 +3742,8 @@ function geoAsk() {
       <ul style="padding-left:18px;margin:8px 0;line-height:1.6">
         <li>現在地は、地図に出したり、ルートの<b>どこを走っているか</b>を見るためだけに使うよ</li>
         <li>現在地・家・走った道は<b>このスマホの中だけ</b>。どこにも送らないし、<b>作った人にも見えない</b>よ（サーバーがないアプリなの）</li>
+        <li><b>作者は、ほかの人の位置情報に関心がありません</b></li>
+        <li>コードはHTMLだけで、<a href="https://github.com/yopo777/hosomichi" target="_blank" rel="noopener">GitHub</a>にぜんぶアップしてあるよ（だれでも中身を見られるよ）</li>
         <li>このあとブラウザが「許可しますか？」って聞くよ。あとから<b>いつでもやめられる</b>よ</li>
       </ul>
       <button data-a="ok" class="big">📍 現在地を使う</button>
