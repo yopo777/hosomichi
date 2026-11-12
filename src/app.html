@@ -1385,7 +1385,7 @@ function hidePlan() {
 function updateHomeNote() {
   const p = hidePlan(), n = $("homeNote");
   const km = p.hs >= 1000 ? p.hs / 1000 + "km" : p.hs + "m";
-  const st = !p.hs ? "いまは隠してないよ" : `いまは${home ? "🏠家と" : ""}出発${p.he ? "・到着" : ""}のまわり${km}を隠してるよ（家がまん中にならないように、丸を少しずらしてるよ）`;
+  const st = !p.hs ? "いまは隠してないよ" : `いまは${home ? "🏠家と" : ""}出発${p.he ? "・到着" : ""}のそばから、道にそって約${km}を隠してるよ`;
   n.innerHTML = "⚠ 自宅などが入ったルートを共有するのは自分だけにしてね。SNSなどに貼るときは注意！" +
     `<div style="font-weight:normal;font-size:12px;margin-top:2px">（${st}）</div>`;
   n.style.background = !p.hs ? "#fdecea" : "#fff3e0"; n.style.color = !p.hs ? "#c00" : "#b45309";
@@ -1399,9 +1399,10 @@ function confirmShare() {
 
 function shareUrl(tol = 3) {
   const R = cur.route, { hs, he } = hidePlan();
-  // 🔒 家・出発（到着）のまわりの丸の中は送らない。のこった部分のうち、いちばん長いところを送る
-  const zs = pubZones(R[0], R[R.length - 1], hs, !!he), runs = pubRuns(R, zs);
-  let [i0, i1] = runs.length ? runs.reduce((a, b) => (b[1] - b[0] > a[1] - a[0] ? b : a)) : [0, Math.min(2, R.length)];
+  // 🔒 家・出発（到着）のそばを通った所から、道にそって前後 hs m は送らない（丸だと切れ目から家を推理されるので）。のこった部分のうち、いちばん長いところを送る
+  const anchors = [...(home ? [home] : []), R[0], ...(he ? [R[R.length - 1]] : [])];
+  const runs = snsHide(R, hs, anchors).runs;
+  let { i0, i1 } = runs.length ? runs.reduce((a, b) => (b.i1 - b.i0 > a.i1 - a.i0 ? b : a)) : { i0: 0, i1: Math.min(2, R.length) };
   const rest = i0 > 0 || i1 < R.length;
   const sub = R.slice(i0, i1), subK = cur.kc ? cur.kc.slice(i0, i1 - 1) : null;
   const keep = p => !rest || sub.some(q => hav(p, q) < 30);
@@ -1530,8 +1531,9 @@ async function passList(rpts, hid) {
 const xLen = t => { let n = 0; for (const ch of t.replace(/https?:\/\/\S+/g, "x".repeat(23))) n += /[\u0000-\u10ff]/.test(ch) ? 1 : 2; return n; };   // Xの文字数（日本語は2）
 // 🔒 SNSで消す所：丸ではなく「ルートにそった距離」で消す（丸だと、切れ目から家の場所を推理できてしまうので）
 // 家（決めていないときは出発）の300m以内を通った所から、道にそって前後 R m（この端末だけの ずれ ×0.85〜1.25）を消す
-function snsHide(pts, R) {
-  const anchors = home ? [home] : pts.length ? [pts[0]] : [];
+function snsHide(pts, R, anchors) {
+  anchors = anchors || (home ? [home] : pts.length ? [pts[0]] : []);
+  if (!R || !anchors.length) return { runs: pts.length > 1 ? [Object.assign(pts.slice(), { i0: 0, i1: pts.length })] : [], hideP: () => false };
   let j = lsGet("hosomichi_hidej", null); if (j == null) { j = 0.85 + Math.random() * 0.4; lsSet("hosomichi_hidej", j); }
   const X = R * j, cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + hav(pts[i - 1], pts[i]));
   const iv = []; for (let i = 0; i < pts.length; i++) if (anchors.some(a => hav(pts[i], a) < 300)) iv.push([cum[i] - X, cum[i] + X]);
@@ -1539,7 +1541,7 @@ function snsHide(pts, R) {
   const runs = []; let i0 = -1;
   for (let i = 0; i <= pts.length; i++) {
     const ok = i < pts.length && !hidden[i];
-    if (ok && i0 < 0) i0 = i; else if (!ok && i0 >= 0) { if (i - i0 > 1) runs.push(Object.assign(pts.slice(i0, i), { cutS: i0 > 0, cutE: i < pts.length })); i0 = -1; }
+    if (ok && i0 < 0) i0 = i; else if (!ok && i0 >= 0) { if (i - i0 > 1) runs.push(Object.assign(pts.slice(i0, i), { cutS: i0 > 0, cutE: i < pts.length, i0, i1: i })); i0 = -1; }
   }
   const hideP = (p, idx) => {   // その場所（ルートでいちばん近い点）が消す所なら true
     if (idx == null) { let bd = 250; idx = -1; for (let i = 0; i < pts.length; i++) { const d = hav(pts[i], p); if (d < bd) { bd = d; idx = i; } } }
