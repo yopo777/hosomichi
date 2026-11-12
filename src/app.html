@@ -1028,7 +1028,7 @@ async function pickMid(s, km, type) {
 }
 // 🎯 行き先をカードで見せる：「ここに行く」「🎲 ほかの所」「やめる」。地図にもプルプルで出す
 const DIR8 = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
-async function askMid(s, km, type) {
+async function askMid(s, km, type, fromHere) {
   const tmp = L.layerGroup().addTo(map);
   $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   try {
@@ -1036,9 +1036,11 @@ async function askMid(s, km, type) {
       const m = await pickMid(s, km, type); if (!m) return undefined;
       tmp.clearLayers();
       L.marker(m.p, { icon: L.divIcon({ className: "", html: '<div class="pulse m"></div>', iconSize: [0, 0] }), interactive: false }).addTo(tmp);
-      L.circleMarker(m.p, { radius: 9, color: "#fff", weight: 3, fillColor: "#e8710a", fillOpacity: 1 }).addTo(tmp);
-      L.circleMarker(s, { radius: 7, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(tmp);
-      map.fitBounds(L.latLngBounds([s, m.p]), { paddingTopLeft: [50, 90], paddingBottomRight: [50, 260], maxZoom: 16 });
+      L.circleMarker(m.p, { radius: 9, color: "#fff", weight: 3, fillColor: "#e8710a", fillOpacity: 1 }).addTo(tmp).bindTooltip(`${m.ic} ${esc(m.name)}`, { permanent: true, direction: "top", offset: [0, -10] });
+      L.marker(s, { icon: L.divIcon({ className: "", html: '<div class="pulse s"></div>', iconSize: [0, 0] }), interactive: false }).addTo(tmp);
+      L.circleMarker(s, { radius: 9, color: "#fff", weight: 3, fillColor: fromHere ? "#1a73e8" : "#188038", fillOpacity: 1 }).addTo(tmp).bindTooltip(fromHere ? "📍 現在地" : "出発", { permanent: true, direction: "top", offset: [0, -10] });
+      L.polyline([s, m.p], { color: "#e8710a", weight: 3, dashArray: "4 8", opacity: .8, interactive: false }).addTo(tmp);
+      map.fitBounds(L.latLngBounds([s, m.p]), { paddingTopLeft: [60, 160], paddingBottomRight: [60, 270], maxZoom: 16 });
       const dir = DIR8[Math.round(bearingDeg(s, m.p) / 45) % 8], kind = (SPOT_INFO[m.k] || [])[1] || "";
       const a = await new Promise(ok => {
         const d = document.createElement("div"); d.id = "msnAsk";
@@ -1081,7 +1083,7 @@ $("go").onclick = async () => {
       if (!v && $("msnType").value !== "none") {
         if (LK === "auto") LK = 10;
         lastProg = { stage: 1, msg: "🎯 寄り道スポットをさがし中" }; showProg();
-        midPick = await askMid(s, LK, $("msnType").value);   // 行き先を見せて、決めてもらう
+        midPick = await askMid(s, LK, $("msnType").value, !fromT);   // 行き先を見せて、決めてもらう
         if (midPick === null) throw new Error("ミッションをやめたよ");
         if (midPick) { v = midPick.p; vn = midPick.ic + " " + midPick.name; midSeen(v); }
         else { addLog("  🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にするよ", "w"); midNone = true; }
