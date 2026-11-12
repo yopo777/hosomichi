@@ -158,7 +158,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1641</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1646</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3784,7 +3784,7 @@ const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S")
 spotSize();
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
-  $("spotBox").innerHTML = `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
+  $("spotBox").innerHTML = `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
     + SPOT_KINDS.map(([g, ks]) => `<div style="margin-top:4px"><span style="color:#666">${g}：</span>` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("") + "</div>").join("");
 }
@@ -3809,11 +3809,11 @@ function spotTile(key) {   // 1回読んだマスはおぼえておく（ない�
 // どちらも、画面を指1本分（48px・引いたときは64px）のマスに分けて、マスごとに1個だけ（有名なもの → 近いもの の順にえらぶ）
 // 道・車止めのマーク（横断歩道・信号・階段・柵…）は、ズーム16より拡大したときだけ、見えている所に間引かずぜんぶ出す
 // （引いたときに間引くと、出たり消えたりしてかえってわかりにくいので）
-const ROAD_GROUPS = ["道", "車止め"], SPOT_ROAD_Z = 16;
+const ROAD_GROUPS = ["道", "車止め"], SPOT_ROAD_Z = 16, SPOT_MIN_Z = 14;   // SPOT_MIN_Z より引いたらマークは出さない（全体図がごちゃごちゃしないように）
 const SPOT_ROAD = new Set(SPOT_KINDS.filter(g => ROAD_GROUPS.includes(g[0])).flatMap(g => g[1].map(x => x[0])));
 async function spotUpdate(force) {
   if (spotHide) return;   // かくし中は読みも描きもしない
-  if (!spotOn.size) { spotLayer.clearLayers(); spotAt = null; return; }
+  if (!spotOn.size || map.getZoom() < SPOT_MIN_Z) { spotLayer.clearLayers(); spotAt = null; return; }
   const fixed = follow && me, c = fixed ? me.getLatLng() : map.getCenter(), p = [c.lat, c.lng];
   const onAll = [...spotOn].filter(k => k !== "oneway"), roadOn = map.getZoom() >= SPOT_ROAD_Z ? onAll.filter(k => SPOT_ROAD.has(k)) : [];
   const on = onAll.filter(k => !SPOT_ROAD.has(k));
