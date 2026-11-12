@@ -76,6 +76,7 @@ html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-a
 body.navi .pulse{display:none;animation:none}
 @keyframes pulse{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.4);opacity:0}}
 #msnAsk{position:fixed;left:0;right:0;bottom:0;z-index:6000;padding:10px}#msnAsk .box{background:#fff;border-radius:14px;padding:14px;max-width:440px;margin:0 auto;box-shadow:0 -2px 16px #0004}#msnAsk button{padding:11px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:15px}#msnAsk button.big{background:#d93025;border-color:#d93025;color:#fff;font-weight:bold}
+.hereTip{color:#1a73e8;font-weight:bold;font-size:13px}
 #stabs{display:flex;gap:4px;margin:6px 0 2px;flex-wrap:wrap}#stabs button{flex:1;border:1px solid #ddd;background:#fff;border-radius:999px;padding:5px 2px;font-size:12px;color:#555;white-space:nowrap}#stabs button.on{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold}   /* 設定の中の小さいタブ */
 .spane{display:none}.spane.on{display:block}
 #bar{height:10px;background:#eee;border-radius:4px;overflow:hidden;position:relative}
@@ -1362,8 +1363,14 @@ function showRoute(r, fit) {
   // 🔒 共有で隠したはし（cutS/cutE）は、出発・到着の印を出さずに、線をだんだん薄くする（「ここが家？」と思われないように）
   if (r.cutS || r.cutE) fadeEnds(r);
   if (!r.cutS) L.circleMarker(r.nav[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(layer).bindTooltip("出発");
-  if (!r.partial && !r.cutE) L.circleMarker(r.route[r.route.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
-  if (!r.partial) pulseShow([...(r.cutS ? [] : [[r.nav[0], "s"]]), ...(r.cutE ? [] : [[r.route[r.route.length - 1], ""]]), ...(r.stops || []).map(q => [q.p, "m"])]);
+  const E = r.route[r.route.length - 1];
+  if (r.here) {   // 📣 SNSからの共有：線の先は、投稿した人がそのときいた所
+    const R = r.route; let k = R.length - 1; while (k > 0 && hav(R[k], E) < 30) k--;
+    const a = bearingDeg(R[k], E);
+    L.marker(E, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="position:relative;width:0;height:0"><div style="position:absolute;left:-9px;top:-9px;width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 4px #0006"></div><div style="position:absolute;left:-8px;top:-8px;width:16px;height:16px;transform:rotate(${a}deg) translateY(-17px)"><div style="width:0;height:0;margin:auto;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:12px solid #1a73e8"></div></div></div>` }), zIndexOffset: 500 })
+      .addTo(layer).bindTooltip("いまここ（投稿したとき）", { permanent: true, direction: "right", offset: [14, 0], className: "hereTip" });
+  } else if (!r.partial && !r.cutE) L.circleMarker(E, { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
+  if (!r.partial) pulseShow([...(r.cutS ? [] : [[r.nav[0], "s"]]), ...(r.cutE || r.here ? [] : [[E, ""]]), ...(r.stops || []).map(q => [q.p, "m"])]);
   (r.stops || []).forEach(q => L.marker(q.p, { icon: L.divIcon({ className: "", html: '<div style="font-size:24px;line-height:1;transform:translate(-50%,-90%);text-shadow:0 0 3px #fff">📍</div>', iconSize: [0, 0] }), zIndexOffset: 400 }).addTo(layer).bindTooltip(q.name));   // 1周の経由地
   (r.ok || []).forEach(p => L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("信号で横断"));
   (r.xw || []).forEach(p => L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("横断歩道で横断"));
@@ -1654,7 +1661,8 @@ async function snsData() {
     if (best.length >= 2 && lineLen(best) > 300) {
       const prm = new URLSearchParams();   // 名前は入れない（開いた人には「共有されたルート」と出る）
       prm.set("r", encPoly(simpRoute(best, null, 8).pts));
-      if (best.cutS || best.cutE) prm.set("x", (best.cutS ? "s" : "") + (best.cutE ? "e" : ""));
+      const xf = (best.cutS ? "s" : "") + (best.cutE ? "e" : "") + (here && best === runs[0] ? "h" : "");   // h：線の先が「いまここ」
+      if (xf) prm.set("x", xf);
       link = location.origin + location.pathname + "#" + prm.toString();
       L.push("🗺 ルート共有link↓（開くだけなら位置情報は使いません）");
     }
@@ -2385,7 +2393,7 @@ function loadHash() {
     const hr = decPoly(h.get("r")), hk = h.get("k") ? decK(h.get("k")) : null;
     let resume = null;
     if (h.get("g")) { try { resume = { g: h.get("g").split(",").map(Number), cfg: h.get("c") ? JSON.parse(decodeURIComponent(escape(atob(h.get("c"))))) : structuredClone(cfg) }; } catch { resume = null; } }
-    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), cutS: (h.get("x") || "").includes("s"), cutE: (h.get("x") || "").includes("e"), name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
+    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), cutS: (h.get("x") || "").includes("s"), cutE: (h.get("x") || "").includes("e"), here: (h.get("x") || "").includes("h"), name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
     if (!lsGet("hosomichi_welcome", false)) welcome(cur.name);
   } catch (e) { setMsg("共有URLが読めませんでした", true); }
@@ -2415,7 +2423,7 @@ function packRoute(r) {
     s: r.short ? encPoly(simplify(r.short, 3)) : "", ok: encPoly(r.ok || []), xw: encPoly(r.xw || []), ng: encPoly(r.ng || []),
     tp: r.tp ? encPoly(r.tp) : undefined, ta: r.tp ? r.tp.map(t => t[2]).join(",") : undefined,
     len: r.len, slen: r.slen || 0, kinds: r.kinds || null, rs: r.resume || null, tn: r.turns ?? null,
-    st: r.stops && r.stops.length ? r.stops : undefined, x: (r.cutS ? "s" : "") + (r.cutE ? "e" : "") || undefined };
+    st: r.stops && r.stops.length ? r.stops : undefined, x: (r.cutS ? "s" : "") + (r.cutE ? "e" : "") + (r.here ? "h" : "") || undefined };
 }
 function decTp(t, a) {   // 🗣 曲がり角：点の列＋角度の列。古いルート・共有URLにはないので null（線の形から見つける）
   if (t == null || a == null) return null;
@@ -2425,7 +2433,7 @@ function decTp(t, a) {   // 🗣 曲がり角：点の列＋角度の列。古�
 function unpackRoute(o) {
   const route = decPoly(o.r), kc = o.k ? decK(o.k) : null;
   return { name: o.name, created: o.created, route, kc: kc && kc.length === route.length - 1 ? kc : null, short: o.s ? decPoly(o.s) : null,
-    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), tp: decTp(o.tp, o.ta), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st, cutS: (o.x || "").includes("s"), cutE: (o.x || "").includes("e") };
+    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), tp: decTp(o.tp, o.ta), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st, cutS: (o.x || "").includes("s"), cutE: (o.x || "").includes("e"), here: (o.x || "").includes("h") };
 }
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function renderList() {
