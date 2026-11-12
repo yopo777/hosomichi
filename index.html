@@ -155,7 +155,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1416</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1419</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2352,6 +2352,14 @@ function drawFetching() {
 // ==== できたら音 ====
 let actx = null;
 function audioUnlock() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {} }
+function boo() {   // ミスコースの「ブー」（1回だけ。ルートにもどるまで鳴らさない）
+  try {
+    audioUnlock(); if (!actx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+    o.type = "square"; o.frequency.value = 150; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.setValueAtTime(0.25, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    o.start(t); o.stop(t + 0.65);
+  } catch {}
+}
 function chime() {
   try {
     if (!actx) return; const t = actx.currentTime;
@@ -3195,7 +3203,7 @@ function onPos(p) {
 let vcOn = lsGet("hosomichi_voice", true), vcTurns = null, vcFor = null, vcOff = false, vcEnd = false;
 $("vcOn").checked = vcOn;
 $("vcOn").onchange = () => { vcOn = $("vcOn").checked; lsSet("hosomichi_voice", vcOn); if (vcOn) say("音声案内をオンにしたよ"); else try { speechSynthesis.cancel(); } catch {} };
-$("vcTest").onclick = () => say("100メートル先、右です");
+$("vcTest").onclick = () => { boo(); setTimeout(() => say("100メートル先、右です"), 900); };
 window.say = say;
 function say(t) {
   try {
@@ -3227,7 +3235,7 @@ function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
   const say = t => { if (vcOn) window.say(t); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
   if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; }
-  if (off > 60) { if (!vcOff) { vcOff = true; say("ルートから外れています"); } blkShowMap(5000); return; }
+  if (off > 60) { if (!vcOff) { vcOff = true; if (vcOn) { boo(); setTimeout(() => say("ルートから外れています"), 700); } } blkShowMap(5000); return; }
   if (off < 30) vcOff = false;
   if (!cur.partial && rest < 30) { if (!vcEnd) { vcEnd = true; say("とうちゃくです。おつかれさまでした"); blkShowMap(60000); } return; }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
@@ -3264,7 +3272,7 @@ $("gps").onclick = () => {
     if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
     wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 });
     setFollow(true); wake();
-    if (vcOn) say(cur && cur.nav ? "音声案内を始めます" : "現在地を表示します");
+    audioUnlock(); if (vcOn) say(cur && cur.nav ? "音声案内を始めます" : "現在地を表示します");
     $("dir").style.display = "block";
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } else {
