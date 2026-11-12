@@ -75,6 +75,7 @@ html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-a
 .pulse{width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:4px solid #d93025;box-sizing:border-box;animation:pulse 1s ease-out infinite;pointer-events:none}.pulse.s{border-color:#188038}.pulse.m{border-color:#e8710a}
 body.navi .pulse{display:none;animation:none}
 @keyframes pulse{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.4);opacity:0}}
+#msnAsk{position:fixed;left:0;right:0;bottom:0;z-index:6000;padding:10px}#msnAsk .box{background:#fff;border-radius:14px;padding:14px;max-width:440px;margin:0 auto;box-shadow:0 -2px 16px #0004}#msnAsk button{padding:11px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:15px}#msnAsk button.big{background:#d93025;border-color:#d93025;color:#fff;font-weight:bold}
 #stabs{display:flex;gap:4px;margin:6px 0 2px;flex-wrap:wrap}#stabs button{flex:1;border:1px solid #ddd;background:#fff;border-radius:999px;padding:5px 2px;font-size:12px;color:#555;white-space:nowrap}#stabs button.on{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold}   /* 設定の中の小さいタブ */
 .spane{display:none}.spane.on{display:block}
 #bar{height:10px;background:#eee;border-radius:4px;overflow:hidden;position:relative}
@@ -171,7 +172,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2305</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2311</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2676,6 +2677,36 @@ async function pickMid(s, km, type) {
   const ks = [...new Set(c.map(x => x.k))], k = ks[Math.floor(Math.random() * ks.length)], cs = c.filter(x => x.k === k);
   return cs[Math.floor(Math.random() * cs.length)];
 }
+// 🎯 行き先をカードで見せる：「ここに行く」「🎲 ほかの所」「やめる」。地図にもプルプルで出す
+const DIR8 = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
+async function askMid(s, km, type) {
+  const tmp = L.layerGroup().addTo(map);
+  $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+  try {
+    for (;;) {
+      const m = await pickMid(s, km, type); if (!m) return undefined;
+      tmp.clearLayers();
+      L.marker(m.p, { icon: L.divIcon({ className: "", html: '<div class="pulse m"></div>', iconSize: [0, 0] }), interactive: false }).addTo(tmp);
+      L.circleMarker(m.p, { radius: 9, color: "#fff", weight: 3, fillColor: "#e8710a", fillOpacity: 1 }).addTo(tmp);
+      L.circleMarker(s, { radius: 7, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(tmp);
+      map.fitBounds(L.latLngBounds([s, m.p]), { paddingTopLeft: [50, 90], paddingBottomRight: [50, 260], maxZoom: 16 });
+      const dir = DIR8[Math.round(bearingDeg(s, m.p) / 45) % 8], kind = (SPOT_INFO[m.k] || [])[1] || "";
+      const a = await new Promise(ok => {
+        const d = document.createElement("div"); d.id = "msnAsk";
+        d.innerHTML = `<div class="box"><div style="font-size:12px;color:#666">🎯 今日のミッション</div>
+          <div style="font-size:22px;font-weight:bold;margin:4px 0">${m.ic} ${esc(m.name)}</div>
+          <div style="font-size:13px;color:#444">${esc(kind)}・${dir}へ まっすぐ約${fmtKm(hav(s, m.p))}（1周 約${km}km）</div>
+          <div style="display:flex;gap:6px;margin-top:10px"><button data-a="go" class="big" style="flex:2">🎯 ここに行く</button><button data-a="again" style="flex:1">🎲 ほかの所</button></div>
+          <button data-a="no" style="margin-top:6px;width:100%;color:#666">やめる</button></div>`;
+        document.body.appendChild(d);
+        d.onclick = e => { const x = e.target.dataset.a; if (!x) return; d.remove(); ok(x); };
+      });
+      if (a === "go") return m;
+      if (a === "no") return null;
+      midSeen(m.p);   // 🎲 ほかの所：今の所は「選んだ」ことにして、次をさがす
+    }
+  } finally { map.removeLayer(tmp); }
+}
 function midSeen(p) { const a = lsGet("hosomichi_midseen", []).filter(x => x !== midKey(p)); a.push(midKey(p)); lsSet("hosomichi_midseen", a.slice(-500)); }
 $("go").onclick = async () => {
   audioUnlock();
@@ -2701,7 +2732,8 @@ $("go").onclick = async () => {
       if (!v && $("msnType").value !== "none") {
         if (LK === "auto") LK = 10;
         lastProg = { stage: 1, msg: "🎯 寄り道スポットをさがし中" }; showProg();
-        midPick = await pickMid(s, LK, $("msnType").value);
+        midPick = await askMid(s, LK, $("msnType").value);   // 行き先を見せて、決めてもらう
+        if (midPick === null) throw new Error("ミッションをやめたよ");
         if (midPick) { v = midPick.p; vn = midPick.ic + " " + midPick.name; midSeen(v); }
         else { addLog("  🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にするよ", "w"); midNone = true; }
       }
