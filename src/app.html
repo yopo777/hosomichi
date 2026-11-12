@@ -1446,13 +1446,34 @@ const SNS_TAGS = "#サイクリング #ポタリング #細道ルートナビ", 
 const hhmm = t => { const d = new Date(t); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); };
 const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? m + "分" : Math.floor(m / 60) + "時間" + (m % 60 ? (m % 60) + "分" : ""); };
 const lineLen = pts => { let d = 0; for (let i = 1; i < pts.length; i++) d += hav(pts[i - 1], pts[i]); return d; };
-function snsData() {
+// 📍 通ったところ：走った道のそばの 駅・お寺・神社など を通った順に（家のまわりの丸の中はのぞく）
+const PASS_KINDS = { shrine: 40, temple: 40, castle: 60, kofun: 50, sight: 40, view: 40, spring: 40, fall: 50, michi: 60 };
+async function passList(rpts, zs) {
+  if (rpts.length < 2) return [];
+  const keys = new Set(); for (const q of rpts) keys.add(Math.floor(q[0] / SPOT_T) + "_" + Math.floor(q[1] / SPOT_T));
+  const tiles = await Promise.all([...keys].slice(0, 120).map(spotTile)), cand = [];
+  for (const t of tiles) for (const k in PASS_KINDS) for (const e of t[k] || []) if (e[0]) cand.push({ name: e[0], ic: SPOT_INFO[k][0], p: [e[1], e[2]], r: PASS_KINDS[k] });
+  try {
+    if (!packStations) { const res = await tfetch(new URL("../hosomichi-data/stations.json", location.href), { cache: "no-cache" }); if (res.ok) packStations = await res.json(); }
+    let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; for (const [a, o] of rpts) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, o); lo1 = Math.max(lo1, o); }
+    for (const x of packStations || []) if (x[1] > la0 - .01 && x[1] < la1 + .01 && x[2] > lo0 - .01 && x[2] < lo1 + .01) cand.push({ name: x[0] + "駅", ic: "🚉", p: [x[1], x[2]], r: 120 });
+  } catch {}
+  const seen = new Map();
+  for (const c of cand) {
+    if (inZones(c.p, zs)) continue;
+    let bi = -1, bd = c.r; for (let i = 0; i < rpts.length; i++) { const d = hav(rpts[i], c.p); if (d < bd) { bd = d; bi = i; } }
+    if (bi < 0) continue;
+    const o = seen.get(c.name); if (!o || bi < o.i) seen.set(c.name, { ...c, i: bi, t: rpts[bi][2] });
+  }
+  return [...seen.values()].sort((a, b) => a.i - b.i);
+}
+const xLen = t => { let n = 0; for (const ch of t.replace(/https?:\/\/\S+/g, "x".repeat(23))) n += /[\u0000-\u10ff]/.test(ch) ? 1 : 2; return n; };   // Xの文字数（日本語は2）
+async function snsData() {
   const R = +$("hide").value || 2000;
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
   const riding = useRide && !ride.done && wid !== null;
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
-  if (riding) { let d = 0, k = pts.length - 1; while (k > 1 && d < 300) { d += hav(pts[k], pts[k - 1]); k--; } pts = pts.slice(0, k + 1); }   // 今いる所（先っぽ300m）も出さない
-  const zs = pubZones(pts[0], pts[pts.length - 1], R, true), runs = pubRuns(pts, zs).map(([a, b]) => pts.slice(a, b));
+  const zs = pubZones(pts[0], pts[pts.length - 1], R, false), runs = pubRuns(pts, zs).map(([a, b]) => pts.slice(a, b));   // SNSは今いる所・着いた所は出してOK（家のまわりと出発だけ消す）
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
   const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];
   const L = [`🚲 ${d.getMonth() + 1}/${d.getDate()}(${wd}) ${!useRide ? "これからポタリング" : riding ? "ポタリング中" : "ポタリング"}`];
@@ -1466,6 +1487,14 @@ function snsData() {
     }
     const t1 = ride.pts[ride.pts.length - 1][2];
     L.push(`${fmtKm(lineLen(ride.pts))}・${fmtDur(t1 - ride.t0)}`);
+    // 📍 通ったところ：Xの文字数（280）に入るぶんだけ
+    const stopNames = new Set(ride.ev.map(e => e.name.replace(/^🎯\s*\S+\s*/, "")));
+    const pass = (await passList(ride.pts, zs).catch(() => [])).filter(c => !stopNames.has(c.name));
+    if (pass.length) {
+      const rest = [...L, SNS_TAGS, SNS_URL].join("\n"); let line = "📍 ";
+      for (const c of pass) { const add = (line === "📍 " ? "" : "→") + c.name; if (xLen(rest + "\n" + line + add) > 276) break; line += add; }
+      if (line !== "📍 ") L.push(line);
+    }
   }
   L.push(SNS_TAGS, SNS_URL);
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !inZones(q.p, zs));
@@ -1506,10 +1535,10 @@ async function snsPhoto(f) {   // 写真は描きなおして、位置情報（E
   return new Promise(ok => cv.toBlob(b => ok(b && new File([b], "photo_" + Date.now() + ".jpg", { type: "image/jpeg" })), "image/jpeg", 0.9));
 }
 $("bSns").onclick = async () => {
-  const data = snsData();
+  const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
-    <div style="font-size:11px;color:#666;margin:4px 0 8px">🔒 家と出発・到着のまわり（${(+$("hide").value || 2000) / 1000}km・少しずらした丸）と、走っている途中なら今いる所は消してあるよ。投稿はXなどで自分でしてね</div>
+    <div style="font-size:11px;color:#666;margin:4px 0 8px">🔒 家と出発のまわり（${(+$("hide").value || 2000) / 1000}km・少しずらした丸）は消してあるよ。投稿はXなどで自分でしてね</div>
     <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
     <textarea id="snsTxt"></textarea>
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
