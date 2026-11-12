@@ -155,7 +155,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1412</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1416</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3150,16 +3150,22 @@ function applyBearing() {
   $("needle").style.transform = `rotate(${b}deg)`;
   if (me) { me.setIcon(heading != null ? icArrow : icDot); me.setRotation(heading != null ? heading * RAD : 0); }
 }
+let navFor = null, navPrev = 0;
 function nearestOnRoute(p) {
   const r = cur.nav, c = Math.cos(p[0] * RAD), X = q => [(q[1] - p[1]) * c * 111320, (q[0] - p[0]) * 111320];
-  let bd = Infinity, bi = 0, bt = 0;
+  // 1周ルートや同じ道を2回通るルートでは、近い所が2つ以上ある（スタート＝ゴールなど）。
+  // いちばん近い所から15m以内の候補のうち、前回いた所（はじめは0＝スタート）にいちばん近いものを選ぶ
+  if (navFor !== cur) { navFor = cur; navPrev = 0; }
+  const segs = []; let bd = Infinity;
   for (let i = 1; i < r.length; i++) {
     const [ax, ay] = X(r[i - 1]), [bx, by] = X(r[i]), dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
     let t = -(ax * dx + ay * dy) / L2; t = Math.max(0, Math.min(1, t));
     const d = Math.hypot(ax + t * dx, ay + t * dy);
-    if (d < bd) { bd = d; bi = i; bt = t; }
+    segs.push([d, cum[i - 1] + t * (cum[i] - cum[i - 1])]); if (d < bd) bd = d;
   }
-  const along = cum[bi - 1] + bt * (cum[bi] - cum[bi - 1]);
+  let along = 0, bg = Infinity;
+  for (const [d, a] of segs) if (d <= bd + 15 && Math.abs(a - navPrev) < bg) { bg = Math.abs(a - navPrev); along = a; }
+  navPrev = along;
   navAlong = along;   // 案内のボール用：ルートのどこまで来たか（m）
   return [bd, cum[cum.length - 1] - along + (cur.partial ? cur.restAir || 0 : 0)];
 }
