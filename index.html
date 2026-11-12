@@ -68,6 +68,10 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #cfgBox .note{font-size:11px;color:#888}
 #prog{margin-top:8px;display:none}
 #geoAsk{position:fixed;inset:0;z-index:6000;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px}#geoAsk .box{background:#fff;border-radius:14px;padding:16px;max-width:420px;font-size:13px;box-shadow:0 6px 24px #0005}#geoAsk button{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#geoAsk button.big{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold;font-size:15px}
+#snsBox{position:fixed;inset:0;z-index:6000;background:#0008;overflow:auto;padding:12px}#snsBox .box{background:#fff;border-radius:14px;padding:12px;max-width:520px;margin:0 auto;font-size:13px}
+#snsBox img{width:100%;border-radius:8px;border:1px solid #ddd;display:block}#snsBox textarea{width:100%;box-sizing:border-box;height:150px;font-size:14px;margin-top:8px;border:1px solid #ccc;border-radius:8px;padding:8px}
+#snsBox .ph{display:flex;gap:6px;margin-top:6px}#snsBox .ph img{width:80px;height:80px;object-fit:cover}
+#snsBox button{padding:9px 12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#snsBox .go{background:#1d9bf0;border-color:#1d9bf0;color:#fff;font-weight:bold}
 #stabs{display:flex;gap:4px;margin:6px 0 2px;flex-wrap:wrap}#stabs button{flex:1;border:1px solid #ddd;background:#fff;border-radius:999px;padding:5px 2px;font-size:12px;color:#555;white-space:nowrap}#stabs button.on{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold}   /* 設定の中の小さいタブ */
 .spane{display:none}.spane.on{display:block}
 #bar{height:10px;background:#eee;border-radius:4px;overflow:hidden;position:relative}
@@ -164,7 +168,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1915</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1935</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -261,14 +265,14 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <button class="ib" id="bSave">💾 保存</button>
         <button class="ib" id="bShare">🔗 共有URL</button>
         <button class="ib" id="bGpx">⬇ GPX</button>
+        <button class="ib" id="bSns">📣 SNS</button>
         <button class="ib" id="bNew" style="display:none">✏ 新しく作る</button>
         <button class="ib" id="bResume" style="display:none;flex-basis:100%;border-color:#188038;color:#188038;font-weight:bold">▶ 続きを計算</button>
       </div>
       <div id="share">
         <div>出発地のまわりを隠す
-          <select id="hide"><option value="0">隠さない</option><option value="200">200m</option>
-          <option value="400" selected>400m</option><option value="800">800m</option></select>
-          <label><input type="checkbox" id="hideEnd"> 到着地も</label></div>
+          <select id="hide"><option value="0">隠さない</option><option value="400">400m</option><option value="1000">1km</option><option value="2000" selected>2km</option><option value="3000">3km</option></select>
+          <label><input type="checkbox" id="hideEnd" checked> 到着地も</label></div>
         <div id="homeNote" style="margin:6px 0;padding:6px 8px;border-radius:6px;background:#fff3e0;color:#b45309;font-weight:bold"></div>
         <div class="row" style="margin-top:4px"><label style="width:auto">名前</label><input type="text" id="shareName" maxlength="40" placeholder="ルートの名前（いっしょに送るよ）"></div>
         <textarea id="url" readonly></textarea>
@@ -2894,7 +2898,17 @@ $("col").onclick = () => { const ks = BG_ALL; setBase(ks[(ks.indexOf(baseName) +
 baseBtn();
 
 let cum = [];
+function rideTick(rest) {   // 📣 着いた所を記録（音声オフでも）
+  if (!ride || !me) return;
+  const h = [me.getLatLng().lat, me.getLatLng().lng];
+  for (const q of cur.stops || []) {
+    if (!q.at) { let bd = Infinity; for (const r of cur.nav) { const d = hav(r, q.p); if (d < bd) { bd = d; q.at = r; } } }
+    if (hav(q.at, h) < 40 || hav(q.p, h) < 60) rideEv("stop", q.name, q.p);
+  }
+  if (!cur.partial && rest < 30 && navAlong > (cum[cum.length - 1] || 0) * 0.5) { rideEv("goal", (cur.name || "").split("→").pop().replace(/（.*$/, "").trim(), h); ride.done = true; rideSave(true); }
+}
 function tripBar(rest) {   // 🔵 ナビ中：ゲージを「どこまで走ったか」にする
+  try { rideTick(rest); } catch {}
   const b = $("bar"); if (b.classList.contains("run") || !cur || cur.partial || cum.length < 2) return;
   const tot = cum[cum.length - 1] || 1, f = Math.min(1, Math.max(0, (tot - rest) / tot));
   b.classList.remove("busy", "done"); b.classList.add("trip"); b.firstChild.style.width = (f * 100).toFixed(1) + "%"; $("prog").style.display = "block";
@@ -2957,14 +2971,42 @@ function showRoute(r, fit) {
 // ---------- 共有URL・GPX ----------
 // ---------- 共有するときの「隠す」 ----------
 // 前の版の「守りたい場所」のデータは消しておく
-try { ["hosomichi_places", "hosomichi_home", "hosomichi_place_r"].forEach(k => localStorage.removeItem(k)); } catch {}
+try {
+  ["hosomichi_places", "hosomichi_place_r"].forEach(k => localStorage.removeItem(k));
+  const h = lsGet("hosomichi_home", null); if (h != null && !(Array.isArray(h) && h.length === 2 && h.every(Number.isFinite))) localStorage.removeItem("hosomichi_home");   // 前の版の形のときだけ消す
+} catch {}
+// 🔒 公開用ルート：家（と出発・到着）のまわりを消す。丸のまん中が家にならないように、この端末だけの「ずれ」を足す
+function hideOff() {   // [北, 東] の割合（-0.45〜0.45）。一度決めたらずっと同じ（毎回ちがうと、重ねて家を推理されるので）
+  let o = lsGet("hosomichi_hideoff", null);
+  if (!o) { const a = Math.random() * 2 * Math.PI, r = 0.25 + Math.random() * 0.2; o = [Math.cos(a) * r, Math.sin(a) * r]; lsSet("hosomichi_hideoff", o); }
+  return o;
+}
+function pubZones(start, end, R, withEnd) {
+  if (!R) return [];
+  const o = hideOff(), z = c => [c[0] + o[0] * R / 111320, c[1] + o[1] * R / (111320 * Math.cos(c[0] * RAD)), R];
+  const zs = []; if (home) zs.push(z(home));
+  const inZ = p => zs.some(q => hav(p, q) < q[2]);
+  if (start && !inZ(start)) zs.push(z(start));
+  if (withEnd && end && !inZ(end)) zs.push(z(end));
+  return zs;
+}
+const inZones = (p, zs) => zs.some(q => hav(p, q) < q[2]);
+function pubRuns(pts, zs) {   // 消す丸の外の、つながった部分 [i0, i1) の列
+  const out = []; let i0 = -1;
+  for (let i = 0; i <= pts.length; i++) {
+    const ok = i < pts.length && !inZones(pts[i], zs);
+    if (ok && i0 < 0) i0 = i; else if (!ok && i0 >= 0) { if (i - i0 > 1) out.push([i0, i]); i0 = -1; }
+  }
+  return out;
+}
 function hidePlan() {
   const sel = +$("hide").value;
   return { hs: sel, he: $("hideEnd").checked ? sel : 0 };
 }
 function updateHomeNote() {
   const p = hidePlan(), n = $("homeNote");
-  const st = !p.hs && !p.he ? "いまは出発も到着も隠してないよ" : !p.he ? `いまは出発のまわり${p.hs}mを隠してるよ` : `いまは出発・到着のまわり${p.hs}mを隠してるよ`;
+  const km = p.hs >= 1000 ? p.hs / 1000 + "km" : p.hs + "m";
+  const st = !p.hs ? "いまは隠してないよ" : `いまは${home ? "🏠家と" : ""}出発${p.he ? "・到着" : ""}のまわり${km}を隠してるよ（家がまん中にならないように、丸を少しずらしてるよ）`;
   n.innerHTML = "⚠ 自宅などが入ったルートを共有するのは自分だけにしてね。SNSなどに貼るときは注意！" +
     `<div style="font-weight:normal;font-size:12px;margin-top:2px">（${st}）</div>`;
   n.style.background = !p.hs ? "#fdecea" : "#fff3e0"; n.style.color = !p.hs ? "#c00" : "#b45309";
@@ -2978,12 +3020,9 @@ function confirmShare() {
 
 function shareUrl(tol = 3) {
   const R = cur.route, { hs, he } = hidePlan();
-  // 出発（到着）から hs(he) m 以内の線は送らない
-  const hideS = q => hav(q, R[0]) < hs;
-  const hideE = q => hav(q, R[R.length - 1]) < he;
-  let i0 = 0, i1 = R.length;
-  if (hs) { while (i0 < R.length - 1 && hideS(R[i0])) i0++; }
-  if (he) { while (i1 > i0 + 1 && hideE(R[i1 - 1])) i1--; }
+  // 🔒 家・出発（到着）のまわりの丸の中は送らない。のこった部分のうち、いちばん長いところを送る
+  const zs = pubZones(R[0], R[R.length - 1], hs, !!he), runs = pubRuns(R, zs);
+  let [i0, i1] = runs.length ? runs.reduce((a, b) => (b[1] - b[0] > a[1] - a[0] ? b : a)) : [0, Math.min(2, R.length)];
   const rest = i0 > 0 || i1 < R.length;
   const sub = R.slice(i0, i1), subK = cur.kc ? cur.kc.slice(i0, i1 - 1) : null;
   const keep = p => !rest || sub.some(q => hav(p, q) < 30);
@@ -3052,6 +3091,107 @@ $("hide").onchange = $("hideEnd").onchange = () => { $("shareName").value = defa
 $("shareName").oninput = updateShare;
 $("bCopy").onclick = async () => { updateShare(); if (!confirmShare()) return; try { await navigator.clipboard.writeText($("url").value); $("bCopy").textContent = "コピーしたよ！"; } catch { $("url").select(); document.execCommand("copy"); } setTimeout(() => $("bCopy").textContent = "コピー", 1500); };
 $("bSys").onclick = () => { updateShare(); if (!confirmShare()) return; if (navigator.share) navigator.share({ title: "細道ルート", url: $("url").value }).catch(() => {}); else $("bCopy").click(); };
+// ---------- 📣 SNS：公開用の地図画像＋投稿文。投稿はXなどでじぶんで（アプリは勝手に投稿しない） ----------
+const SNS_TAGS = "#サイクリング #ポタリング #細道ルートナビ", SNS_URL = "https://yopo777.github.io/hosomichi/";
+const hhmm = t => { const d = new Date(t); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); };
+const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? m + "分" : Math.floor(m / 60) + "時間" + (m % 60 ? (m % 60) + "分" : ""); };
+const lineLen = pts => { let d = 0; for (let i = 1; i < pts.length; i++) d += hav(pts[i - 1], pts[i]); return d; };
+function snsData() {
+  const R = +$("hide").value || 2000;
+  const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
+  const riding = useRide && !ride.done && wid !== null;
+  let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : cur ? cur.route.slice() : [];
+  if (riding) { let d = 0, k = pts.length - 1; while (k > 1 && d < 300) { d += hav(pts[k], pts[k - 1]); k--; } pts = pts.slice(0, k + 1); }   // 今いる所（先っぽ300m）も出さない
+  const zs = pubZones(pts[0], pts[pts.length - 1], R, true), runs = pubRuns(pts, zs).map(([a, b]) => pts.slice(a, b));
+  // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
+  const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];
+  const L = [`🚲 ${d.getMonth() + 1}/${d.getDate()}(${wd}) ${riding ? "ポタリング中" : "ポタリング"}`];
+  if (useRide) {
+    for (const e of ride.ev) {
+      const hidden = e.p && inZones(e.p, zs);
+      if (e.k === "start") L.push(`${hhmm(e.t)} 出発`);
+      else if (e.k === "stop") L.push(`${hhmm(e.t)} ${e.name.replace(/^🎯\s*/, "")} 着`);
+      else if (e.k === "stamp" && !hidden) L.push(`${hhmm(e.t)} 🏁 ${e.name}`);
+      else if (e.k === "goal") L.push(`${hhmm(e.t)} ${hidden || !e.name ? "帰着" : e.name + " 着"}`);
+    }
+    const t1 = ride.pts[ride.pts.length - 1][2];
+    L.push(`${fmtKm(lineLen(ride.pts))}・${fmtDur(t1 - ride.t0)}`);
+  } else if (cur) {
+    const m = (cur.stops || []).filter(q => q.mid).map(q => q.name.replace(/^🎯\s*/, ""));
+    if (m.length) L.push("🎯 " + m.join("・")); L.push(fmtKm(cur.len || lineLen(cur.route)) + "のルート");
+  }
+  L.push(SNS_TAGS, SNS_URL);
+  const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : (cur && cur.stops || []).filter(q => q.mid)).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !inZones(q.p, zs));
+  const sub = [useRide ? `${fmtKm(lineLen(ride.pts))}・${fmtDur(ride.pts[ride.pts.length - 1][2] - ride.t0)}` : fmtKm(cur ? cur.len || 0 : 0), `${d.getMonth() + 1}/${d.getDate()}(${wd})`].join("　");
+  return { runs, stops, text: L.join("\n"), sub };
+}
+async function snsImage({ runs, stops, sub }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所
+  const W = 1200, H = 1200, PAD = 140, all = runs.flat().concat(stops.map(q => q.p));
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
+  g.fillStyle = "#f2efe9"; g.fillRect(0, 0, W, H);
+  if (all.length) {
+    let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; for (const [a, o] of all) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, o); lo1 = Math.max(lo1, o); }
+    const wx = (lo, z) => (lo + 180) / 360 * 256 * 2 ** z, wy = (la, z) => { const s = Math.sin(la * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256 * 2 ** z; };
+    let z = 17; while (z > 5 && (wx(lo1, z) - wx(lo0, z) > W - 2 * PAD || wy(la0, z) - wy(la1, z) > H - 2 * PAD - 120)) z--;
+    const cx = (wx(lo0, z) + wx(lo1, z)) / 2, cy = (wy(la0, z) + wy(la1, z)) / 2 + 50, ox = cx - W / 2, oy = cy - H / 2;
+    const X = p => [wx(p[1], z) - ox, wy(p[0], z) - oy];
+    const tl = [];
+    for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W) / 256); tx++) for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++)
+      tl.push(new Promise(ok => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => { g.drawImage(im, tx * 256 - ox, ty * 256 - oy); ok(); }; im.onerror = ok; im.src = `https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${tx}/${ty}.png`; }));
+    await Promise.all(tl);
+    g.lineJoin = g.lineCap = "round";
+    for (const [w, c] of [[16, "#fff"], [9, "#e8384f"]]) { g.lineWidth = w; g.strokeStyle = c; for (const r of runs) { g.beginPath(); r.forEach((p, i) => { const [x, y] = X(p); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); } }
+    g.font = "bold 34px sans-serif"; g.textBaseline = "middle";
+    for (const q of stops) {
+      const [x, y] = X(q.p); g.fillStyle = "#e8710a"; g.beginPath(); g.arc(x, y, 16, 0, 7); g.fill(); g.lineWidth = 6; g.strokeStyle = "#fff"; g.stroke();
+      g.lineWidth = 8; g.strokeStyle = "#fff"; g.strokeText(q.name, x + 26, y); g.fillStyle = "#222"; g.fillText(q.name, x + 26, y);
+    }
+  }
+  g.fillStyle = "#ffffffe8"; g.fillRect(0, H - 120, W, 120);
+  g.fillStyle = "#222"; g.font = "bold 46px sans-serif"; g.textBaseline = "middle"; g.fillText("🚲 " + sub, 36, H - 70);
+  g.font = "26px sans-serif"; g.fillStyle = "#666"; g.textAlign = "right"; g.fillText("細道ルートナビ", W - 30, H - 84); g.fillText("地図：国土地理院", W - 30, H - 44); g.textAlign = "left";
+  return new Promise(ok => { try { cv.toBlob(b => ok(b), "image/png"); } catch { ok(null); } });
+}
+async function snsPhoto(f) {   // 写真は描きなおして、位置情報（Exif）を消す・大きすぎるのは小さく
+  const bm = await createImageBitmap(f, { imageOrientation: "from-image" }).catch(() => null); if (!bm) return null;
+  const k = Math.min(1, 2048 / Math.max(bm.width, bm.height)), cv = document.createElement("canvas");
+  cv.width = Math.round(bm.width * k); cv.height = Math.round(bm.height * k); cv.getContext("2d").drawImage(bm, 0, 0, cv.width, cv.height);
+  return new Promise(ok => cv.toBlob(b => ok(b && new File([b], "photo_" + Date.now() + ".jpg", { type: "image/jpeg" })), "image/jpeg", 0.9));
+}
+$("bSns").onclick = async () => {
+  const data = snsData();
+  const box = document.createElement("div"); box.id = "snsBox";
+  box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
+    <div style="font-size:11px;color:#666;margin:4px 0 8px">🔒 家と出発・到着のまわり（${(+$("hide").value || 2000) / 1000}km・少しずらした丸）と、走っている途中なら今いる所は消してあるよ。投稿はXなどで自分でしてね</div>
+    <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
+    <textarea id="snsTxt"></textarea>
+    <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
+      <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ</span></div>
+    <div class="ph" id="snsPhs"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsClose">とじる</button></div></div>`;
+  document.body.appendChild(box);
+  $("snsTxt").value = data.text;
+  let map0 = null, photos = [];
+  const blob = await snsImage(data);
+  if (blob) { map0 = new File([blob], "hosomichi_" + Date.now() + ".png", { type: "image/png" }); $("snsImg").innerHTML = `<img src="${URL.createObjectURL(blob)}">`; }
+  else $("snsImg").textContent = "地図の画像を作れなかったよ（文だけ使えるよ）";
+  $("snsPh").onchange = async e => {
+    photos = (await Promise.all([...e.target.files].slice(0, 3).map(snsPhoto))).filter(Boolean);
+    $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
+  };
+  $("snsClose").onclick = () => box.remove();
+  $("snsCopy").onclick = async () => { try { await navigator.clipboard.writeText($("snsTxt").value); $("snsCopy").textContent = "✅ コピーしたよ"; } catch { $("snsTxt").select(); } };
+  const save = f => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); };
+  $("snsSave").onclick = () => { if (map0) save(map0); photos.forEach(save); };
+  $("snsShare").onclick = async () => {
+    const files = [map0, ...photos].filter(Boolean), text = $("snsTxt").value;
+    try {
+      if (navigator.canShare && navigator.canShare({ files, text })) { await navigator.share({ files, text }); return; }
+    } catch (e) { if (e.name === "AbortError") return; }
+    // 共有できないとき（パソコンなど）：画像を保存して、文を入れた投稿画面をひらく（画像はXの画面でつけてね）
+    files.forEach(save); window.open("https://x.com/intent/post?text=" + encodeURIComponent(text), "_blank");
+  };
+};
 $("bGpx").onclick = () => {
   const x = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="hosomichi" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>細道ルート</name><trkseg>\n'
     + cur.route.map(([a, o]) => `<trkpt lat="${a.toFixed(6)}" lon="${o.toFixed(6)}"/>`).join("\n") + "\n</trkseg></trk></gpx>\n";
@@ -3331,8 +3471,33 @@ function nearestOnRoute(p) {
   navAlong = along;   // 案内のボール用：ルートのどこまで来たか（m）
   return [bd, cum[cum.length - 1] - along + (cur.partial ? cur.restAir || 0 : 0)];
 }
+// ---------- 📣 走った記録（SNS用）：走った道と、着いた所・時刻。この端末の中だけ ----------
+let ride = lsGet("hosomichi_ride", null), rideSaveT = 0;
+const RIDE_GAP = 3 * 3600e3;
+function rideStart() {
+  const now = Date.now(), last = ride && (ride.pts.length ? ride.pts[ride.pts.length - 1][2] : ride.t0);
+  const rn = cur ? cur.name || "" : "";
+  if (ride && !ride.done && now - last < RIDE_GAP && ride.rn === rn) return;   // 同じルートのつづき
+  ride = { t0: now, rn, pts: [], ev: [], stops: cur && cur.stops ? cur.stops.map(q => ({ p: q.p, name: q.name, mid: q.mid })) : [] };
+  rideSave(true);
+}
+function rideSave(now) { if (!ride) return; if (now || Date.now() - rideSaveT > 20000) { rideSaveT = Date.now(); lsSet("hosomichi_ride", ride); } }
+function rideEv(k, name, ll) {
+  if (!ride || ride.ev.some(e => e.k === k && e.name === name)) return;
+  ride.ev.push({ t: Date.now(), k, name, p: ll }); rideSave(true);
+}
+function rideAdd(ll, accu) {
+  if (!ride || wid === null || accu > 60) return;
+  const L = ride.pts[ride.pts.length - 1];
+  if (!L) { ride.pts.push([+ll[0].toFixed(6), +ll[1].toFixed(6), Date.now()]); rideEv("start", "", ll); return; }
+  if (hav(L, ll) < 20) return;
+  ride.pts.push([+ll[0].toFixed(6), +ll[1].toFixed(6), Date.now()]);
+  if (ride.pts.length > 6000) ride.pts.splice(1, 1);
+  rideSave(false);
+}
 function onPos(p) {
   const ll = [p.coords.latitude, p.coords.longitude];
+  try { rideAdd(ll, p.coords.accuracy); } catch {}
   hereFix = [ll, Date.now(), p.coords.accuracy];
   updHeading(p.coords, ll);
   const first = !me;
@@ -3474,6 +3639,7 @@ $("gps").onclick = async () => {
     else lsSet("hosomichi_geook", true);
   }
   if (wid === null) {
+    rideStart();
     if (fakePos) { wid = -1; setTimeout(feedFake); }   // 🧪 ためしの現在地
     else {
       if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
@@ -3840,6 +4006,7 @@ function qStamp(s, auto) {
   const vs = qVisits(); vs.push([s[0], s[1], s[2], Date.now()]); lsSet(QVKEY, vs);
   const lines = lsGet(QKEY, []).filter(q => q.st.some(x => qNorm(x[0]) === qNorm(s[0]) && hav([x[1], x[2]], [s[1], s[2]]) < 1500));
   const prog = lines.map(q => { const [v, n] = qProg(q); return v === n ? `🏆 ${q.name} 制覇！！` : `${q.name} ${v}/${n}`; }).join("\n");
+  if (auto) try { rideEv("stamp", qLabel(s), [s[1], s[2]]); } catch {}
   addLog(`🏁 スタンプ: ${qLabel(s)}${auto ? "（自動）" : ""}　${prog.replace(/\n/g, "・")}`, "ok");
   if (auto) {
     chime(); try { navigator.vibrate?.([120, 80, 120]); } catch {}
