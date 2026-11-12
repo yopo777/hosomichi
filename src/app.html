@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div id="tabCfg" style="display:none">
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="vcOn">🗣 音声で案内（ナビ中）</label>
-        <div style="font-size:11px;color:#666;margin-top:2px">曲がる所の手前（100mくらい・まもなく）、ルートから外れたとき、とうちゃくをしゃべるよ。曲がる所はルートの線の曲がりぐあいから見つけているので、急なカーブでも「右です」って言うことがあるよ</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">曲がる所の手前（100mくらい・まもなく）、ルートから外れたとき、とうちゃくをしゃべるよ。道なりのカーブは案内しないよ（前に作ったルートは線の形から見つけるので、カーブでもしゃべることがあるよ。作りなおすと直るよ）</div>
         <div class="btns" style="margin-top:4px"><button class="ib" id="vcTest" style="font-size:12px">🔊 ためしに聞く</button></div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -760,7 +760,7 @@ worker.onmessage = ev => {
   }
   if (m.type === "partial") {   // スタート側から順番に確定していく途中のルート
     const first = !cur || !cur.partial;
-    showRoute(merged({ route: m.route, ek: m.ek, tent: m.tent, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len,
+    showRoute(merged({ route: m.route, ek: m.ek, tent: m.tent, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len,
       restAir: m.restAir, partial: true, name: pendingName, resume: { g: job.g, cfg: job.cfg } }), first && !follow && !job.prefix ? "start" : false);
     lsSet(LKEY, packRoute(cur));   // とちゅうでタブを閉じても、あとで続きから計算できるように
     if (first) { $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }   // 地図を見せて、すぐ ◎ を押せるように
@@ -794,9 +794,9 @@ worker.onmessage = ev => {
   setMsg(`できた！ ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）\n` +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
-  showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: m.stops,
+  showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: m.stops,
     opts: job && job.prefix || !(m.alts || []).length ? null
-      : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, kinds: m.kinds, turns: m.turns, len: m.len, stops: m.stops }, ...m.alts], sel: 0,
+      : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, stops: m.stops }, ...m.alts], sel: 0,
     name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
   if (job && job.prefix) cur.slen = 0;
   if (job && job.next) {   // 経由地まで できた → つづけて 経由地から到着地まで
@@ -822,6 +822,7 @@ function merged(m) {
     route: mr.length ? P.route.concat(mr.slice(1)) : P.route.slice(),
     kc: P.kc && m.ek ? P.kc.concat(m.ek.map(catOf)) : null,
     ok: (P.ok || []).concat(m.ok || []), xw: (P.xw || []).concat(m.xw || []), ng: (P.ng || []).concat(m.ng || []),
+    tp: P.tp && m.tp ? P.tp.concat(m.tp) : null,
     kinds: sumKinds(P.kinds, m.kinds), turns: P.turns != null && m.turns != null ? P.turns + m.turns : undefined,
     len: (P.len || 0) + (m.len || 0), short: null, slen: 0 };
 }
@@ -1243,6 +1244,7 @@ function shareUrl(tol = 3) {
   if (ok.length) prm.set("ok", encPoly(ok));
   if (xw.length) prm.set("xw", encPoly(xw));
   if (ng.length) prm.set("ng", encPoly(ng));
+  if (cur.tp) { const tp = cur.tp.filter(keep); prm.set("tp", encPoly(tp)); prm.set("ta", tp.map(t => t[2]).join(",")); }
   return location.origin + location.pathname + "#" + prm.toString();
 }
 function updateShare() { $("url").value = shareUrl(); updateHomeNote(); }
@@ -1586,7 +1588,23 @@ function vcAt(d) {   // ルートの先頭から d m の点
   const a = R[lo], c = R[hi], u = (d - cum[lo]) / ((cum[hi] - cum[lo]) || 1);
   return [a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u];
 }
-function vcFind() {   // 前後20mの向きの差が40°以上の所＝曲がる所。近い所（25m以内）は大きいほうだけ
+function vcFind() {
+  if (cur.tp) return vcFromTp();
+  return vcFromShape();
+}
+function vcFromTp() {   // ルートを作ったときに見つけた曲がり角（道なりは入っていない）を、ナビの線の上の距離にする
+  const R = cur.nav, out = []; let j = 0;
+  for (const [la, lo, d] of cur.tp) {
+    let best = -1, bd = 3;
+    for (let k = j; k < R.length; k++) { const dd = hav(R[k], [la, lo]); if (dd < bd) { bd = dd; best = k; if (dd < 0.5) break; } }
+    if (best < 0) continue; j = best + 1;
+    const sd = cum[best], last = out[out.length - 1];
+    if (last && sd - last.s < 10 && Math.sign(d) === Math.sign(last.d)) { if (Math.abs(d) > Math.abs(last.d)) { last.s = sd; last.d = d; } continue; }
+    out.push({ s: sd, d });
+  }
+  return out;
+}
+function vcFromShape() {   // 古いルート・共有URL用：前後20mの向きの差が40°以上の所＝曲がる所。近い所（25m以内）は大きいほうだけ
   const R = cur.nav, W = 20, out = [], tot = cum[cum.length - 1];
   for (let i = 1; i < R.length - 1; i++) {
     const sd = cum[i]; if (sd < 15 || sd > tot - 10) continue;
@@ -1753,7 +1771,7 @@ function loadHash() {
     const hr = decPoly(h.get("r")), hk = h.get("k") ? decK(h.get("k")) : null;
     let resume = null;
     if (h.get("g")) { try { resume = { g: h.get("g").split(",").map(Number), cfg: h.get("c") ? JSON.parse(decodeURIComponent(escape(atob(h.get("c"))))) : structuredClone(cfg) }; } catch { resume = null; } }
-    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
+    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } catch (e) { setMsg("共有URLが読めませんでした", true); }
 }
@@ -1767,13 +1785,19 @@ function packRoute(r) {
   const sr = simpRoute(r.route, r.kc, 1);
   return { name: r.name || "", created: r.created || Date.now(), r: encPoly(sr.pts), k: sr.kc ? encK(sr.kc) : "",
     s: r.short ? encPoly(simplify(r.short, 3)) : "", ok: encPoly(r.ok || []), xw: encPoly(r.xw || []), ng: encPoly(r.ng || []),
+    tp: r.tp ? encPoly(r.tp) : undefined, ta: r.tp ? r.tp.map(t => t[2]).join(",") : undefined,
     len: r.len, slen: r.slen || 0, kinds: r.kinds || null, rs: r.resume || null, tn: r.turns ?? null,
     st: r.stops && r.stops.length ? r.stops : undefined };
+}
+function decTp(t, a) {   // 🗣 曲がり角：点の列＋角度の列。古いルート・共有URLにはないので null（線の形から見つける）
+  if (t == null || a == null) return null;
+  const pts = decPoly(t), as = a === "" ? [] : String(a).split(",").map(Number);
+  return pts.length === as.length ? pts.map((p, i) => [p[0], p[1], as[i]]) : null;
 }
 function unpackRoute(o) {
   const route = decPoly(o.r), kc = o.k ? decK(o.k) : null;
   return { name: o.name, created: o.created, route, kc: kc && kc.length === route.length - 1 ? kc : null, short: o.s ? decPoly(o.s) : null,
-    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st };
+    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), tp: decTp(o.tp, o.ta), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st };
 }
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function renderList() {

@@ -558,7 +558,7 @@ async function loopRoute(req, prog) {
 // 区間をつなぐ。つなぎ目の「行ってすぐもどる」ムダはけずる
 function joinLegs(parts, keepSpur) {   // keepSpur：行って同じ道で戻る所も消さない（🏁 ぜんぶ回る は駅の前まで行きたいので）
   let route = parts[0].route.slice(), ek = (parts[0].ek || []).slice();
-  const res = { ok: [], xw: [], ng: [], kinds: {}, turns: 0, len: 0 };
+  const res = { ok: [], xw: [], ng: [], tp: [], kinds: {}, turns: 0, len: 0 };
   const same = (p, q) => p && q && p[0] === q[0] && p[1] === q[1];
   for (let i = 0; i < parts.length; i++) {
     const P = parts[i];
@@ -569,7 +569,7 @@ function joinLegs(parts, keepSpur) {   // keepSpur：行って同じ道で戻る
       route = route.slice(0, route.length - k).concat(R2.slice(1 + k));
       ek = ek.slice(0, ek.length - k).concat(E2.slice(k));
     }
-    res.ok.push(...(P.ok || [])); res.xw.push(...(P.xw || [])); res.ng.push(...(P.ng || []));
+    res.ok.push(...(P.ok || [])); res.xw.push(...(P.xw || [])); res.ng.push(...(P.ng || [])); if (res.tp && P.tp) res.tp.push(...P.tp); else res.tp = null;
     for (const [k, v] of Object.entries(P.kinds || {})) res.kinds[k] = (res.kinds[k] || 0) + v;
     res.turns += P.turns || 0; res.len += P.len || 0;
   }
@@ -735,13 +735,31 @@ function edge(G, u, v) {
   return best;
 }
 
+// 🗣 音声ナビで案内する曲がり角：[lat, lon, 曲がる角度（+右・-左）]
+// 道なり（ほかに曲がれる道がない／ルートの道がいちばんまっすぐ）は案内しない
+function guideAt(G, path, i) {
+  const u = path[i], c = G.cosl, X = j => [(G.lon[path[j]] - G.lon[u]) * c * 111320, (G.lat[path[j]] - G.lat[u]) * 111320];
+  const far = (step) => { let j = i, d = 0; while (j + step >= 0 && j + step < path.length && d < 12) { j += step; const [x, y] = X(j); d = Math.hypot(x, y); } return X(j); };
+  const [bx, by] = far(-1), [fx, fy] = far(1);   // 12mくらい前・先の点（道の点がこまかくても向きがぶれないように）
+  const ix = -bx, iy = -by;                       // 入ってきた向き
+  const ang = (x, y) => Math.atan2(ix * y - iy * x, ix * x + iy * y) * -180 / Math.PI;   // +が右
+  const a = ang(fx, fy); if (Math.abs(a) < 40) return null;
+  const alts = new Set(); for (const e of G.adj[u]) if (e.v !== path[i - 1] && e.v !== path[i + 1]) alts.add(e.v);
+  if (!alts.size) return null;                    // 1本道のカーブ
+  let straighter = false;
+  for (const w of alts) { const b = ang((G.lon[w] - G.lon[u]) * c * 111320, (G.lat[w] - G.lat[u]) * 111320); if (Math.abs(b) < Math.abs(a) + 30) straighter = true; }
+  if (!straighter) return null;                   // ルートの道がいちばんまっすぐ＝道なり
+  return [G.lat[u], G.lon[u], Math.round(a)];
+}
+
 function analyze(G, path) {
-  const ok = [], xw = [], ng = [], ngIdx = [], kinds = {}, ek = []; let len = 0, turns = 0;
+  const ok = [], xw = [], ng = [], ngIdx = [], kinds = {}, ek = [], tp = []; let len = 0, turns = 0;
   for (let i = 1; i < path.length; i++) {
     const e = edge(G, path[i - 1], path[i]); len += e.L; kinds[e.k] = (kinds[e.k] || 0) + e.L; ek.push(e.k);
   }
   for (let i = 1; i < path.length - 1; i++) {
     if (edge(G, path[i - 1], path[i]).w !== edge(G, path[i], path[i + 1]).w && isTurn(G, path[i - 1], path[i], path[i + 1])) turns++;
+    { const g = guideAt(G, path, i); if (g) tp.push(g); }
     const u = path[i], L = G.lvl[u]; if (!L) continue;
     if (isCrossing(G, path[i - 1], u, path[i + 1], edge(G, path[i - 1], u).l, edge(G, u, path[i + 1]).l, L)) {
       const p = [G.lat[u], G.lon[u]], k = G.xkind[u];
@@ -749,7 +767,7 @@ function analyze(G, path) {
       else if (G.xcost[u] > 0 || L === 2) { ng.push(p); ngIdx.push(i); }   // ルール違反（または4車線を信号なし）
     }
   }
-  return { ok, xw, ng, ngIdx, kinds, len, ek, turns };
+  return { ok, xw, ng, ngIdx, kinds, len, ek, turns, tp };
 }
 
 // ==== タイル分割取得 ＋ 保存（メモリ ＋ IndexedDB） ====
@@ -1380,7 +1398,7 @@ async function routeOnce(req, prog, partial) {
   };
 
   // --- 順番に確定 ---
-  const conf = [], kinds = {}, ok = [], xw = [], ng = [], ek = [];
+  const conf = [], kinds = {}, ok = [], xw = [], ng = [], ek = [], tp = [];
   let turns = 0, confLen = 0, confEnd = null /* OSMの点id */, tConf = 0, tBuild = 0, tSearch = 0, nNodes = 0;
   // mode "full"：ぜんぶ取ってから一度に計算（いちばん良いルート）／ それ以外：スタートから順番に確定（すぐ走り出せる）
   let bandEnd = cfg && cfg.mode === "full" ? D : Math.min(D, FIRST_BAND), lastGraph = null;
@@ -1473,7 +1491,7 @@ async function routeOnce(req, prog, partial) {
       const confPart = path.slice(0, k + 1), tent = path.slice(k);
       if (confPart.length > 1) {
         const a = analyze(G, confPart);
-        addKinds(a.kinds); ok.push(...a.ok); xw.push(...a.xw); ng.push(...a.ng); ek.push(...a.ek); turns += a.turns; confLen += a.len;
+        addKinds(a.kinds); ok.push(...a.ok); xw.push(...a.xw); ng.push(...a.ng); ek.push(...a.ek); tp.push(...a.tp); turns += a.turns; confLen += a.len;
         const pts = confPart.map(i => [G.lat[i], G.lon[i]]);
         conf.push(...(conf.length ? pts.slice(1) : pts));
         confEnd = G.ids[confPart[confPart.length - 1]];
@@ -1483,7 +1501,7 @@ async function routeOnce(req, prog, partial) {
       lastGraph = { G, sn: G.idx.get(G.ids[path[0]]) };
       if (final) break;
       const tentPts = tent.map(i => [G.lat[i], G.lon[i]]);
-      partial({ route: conf.slice(), ek: ek.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), kinds: { ...kinds }, turns, len: confLen,
+      partial({ route: conf.slice(), ek: ek.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), tp: tp.slice(), kinds: { ...kinds }, turns, len: confLen,
         progress: Math.min(1, tConf / D), restAir: hav(tentPts[tentPts.length - 1][0], tentPts[tentPts.length - 1][1], g[0], g[1]) });
       bandEnd = Math.min(D, bandEnd + BAND);
     }
@@ -1562,7 +1580,7 @@ async function routeOnce(req, prog, partial) {
           }
           cands.sort((a, b) => a.a.len - b.a.len);
           for (const { p, a } of cands.slice(0, 2))
-            alts.push({ route: p.map(u => [G.lat[u], G.lon[u]]), ek: a.ek, ok: a.ok, xw: a.xw, ng: a.ng, kinds: a.kinds, turns: a.turns, len: a.len });
+            alts.push({ route: p.map(u => [G.lat[u], G.lon[u]]), ek: a.ek, ok: a.ok, xw: a.xw, ng: a.ng, tp: a.tp, kinds: a.kinds, turns: a.turns, len: a.len });
           log(`ほかのルート: 候補 ${cands.length}本（${cands.map(c => c.how + " " + (c.a.len / 1000).toFixed(1) + "km").join("・") || "なし"}）`);
         }
       }
@@ -1571,7 +1589,7 @@ async function routeOnce(req, prog, partial) {
   }
   const T = (Date.now() - T0) / 1000;
   log(`==== 完了 ${(confLen / 1000).toFixed(2)}km・${T.toFixed(1)}秒（ダウンロード ${done}マス ${kb(bytes)}・つながり ${tBuild.toFixed(1)}秒・探索 ${tSearch.toFixed(1)}秒） ====`, "ok");
-  return { route: conf, ek, ok, xw, ng, kinds, turns, len: confLen, nNodes, sec: T, tiles: N, saved, bytes, alts,
+  return { route: conf, ek, ok, xw, ng, tp, kinds, turns, len: confLen, nNodes, sec: T, tiles: N, saved, bytes, alts,
     tLoad: Math.max(0, T - tBuild - tSearch), tBuild, tSearch };
 }
 // 「ただの最短」はくらべる用。順番に確定する方式では出さない
