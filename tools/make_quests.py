@@ -99,6 +99,18 @@ def spot_kind(t, is_way=False):
     if sh == "convenience": return "conv"
     if a == "cafe": return "cafe"
     if a in ("restaurant", "fast_food") and "ramen" in (g("cuisine") or ""): return "ramen"
+    if a in ("restaurant", "fast_food", "food_court"):   # 🍴 ランチ用（料理の種類 cuisine か、名前で見分ける）
+        cu = (g("cuisine") or "").lower()
+        def has(pat_cu, pat_nm=None): return bool(re.search(pat_cu, cu)) or bool(pat_nm and re.search(pat_nm, n))
+        if has(r"ramen", r"ラーメン|らーめん|拉麺|中華そば|つけ麺"): return "ramen"
+        if has(r"soba|udon", r"そば|蕎麦|うどん|饂飩"): return "soba"
+        if has(r"sushi", r"寿司|鮨|すし"): return "sushi"
+        if has(r"curry|indian|nepal", r"カレー|インド|ネパール"): return "curry"
+        if has(r"chinese|dumpling|gyoza", r"中華|餃子|飯店|菜館|酒家"): return "chinese"
+        if has(r"burger", r"バーガー|マクドナルド|モスバーガー|ロッテリア"): return "burger"
+        if has(r"italian|pizza|pasta|french|western|steak|hamburg|yoshoku", r"イタリア|ピザ|パスタ|洋食|ステーキ|ハンバーグ|ビストロ|トラットリア"): return "western"
+        if has(r"japanese|teishoku|tonkatsu|tempura|donburi|gyudon|katsu|tendon|unagi", r"定食|食堂|とんかつ|天ぷら|天丼|丼|牛丼|うなぎ|鰻|すき家|吉野家|松屋|やよい軒|大戸屋"): return "teishoku"
+        return "restaurant"
     if sh == "bakery": return "bakery"
     if sh in ("confectionery", "pastry", "ice_cream") or a == "ice_cream": return "sweets"
     if sh in ("alcohol", "wine") or g("craft") in ("brewery", "winery", "distillery"): return "liquor"

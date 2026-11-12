@@ -171,7 +171,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2145</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2149</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -181,7 +181,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div id="tabQuest" style="display:none">
       <h4 style="margin:8px 0 2px">🎯 ミッション <span style="font-size:11px;color:#666;font-weight:normal">1か所に寄って、ぐるっと1周してもどる</span></h4>
       <div class="row"><label style="width:auto">行き先</label><select id="msnType" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px">
-        <option value="spot">⛩ 寄り道（神社・公園・湧き水…）</option><option value="lunch">🍜 ランチ（ラーメン・カフェ・パン屋）</option><option value="snack">🍰 おやつ（スイーツ・パン屋・カフェ）</option><option value="none">🔁 なし（ふつうの1周）</option></select></div>
+        <option value="spot">⛩ 寄り道（神社・公園・湧き水…）</option><option value="lunch">🍜 ランチ（ラーメン・そば・定食・中華・カフェ…）</option><option value="snack">🍰 おやつ（スイーツ・パン屋・カフェ）</option><option value="none">🔁 なし（ふつうの1周）</option></select></div>
       <div class="row"><label style="width:auto">長さ</label><select id="loopKm" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option>5</option><option selected>10</option><option>20</option><option>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
       <div style="font-size:11px;color:#666">出発は 🚲ルートの「出発」（空なら現在地）。行き先は毎回ちがう所をおまかせで選ぶよ。気に入らなかったらもう一回押してね</div>
       <button id="msnGo" style="margin-top:6px">🎯 ミッションを作る</button>
@@ -2648,7 +2648,7 @@ $("msnGo").onclick = () => { loopReq = true; try { showTab("route"); $("go").onc
 // 🎯 とちゅうの寄り道スポット：1周の長さに合う距離にある「めぐる」系のマークから、まだ選んでいない所をランダムに1つ
 const MID_KINDS = {
   spot: ["shrine", "temple", "castle", "kofun", "monument", "sight", "view", "park", "jizo", "ichiri", "tree", "spring", "fall", "bridge", "michi"],
-  lunch: ["ramen", "cafe", "bakery"], snack: ["sweets", "bakery", "cafe"],
+  lunch: ["ramen", "soba", "sushi", "curry", "teishoku", "chinese", "western", "burger", "restaurant", "cafe", "bakery"], snack: ["sweets", "bakery", "cafe"],
 };
 const MID_SAY = { spot: "ひと休みしよう", lunch: "ランチにしよう", snack: "おやつにしよう" };
 const midKey = p => p[0].toFixed(4) + "," + p[1].toFixed(4);
@@ -4204,7 +4204,9 @@ const SPOT_KINDS = [
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
     ["oneway", "➡", "一方通行"]]],
   ["車止め", [["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
-  ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["ramen", "🍜", "ラーメン"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
+  ["ランチ", [["ramen", "🍜", "ラーメン"], ["soba", "🥢", "そば・うどん"], ["sushi", "🍣", "寿司"], ["curry", "🍛", "カレー"], ["teishoku", "🍱", "定食・和食"], ["chinese", "🥟", "中華"],
+    ["western", "🍝", "洋食・イタリアン"], ["burger", "🍔", "ハンバーガー"], ["restaurant", "🍴", "そのほかの食堂"]]],
+  ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
   ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
     ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"],
     ["jizo", "🙏", "お地蔵さん・道祖神"], ["ichiri", "🌲", "一里塚"], ["tree", "🌳", "大きな木"], ["spring", "🫧", "湧き水"], ["fall", "🏞", "滝"], ["ferry", "⛴", "渡し船"]]]];
@@ -4219,7 +4221,7 @@ const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style=
   // ゲート・遮断機（柱と、赤白のバー）
   gate: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><rect x="0.8" y="2" width="2.6" height="11" rx="1" fill="#555"/><rect x="3" y="5" width="12.4" height="3" fill="#d93025"/><g fill="#fff"><rect x="5.6" y="5" width="2.2" height="3"/><rect x="10" y="5" width="2.2" height="3"/></g></svg>' };
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
-const SPOT_COL = { "道": "#188038", "車止め": "#d93025", "こまったとき": "#d01884", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
+const SPOT_COL = { "道": "#188038", "車止め": "#d93025", "こまったとき": "#d01884", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "ランチ": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];
