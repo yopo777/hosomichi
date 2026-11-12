@@ -173,7 +173,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0000</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0005</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2966,7 +2966,7 @@ function rideTick(rest) {   // 📣 着いた所を記録（音声オフでも�
     if (!q.at) { let bd = Infinity; for (const r of cur.nav) { const d = hav(r, q.p); if (d < bd) { bd = d; q.at = r; } } }
     if (hav(q.at, h) < 40 || hav(q.p, h) < 60) rideEv("stop", q.name, q.p);
   }
-  if (!cur.partial && rest < 30 && navAlong > (cum[cum.length - 1] || 0) * 0.5) { rideEv("goal", (cur.name || "").split("→").pop().replace(/（.*$/, "").trim(), h); ride.done = true; rideSave(true); }
+  if (!cur.partial && rest < 30 && navAlong > (cum[cum.length - 1] || 0) * 0.5 && rodeToEnd(rest)) { rideEv("goal", (cur.name || "").split("→").pop().replace(/（.*$/, "").trim(), h); ride.done = true; rideSave(true); }
 }
 function tripBar(rest) {   // 🔵 ナビ中：ゲージを「どこまで走ったか」にする
   try { rideTick(rest); } catch {}
@@ -3757,12 +3757,15 @@ function onPos(p) {
     nav.className = off > 60 ? "off" : "";
     nav.textContent = (rest < 30 && !cur.partial ? "🎉 とうちゃく！" : `のこり ${cur.partial ? "約" : ""}${fmtKm(rest)}` + (cur.partial ? "（計算中）" : ""))
       + (off > 60 ? `　⚠ ルートから ${Math.round(off)}m` : "");
+    if (joinFor !== cur) { joinFor = cur; vcJoined = false; }   // はじめてルートに乗った所をおぼえる
+    if (!vcJoined && off < 60) { vcJoined = true; vcJoinAt = navAlong; }
     try { vcNav(off, rest); } catch {}
     tripBar(rest); try { backHint(off); } catch {}
   }
 }
 // ---------- 🗣 音声ナビ（ルートの線の曲がりぐあいから「曲がる所」を見つけて、近づいたらしゃべる） ----------
-let vcOn = lsGet("hosomichi_voice", true), vcTurns = null, vcFor = null, vcOff = false, vcEnd = false, vcJoined = false;
+let vcOn = lsGet("hosomichi_voice", true), vcTurns = null, vcFor = null, vcOff = false, vcEnd = false, vcJoined = false, vcJoinAt = 0, joinFor = null;
+const rodeToEnd = rest => vcJoined && rest + 300 < (cum[cum.length - 1] || 0) - vcJoinAt;   // ゴールの300mより手前で乗って、走ってきた
 $("vcOn").checked = vcOn;
 $("vcOn").onchange = () => { vcOn = $("vcOn").checked; lsSet("hosomichi_voice", vcOn); if (vcOn) say("音声案内をオンにしたよ"); else try { speechSynthesis.cancel(); } catch {} };
 $("vcTest").onclick = () => { boo(); setTimeout(() => say("100メートル先、右です"), 900); };
@@ -3855,12 +3858,13 @@ function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
   const say = t => { if (vcOn) window.say(t); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
-  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; vcJoined = false; }
+  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; }
   // まだ一度もルートに乗っていない（共有ルートを遠くで開いた・車で出発地へ行く とちゅう など）ときは、「外れています」は言わない
-  if (!vcJoined) { if (off < 60) vcJoined = true; else return; }
+  if (!vcJoined) return;
   if (off > 60) { if (!vcOff) { vcOff = true; if (vcOn) { boo(); const w = backWord(off); setTimeout(() => say("ルートから外れています。" + w), 700); } } blkShowMap(5000); return; }
   if (off < 30) vcOff = false;
-  if (!cur.partial && rest < 30) { if (!vcEnd) { vcEnd = true; say("とうちゃくです。おつかれさまでした"); blkShowMap(60000); } return; }
+  // とうちゃく：ゴールの300mより手前でルートに乗って、走ってきたときだけ（いまここ の共有ルートを、その場で開いたとき などは言わない）
+  if (!cur.partial && rest < 30) { if (!vcEnd && rodeToEnd(rest)) { vcEnd = true; say(cur.here ? "いまここ（投稿したとき）に着いたよ" : "とうちゃくです。おつかれさまでした"); blkShowMap(60000); } vcEnd = true; return; }
   if (me && cur.stops) for (const q of cur.stops) if (q.mid && !q.said) {
     if (!q.at) { let bd = Infinity; for (const r of cur.nav) { const d = hav(r, q.p); if (d < bd) { bd = d; q.at = r; } } }   // 公園などは まん中の点なので、ルートでいちばん近い所で「着いた」にする
     const h = [me.getLatLng().lat, me.getLatLng().lng]; if (hav(q.at, h) > 40 && hav(q.p, h) > 60) continue;
