@@ -158,7 +158,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1646</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1651</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -1949,13 +1949,21 @@ const map = L.map("map", { zoomControl: false, rotate: true, bearing: 0, rotateC
   zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 120,   // 拡大・縮小をこまかく（1段ずつだと急すぎる）
   shiftKeyRotate: false, compassBearing: false }).setView([35.69, 139.75], 11);
 let baseName = (() => { try { return localStorage.getItem("hosomichi_bg") || "cyclosm"; } catch { return "cyclosm"; } })();
-if (!BASES[baseName]) baseName = "cyclosm";
+// 「自動」：近いときは自転車用、ひいたら地理院 標準（町の名前がわかりやすい）
+const AUTO_Z = 14, BG_ALL = ["auto", ...Object.keys(BASES)];
+if (!BG_ALL.includes(baseName)) baseName = "cyclosm";
+const realBase = () => baseName === "auto" ? (map.getZoom() >= AUTO_Z ? "cyclosm" : "std") : baseName;
+let shownBase = null;
 try { localStorage.removeItem("hosomichi_base"); } catch {}
 const baseLayer = n => base[n] || (base[n] = BASES[n][1]());
-baseLayer(baseName).addTo(map);
+function baseRefresh() {
+  const r = realBase(); if (r === shownBase) return;
+  if (shownBase) map.removeLayer(baseLayer(shownBase)); baseLayer(r).addTo(map); shownBase = r;
+}
+baseRefresh(); map.on("zoomend", baseRefresh);
 function setBase(n) {
-  if (!BASES[n] || n === baseName) return;
-  map.removeLayer(baseLayer(baseName)); baseLayer(n).addTo(map); baseName = n;
+  if (!BG_ALL.includes(n) || n === baseName) return;
+  baseName = n; baseRefresh();
   try { localStorage.setItem("hosomichi_bg", n); } catch {}
   if (typeof drawArea === "function") drawArea();
 }
@@ -2801,9 +2809,9 @@ function setColorMode(m) {
   if (cur) showRoute(cur, false); else legend(null);
 }
 // 🗺 右のボタン：地図の種類を順番に切りかえ（ルートの色は ⚙ 設定へ）
-const BASE_SHORT = { cyclosm: "自転車用", pale: "淡色", std: "標準" };
+const BASE_SHORT = { auto: "自動", cyclosm: "自転車用", pale: "淡色", std: "標準" };
 const baseBtn = () => { $("colL").textContent = BASE_SHORT[baseName] || baseName; };
-$("col").onclick = () => { const ks = Object.keys(BASES); setBase(ks[(ks.indexOf(baseName) + 1) % ks.length]); baseBtn(); for (const r of document.querySelectorAll("[name=bg]")) r.checked = r.value === baseName; };
+$("col").onclick = () => { const ks = BG_ALL; setBase(ks[(ks.indexOf(baseName) + 1) % ks.length]); baseBtn(); for (const r of document.querySelectorAll("[name=bg]")) r.checked = r.value === baseName; };
 baseBtn();
 
 let cum = [];
@@ -3087,7 +3095,7 @@ const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${Strin
 function renderCfg() {
   const row = ([k, t, o]) => `<div class="c"><span>${t}</span><select data-k="${k}">${optHtml(o, cfg[k])}</select></div>`;
   const get = ks => OTHER_ROWS.filter(r => ks.includes(r[0])).map(row).join("");
-  let h = "<h4>背景の地図</h4>" + Object.entries(BASES).map(([k, [t]]) =>
+  let h = "<h4>背景の地図</h4>" + [["auto", ["自動（近くは自転車用・ひいたら国土地理院 標準）"]], ...Object.entries(BASES)].map(([k, [t]]) =>
     `<label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="radio" name="bg" value="${k}"${k === baseName ? " checked" : ""}>${t}</label>`).join("") +
     '<div class="note">道路データがない所（ルートを作るときにダウンロードが必要な所）は、地図が少し暗くなるよ。右の🗺ボタンでも切りかえられるよ</div>';
   h += "<h4>ルートの色</h4>" + [["kind", "道の種類"], ["slope", "坂"]].map(([k, t]) =>
