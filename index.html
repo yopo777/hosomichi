@@ -160,7 +160,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1705</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1708</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2599,12 +2599,15 @@ async function pickMid(s, km) {
   if (keys.length > 80) keys.length = 80;
   const tiles = await Promise.all(keys.map(spotTile)), seen = new Set(lsGet("hosomichi_midseen", [])), all = [];
   for (const t of tiles) for (const k of MID_KINDS) for (const e of t[k] || []) {
+    if (k === "bridge" && /歩道橋/.test(e[0] || "")) continue;   // 歩道橋は見に行く所じゃないので
     const p = [e[1], e[2]], d = hav(s, p);
-    if (d >= lo && d <= hi) all.push({ p, name: e[0] || SPOT_INFO[k][1], ic: SPOT_INFO[k][0], named: !!e[0], fresh: !seen.has(midKey(p)) });
+    if (d >= lo && d <= hi) all.push({ k, p, name: e[0] || SPOT_INFO[k][1], ic: SPOT_INFO[k][0], named: !!e[0], fresh: !seen.has(midKey(p)) });
   }
   const tiers = [all.filter(c => c.fresh && c.named), all.filter(c => c.fresh), all.filter(c => c.named), all];   // まだ行っていない・名前がある所を先に
-  const c = tiers.find(t => t.length);
-  return c ? c[Math.floor(Math.random() * c.length)] : null;
+  const c = tiers.find(t => t.length); if (!c) return null;
+  // 公園ばかりにならないように：まず種類を同じ確率で選んで、その中からランダム
+  const ks = [...new Set(c.map(x => x.k))], k = ks[Math.floor(Math.random() * ks.length)], cs = c.filter(x => x.k === k);
+  return cs[Math.floor(Math.random() * cs.length)];
 }
 function midSeen(p) { const a = lsGet("hosomichi_midseen", []).filter(x => x !== midKey(p)); a.push(midKey(p)); lsSet("hosomichi_midseen", a.slice(-500)); }
 loopUi();
