@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-細道ルートナビ 配布用の道路データ（マス）を作るスクリプト
+ほそみちナビ 配布用の道路データ（マス）を作るスクリプト
 
 使い方:
   1. python -m pip install osmium
@@ -317,7 +317,7 @@ def main():
     write_areas(src, out)
     open(os.path.join(out, ".nojekyll"), "w").close()   # GitHub Pages でそのまま配る（変換しない）
     with open(os.path.join(out, "README.md"), "w", encoding="utf-8") as f:
-        f.write("# hosomichi-data\n\n[細道ルートナビ](https://yopo777.github.io/hosomichi/) 用の道路データ（約1km角のマスごと）です。\n\n"
+        f.write("# hosomichi-data\n\n[ほそみちナビ](https://yopo777.github.io/hosomichi/) 用の道路データ（約1km角のマスごと）です。\n\n"
                 f"- はんい: {'・'.join(AREAS.keys())}\n- 地図の日付: {v}\n- {len(keys)}マス・{total / 1048576:.0f}MB\n\n"
                 "データ: © OpenStreetMap contributors。Open Database License（ODbL）で提供します。\n"
                 "https://www.openstreetmap.org/copyright\n\n"

@@ -1033,7 +1033,7 @@ async function exportTiles() {
 }
 async function importTiles(file) {
   const top = await file.slice(0, 22).text();
-  if (!top.startsWith("HOSOMICHI1\n")) throw new Error("細道ルートナビの道路データのファイルではないみたい");
+  if (!top.startsWith("HOSOMICHI1\n")) throw new Error("ほそみちナビの道路データのファイルではないみたい");
   const hl = parseInt(top.slice(11, 21)), head = JSON.parse(await file.slice(22, 22 + hl).text());
   let pos = 22 + hl, added = 0, same = 0;
   for (const h of head) {

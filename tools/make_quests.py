@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-細道ルートナビ クエスト用のデータ quests.json を作るスクリプト（サーバーいらずにするため）
+ほそみちナビ クエスト用のデータ quests.json を作るスクリプト（サーバーいらずにするため）
 
 使い方:
   python make_quests.py kanto-latest.osm.pbf 出力フォルダ
