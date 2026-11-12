@@ -1543,10 +1543,10 @@ async function snsData() {
       prm.set("n", `${d.getMonth() + 1}/${d.getDate()} ポタリング` + (mids.length ? `（${mids.join("・")}）` : ""));
       prm.set("r", encPoly(simpRoute(best, null, 8).pts));
       link = location.origin + location.pathname + "#" + prm.toString();
-      L.push("🗺 このルートで走れるよ（開くだけなら位置情報は使いません）");
+      L.push("🗺 ルート共有link↓");
     }
   }
-  L.push(SNS_TAGS, link);
+  L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !inZones(q.p, zs));
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
   return { runs, stops, text: L.join("\n"), sub, none: !useRide, link };
