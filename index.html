@@ -67,6 +67,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #cfgBox select{font-size:13px;padding:3px;border-radius:6px;border:1px solid #ccc;max-width:58%}
 #cfgBox .note{font-size:11px;color:#888}
 #prog{margin-top:8px;display:none}
+#geoAsk{position:fixed;inset:0;z-index:6000;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px}#geoAsk .box{background:#fff;border-radius:14px;padding:16px;max-width:420px;font-size:13px;box-shadow:0 6px 24px #0005}#geoAsk button{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#geoAsk button.big{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold;font-size:15px}
 #stabs{display:flex;gap:4px;margin:6px 0 2px;flex-wrap:wrap}#stabs button{flex:1;border:1px solid #ddd;background:#fff;border-radius:999px;padding:5px 2px;font-size:12px;color:#555;white-space:nowrap}#stabs button.on{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold}   /* 設定の中の小さいタブ */
 .spane{display:none}.spane.on{display:block}
 #bar{height:10px;background:#eee;border-radius:4px;overflow:hidden;position:relative}
@@ -163,7 +164,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1910</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1915</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2212,7 +2213,15 @@ function setFake(p) {
   else { wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 }); }   // 本当のGPSにもどす
   addLog(p ? `🧪 ためしの現在地: ${p[0].toFixed(5)},${p[1].toFixed(5)}` : "🧪 本当の現在地にもどしたよ", "m");
 }
-function getHere(timeout = 10000) {
+async function getHere(timeout = 10000) {
+  if (!fakePos && !lsGet("hosomichi_geook", false)) {   // はじめて現在地を使うときは、先に説明
+    const a = await geoAsk();
+    if (a === "no") throw new Error("現在地を使わないときは、出発に場所を入れてね");
+    if (a === "fake") { const c = map.getCenter(); setFake([+c.lat.toFixed(6), +c.lng.toFixed(6)]); } else lsSet("hosomichi_geook", true);
+  }
+  return getHere0(timeout);
+}
+function getHere0(timeout) {
   if (fakePos) return Promise.resolve(fakePos.slice());
   if (hereFix && Date.now() - hereFix[1] < 60000 && hereFix[2] < 100) return Promise.resolve(hereFix[0]);
   const once = opt => new Promise((ok, ng) => navigator.geolocation.getCurrentPosition(ok, ng, opt));
@@ -3440,7 +3449,30 @@ let ringOn = lsGet("hosomichi_ring", false);
 $("ringOn").checked = ringOn; document.body.classList.toggle("ring", ringOn);
 $("ringOn").onchange = () => { ringOn = $("ringOn").checked; lsSet("hosomichi_ring", ringOn); document.body.classList.toggle("ring", ringOn); };
 async function wake() { try { lock = await navigator.wakeLock.request("screen"); } catch {} }
-$("gps").onclick = () => {
+// 📍 はじめて◎を押したとき：いきなり「位置情報を許可しますか」が出るとこわいので、先に説明する
+function geoAsk() {
+  return new Promise(ok => {
+    const d = document.createElement("div"); d.id = "geoAsk";
+    d.innerHTML = `<div class="box"><b style="font-size:16px">📍 現在地を使うまえに</b>
+      <ul style="padding-left:18px;margin:8px 0;line-height:1.6">
+        <li>現在地は、地図に出したり、ルートの<b>どこを走っているか</b>を見るためだけに使うよ</li>
+        <li>現在地・家・走った道は<b>このスマホの中だけ</b>。どこにも送らないし、<b>作った人にも見えない</b>よ（サーバーがないアプリなの）</li>
+        <li>このあとブラウザが「許可しますか？」って聞くよ。あとから<b>いつでもやめられる</b>よ</li>
+      </ul>
+      <button data-a="ok" class="big">📍 現在地を使う</button>
+      <button data-a="fake">🧪 まずは、いま見ている地図のまん中で ためす</button>
+      <button data-a="no" style="color:#666">やめる</button></div>`;
+    document.body.appendChild(d);
+    d.onclick = e => { const a = e.target.dataset.a; if (!a) return; d.remove(); ok(a); };
+  });
+}
+$("gps").onclick = async () => {
+  if (wid === null && !fakePos && !lsGet("hosomichi_geook", false)) {
+    const a = await geoAsk();
+    if (a === "no") return;
+    if (a === "fake") { const c = map.getCenter(); setFake([+c.lat.toFixed(6), +c.lng.toFixed(6)]); }
+    else lsSet("hosomichi_geook", true);
+  }
   if (wid === null) {
     if (fakePos) { wid = -1; setTimeout(feedFake); }   // 🧪 ためしの現在地
     else {
