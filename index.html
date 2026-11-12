@@ -168,7 +168,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2046</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2050</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3199,7 +3199,7 @@ async function snsData() {
   L.push(SNS_TAGS, link);
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !inZones(q.p, zs));
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
-  return { runs, stops, text: L.join("\n"), sub, none: !useRide };
+  return { runs, stops, text: L.join("\n"), sub, none: !useRide, link };
 }
 async function snsImage({ runs, stops, sub }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所
   const W = 1200, H = 1200, PAD = 140, all = runs.flat().concat(stops.map(q => q.p));
@@ -3261,10 +3261,11 @@ $("bSns").onclick = async () => {
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
       <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ</span></div>
     <div class="ph" id="snsPhs"></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsClose">とじる</button></div></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button><button id="snsClose">とじる</button></div></div>`;
   document.body.appendChild(box);
-  let map0 = null, photos = [];
+  let map0 = null, photos = [], link = data.link;
   const draw = async d => {
+    link = d.link;
     $("snsTxt").value = d.text; $("snsImg").textContent = "地図を作っているよ…"; map0 = null;
     const blob = d.none ? null : await snsImage(d);
     if (blob) { map0 = new File([blob], "hosomichi_" + Date.now() + ".png", { type: "image/png" }); $("snsImg").innerHTML = `<img src="${URL.createObjectURL(blob)}">`; }
@@ -3278,6 +3279,7 @@ $("bSns").onclick = async () => {
     $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
   };
   $("snsClose").onclick = () => box.remove();
+  $("snsUrl").onclick = async () => { try { await navigator.clipboard.writeText(link); $("snsUrl").textContent = "✅ コピーしたよ"; setTimeout(() => $("snsUrl") && ($("snsUrl").textContent = "🔗 URLだけコピー"), 2000); } catch { prompt("URL", link); } };
   $("snsCopy").onclick = async () => { try { await navigator.clipboard.writeText($("snsTxt").value); $("snsCopy").textContent = "✅ コピーしたよ"; } catch { $("snsTxt").select(); } };
   const save = f => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); };
   $("snsSave").onclick = () => { if (map0) save(map0); photos.forEach(save); };
