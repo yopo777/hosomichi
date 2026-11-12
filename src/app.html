@@ -1032,6 +1032,8 @@ const DIR8 = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"
 async function askMid(s, km, type, fromHere) {
   const tmp = L.layerGroup().addTo(map);
   $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+  // えらんでいるあいだは「止める」とゲージは出さない（まだ計算していないので）
+  clearInterval(tickTimer); $("stop").style.display = "none"; $("bar").classList.remove("run"); setBar(0); $("bar").classList.add("done"); setMsg("🎯 行き先をえらんでね");
   try {
     for (;;) {
       const m = await pickMid(s, km, type); if (!m) return undefined;
@@ -1053,7 +1055,7 @@ async function askMid(s, km, type, fromHere) {
         document.body.appendChild(d);
         d.onclick = e => { const x = e.target.dataset.a; if (!x) return; d.remove(); ok(x); };
       });
-      if (a === "go") return m;
+      if (a === "go") { $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run"); tickTimer = setInterval(showProg, 250); return m; }
       if (a === "no") return null;
       midSeen(m.p);   // 🎲 ほかの所：今の所は「選んだ」ことにして、次をさがす
     }
