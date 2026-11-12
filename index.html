@@ -159,7 +159,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1423</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1432</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -203,14 +203,10 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div class="btns" style="margin-top:4px"><button class="ib" id="vcTest" style="font-size:12px">🔊 ためしに聞く</button></div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="ecoOn">🔋 節電モード（ナビ中）</label>
-        <div style="font-size:11px;color:#666;margin-top:2px">案内のボール・スポットの点滅を止めて、地図をすべらせずにパッと動かすよ</div>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="ringOn">⭕ ナビ中は自分のまわりだけ表示する</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="ringOn">⭕ ナビ中は自分のまわりだけ表示する</label>
         <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="blkScr">⬛ ナビ中、さわらないと画面をまっ黒にする</label>
         <div style="font-size:11px;color:#666;margin-top:2px">15秒さわらないと黒くなるよ。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="ecoScr">📴 ナビ中も画面が消えていい</label>
-        <div style="font-size:11px;color:#666;margin-top:2px">いちばん電池が長もちするよ。見たいときに画面をつけてね（消えているあいだは、音声案内・スタンプ・家までの距離は止まるよ）</div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
       </div>
       <div id="cfgBox"></div>
@@ -3195,7 +3191,7 @@ function onPos(p) {
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
   qCheck(ll, p.coords.accuracy); spotUpdate(false); spotNear(ll); homeDist();
   applyBearing();
-  if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: !eco });  // 拡大率はそのまま
+  if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
   if (cur && cur.nav && cur.nav.length > 1) {
     const [off, rest] = nearestOnRoute(ll), nav = $("nav");
     nav.style.display = "block";
@@ -3266,16 +3262,7 @@ setInterval(blkTick, 1000);
 let ringOn = lsGet("hosomichi_ring", false);
 $("ringOn").checked = ringOn; document.body.classList.toggle("ring", ringOn);
 $("ringOn").onchange = () => { ringOn = $("ringOn").checked; lsSet("hosomichi_ring", ringOn); document.body.classList.toggle("ring", ringOn); };
-async function wake() { if (ecoScr) { try { await lock?.release(); } catch {} lock = null; return; } try { lock = await navigator.wakeLock.request("screen"); } catch {} }
-// 🔋 節電モード（この端末の中だけに保存）
-let eco = lsGet("hosomichi_eco", false), ecoScr = lsGet("hosomichi_ecoscr", false);
-$("ecoOn").checked = eco; $("ecoScr").checked = ecoScr;
-$("ecoOn").onchange = () => {
-  eco = $("ecoOn").checked; lsSet("hosomichi_eco", eco);
-  if (eco) for (const el of document.querySelectorAll(".spot.near")) el.classList.remove("near");
-  try { flowBurstEnd = 0; flowPrep(); } catch {}
-};
-$("ecoScr").onchange = () => { ecoScr = $("ecoScr").checked; lsSet("hosomichi_ecoscr", ecoScr); if (wid !== null) wake(); };
+async function wake() { try { lock = await navigator.wakeLock.request("screen"); } catch {} }
 $("gps").onclick = () => {
   if (wid === null) {
     if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
@@ -3801,7 +3788,7 @@ async function spotUpdate(force) {
 }
 function spotNear(p) {   // 150m以内のスポットだけ点滅（GPSが来るたび。多くても60個しか見ない）
   if (!spotFx) return;
-  for (const [m, ll] of spotMk) { const el = m.getElement()?.querySelector(".spot"); if (el) el.classList.toggle("near", !eco && hav(p, ll) < SPOT_NEAR); }
+  for (const [m, ll] of spotMk) { const el = m.getElement()?.querySelector(".spot"); if (el) el.classList.toggle("near", hav(p, ll) < SPOT_NEAR); }
 }
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
 map.on("zoomend", () => { if (follow && me) spotUpdate(true); });
@@ -3945,7 +3932,7 @@ const FLOW_MS = 100;   // ボールを動かす間かく（どのボールも同
 const guideLayer = L.layerGroup().addTo(map);
 function guideStop() { clearInterval(guideRaf); guideRaf = 0; guideLayer.clearLayers(); guide = null; }
 function guideStart() {
-  const ok = follow && me && flowOn && !eco && cur && cur.nav && cum.length > 1 && !document.hidden;
+  const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden;
   if (!ok) return guideStop();
   if (guide) return;   // もう走っている
   guide = L.circleMarker(me.getLatLng(), { pane: "flowPane", radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
