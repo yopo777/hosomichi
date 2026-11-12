@@ -229,6 +229,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row" id="loopRow"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="loopOn">🔁 ぐるっと1周して出発にもどる</label>
       <select id="loopKm" style="padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option>10</option><option>20</option><option selected>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
+    <div class="row" id="midRow" style="display:none"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="midOn">🎯 とちゅうの寄り道スポットをおまかせ（毎回ちがう所）</label></div>
     <div class="row" id="viaRow"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row" id="toRow"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図を長おし（パソコンは右クリック）しても出発・到着を選べるよ</div>
@@ -805,7 +806,7 @@ worker.onmessage = ev => {
   setMsg(`できた！ ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）\n` +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
-  showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: m.stops,
+  showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: midStops(m.stops),
     opts: job && job.prefix || !(m.alts || []).length ? null
       : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, stops: m.stops }, ...m.alts], sel: 0,
     name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
@@ -825,6 +826,10 @@ worker.onmessage = ev => {
 // ---------- 計算の「お仕事」と、途中からの再開 ----------
 let job = null;   // { g, cfg, prefix: 続きを計算するときの、もう決まっているルート }
 function sumKinds(a, b) { const o = { ...(a || {}) }; for (const [k, v] of Object.entries(b || {})) o[k] = (o[k] || 0) + v; return o; }
+function midStops(st) {   // 🎯 寄り道スポットの名前をつける
+  if (!st || !midPick) return st;
+  return st.map(q => q.kind === "via" && hav(q.p, midPick.p) < 300 ? { ...q, name: "🎯 " + midPick.ic + " " + midPick.name, mid: 1 } : q);
+}
 function merged(m) {
   const P = job && job.prefix;
   if (!P || !P.route || P.route.length < 2) return m;
@@ -924,12 +929,33 @@ const loopKm = () => $("loopOn").checked ? ($("loopKm").value === "auto" ? "auto
 const autoKm = (s, v) => v ? Math.max(10, Math.ceil(hav(s, v) * 2.8 / 5000) * 5) : 30;
 function loopUi() {
   const on = $("loopOn").checked;
-  $("toRow").style.display = on ? "none" : "";   // 1周でも経由地は1つ入れられる（そこを通って1周）
+  $("toRow").style.display = on ? "none" : "";
+  $("midRow").style.display = on ? "" : "none";   // 1周でも経由地は1つ入れられる（そこを通って1周）
   $("go").textContent = on ? ($("loopKm").value === "auto" ? "🔁 おまかせの長さで1周ルートを作る" : `🔁 ${$("loopKm").value}kmの1周ルートを作る`) : "ルートを作る";
-  try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value })); } catch {}
+  try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value, mid: $("midOn").checked })); } catch {}
 }
-try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; } } catch {}
-for (const id of ["loopOn", "loopKm"]) $(id).onchange = loopUi;
+try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; $("midOn").checked = !!l.mid; } } catch {}
+for (const id of ["loopOn", "loopKm", "midOn"]) $(id).onchange = loopUi;
+// 🎯 とちゅうの寄り道スポット：1周の長さに合う距離にある「めぐる」系のマークから、まだ選んでいない所をランダムに1つ
+const MID_KINDS = ["shrine", "temple", "castle", "kofun", "monument", "sight", "view", "park", "jizo", "ichiri", "tree", "spring", "fall", "bridge", "michi"];
+const midKey = p => p[0].toFixed(4) + "," + p[1].toFixed(4);
+let midPick = null;   // { p, name, ic } いま作っている1周の寄り道スポット
+async function pickMid(s, km) {
+  const T = km * 1000 / 2.9, lo = T * 0.7, hi = T * 1.1;   // 1周の長さ ≒ まっすぐの距離×2.9
+  const dla = hi / 111000, dlo = hi / (111000 * Math.cos(s[0] * RAD)), keys = [];
+  for (let i = Math.floor((s[0] - dla) / SPOT_T); i <= Math.floor((s[0] + dla) / SPOT_T); i++)
+    for (let j = Math.floor((s[1] - dlo) / SPOT_T); j <= Math.floor((s[1] + dlo) / SPOT_T); j++) keys.push(i + "_" + j);
+  if (keys.length > 80) keys.length = 80;
+  const tiles = await Promise.all(keys.map(spotTile)), seen = new Set(lsGet("hosomichi_midseen", [])), all = [];
+  for (const t of tiles) for (const k of MID_KINDS) for (const e of t[k] || []) {
+    const p = [e[1], e[2]], d = hav(s, p);
+    if (d >= lo && d <= hi) all.push({ p, name: e[0] || SPOT_INFO[k][1], ic: SPOT_INFO[k][0], named: !!e[0], fresh: !seen.has(midKey(p)) });
+  }
+  const tiers = [all.filter(c => c.fresh && c.named), all.filter(c => c.fresh), all.filter(c => c.named), all];   // まだ行っていない・名前がある所を先に
+  const c = tiers.find(t => t.length);
+  return c ? c[Math.floor(Math.random() * c.length)] : null;
+}
+function midSeen(p) { const a = lsGet("hosomichi_midseen", []).filter(x => x !== midKey(p)); a.push(midKey(p)); lsSet("hosomichi_midseen", a.slice(-500)); }
 loopUi();
 $("go").onclick = async () => {
   audioUnlock();
@@ -950,7 +976,15 @@ $("go").onclick = async () => {
     const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
     addLog(`  出発 → ${sn}（${s[0].toFixed(5)},${s[1].toFixed(5)}）`, "m");
     if (LK) {   // 1周：出発のまわりを三角形にまわる。経由地が入っていれば、そこを通る1周
-      const [v, vn] = viaT ? await geocode(viaT) : [null, ""];
+      let [v, vn] = viaT ? await geocode(viaT) : [null, ""];
+      midPick = null;
+      if (!v && $("midOn").checked) {
+        if (LK === "auto") LK = 10;
+        lastProg = { stage: 1, msg: "🎯 寄り道スポットをさがし中" }; showProg();
+        midPick = await pickMid(s, LK);
+        if (midPick) { v = midPick.p; vn = midPick.ic + " " + midPick.name; midSeen(v); }
+        else addLog("  🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にするよ", "w");
+      }
       if (v) { addLog(`  経由 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
         if (hav(s, v) > 75000) throw new Error(`経由地が ${fmtKm(hav(s, v))} もはなれてるよ。1周なら75km以内にしてね`); }
       if (LK === "auto") { LK = autoKm(s, v); addLog(`  長さ: おまかせ → ${LK}km` + (v ? `（経由地まで まっすぐ ${fmtKm(hav(s, v))}）` : ""), "m"); }
@@ -959,11 +993,11 @@ $("go").onclick = async () => {
         if (confirm(`経由地まで往復するだけで 約${Math.round(hav(s, v) * 2 * 1.2 / 1000)}km かかるよ。\n${LK}km だと輪っかにできなくて「行って別の道で帰る」1本だけになっちゃうの。\n\nおまかせ（${ak}km）にする？`)) { LK = ak; addLog(`  長さ: おまかせ → ${LK}km`, "m"); }
         else addLog(`  ${LK}km だと輪っかにできないので、経由地まで行って別の道で帰るよ`, "w");
       }
-      pendingName = (await placeName(fromT, s)) + ` 1周${LK}km` + (v ? `（${await placeName(viaT, v)}経由）` : "");
+      pendingName = (await placeName(fromT, s)) + ` 1周${LK}km` + (v ? `（${midPick ? midPick.name : await placeName(viaT, v)}経由）` : "");
       addLog(`  ルート名: ${pendingName}`, "m");
       lastProg = { stage: 1, msg: `🔁 ${sn} から ${LK}km の1周` }; showProg();
       layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発・到着");
-      if (v) { L.marker(v).addTo(layer).bindTooltip("経由"); map.fitBounds([s, v], { padding: [60, 60] }); }
+      if (v) { L.marker(v).addTo(layer).bindTooltip(midPick ? "🎯 " + vn : "経由"); map.fitBounds([s, v], { padding: [60, 60] }); }
       else map.setView(s, Math.max(10, Math.min(15, Math.round(15 - Math.log2(LK / 5)))));
       if (geoAbort.signal.aborted) throw new Error("止めたよ");
       geoAbort = null; clearInterval(tickTimer);
@@ -1654,6 +1688,9 @@ function vcNav(off, rest) {
   if (off > 60) { if (!vcOff) { vcOff = true; if (vcOn) { boo(); setTimeout(() => say("ルートから外れています"), 700); } } blkShowMap(5000); return; }
   if (off < 30) vcOff = false;
   if (!cur.partial && rest < 30) { if (!vcEnd) { vcEnd = true; say("とうちゃくです。おつかれさまでした"); blkShowMap(60000); } return; }
+  if (me && cur.stops) for (const q of cur.stops) if (q.mid && !q.said && hav(q.p, [me.getLatLng().lat, me.getLatLng().lng]) < 60) {
+    q.said = true; say(`${q.name.replace(/^🎯\s*\S+\s*/, "")}に着いたよ。ひと休みしよう`); blkShowMap(20000);
+  }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
   const then = nx && nx.s - t.s < 60 ? `、すぐ${vcWord(nx.d)}` : "";
