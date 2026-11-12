@@ -172,7 +172,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2315</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2317</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -246,6 +246,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>
         共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。
       </div>
+      <div class="btns" style="margin-top:8px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
       <div class="note" style="margin-top:8px">🏠 家・🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）して決めるよ</div>
       <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>📣 SNSに出さない範囲</b>
@@ -3446,13 +3447,16 @@ async function checkUpdate(manual) {
       $("upd").innerHTML = `🆕 新しい版 v${m[1]} があるよ <button>更新する</button>`;
       $("upd").style.display = "block";
       $("upd").querySelector("button").onclick = () => location.replace(location.pathname + "?v=" + m[1] + location.hash);
-    } else if (manual) { addLog(`最新の版だよ（v${mine}）`, "ok"); }
-  } catch (e) { if (manual) addLog("更新チェックできませんでした: " + e.message, "w"); }
+      if (manual) setMsg(`🆕 新しい版 v${m[1]} があるよ。上の「更新する」を押してね`);
+    } else if (manual) { addLog(`最新の版だよ（v${mine}）`, "ok"); setMsg(`✅ 最新の版だよ（v${mine}）`); }
+  } catch (e) { if (manual) { addLog("更新チェックできませんでした: " + e.message, "w"); setMsg("更新チェックできなかったよ（電波を確かめてね）", true); } }
 }
 setTimeout(() => checkUpdate(false), 3000);
 setInterval(() => checkUpdate(false), 10 * 60 * 1000);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkUpdate(false); });
 $("ver").style.cursor = "pointer";
+$("verNow").textContent = $("ver").textContent;
+$("updChk").onclick = () => { $("updChk").disabled = true; checkUpdate(true).finally(() => $("updChk").disabled = false); };
 $("ver").onclick = () => { showTab("log"); checkUpdate(true); };
 
 // パネルの下の位置を CSS に教える（「のこり」や色の説明をそのすぐ下に出すため）
