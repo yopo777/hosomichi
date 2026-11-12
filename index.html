@@ -155,7 +155,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1404</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1408</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -194,10 +194,15 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
     <div id="tabCfg" style="display:none">
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="vcOn">🗣 音声で案内（ナビ中）</label>
+        <div style="font-size:11px;color:#666;margin-top:2px">曲がる所の手前（100mくらい・まもなく）、ルートから外れたとき、とうちゃくをしゃべるよ。曲がる所はルートの線の曲がりぐあいから見つけているので、急なカーブでも「右です」って言うことがあるよ</div>
+        <div class="btns" style="margin-top:4px"><button class="ib" id="vcTest" style="font-size:12px">🔊 ためしに聞く</button></div>
+      </div>
+      <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="ecoOn">🔋 節電モード（ナビ中）</label>
         <div style="font-size:11px;color:#666;margin-top:2px">案内のボール・スポットの点滅を止めて、地図をすべらせずにパッと動かすよ</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="ecoScr">📴 ナビ中も画面が消えていい</label>
-        <div style="font-size:11px;color:#666;margin-top:2px">いちばん電池が長もちするよ。見たいときに画面をつけてね（消えているあいだは、スタンプ・家までの距離は止まるよ）</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">いちばん電池が長もちするよ。見たいときに画面をつけてね（消えているあいだは、音声案内・スタンプ・家までの距離は止まるよ）</div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
       </div>
       <div id="cfgBox"></div>
@@ -3173,7 +3178,51 @@ function onPos(p) {
     nav.className = off > 60 ? "off" : "";
     nav.textContent = (rest < 30 && !cur.partial ? "🎉 とうちゃく！" : `のこり ${cur.partial ? "約" : ""}${fmtKm(rest)}` + (cur.partial ? "（計算中）" : ""))
       + (off > 60 ? `　⚠ ルートから ${Math.round(off)}m` : "");
+    try { vcNav(off, rest); } catch {}
   }
+}
+// ---------- 🗣 音声ナビ（ルートの線の曲がりぐあいから「曲がる所」を見つけて、近づいたらしゃべる） ----------
+let vcOn = lsGet("hosomichi_voice", true), vcTurns = null, vcFor = null, vcOff = false, vcEnd = false;
+$("vcOn").checked = vcOn;
+$("vcOn").onchange = () => { vcOn = $("vcOn").checked; lsSet("hosomichi_voice", vcOn); if (vcOn) say("音声案内をオンにしたよ"); else try { speechSynthesis.cancel(); } catch {} };
+$("vcTest").onclick = () => say("100メートル先、右です");
+function say(t) {
+  try {
+    const u = new SpeechSynthesisUtterance(t); u.lang = "ja-JP"; u.rate = 1.05;
+    const v = speechSynthesis.getVoices().find(v => /^ja/i.test(v.lang)); if (v) u.voice = v;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch {}
+}
+function vcAt(d) {   // ルートの先頭から d m の点
+  const R = cur.nav; d = Math.max(0, Math.min(cum[cum.length - 1], d));
+  let lo = 0, hi = cum.length - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= d) lo = mid; else hi = mid; }
+  const a = R[lo], c = R[hi], u = (d - cum[lo]) / ((cum[hi] - cum[lo]) || 1);
+  return [a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u];
+}
+function vcFind() {   // 前後20mの向きの差が40°以上の所＝曲がる所。近い所（25m以内）は大きいほうだけ
+  const R = cur.nav, W = 20, out = [], tot = cum[cum.length - 1];
+  for (let i = 1; i < R.length - 1; i++) {
+    const sd = cum[i]; if (sd < 15 || sd > tot - 10) continue;
+    let d = bearingDeg(R[i], vcAt(sd + W)) - bearingDeg(vcAt(sd - W), R[i]); d = ((d + 540) % 360) - 180;
+    if (Math.abs(d) < 40) continue;
+    const last = out[out.length - 1];
+    if (last && sd - last.s < 25 && Math.sign(d) === Math.sign(last.d)) { if (Math.abs(d) > Math.abs(last.d)) { last.s = sd; last.d = d; } continue; }
+    out.push({ s: sd, d });
+  }
+  return out;
+}
+function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a < 60 ? "ななめ" + lr : a < 150 ? lr : "大きく" + lr; }
+function vcNav(off, rest) {
+  if (!vcOn || !follow || navAlong == null) return;
+  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; }
+  if (off > 60) { if (!vcOff) { vcOff = true; say("ルートから外れています"); } return; }
+  if (off < 30) vcOff = false;
+  if (!cur.partial && rest < 30) { if (!vcEnd) { vcEnd = true; say("とうちゃくです。おつかれさまでした"); } return; }
+  const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
+  const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
+  const then = nx && nx.s - t.s < 60 ? `、すぐ${vcWord(nx.d)}` : "";
+  if (dist <= 35) { if (!t.a2) { t.a2 = t.a1 = true; say(`まもなく${vcWord(t.d)}です${then}`); } }
+  else if (dist <= 120) { if (!t.a1) { t.a1 = true; say(`${Math.max(50, Math.round(dist / 10) * 10)}メートル先、${vcWord(t.d)}です${then}`); } }
 }
 async function wake() { if (ecoScr) { try { await lock?.release(); } catch {} lock = null; return; } try { lock = await navigator.wakeLock.request("screen"); } catch {} }
 // 🔋 節電モード（この端末の中だけに保存）
@@ -3190,6 +3239,7 @@ $("gps").onclick = () => {
     if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
     wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 });
     setFollow(true); wake();
+    if (vcOn) say(cur && cur.nav ? "音声案内を始めます" : "現在地を表示します");
     $("dir").style.display = "block";
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } else {
