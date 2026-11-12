@@ -500,7 +500,7 @@ async function loopRoute(req, prog) {
         parts.push(r);
       }
     } catch (e) { if (stopReq) throw e; log(`${label}は作れなかった: ${e.message}`, "w"); return null; }
-    const L = joinLegs(parts);
+    const L = joinLegs(parts, pts.map(p => !!p.via));   // 経由地（🎯寄り道スポット）へは、行って同じ道でもどる所もけずらない
     L.dup = allM ? dupM / allM : 0;
     log(`${label}: ${(L.len / 1000).toFixed(1)}km（目標 ${D / 1000}km）・同じあたりを往復 ${Math.round(L.dup * 100)}%`, "ok");
     L.how = label; L.stops = stops.map(p => ({ p: [p.la, p.lo], kind: p.kind, name: p.name }));
@@ -556,7 +556,7 @@ async function loopRoute(req, prog) {
   return { ...main, alts: others, loop: D / 1000, sec: (Date.now() - T0) / 1000 };
 }
 // 区間をつなぐ。つなぎ目の「行ってすぐもどる」ムダはけずる
-function joinLegs(parts, keepSpur) {   // keepSpur：行って同じ道で戻る所も消さない（🏁 ぜんぶ回る は駅の前まで行きたいので）
+function joinLegs(parts, keepSpur) {   // keepSpur：行って同じ道で戻る所も消さない（🏁 ぜんぶ回る は駅の前まで行きたいので）。配列なら つなぎ目ごと（[i-1] が i番目のつなぎ目）
   let route = parts[0].route.slice(), ek = (parts[0].ek || []).slice();
   const res = { ok: [], xw: [], ng: [], tp: [], kinds: {}, turns: 0, len: 0 };
   const same = (p, q) => p && q && p[0] === q[0] && p[1] === q[1];
@@ -564,7 +564,8 @@ function joinLegs(parts, keepSpur) {   // keepSpur：行って同じ道で戻る
     const P = parts[i];
     if (i) {
       const R2 = P.route, E2 = P.ek || []; let k = 0;
-      while (!keepSpur && k + 1 < R2.length && route.length - 2 - k >= 0 && same(route[route.length - 2 - k], R2[1 + k])) k++;
+      const keep = Array.isArray(keepSpur) ? keepSpur[i - 1] : keepSpur;
+      while (!keep && k + 1 < R2.length && route.length - 2 - k >= 0 && same(route[route.length - 2 - k], R2[1 + k])) k++;
       for (let j = 0; j < k; j++) res.len -= 2 * hav(R2[j][0], R2[j][1], R2[j + 1][0], R2[j + 1][1]);
       route = route.slice(0, route.length - k).concat(R2.slice(1 + k));
       ek = ek.slice(0, ek.length - k).concat(E2.slice(k));

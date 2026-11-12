@@ -1727,7 +1727,9 @@ function vcNav(off, rest) {
   if (off > 60) { if (!vcOff) { vcOff = true; if (vcOn) { boo(); setTimeout(() => say("ルートから外れています"), 700); } } blkShowMap(5000); return; }
   if (off < 30) vcOff = false;
   if (!cur.partial && rest < 30) { if (!vcEnd) { vcEnd = true; say("とうちゃくです。おつかれさまでした"); blkShowMap(60000); } return; }
-  if (me && cur.stops) for (const q of cur.stops) if (q.mid && !q.said && hav(q.p, [me.getLatLng().lat, me.getLatLng().lng]) < 60) {
+  if (me && cur.stops) for (const q of cur.stops) if (q.mid && !q.said) {
+    if (!q.at) { let bd = Infinity; for (const r of cur.nav) { const d = hav(r, q.p); if (d < bd) { bd = d; q.at = r; } } }   // 公園などは まん中の点なので、ルートでいちばん近い所で「着いた」にする
+    const h = [me.getLatLng().lat, me.getLatLng().lng]; if (hav(q.at, h) > 40 && hav(q.p, h) > 60) continue;
     q.said = true; say(`${q.name.replace(/^🎯\s*\S+\s*/, "")}に着いたよ。ひと休みしよう`); blkShowMap(20000);
   }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
