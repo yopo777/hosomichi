@@ -201,8 +201,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="ringOn">⭕ ナビ中は自分のまわりだけ表示する</label>
         <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="blkScr">⬛ ナビ中、さわらないと画面をまっ黒にする</label>
-        <div style="font-size:11px;color:#666;margin-top:2px">15秒さわらないと黒くなるよ。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
+        <div style="font-weight:bold;margin-top:6px">⬛ ナビ中、さわらないと画面を暗くする</div>
+        <div id="blkLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="blkLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="50"> 50%</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="70"> 70%</label><label><input type="radio" name="blkLv" value="100"> まっ黒</label></div>
+        <div style="font-size:11px;color:#666;margin-top:2px">15秒さわらないと暗くなるよ（50%でも、光の量は2割くらいになるよ）。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
       </div>
       <div id="cfgBox"></div>
@@ -1612,15 +1613,22 @@ function vcNav(off, rest) {
   else if (dist <= 120) { if (!t.a1) { t.a1 = true; say(`${Math.max(50, Math.round(dist / 10) * 10)}メートル先、${vcWord(t.d)}です${then}`); } }
 }
 // ---------- ⬛ さわらないと画面をまっ黒に（画面はついたままなので、GPS・音声は動く。有機ELなら黒は電池をほぼ使わない） ----------
-let blkScr = lsGet("hosomichi_black", false), blkTouch = Date.now(), blkUntil = 0;
+let blkScr = (v => v === true ? 100 : +v || 0)(lsGet("hosomichi_black", 0)), blkTouch = Date.now(), blkUntil = 0;
 const BLK_IDLE = 15000;
-$("blkScr").checked = blkScr;
-$("blkScr").onchange = () => { blkScr = $("blkScr").checked; lsSet("hosomichi_black", blkScr); blkTouch = Date.now(); blkTick(); };
+for (const r of document.querySelectorAll("[name=blkLv]")) {   // しない / 50% / 70% / まっ黒
+  r.checked = +r.value === blkScr;
+  r.onchange = () => { blkScr = +r.value; lsSet("hosomichi_black", blkScr); blkTouch = Date.now(); blkTick(); };
+}
 function blkShowMap(ms) { blkUntil = Date.now() + ms; blkTick(); }   // 曲がる手前など：しばらく地図を出す
 document.addEventListener("pointerdown", () => { blkTouch = Date.now(); if ($("blk").style.display !== "none") $("blk").style.display = "none"; }, true);
 function blkTick() {
   const now = Date.now(), on = blkScr && wid !== null && follow && !document.hidden && now - blkTouch > BLK_IDLE && now > blkUntil;
-  if (on) { $("blkNav").textContent = $("nav").style.display === "none" ? "" : $("nav").textContent; $("blkAddr").textContent = $("addr").style.display === "none" ? "" : $("addr").textContent; }
+  if (on) {
+    const full = blkScr >= 100;   // まっ黒のときだけ、のこり・住所を出す（暗くするだけなら地図が見えるので）
+    $("blk").style.background = full ? "#000" : `rgba(0,0,0,${blkScr / 100})`;
+    for (const id of ["blkNav", "blkAddr"]) $(id).style.display = full ? "" : "none";
+    $("blk").lastElementChild.style.display = full ? "" : "none";
+    $("blkNav").textContent = $("nav").style.display === "none" ? "" : $("nav").textContent; $("blkAddr").textContent = $("addr").style.display === "none" ? "" : $("addr").textContent; }
   const d = on ? "flex" : "none"; if ($("blk").style.display !== d) $("blk").style.display = d;
 }
 setInterval(blkTick, 1000);
