@@ -2171,6 +2171,7 @@ drawHome();
 
 // ---------- ルートの上を白いボールが流れる（進む向きがわかるように。見えている所だけ・ナビで現在地に固定中は止める） ----------
 const flowLayer = L.layerGroup().addTo(map);
+map.createPane("flowPane").style.zIndex = 450;   // ルートの線（400）より上・マーク（600）より下
 let flowBalls = [], flowRaf = 0, flowT0 = 0, flowSpeed = 0, flowLast = 0;
 // 右はしの ⚪ ボタン1つで：進む向き → 逆向き → 消す → 進む向き …
 let flowMode = lsGet("hosomichi_flowmode", "fwd");
@@ -2195,7 +2196,7 @@ function guideStart() {
   const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden;
   if (!ok) return guideStop();
   if (guide) return;   // もう走っている
-  guide = L.circleMarker(me.getLatLng(), { radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
+  guide = L.circleMarker(me.getLatLng(), { pane: "flowPane", radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
   const tick = now => {
     guideRaf = requestAnimationFrame(tick);
     if (now - guideLast < 50 || navAlong == null) return; guideLast = now;   // 1秒に20回で十分
@@ -2241,7 +2242,7 @@ function flowBuild() {
     const len = cs[cs.length - 1]; if (len < gap * 0.6) continue;
     const n = Math.max(1, Math.floor(len / gap));
     for (let k = 0; k < n && flowBalls.length < 150; k++)
-      flowBalls.push({ r, cs, len, base: k * len / n, m: L.circleMarker(r[0], { radius: 6, stroke: false, className: "flowb", fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025", fillOpacity: 1, interactive: false }).addTo(flowLayer) });   // 赤と白をこうごに
+      flowBalls.push({ r, cs, len, base: k * len / n, m: L.circleMarker(r[0], { pane: "flowPane", radius: 6, stroke: false, className: "flowb", fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025", fillOpacity: 1, interactive: false }).addTo(flowLayer) });   // 赤と白をこうごに
   }
   if (flowBalls.length) { flowT0 = performance.now(); flowRaf = requestAnimationFrame(flowTick); }
 }

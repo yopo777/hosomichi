@@ -153,7 +153,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0933</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0939</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3802,6 +3802,7 @@ drawHome();
 
 // ---------- ルートの上を白いボールが流れる（進む向きがわかるように。見えている所だけ・ナビで現在地に固定中は止める） ----------
 const flowLayer = L.layerGroup().addTo(map);
+map.createPane("flowPane").style.zIndex = 450;   // ルートの線（400）より上・マーク（600）より下
 let flowBalls = [], flowRaf = 0, flowT0 = 0, flowSpeed = 0, flowLast = 0;
 // 右はしの ⚪ ボタン1つで：進む向き → 逆向き → 消す → 進む向き …
 let flowMode = lsGet("hosomichi_flowmode", "fwd");
@@ -3826,7 +3827,7 @@ function guideStart() {
   const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden;
   if (!ok) return guideStop();
   if (guide) return;   // もう走っている
-  guide = L.circleMarker(me.getLatLng(), { radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
+  guide = L.circleMarker(me.getLatLng(), { pane: "flowPane", radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
   const tick = now => {
     guideRaf = requestAnimationFrame(tick);
     if (now - guideLast < 50 || navAlong == null) return; guideLast = now;   // 1秒に20回で十分
@@ -3872,7 +3873,7 @@ function flowBuild() {
     const len = cs[cs.length - 1]; if (len < gap * 0.6) continue;
     const n = Math.max(1, Math.floor(len / gap));
     for (let k = 0; k < n && flowBalls.length < 150; k++)
-      flowBalls.push({ r, cs, len, base: k * len / n, m: L.circleMarker(r[0], { radius: 6, stroke: false, className: "flowb", fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025", fillOpacity: 1, interactive: false }).addTo(flowLayer) });   // 赤と白をこうごに
+      flowBalls.push({ r, cs, len, base: k * len / n, m: L.circleMarker(r[0], { pane: "flowPane", radius: 6, stroke: false, className: "flowb", fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025", fillOpacity: 1, interactive: false }).addTo(flowLayer) });   // 赤と白をこうごに
   }
   if (flowBalls.length) { flowT0 = performance.now(); flowRaf = requestAnimationFrame(flowTick); }
 }
