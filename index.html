@@ -24,6 +24,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #panel.min #msg{display:none}              /* たたんでいるときはゲージだけ */
 #panel.min #prog{margin-top:6px}
 #bar.done{display:none}   /* 計算が終わったらゲージはしまう */
+#bar.trip{display:block}#bar.trip div{background:#1a73e8}   /* ナビ中は「どこまで走ったか」のゲージ（青） */
 #bar.done div{background:#188038}
 #bar.run{background:repeating-linear-gradient(-45deg,#eee 0 8px,#f8f8f8 8px 16px);background-size:200% 100%;animation:run 1s linear infinite}
 @keyframes run{from{background-position:0 0}to{background-position:-22px 0}}
@@ -158,7 +159,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1658</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1702</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2503,7 +2504,7 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
-  $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run");
+  $("stop").style.display = ""; $("bar").classList.remove("done", "trip"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
   if (geoAbort) { geoAbort.abort(); return; }   // 場所さがし中なら、それを止める
@@ -2849,7 +2850,13 @@ $("col").onclick = () => { const ks = BG_ALL; setBase(ks[(ks.indexOf(baseName) +
 baseBtn();
 
 let cum = [];
+function tripBar(rest) {   // 🔵 ナビ中：ゲージを「どこまで走ったか」にする
+  const b = $("bar"); if (b.classList.contains("run") || !cur || cur.partial || cum.length < 2) return;
+  const tot = cum[cum.length - 1] || 1, f = Math.min(1, Math.max(0, (tot - rest) / tot));
+  b.classList.remove("busy", "done"); b.classList.add("trip"); b.firstChild.style.width = (f * 100).toFixed(1) + "%"; $("prog").style.display = "block";
+}
 function showRoute(r, fit) {
+  if (r !== cur) $("bar").classList.remove("trip");
   cur = r; layer.clearLayers(); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
   const tent = r.tent || [];
@@ -3280,6 +3287,7 @@ function onPos(p) {
     nav.textContent = (rest < 30 && !cur.partial ? "🎉 とうちゃく！" : `のこり ${cur.partial ? "約" : ""}${fmtKm(rest)}` + (cur.partial ? "（計算中）" : ""))
       + (off > 60 ? `　⚠ ルートから ${Math.round(off)}m` : "");
     try { vcNav(off, rest); } catch {}
+    tripBar(rest);
   }
 }
 // ---------- 🗣 音声ナビ（ルートの線の曲がりぐあいから「曲がる所」を見つけて、近づいたらしゃべる） ----------
