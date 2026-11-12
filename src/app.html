@@ -124,7 +124,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 body.navi.ring:not(.ringOff) #ring{display:block}   /* さわってから15秒は丸をはずす */
 body.navi.ring:not(.ringOff) #panel,body.navi.ring:not(.ringOff) #legend{filter:invert(1) hue-rotate(180deg) brightness(.55)}   /* 上のパネルも暗く（白→黒） */
 body.navi.ring:not(.ringOff) button small{color:#ccc!important;text-shadow:0 0 3px #000!important}
-body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!important;background:#fffffff0!important;border-radius:10px!important;padding:3px 12px!important;box-shadow:0 2px 8px #0003!important;bottom:calc(64px + env(safe-area-inset-bottom))!important}   /* ナビ中（現在地に固定中）は住所を大きく */
+body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!important;background:#fffffff0!important;border-radius:10px!important;padding:3px 12px!important;box-shadow:0 2px 8px #0003!important;bottom:calc(64px + env(safe-area-inset-bottom))!important;pointer-events:auto!important;cursor:pointer}   /* ナビ中（現在地に固定中）は住所を大きく */
 body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font-size:14px!important}
 .pin{font-size:13px}
 .spot{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #888;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;box-shadow:0 1px 4px #0007}
@@ -1523,8 +1523,20 @@ function updHeading(c, ll) {
   else if (lastFix && hav(lastFix, ll) > 8) heading = bearingDeg(lastFix, ll);
   if (!lastFix || hav(lastFix, ll) > 8) lastFix = ll;
 }
+// 🗺 住所をタップ：3秒だけ「北が上」でルート全体を見せて、もとにもどる
+let ovUntil = 0, ovZoom = 16, ovT = null;
+const ovOn = () => Date.now() < ovUntil;
+$("addr").onclick = () => {
+  if (!follow || !me) return;
+  if (!ovOn()) ovZoom = map.getZoom();
+  ovUntil = Date.now() + 3000; applyBearing();
+  const here = me.getLatLng(), bb = cur && cur.nav && cur.nav.length > 1 ? L.latLngBounds(cur.nav).extend(here) : here.toBounds(4000);
+  map.fitBounds(bb, { padding: [50, 50], animate: true });
+  clearTimeout(ovT);
+  ovT = setTimeout(() => { ovUntil = 0; applyBearing(); if (follow && me) map.setView(me.getLatLng(), ovZoom, { animate: true }); }, 3000);
+};
 function applyBearing() {
-  const b = headUp && heading != null ? -heading : 0;
+  const b = headUp && heading != null && !ovOn() ? -heading : 0;
   if (headUp) $("dirL").textContent = heading == null ? "動くと回るよ" : "進む向きが上";
   map.setBearing(b);
   $("needle").style.transform = `rotate(${b}deg)`;
@@ -1561,7 +1573,7 @@ function onPos(p) {
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
   qCheck(ll, p.coords.accuracy); spotUpdate(false); homeDist();
   applyBearing();
-  if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
+  if (follow && !ovOn()) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま（全体を見ているあいだは動かさない）
   if (cur && cur.nav && cur.nav.length > 1) {
     const [off, rest] = nearestOnRoute(ll), nav = $("nav");
     nav.style.display = "block";
