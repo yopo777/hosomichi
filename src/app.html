@@ -290,7 +290,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
           <select id="hide"><option value="0">隠さない</option><option value="400">400m</option><option value="1000">1km</option><option value="2000" selected>2km</option><option value="3000">3km</option></select>
           <label><input type="checkbox" id="hideEnd" checked> 到着地も</label></div>
         <div id="homeNote" style="margin:6px 0;padding:6px 8px;border-radius:6px;background:#fff3e0;color:#b45309;font-weight:bold"></div>
-        <div class="row" style="margin-top:4px"><label style="width:auto">名前</label><input type="text" id="shareName" maxlength="40" placeholder="ルートの名前（いっしょに送るよ）"></div>
+        <div class="row" style="margin-top:4px"><label style="width:auto">名前</label><input type="text" id="shareName" maxlength="40" placeholder="名前（なくてもOK・空なら「共有されたルート」）"></div>
         <textarea id="url" readonly></textarea>
         <div class="btns"><button class="ib" id="bQr">📷 QR</button><button class="ib" id="bCopy">コピー</button><button class="ib" id="bSys">共有…</button></div>
 
@@ -1519,19 +1519,8 @@ async function makeQr() {
 }
 $("qr").addEventListener("click", e => { if (e.target.dataset.q === "x") $("qr").style.display = "none"; });
 $("bQr").onclick = () => { const b = $("qr"); if (b.style.display === "block") { b.style.display = "none"; return; } if (!confirmShare()) return; makeQr(); };
-// 共有の名前は「○○市付近のルート」くらいに（町名や寄り道の名前まで出すと、場所がしぼれてしまうので）
-let shareNameAuto = "";
-function defaultShareName() {
-  const R = cur.route, mid = R[Math.floor(R.length / 2)], keep = shareNameAuto = "付近のルート";
-  cityAt(mid).then(c => { if (c && $("shareName").value === keep) { $("shareName").value = shareNameAuto = `${c}付近のルート`; updateShare(); } });
-  return keep;
-}
-async function cityAt(p) {   // その場所の市区町村の名前（国土地理院）
-  try {
-    const r = await (await tfetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${p[0].toFixed(5)}&lon=${p[1].toFixed(5)}`, {}, 6000)).json();
-    return r.results ? (await muniTable())[+r.results.muniCd] || "" : "";
-  } catch { return ""; }
-}
+// 共有の名前は、はじめは空（開いた人には「共有されたルート」と出る）。ミッション・チャレンジ・ふつうのルート…で、名前から場所がしぼれないように
+function defaultShareName() { return ""; }
 $("bShare").onclick = () => { const s = $("share"); s.style.display = s.style.display === "block" ? "none" : "block"; $("shareName").value = defaultShareName(); updateShare(); };
 $("hideEnd").onchange = () => { $("shareName").value = defaultShareName(); updateShare(); };
 $("shareName").oninput = updateShare;
@@ -1653,8 +1642,8 @@ async function snsData() {
   if (useRide && runs.length) {
     const best = runs.reduce((a, b) => (lineLen(b) > lineLen(a) ? b : a));
     if (best.length >= 2 && lineLen(best) > 300) {
-      const prm = new URLSearchParams(), mids = ride.ev.filter(e => e.k === "stop" && !(e.p && hideP(e.p))).map(e => e.name.replace(/^🎯\s*\S+\s*/, ""));
-      prm.set("n", `${ymd} サイクリング` + (mids.length ? `（${mids.join("・")}）` : ""));
+      const prm = new URLSearchParams();
+      // 名前は入れない（開いた人には「共有されたルート」と出る）
       prm.set("r", encPoly(simpRoute(best, null, 8).pts));
       if (best.cutS || best.cutE) prm.set("x", (best.cutS ? "s" : "") + (best.cutE ? "e" : ""));
       link = location.origin + location.pathname + "#" + prm.toString();
