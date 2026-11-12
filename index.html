@@ -168,7 +168,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1957</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1958</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3138,7 +3138,7 @@ async function snsData() {
       else if (e.k === "goal") L.push(`${hhmm(e.t)} ${hidden || !e.name ? "帰着" : e.name + " 着"}`);
     }
     const t1 = ride.pts[ride.pts.length - 1][2];
-    L.push(`⏱ ${fmtDur(t1 - ride.t0)}`);   // 走った距離は出さない（出発・家の場所がしぼれるので）
+    // 走った距離・かかった時間は出さない（家の場所や、家を出た時刻がわかってしまうので）
     // 📍 通ったところ：Xの文字数（280）に入るぶんだけ
     const stopNames = new Set(ride.ev.map(e => e.name.replace(/^🎯\s*\S+\s*/, "")));
     const pass = (await passList(ride.pts, zs).catch(() => [])).filter(c => !stopNames.has(c.name));
@@ -3150,7 +3150,7 @@ async function snsData() {
   }
   L.push(SNS_TAGS, SNS_URL);
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !inZones(q.p, zs));
-  const sub = [`${d.getMonth() + 1}/${d.getDate()}(${wd})`, useRide ? `⏱ ${fmtDur(ride.pts[ride.pts.length - 1][2] - ride.t0)}` : ""].filter(Boolean).join("　");
+  const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
   return { runs, stops, text: L.join("\n"), sub, none: !useRide };
 }
 async function snsImage({ runs, stops, sub }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所
