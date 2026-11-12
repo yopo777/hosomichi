@@ -120,8 +120,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   box-shadow:0 2px 8px #0003;padding:4px 10px;font-size:14px;font-weight:bold;display:none;pointer-events:none;text-align:right}   /* 一番下・見えなくてもいい */
 #nav.off{color:#c00}
 #ring{position:absolute;inset:0;z-index:900;pointer-events:none;display:none;background:radial-gradient(circle closest-side at 50% 50%,transparent 96%,#000 100%)}   /* ⭕ まわりだけ表示（丸の外は黒） */
-body.navi.ring #ring{display:block}
-body.navi.ring button small{color:#ccc!important;text-shadow:0 0 3px #000!important}
+body.navi.ring:not(.ringOff) #ring{display:block}   /* さわってから15秒は丸をはずす */
+body.navi.ring:not(.ringOff) button small{color:#ccc!important;text-shadow:0 0 3px #000!important}
 body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!important;background:#fffffff0!important;border-radius:10px!important;padding:3px 12px!important;box-shadow:0 2px 8px #0003!important;bottom:calc(64px + env(safe-area-inset-bottom))!important}   /* ナビ中（現在地に固定中）は住所を大きく */
 body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font-size:14px!important}
 .pin{font-size:13px}
@@ -155,7 +155,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1617</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1620</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -200,7 +200,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="ringOn">⭕ ナビ中は自分のまわりだけ表示する</label>
-        <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ。さわると15秒だけ丸がはずれるよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
         <div style="font-weight:bold;margin-top:6px">⬛ ナビ中、さわらないと画面を暗くする</div>
         <div id="blkLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="blkLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="50"> 50%</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="70"> 70%</label><label><input type="radio" name="blkLv" value="100"> まっ黒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">15秒さわらないと暗くなるよ（50%でも、光の量は2割くらいになるよ）。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
@@ -3287,12 +3287,13 @@ for (const r of document.querySelectorAll("[name=blkLv]")) {   // しない / 50
   r.onchange = () => { blkScr = +r.value; lsSet("hosomichi_black", blkScr); blkTouch = Date.now(); blkTick(); };
 }
 function blkShowMap(ms) { blkUntil = Date.now() + ms; blkTick(); }   // 曲がる手前など：しばらく地図を出す
-document.addEventListener("pointerdown", () => { blkTouch = Date.now(); }, true);
+document.addEventListener("pointerdown", () => { blkTouch = Date.now(); document.body.classList.add("ringOff"); }, true);
 // 暗いときのタッチは「明るくする」だけ。下のボタンが押されないように、指をはなしてから少しして消す
 $("blk").addEventListener("touchstart", e => { blkTouch = Date.now(); e.preventDefault(); }, { passive: false });
 $("blk").addEventListener("pointerup", () => { blkTouch = Date.now(); setTimeout(() => { $("blk").style.display = "none"; }, 350); });
 $("blk").addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); });
 function blkTick() {
+  document.body.classList.toggle("ringOff", Date.now() - blkTouch < BLK_IDLE);
   const now = Date.now(), on = blkScr && wid !== null && follow && !document.hidden && now - blkTouch > BLK_IDLE && now > blkUntil;
   if (on) {
     const full = blkScr >= 100;   // まっ黒のときだけ、のこり・住所を出す（暗くするだけなら地図が見えるので）
