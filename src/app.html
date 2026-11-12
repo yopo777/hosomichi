@@ -2181,7 +2181,7 @@ drawHome();
 
 // ---------- ルートの上を白いボールが流れる（進む向きがわかるように。見えている所だけ・ナビで現在地に固定中は止める） ----------
 const flowLayer = L.layerGroup().addTo(map);
-map.createPane("flowPane").style.zIndex = 450;   // ルートの線（400）より上・マーク（600）より下
+map.createPane("flowPane", map._rotatePane || map.getPane("mapPane")).style.zIndex = 450;   // ルートの線（400）より上・マーク（600）より下（地図といっしょに回る層に入れる）
 let flowBalls = [], flowRaf = 0, flowT0 = 0, flowSpeed = 0, flowLast = 0;
 // 右はしの ⚪ ボタン1つで：進む向き → 逆向き → 消す → 進む向き …
 let flowMode = lsGet("hosomichi_flowmode", "fwd");
