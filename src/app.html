@@ -37,8 +37,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 .row label{width:3.2em;font-size:13px;color:#555}
 .row input[type=text]{flex:1;min-width:0;padding:9px;border:1px solid #ccc;border-radius:8px;font-size:15px}
 .ib{border:1px solid #ccc;background:#fff;border-radius:8px;padding:8px 10px;font-size:15px}
-#go{width:100%;margin-top:10px;padding:12px;border:none;border-radius:10px;background:#d93025;color:#fff;font-size:17px;font-weight:bold}
-#go:disabled{background:#999}
+#go,#msnGo{width:100%;margin-top:10px;padding:12px;border:none;border-radius:10px;background:#d93025;color:#fff;font-size:17px;font-weight:bold}
+#go:disabled,#msnGo:disabled{background:#999}
 .pre{display:flex;gap:6px;margin-top:8px}
 .pre button{flex:1;padding:8px 4px;border:1px solid #ccc;background:#fff;border-radius:8px;font-size:13px}
 .pre button.on{border-color:#d93025;background:#fdecea;color:#d93025;font-weight:bold}
@@ -171,7 +171,14 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
     <div id="tabQuest" style="display:none">
-      <div style="font-size:11px;color:#666;margin-top:6px">市の駅・神社・お寺や、路線の駅をぜんぶ回るクエストだよ。◎ で走っていて近く（80m）に来ると、自動でスタンプがもらえるよ。記録はこの端末の中だけ</div>
+      <h4 style="margin:8px 0 2px">🎯 ミッション <span style="font-size:11px;color:#666;font-weight:normal">1か所に寄って、ぐるっと1周してもどる</span></h4>
+      <div class="row"><label style="width:auto">行き先</label><select id="msnType" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px">
+        <option value="spot">⛩ 寄り道（神社・公園・湧き水…）</option><option value="lunch">🍜 ランチ（ラーメン・カフェ・パン屋）</option><option value="snack">🍰 おやつ（スイーツ・パン屋・カフェ）</option><option value="none">🔁 なし（ふつうの1周）</option></select></div>
+      <div class="row"><label style="width:auto">長さ</label><select id="loopKm" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option selected>10</option><option>20</option><option>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
+      <div style="font-size:11px;color:#666">出発は 🚲ルートの「出発」（空なら現在地）。行き先は毎回ちがう所をおまかせで選ぶよ。気に入らなかったらもう一回押してね</div>
+      <button id="msnGo" style="margin-top:6px">🎯 ミッションを作る</button>
+      <h4 style="margin:14px 0 2px;border-top:1px solid #eee;padding-top:10px">🏆 チャレンジ <span style="font-size:11px;color:#666;font-weight:normal">ぜんぶ回る</span></h4>
+      <div style="font-size:11px;color:#666;margin-top:2px">市の駅・神社・お寺や、路線の駅をぜんぶ回るクエストだよ。◎ で走っていて近く（80m）に来ると、自動でスタンプがもらえるよ。記録はこの端末の中だけ</div>
       <div class="row"><input type="text" id="qLine" enterkeyhint="search" placeholder="例：さいたま市、銀座線"><button class="ib" id="qFind" style="font-size:13px;white-space:nowrap">🔍 さがす</button></div>
       <div id="qCand"></div>
       <div id="qList"></div>
@@ -241,9 +248,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div id="tabRoute">
     <div class="row"><label>🔍</label><input type="text" id="jump" enterkeyhint="search" placeholder="地名・駅名で地図を動かす"></div>
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
-    <div class="row" id="loopRow"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="loopOn">🔁 ぐるっと1周して出発にもどる</label>
-      <select id="loopKm" style="padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option>10</option><option>20</option><option selected>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
-    <div class="row" id="midRow" style="display:none"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="midOn" checked>🎯 とちゅうの寄り道スポットをおまかせ（毎回ちがう所）</label></div>
     <div class="row" id="viaRow"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row" id="toRow"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図を長おし（パソコンは右クリック）しても出発・到着を選べるよ</div>
@@ -813,7 +817,7 @@ worker.onmessage = ev => {
   }
   if (m.type === "prog") { if (m.warn) console.warn(m.msg); lastProg = { stage: m.stage ?? lastProg.stage, msg: m.msg, done: m.done, total: m.total, bytes: m.bytes, frac: m.frac ?? lastProg.frac }; showProg(); return; }
   drawPreview(null); routeFetch = []; drawFetching();
-  clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
+  clearInterval(tickTimer); $("go").disabled = $("msnGo").disabled = false; $("stop").style.display = "none"; $("bar").classList.remove("run");
   if (m.type === "done" && !(job && job.next)) { $("bar").classList.add("done"); chime(); }
   if ((m.type === "done" && !(job && job.next)) || m.type === "stopped" || m.type === "error") { calcKeys = []; drawArea(); }   // 計算に使った範囲（青い点線の四角）は、終わったら消す   // 終わったら緑＆音（経由地までのときは鳴らさない）
   if (m.type === "stopped") {
@@ -837,7 +841,7 @@ worker.onmessage = ev => {
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
   showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: midStops(m.stops),
     opts: job && job.prefix || !(m.alts || []).length ? null
-      : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, stops: m.stops }, ...m.alts], sel: 0,
+      : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, stops: midStops(m.stops) }, ...m.alts.map(a => ({ ...a, stops: midStops(a.stops) }))], sel: 0,
     name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
   if (job && job.prefix) cur.slen = 0;
   if (job && job.next) {   // 経由地まで できた → つづけて 経由地から到着地まで
@@ -857,7 +861,7 @@ let job = null;   // { g, cfg, prefix: 続きを計算するときの、もう�
 function sumKinds(a, b) { const o = { ...(a || {}) }; for (const [k, v] of Object.entries(b || {})) o[k] = (o[k] || 0) + v; return o; }
 function midStops(st) {   // 🎯 寄り道スポットの名前をつける
   if (!st || !midPick) return st;
-  return st.map(q => q.kind === "via" && hav(q.p, midPick.p) < 300 ? { ...q, name: "🎯 " + midPick.ic + " " + midPick.name, mid: 1 } : q);
+  return st.map(q => q.kind === "via" && hav(q.p, midPick.p) < 300 ? { ...q, name: "🎯 " + midPick.ic + " " + midPick.name, mid: 1, mtype: midPick.type } : q);
 }
 function merged(m) {
   const P = job && job.prefix;
@@ -880,7 +884,7 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
     $("result").style.display = "none"; $("share").style.display = "none"; $("qr").style.display = "none";
     $("nav").style.display = "none"; legend(null);
   }
-  $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
+  $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done", "trip"); $("bar").classList.add("run");
@@ -953,33 +957,33 @@ async function placeName(input, ll) {
 const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : (looksAddress(t) ? townName(t) : cleanAddr(t)).slice(0, 24);
 
 // 🔁 ぐるっと1周：経由・到着の欄はかくす（出発にもどるので）
-const loopKm = () => $("loopOn").checked ? ($("loopKm").value === "auto" ? "auto" : +$("loopKm").value) : 0;
+let loopReq = false;   // 🎯 ミッションのボタンから作るときだけ 1周
+const loopKm = () => loopReq ? ($("loopKm").value === "auto" ? "auto" : +$("loopKm").value) : 0;
 // おまかせの長さ：経由地があれば まっすぐの距離 × 2.8（行きと帰りを別の道にできる太さの輪っか。5km単位）、なければ 30km
 const autoKm = (s, v) => v ? Math.max(10, Math.ceil(hav(s, v) * 2.8 / 5000) * 5) : 30;
-function loopUi() {
-  const on = $("loopOn").checked;
-  $("toRow").style.display = on ? "none" : "";
-  $("midRow").style.display = on ? "" : "none";   // 1周でも経由地は1つ入れられる（そこを通って1周）
-  $("go").textContent = on ? ($("loopKm").value === "auto" ? "🔁 おまかせの長さで1周ルートを作る" : `🔁 ${$("loopKm").value}kmの1周ルートを作る`) : "ルートを作る";
-  try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value, mid: $("midOn").checked })); } catch {}
-}
-try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; $("midOn").checked = l.mid !== false; } } catch {}
-for (const id of ["loopOn", "loopKm", "midOn"]) $(id).onchange = loopUi;
+function loopUi() { try { localStorage.setItem("hosomichi_msn", JSON.stringify({ km: $("loopKm").value, type: $("msnType").value })); } catch {} }
+try { const l = JSON.parse(localStorage.getItem("hosomichi_msn") || "null"); if (l) { $("loopKm").value = l.km || "10"; $("msnType").value = l.type || "spot"; } } catch {}
+for (const id of ["loopKm", "msnType"]) $(id).onchange = loopUi;
+$("msnGo").onclick = () => { loopReq = true; try { showTab("route"); $("go").onclick(); } finally { loopReq = false; } };   // go はさいしょに長さを読むので、すぐもどしてOK
 // 🎯 とちゅうの寄り道スポット：1周の長さに合う距離にある「めぐる」系のマークから、まだ選んでいない所をランダムに1つ
-const MID_KINDS = ["shrine", "temple", "castle", "kofun", "monument", "sight", "view", "park", "jizo", "ichiri", "tree", "spring", "fall", "bridge", "michi"];
+const MID_KINDS = {
+  spot: ["shrine", "temple", "castle", "kofun", "monument", "sight", "view", "park", "jizo", "ichiri", "tree", "spring", "fall", "bridge", "michi"],
+  lunch: ["ramen", "cafe", "bakery"], snack: ["sweets", "bakery", "cafe"],
+};
+const MID_SAY = { spot: "ひと休みしよう", lunch: "ランチにしよう", snack: "おやつにしよう" };
 const midKey = p => p[0].toFixed(4) + "," + p[1].toFixed(4);
 let midPick = null, midNone = false;   // { p, name, ic } いま作っている1周の寄り道スポット
-async function pickMid(s, km) {
+async function pickMid(s, km, type) {
   const T = km * 1000 / 2.9, lo = T * 0.7, hi = T * 1.1;   // 1周の長さ ≒ まっすぐの距離×2.9
   const dla = hi / 111000, dlo = hi / (111000 * Math.cos(s[0] * RAD)), keys = [];
   for (let i = Math.floor((s[0] - dla) / SPOT_T); i <= Math.floor((s[0] + dla) / SPOT_T); i++)
     for (let j = Math.floor((s[1] - dlo) / SPOT_T); j <= Math.floor((s[1] + dlo) / SPOT_T); j++) keys.push(i + "_" + j);
   if (keys.length > 80) keys.length = 80;
   const tiles = await Promise.all(keys.map(spotTile)), seen = new Set(lsGet("hosomichi_midseen", [])), all = [];
-  for (const t of tiles) for (const k of MID_KINDS) for (const e of t[k] || []) {
+  for (const t of tiles) for (const k of MID_KINDS[type]) for (const e of t[k] || []) {
     if (k === "bridge" && /歩道橋/.test(e[0] || "")) continue;   // 歩道橋は見に行く所じゃないので
     const p = [e[1], e[2]], d = hav(s, p);
-    if (d >= lo && d <= hi) all.push({ k, p, name: e[0] || SPOT_INFO[k][1], ic: SPOT_INFO[k][0], named: !!e[0], fresh: !seen.has(midKey(p)) });
+    if (d >= lo && d <= hi) all.push({ type, k, p, name: e[0] || SPOT_INFO[k][1], ic: SPOT_INFO[k][0], named: !!e[0], fresh: !seen.has(midKey(p)) });
   }
   const tiers = [all.filter(c => c.fresh && c.named), all.filter(c => c.fresh), all.filter(c => c.named), all];   // まだ行っていない・名前がある所を先に
   const c = tiers.find(t => t.length); if (!c) return null;
@@ -988,11 +992,10 @@ async function pickMid(s, km) {
   return cs[Math.floor(Math.random() * cs.length)];
 }
 function midSeen(p) { const a = lsGet("hosomichi_midseen", []).filter(x => x !== midKey(p)); a.push(midKey(p)); lsSet("hosomichi_midseen", a.slice(-500)); }
-loopUi();
 $("go").onclick = async () => {
   audioUnlock();
   let LK = loopKm();
-  const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = $("via").value.trim();
+  const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = LK ? "" : $("via").value.trim();
   if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
   pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? " 1周" : " → " + shortName(toT));
   // 押したらすぐ前のルートを消す（場所さがしのあいだも前のルートが出ていると、動いていないように見えるので）
@@ -1000,7 +1003,7 @@ $("go").onclick = async () => {
   try { flowStop(); guideStop(); flowBtns(); } catch {}
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
   legend(null); $("mini").textContent = "";
-  $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" }; barMax = 0; setBar(0); $("bar").classList.remove("done");
+  $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" }; barMax = 0; setBar(0); $("bar").classList.remove("done");
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   geoAbort = new AbortController(); $("stop").style.display = "";   // 場所さがしの間も「■ 止める」できる
   try {
@@ -1010,10 +1013,10 @@ $("go").onclick = async () => {
     if (LK) {   // 1周：出発のまわりを三角形にまわる。経由地が入っていれば、そこを通る1周
       let [v, vn] = viaT ? await geocode(viaT) : [null, ""];
       midPick = null; midNone = false;
-      if (!v && $("midOn").checked) {
+      if (!v && $("msnType").value !== "none") {
         if (LK === "auto") LK = 10;
         lastProg = { stage: 1, msg: "🎯 寄り道スポットをさがし中" }; showProg();
-        midPick = await pickMid(s, LK);
+        midPick = await pickMid(s, LK, $("msnType").value);
         if (midPick) { v = midPick.p; vn = midPick.ic + " " + midPick.name; midSeen(v); }
         else { addLog("  🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にするよ", "w"); midNone = true; }
       }
@@ -1058,7 +1061,7 @@ $("go").onclick = async () => {
     else startJob(s, g, structuredClone(cfg), null);
   } catch (e) {
     const stopped = geoAbort?.signal.aborted; geoAbort = null;
-    clearInterval(tickTimer); $("go").disabled = false; $("stop").style.display = "none"; setBar(0);
+    clearInterval(tickTimer); $("go").disabled = $("msnGo").disabled = false; $("stop").style.display = "none"; setBar(0);
     if (stopped) { setMsg("止めたよ"); addLog("■ 場所さがしを止めたよ", "w"); }
     else { setMsg(e.message, true); addLog("エラー: " + e.message, "e"); }
   }
@@ -1750,7 +1753,7 @@ function vcNav(off, rest) {
   if (me && cur.stops) for (const q of cur.stops) if (q.mid && !q.said) {
     if (!q.at) { let bd = Infinity; for (const r of cur.nav) { const d = hav(r, q.p); if (d < bd) { bd = d; q.at = r; } } }   // 公園などは まん中の点なので、ルートでいちばん近い所で「着いた」にする
     const h = [me.getLatLng().lat, me.getLatLng().lng]; if (hav(q.at, h) > 40 && hav(q.p, h) > 60) continue;
-    q.said = true; say(`${q.name.replace(/^🎯\s*\S+\s*/, "")}に着いたよ。ひと休みしよう`); blkShowMap(20000);
+    q.said = true; say(`${q.name.replace(/^🎯\s*\S+\s*/, "")}に着いたよ。${MID_SAY[q.mtype] || MID_SAY.spot}`); blkShowMap(20000);
   }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
@@ -2427,7 +2430,6 @@ $("homeD").onclick = () => {   // タップで、家までの細道ルートを�
   div.onclick = ev => {
     if (!ev.target.dataset.go) return; map.closePopup(pop);
     $("from").value = ""; $("via").value = ""; $("to").value = home[0].toFixed(6) + "," + home[1].toFixed(6);
-    if ($("loopOn").checked) { $("loopOn").checked = false; $("loopOn").dispatchEvent(new Event("change")); }
     $("go").click();
   };
 };
