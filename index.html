@@ -172,7 +172,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2317</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2321</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -249,7 +249,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div class="btns" style="margin-top:8px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
       <div class="note" style="margin-top:8px">🏠 家・🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）して決めるよ</div>
       <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <b>📣 SNSに出さない範囲</b>
+        <b>📣 SNS・🔗 共有URLに出さない範囲</b>
         <div class="row" style="margin-top:4px"><label style="width:auto">家のそばから道にそって</label><select id="snsR" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px"></select><span style="font-size:12px">は出さない</span></div>
         <div style="font-size:11px;color:#666">地図の線も、通った所の名前も出さないよ。丸で消すと切れ目から家を推理されるので、道にそった距離で消すよ（家を決めていないときは出発から）</div>
       </div>
@@ -3065,7 +3065,7 @@ function pubRuns(pts, zs) {   // 消す丸の外の、つながった部分 [i0,
   return out;
 }
 function hidePlan() {
-  const sel = +$("hide").value;
+  const sel = snsR;   // 共有URLとSNSは同じ長さ
   return { hs: sel, he: $("hideEnd").checked ? sel : 0 };
 }
 function updateHomeNote() {
@@ -3153,7 +3153,7 @@ $("qr").addEventListener("click", e => { if (e.target.dataset.q === "x") $("qr")
 $("bQr").onclick = () => { const b = $("qr"); if (b.style.display === "block") { b.style.display = "none"; return; } if (!confirmShare()) return; makeQr(); };
 function defaultShareName() { return (cur.name || "").slice(0, 40); }   // 名前の住所は町名まで
 $("bShare").onclick = () => { const s = $("share"); s.style.display = s.style.display === "block" ? "none" : "block"; $("shareName").value = defaultShareName(); updateShare(); };
-$("hide").onchange = $("hideEnd").onchange = () => { $("shareName").value = defaultShareName(); updateShare(); };
+$("hideEnd").onchange = () => { $("shareName").value = defaultShareName(); updateShare(); };
 $("shareName").oninput = updateShare;
 $("bCopy").onclick = async () => { updateShare(); if (!confirmShare()) return; try { await navigator.clipboard.writeText($("url").value); $("bCopy").textContent = "コピーしたよ！"; } catch { $("url").select(); document.execCommand("copy"); } setTimeout(() => $("bCopy").textContent = "コピー", 1500); };
 $("bSys").onclick = () => { updateShare(); if (!confirmShare()) return; if (navigator.share) navigator.share({ title: "細道ルート", url: $("url").value }).catch(() => {}); else $("bCopy").click(); };
@@ -3188,7 +3188,14 @@ const SNS_R_OPTS = [1000,2000,3000,5000,10000,20000,30000],   // 最低1km・は
   snsRName = m => m >= 1000 ? m / 1000 + "km" : m + "m";
 let snsR = Math.max(1000, lsGet("hosomichi_snsR", 5000));
 function snsROpts(el) { el.innerHTML = SNS_R_OPTS.map(m => `<option value="${m}"${m === snsR ? " selected" : ""}>${snsRName(m)}</option>`).join(""); }
-snsROpts($("snsR")); $("snsR").onchange = () => { snsR = +$("snsR").value; lsSet("hosomichi_snsR", snsR); };
+function snsRSet(v) {   // 📣SNS・🔗共有URL・⚙設定 の3か所は同じ長さ
+  snsR = v; lsSet("hosomichi_snsR", snsR);
+  for (const id of ["snsR", "snsR2", "hide"]) if ($(id)) snsROpts($(id));
+  try { if (cur && $("share").style.display !== "none") updateShare(); } catch {}
+}
+snsROpts($("snsR")); snsROpts($("hide"));
+$("snsR").onchange = () => snsRSet(+$("snsR").value);
+$("hide").onchange = () => snsRSet(+$("hide").value);
 const SNS_MAX = 280 - 100 - 4;   // 自分のコメント（日本語50文字＝100）を書けるように、あけておく
 const SNS_TAGS = "#サイクリング #ポタリング #細道ルートナビ", SNS_URL = "https://yopo777.github.io/hosomichi/";
 const hhmm = t => { const d = new Date(t); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); };
@@ -3358,7 +3365,7 @@ $("bSns").onclick = async () => {
     else $("snsImg").textContent = d.none ? "まだ走った記録がないよ。◎で走りはじめると、走ったところまでの地図を作れるよ（これから行く所は出さないよ）" : "地図の画像を作れなかったよ（文だけ使えるよ）";
   };
   snsROpts($("snsR2"));
-  $("snsR2").onchange = async () => { snsR = +$("snsR2").value; lsSet("hosomichi_snsR", snsR); snsROpts($("snsR")); await draw(await snsData()); };
+  $("snsR2").onchange = async () => { snsRSet(+$("snsR2").value); await draw(await snsData()); };
   await draw(data);
   $("snsPh").onchange = async e => {
     photos = (await Promise.all([...e.target.files].slice(0, 3).map(snsPhoto))).filter(Boolean);
