@@ -23,6 +23,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #panel.min #mini{display:block}
 #panel.min #msg{display:none}              /* たたんでいるときはゲージだけ */
 #panel.min #prog{margin-top:6px}
+#bar.done{display:none}   /* 計算が終わったらゲージはしまう */
 #bar.done div{background:#188038}
 #bar.run{background:repeating-linear-gradient(-45deg,#eee 0 8px,#f8f8f8 8px 16px);background-size:200% 100%;animation:run 1s linear infinite}
 @keyframes run{from{background-position:0 0}to{background-position:-22px 0}}
@@ -121,6 +122,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #nav.off{color:#c00}
 #ring{position:absolute;inset:0;z-index:900;pointer-events:none;display:none;background:radial-gradient(circle closest-side at 50% 50%,transparent 96%,#000 100%)}   /* ⭕ まわりだけ表示（丸の外は黒） */
 body.navi.ring:not(.ringOff) #ring{display:block}   /* さわってから15秒は丸をはずす */
+body.navi.ring:not(.ringOff) #panel,body.navi.ring:not(.ringOff) #legend{filter:invert(1) hue-rotate(180deg) brightness(.55)}   /* 上のパネルも暗く（白→黒） */
 body.navi.ring:not(.ringOff) button small{color:#ccc!important;text-shadow:0 0 3px #000!important}
 body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!important;background:#fffffff0!important;border-radius:10px!important;padding:3px 12px!important;box-shadow:0 2px 8px #0003!important;bottom:calc(64px + env(safe-area-inset-bottom))!important}   /* ナビ中（現在地に固定中）は住所を大きく */
 body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font-size:14px!important}
@@ -315,7 +317,7 @@ const RAD = Math.PI / 180;
 const hav = (a, b) => { const x = Math.sin((b[0] - a[0]) * RAD / 2) ** 2 + Math.cos(a[0] * RAD) * Math.cos(b[0] * RAD) * Math.sin((b[1] - a[1]) * RAD / 2) ** 2; return 12742000 * Math.asin(Math.sqrt(x)); };
 const fmtKm = m => m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m";
 function setMsg(t, err) { $("prog").style.display = "block"; $("msg").textContent = t; $("msg").className = err ? "err" : ""; $("mini").textContent = t.split("\n").slice(0, 2).join("　"); }
-function setBar(r) { const b = $("bar"); if (r == null) b.classList.add("busy"); else { b.classList.remove("busy"); b.firstChild.style.width = (r * 100).toFixed(1) + "%"; } }
+function setBar(r) { const b = $("bar"); b.classList.toggle("done", r != null && r >= 1); if (r == null) b.classList.add("busy"); else { b.classList.remove("busy"); b.firstChild.style.width = (r * 100).toFixed(1) + "%"; } }
 
 // Google Polyline 形式（URLを短くするため）
 function encPoly(pts) {
