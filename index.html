@@ -173,7 +173,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0019</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0030</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -1844,10 +1844,10 @@ async function routeOnce(req, prog, partial) {
   //  ② 使った道を通りにくくしてさがしなおしたルート（近くの別の道）
   // を作って、メインと半分以上かぶらないものを2本までえらぶ。データが手元にあれば少し広い範囲で考える
   let alts = [];
-  if (!need.length && conf.length > 1 && !(cfg && cfg.alts === false)) prog({ stage: 4, msg: "ほかのルート（第2・第3）を計算中" });
-  if (need.length && conf.length > 1 && !(cfg && cfg.alts === false))   // ダウンロードしたときは1本だけ（サーバーにやさしく・早く）
+  if (!need.length && conf.length > 1 && !(cfg && (cfg.alts === false || cfg.alts === "no"))) prog({ stage: 4, msg: "ほかのルート（第2・第3）を計算中" });
+  if (need.length && conf.length > 1 && !(cfg && (cfg.alts === false || cfg.alts === "no")))   // ダウンロードしたときは1本だけ（サーバーにやさしく・早く）
     log(`第2・第3のルートは出さないよ（道路データを ${need.length}マス ダウンロードしたので）`);
-  else if (conf.length > 1 && !(cfg && cfg.alts === false)) {
+  else if (conf.length > 1 && !(cfg && (cfg.alts === false || cfg.alts === "no"))) {
     try {
       const ta = Date.now(), Dkm = hav(s[0], s[1], g[0], g[1]) / 1000;
       const offKm = Math.min(6, Math.max(1, Dkm * 0.15));          // 左右にずらす量
@@ -3559,9 +3559,10 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, station: 5, cemetery: 5, park: 5 };
+  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, station: 5, cemetery: 5, park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
+  ["alts", "第2・第3のルート", [["yes", "作る（えらべる・少し時間がかかる）"], ["no", "作らない（早い）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["auto", "おまかせ（データが手元にあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（まわり道 2〜4km）"]]],
   ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
@@ -3592,7 +3593,7 @@ function renderCfg() {
   h += "<h4>ルートの色</h4>" + [["kind", "道の種類"], ["slope", "坂"]].map(([k, t]) =>
     `<label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="radio" name="rcol" value="${k}"${k === colorMode ? " checked" : ""}>${t}</label>`).join("");
   $("cfgMap").innerHTML = h; h = "";
-  h += "<h4>計算</h4>" + get(["mode", "area", "turn"]);
+  h += "<h4>計算</h4>" + get(["mode", "alts", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか。8%より急なのぼりはその2倍。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div>';
