@@ -900,6 +900,11 @@ $("go").onclick = async () => {
   const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = $("via").value.trim();
   if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
   pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? " 1周" : " → " + shortName(toT));
+  // 押したらすぐ前のルートを消す（場所さがしのあいだも前のルートが出ていると、動いていないように見えるので）
+  layer.clearLayers(); cur = null; cum = []; navAlong = null;
+  try { flowStop(); guideStop(); flowBtns(); } catch {}
+  for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
+  legend(null); $("mini").textContent = "";
   $("go").disabled = true; tStart = Date.now(); lastProg = { stage: 0, msg: "場所をさがし中" }; barMax = 0; setBar(0); $("bar").classList.remove("done");
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   geoAbort = new AbortController(); $("stop").style.display = "";   // 場所さがしの間も「■ 止める」できる
@@ -1821,6 +1826,10 @@ async function qTour(id, back, skipDone) {
   if (pts.length > 40 && !confirm(`${pts.length}${qUnit(q)}を回るルートは、計算に数分かかるかも（パソコン向け）。\nとちゅうで「■ 止める」もできるよ。作る？`)) return;
   audioUnlock();
   const fromT = $("from").value.trim();
+  layer.clearLayers(); cur = null; cum = []; navAlong = null;   // 押したらすぐ前のルートを消す
+  try { flowStop(); guideStop(); flowBtns(); } catch {}
+  for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
+  legend(null); $("mini").textContent = "";
   try {
     setMsg("出発の場所をさがしてるよ…");
     const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
