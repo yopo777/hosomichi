@@ -172,7 +172,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2344</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2351</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3290,7 +3290,7 @@ async function snsData() {
     for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name) });
     for (const c of await passList(ride.pts, hideP).catch(() => [])) items.push({ t: c.t, name: c.name });
     const seen = new Set(), list = items.sort((x, y) => x.t - y.t).filter(x => { const k = x.name.replace(/^\S+\s/, ""); if (seen.has(k)) return false; seen.add(k); return true; });
-    const rest = [...L, SNS_URL, SNS_TAGS].join("\n"), pick = [];
+    const rest = [...L, "🗺 ルート共有link↓（開くだけなら位置情報は使いません）", SNS_URL, SNS_TAGS].join("\n"), pick = [];
     for (let i = list.length - 1; i >= 0; i--) {   // 新しいものから
       const line = "📍 " + [list[i], ...pick].map(x => x.name).join("→");
       if (xLen(rest + "\n" + line) > SNS_MAX) break;
@@ -3298,7 +3298,18 @@ async function snsData() {
     }
     if (pick.length) L.push("📍 " + pick.map(x => x.name).join("→"));
   }
-  const link = SNS_URL;   // SNSは「今どこ・どっちから来たか」を見せるもの。ルート共有のリンクは入れない
+  // 🗺 共有ルートのリンク：地図に出している線（走っている途中は来た道、走り終わったら走ったところ）。開いた人はそのルートを見られる
+  let link = SNS_URL;
+  if (useRide && runs.length) {
+    const best = runs.reduce((a, b) => (lineLen(b) > lineLen(a) ? b : a));
+    if (best.length >= 2 && lineLen(best) > 300) {
+      const prm = new URLSearchParams();   // 名前は入れない（開いた人には「共有されたルート」と出る）
+      prm.set("r", encPoly(simpRoute(best, null, 8).pts));
+      if (best.cutS || best.cutE) prm.set("x", (best.cutS ? "s" : "") + (best.cutE ? "e" : ""));
+      link = location.origin + location.pathname + "#" + prm.toString();
+      L.push("🗺 ルート共有link↓（開くだけなら位置情報は使いません）");
+    }
+  }
   L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !hideP(q.p));
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
