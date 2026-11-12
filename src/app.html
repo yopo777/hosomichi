@@ -191,6 +191,13 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
     </div>
     <div id="tabCfg" style="display:none">
+      <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="ecoOn">🔋 節電モード（ナビ中）</label>
+        <div style="font-size:11px;color:#666;margin-top:2px">案内のボール・スポットの点滅を止めて、地図をすべらせずにパッと動かすよ</div>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="ecoScr">📴 ナビ中も画面が消えていい</label>
+        <div style="font-size:11px;color:#666;margin-top:2px">いちばん電池が長もちするよ。見たいときに画面をつけてね（消えているあいだは、スタンプ・家までの距離は止まるよ）</div>
+        <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
+      </div>
       <div id="cfgBox"></div>
       <div class="btns" style="margin-top:8px"><button class="ib" id="cfgReset">はじめの設定にもどす</button></div>
       <div style="margin-top:10px;padding:8px;border-radius:8px;background:#e8f0fe;font-size:12px;line-height:1.6">
@@ -1526,7 +1533,7 @@ function onPos(p) {
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
   qCheck(ll, p.coords.accuracy); spotUpdate(false); spotNear(ll); homeDist();
   applyBearing();
-  if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
+  if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: !eco });  // 拡大率はそのまま
   if (cur && cur.nav && cur.nav.length > 1) {
     const [off, rest] = nearestOnRoute(ll), nav = $("nav");
     nav.style.display = "block";
@@ -1535,7 +1542,16 @@ function onPos(p) {
       + (off > 60 ? `　⚠ ルートから ${Math.round(off)}m` : "");
   }
 }
-async function wake() { try { lock = await navigator.wakeLock.request("screen"); } catch {} }
+async function wake() { if (ecoScr) { try { await lock?.release(); } catch {} lock = null; return; } try { lock = await navigator.wakeLock.request("screen"); } catch {} }
+// 🔋 節電モード（この端末の中だけに保存）
+let eco = lsGet("hosomichi_eco", false), ecoScr = lsGet("hosomichi_ecoscr", false);
+$("ecoOn").checked = eco; $("ecoScr").checked = ecoScr;
+$("ecoOn").onchange = () => {
+  eco = $("ecoOn").checked; lsSet("hosomichi_eco", eco);
+  if (eco) for (const el of document.querySelectorAll(".spot.near")) el.classList.remove("near");
+  try { flowBurstEnd = 0; flowPrep(); } catch {}
+};
+$("ecoScr").onchange = () => { ecoScr = $("ecoScr").checked; lsSet("hosomichi_ecoscr", ecoScr); if (wid !== null) wake(); };
 $("gps").onclick = () => {
   if (wid === null) {
     if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
@@ -2060,7 +2076,7 @@ async function spotUpdate(force) {
 }
 function spotNear(p) {   // 150m以内のスポットだけ点滅（GPSが来るたび。多くても60個しか見ない）
   if (!spotFx) return;
-  for (const [m, ll] of spotMk) { const el = m.getElement()?.querySelector(".spot"); if (el) el.classList.toggle("near", hav(p, ll) < SPOT_NEAR); }
+  for (const [m, ll] of spotMk) { const el = m.getElement()?.querySelector(".spot"); if (el) el.classList.toggle("near", !eco && hav(p, ll) < SPOT_NEAR); }
 }
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
 map.on("zoomend", () => { if (follow && me) spotUpdate(true); });
@@ -2197,20 +2213,20 @@ $("fl").onclick = () => {
   flowMode = { fwd: "rev", rev: "off", off: "fwd" }[flowMode]; lsSet("hosomichi_flowmode", flowMode);
   flowOn = flowMode !== "off"; flowRev = flowMode === "rev"; flowPrep();
 };
-function flowStop() { cancelAnimationFrame(flowRaf); flowRaf = 0; flowLayer.clearLayers(); flowBalls = []; }
+function flowStop() { clearInterval(flowRaf); flowRaf = 0; flowLayer.clearLayers(); flowBalls = []; }
 // 現在地に固定中（走っているとき）は、たくさんのボールのかわりに、今いる所から少し先へ 1個だけボールが走る（案内のボール）
 let navAlong = null, guide = null, guideRaf = 0, guideLast = 0;
 const FLOW_MS = 100;   // ボールを動かす間かく（どのボールも同じ）。1秒に10回で、電池にやさしく
 const guideLayer = L.layerGroup().addTo(map);
-function guideStop() { cancelAnimationFrame(guideRaf); guideRaf = 0; guideLayer.clearLayers(); guide = null; }
+function guideStop() { clearInterval(guideRaf); guideRaf = 0; guideLayer.clearLayers(); guide = null; }
 function guideStart() {
-  const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden;
+  const ok = follow && me && flowOn && !eco && cur && cur.nav && cum.length > 1 && !document.hidden;
   if (!ok) return guideStop();
   if (guide) return;   // もう走っている
   guide = L.circleMarker(me.getLatLng(), { pane: "flowPane", radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
-  const tick = now => {
-    guideRaf = requestAnimationFrame(tick);
-    if (now - guideLast < FLOW_MS || navAlong == null) return; guideLast = now;
+  const tick = () => {   // requestAnimationFrame だと1秒に60回起きてしまうので、10回だけ起きるタイマーにした（電池にやさしく）
+    const now = performance.now();
+    if (navAlong == null) return;
     const R = cur.nav, tot = cum[cum.length - 1];
     const mpp = 40075016 * Math.cos(me.getLatLng().lat * RAD) / 2 ** (map.getZoom() + 8), span = 170 * mpp;   // 画面で170pxぶん先まで
     const sOff = (now / 1000 * span / 1.6) % span;   // 1.6秒で先まで行って、またもどる
@@ -2219,7 +2235,7 @@ function guideStart() {
     const a = R[lo], c = R[hi], u = (d - cum[lo]) / ((cum[hi] - cum[lo]) || 1);
     guide.setLatLng([a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u]);
   };
-  guideRaf = requestAnimationFrame(tick);
+  guideRaf = setInterval(tick, FLOW_MS);
 }
 // （前の「30秒ごとに5秒だけ流す」は使わない）
 let flowBurstEnd = 0;
@@ -2255,11 +2271,10 @@ function flowBuild() {
     for (let k = 0; k < n && flowBalls.length < 150; k++)
       flowBalls.push({ r, cs, len, base: k * len / n, m: L.circleMarker(r[0], { pane: "flowPane", radius: 6, stroke: false, className: "flowb", fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025", fillOpacity: 1, interactive: false }).addTo(flowLayer) });   // 赤と白をこうごに
   }
-  if (flowBalls.length) { flowT0 = performance.now(); flowRaf = requestAnimationFrame(flowTick); }
+  if (flowBalls.length) { flowT0 = performance.now(); flowRaf = setInterval(flowTick, FLOW_MS); }
 }
-function flowTick(now) {
-  flowRaf = requestAnimationFrame(flowTick);
-  if (now - flowLast < FLOW_MS) return; flowLast = now;
+function flowTick() {
+  const now = performance.now();
   const t = (now - flowT0) / 1000;
   for (const f of flowBalls) {
     let d = (f.base + t * flowSpeed) % f.len; if (flowRev) d = f.len - d;
