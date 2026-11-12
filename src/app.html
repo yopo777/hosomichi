@@ -119,6 +119,8 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #nav{position:absolute;bottom:calc(22px + env(safe-area-inset-bottom));right:10px;max-width:calc(40% - 10px);z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:4px 10px;font-size:14px;font-weight:bold;display:none;pointer-events:none;text-align:right}   /* 一番下・見えなくてもいい */
 #nav.off{color:#c00}
+body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!important;background:#fffffff0!important;border-radius:10px!important;padding:3px 12px!important;box-shadow:0 2px 8px #0003!important;bottom:calc(64px + env(safe-area-inset-bottom))!important}   /* ナビ中（現在地に固定中）は住所を大きく */
+body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font-size:14px!important}
 .pin{font-size:13px}
 .spot{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #888;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;box-shadow:0 1px 4px #0007}
 .flowb{filter:drop-shadow(0 0 1.5px rgba(0,0,0,.6))}   /* ルートのボール：ふちなし（マークとまちがえないように）・白でも見えるように うすい影 */
@@ -503,7 +505,7 @@ function geoErrText(e) {
 function onGeoErr(e) {
   addLog(`現在地エラー: code=${e && e.code} ${e && e.message}`, "e");
   if (wid !== null) navigator.geolocation.clearWatch(wid);
-  wid = null; follow = false; $("homeD").style.display = "none"; $("gps").classList.remove("on"); $("gpsL").classList.remove("on"); $("gpsL").textContent = "現在地"; $("dir").style.display = "none";
+  wid = null; follow = false; document.body.classList.remove("navi"); $("homeD").style.display = "none"; $("gps").classList.remove("on"); $("gpsL").classList.remove("on"); $("gpsL").textContent = "現在地"; $("dir").style.display = "none";
   map.dragging.enable();
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   setMsg(geoErrText(e), true);
@@ -1571,7 +1573,7 @@ $("dir").onclick = () => {
 };
 // ナビ中は地図を動かせない（拡大・縮小だけ。自分の位置を中心に）。◎をもう一度押すまで解除しない
 function setFollow(on) {
-  follow = on;
+  follow = on; document.body.classList.toggle("navi", on);
   $("gps").classList.toggle("on", on);
   $("gpsL").classList.toggle("on", on); $("gpsL").textContent = on ? "現在地に固定中" : wid !== null ? "押すと固定" : "現在地";
   const z = on ? "center" : true;
