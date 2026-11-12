@@ -1534,7 +1534,19 @@ async function snsData() {
       if (line !== "📍 ") L.push(line);
     }
   }
-  L.push(SNS_TAGS, SNS_URL);
+  // 🗺 公開用ルートのリンク：走ったところ（消す丸の外）のいちばん長い部分。開いた人はそのルートでナビできる
+  let link = SNS_URL;
+  if (useRide && runs.length) {
+    const best = runs.reduce((a, b) => (lineLen(b) > lineLen(a) ? b : a));
+    if (best.length >= 2 && lineLen(best) > 300) {
+      const prm = new URLSearchParams(), mids = ride.ev.filter(e => e.k === "stop" && !(e.p && inZones(e.p, zs))).map(e => e.name.replace(/^🎯\s*\S+\s*/, ""));
+      prm.set("n", `${d.getMonth() + 1}/${d.getDate()} ポタリング` + (mids.length ? `（${mids.join("・")}）` : ""));
+      prm.set("r", encPoly(simpRoute(best, null, 8).pts));
+      link = location.origin + location.pathname + "#" + prm.toString();
+      L.push("🗺 このルートで走れるよ（開くだけなら位置情報は使いません）");
+    }
+  }
+  L.push(SNS_TAGS, link);
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !inZones(q.p, zs));
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
   return { runs, stops, text: L.join("\n"), sub, none: !useRide };
