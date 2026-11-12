@@ -2111,7 +2111,7 @@ function onPos(p) {
   }
 }
 // ---------- 🗣 音声ナビ（ルートの線の曲がりぐあいから「曲がる所」を見つけて、近づいたらしゃべる） ----------
-let vcOn = lsGet("hosomichi_voice", true), vcTurns = null, vcFor = null, vcOff = false, vcEnd = false;
+let vcOn = lsGet("hosomichi_voice", true), vcTurns = null, vcFor = null, vcOff = false, vcEnd = false, vcJoined = false;
 $("vcOn").checked = vcOn;
 $("vcOn").onchange = () => { vcOn = $("vcOn").checked; lsSet("hosomichi_voice", vcOn); if (vcOn) say("音声案内をオンにしたよ"); else try { speechSynthesis.cancel(); } catch {} };
 $("vcTest").onclick = () => { boo(); setTimeout(() => say("100メートル先、右です"), 900); };
@@ -2173,7 +2173,7 @@ function backHint(off) {
   $("rjBtn").style.display = show && !(job && job.rejoin) ? "block" : "none";
   if (!show) return;
   const q = backNear(); if (q) L.polyline([me.getLatLng(), q], { color: "#1a73e8", weight: 4, dashArray: "6 8", opacity: .9, interactive: false }).addTo(backLayer);
-  $("rjBtn").textContent = `↩ ルートにもどる（${fmtKm(off)}）`;
+  $("rjBtn").textContent = vcJoined ? `↩ ルートにもどる（${fmtKm(off)}）` : `🚲 ルートまでの道を作る（${fmtKm(off)}）`;
 }
 $("rjBtn").onclick = () => {
   if (!cur || !me || (job && !job.rejoin && $("go").disabled)) return;
@@ -2204,7 +2204,9 @@ function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
   const say = t => { if (vcOn) window.say(t); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
-  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; }
+  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; vcJoined = false; }
+  // まだ一度もルートに乗っていない（共有ルートを遠くで開いた・車で出発地へ行く とちゅう など）ときは、「外れています」は言わない
+  if (!vcJoined) { if (off < 60) vcJoined = true; else return; }
   if (off > 60) { if (!vcOff) { vcOff = true; if (vcOn) { boo(); const w = backWord(off); setTimeout(() => say("ルートから外れています。" + w), 700); } } blkShowMap(5000); return; }
   if (off < 30) vcOff = false;
   if (!cur.partial && rest < 30) { if (!vcEnd) { vcEnd = true; say("とうちゃくです。おつかれさまでした"); blkShowMap(60000); } return; }
