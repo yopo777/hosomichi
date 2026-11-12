@@ -2190,6 +2190,7 @@ $("fl").onclick = () => {
 function flowStop() { cancelAnimationFrame(flowRaf); flowRaf = 0; flowLayer.clearLayers(); flowBalls = []; }
 // 現在地に固定中（走っているとき）は、たくさんのボールのかわりに、今いる所から少し先へ 1個だけボールが走る（案内のボール）
 let navAlong = null, guide = null, guideRaf = 0, guideLast = 0;
+const FLOW_MS = 100;   // ボールを動かす間かく（どのボールも同じ）。1秒に10回で、電池にやさしく
 const guideLayer = L.layerGroup().addTo(map);
 function guideStop() { cancelAnimationFrame(guideRaf); guideRaf = 0; guideLayer.clearLayers(); guide = null; }
 function guideStart() {
@@ -2199,7 +2200,7 @@ function guideStart() {
   guide = L.circleMarker(me.getLatLng(), { pane: "flowPane", radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
   const tick = now => {
     guideRaf = requestAnimationFrame(tick);
-    if (now - guideLast < 50 || navAlong == null) return; guideLast = now;   // 1秒に20回で十分
+    if (now - guideLast < FLOW_MS || navAlong == null) return; guideLast = now;
     const R = cur.nav, tot = cum[cum.length - 1];
     const mpp = 40075016 * Math.cos(me.getLatLng().lat * RAD) / 2 ** (map.getZoom() + 8), span = 170 * mpp;   // 画面で170pxぶん先まで
     const sOff = (now / 1000 * span / 1.6) % span;   // 1.6秒で先まで行って、またもどる
@@ -2248,7 +2249,7 @@ function flowBuild() {
 }
 function flowTick(now) {
   flowRaf = requestAnimationFrame(flowTick);
-  if (now - flowLast < 33) return; flowLast = now;   // 1秒に30回くらいで十分
+  if (now - flowLast < FLOW_MS) return; flowLast = now;
   const t = (now - flowT0) / 1000;
   for (const f of flowBalls) {
     let d = (f.base + t * flowSpeed) % f.len; if (flowRev) d = f.len - d;
