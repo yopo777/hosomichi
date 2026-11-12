@@ -155,7 +155,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1408</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1412</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -201,6 +201,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="ecoOn">🔋 節電モード（ナビ中）</label>
         <div style="font-size:11px;color:#666;margin-top:2px">案内のボール・スポットの点滅を止めて、地図をすべらせずにパッと動かすよ</div>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="blkScr">⬛ ナビ中、さわらないと画面をまっ黒にする</label>
+        <div style="font-size:11px;color:#666;margin-top:2px">15秒さわらないと黒くなるよ。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="ecoScr">📴 ナビ中も画面が消えていい</label>
         <div style="font-size:11px;color:#666;margin-top:2px">いちばん電池が長もちするよ。見たいときに画面をつけてね（消えているあいだは、音声案内・スタンプ・家までの距離は止まるよ）</div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
@@ -271,6 +273,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="qToast"></div>
 <div id="cdot" style="position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#000;box-shadow:0 0 0 1.5px #fff;z-index:950;pointer-events:none"></div>
 <div id="homeD" style="position:absolute;left:50%;bottom:36px;transform:translateX(-50%);z-index:1000;font-size:12px;font-weight:bold;color:#1a73e8;background:#fffffff0;border:1px solid #1a73e8;border-radius:12px;padding:2px 10px;white-space:nowrap;display:none;cursor:pointer"></div>
+<div id="blk" style="position:fixed;inset:0;z-index:5000;background:#000;color:#555;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-size:20px;font-weight:bold;text-align:center;padding:20px;touch-action:none">
+  <div id="blkNav"></div><div id="blkAddr" style="font-size:16px"></div><div style="font-size:12px;color:#333;margin-top:20px">タッチで地図にもどるよ</div></div>
 <div id="addr" style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:1000;font-size:11px;color:#333;background:#ffffffcc;border-radius:6px;padding:1px 6px;pointer-events:none;white-space:nowrap;display:none"></div>
 <div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
@@ -3186,6 +3190,7 @@ let vcOn = lsGet("hosomichi_voice", true), vcTurns = null, vcFor = null, vcOff =
 $("vcOn").checked = vcOn;
 $("vcOn").onchange = () => { vcOn = $("vcOn").checked; lsSet("hosomichi_voice", vcOn); if (vcOn) say("音声案内をオンにしたよ"); else try { speechSynthesis.cancel(); } catch {} };
 $("vcTest").onclick = () => say("100メートル先、右です");
+window.say = say;
 function say(t) {
   try {
     const u = new SpeechSynthesisUtterance(t); u.lang = "ja-JP"; u.rate = 1.05;
@@ -3213,17 +3218,31 @@ function vcFind() {   // 前後20mの向きの差が40°以上の所＝曲がる
 }
 function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a < 60 ? "ななめ" + lr : a < 150 ? lr : "大きく" + lr; }
 function vcNav(off, rest) {
-  if (!vcOn || !follow || navAlong == null) return;
+  if (!(vcOn || blkScr) || !follow || navAlong == null) return;
+  const say = t => { if (vcOn) window.say(t); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
   if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; }
-  if (off > 60) { if (!vcOff) { vcOff = true; say("ルートから外れています"); } return; }
+  if (off > 60) { if (!vcOff) { vcOff = true; say("ルートから外れています"); } blkShowMap(5000); return; }
   if (off < 30) vcOff = false;
-  if (!cur.partial && rest < 30) { if (!vcEnd) { vcEnd = true; say("とうちゃくです。おつかれさまでした"); } return; }
+  if (!cur.partial && rest < 30) { if (!vcEnd) { vcEnd = true; say("とうちゃくです。おつかれさまでした"); blkShowMap(60000); } return; }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
   const then = nx && nx.s - t.s < 60 ? `、すぐ${vcWord(nx.d)}` : "";
-  if (dist <= 35) { if (!t.a2) { t.a2 = t.a1 = true; say(`まもなく${vcWord(t.d)}です${then}`); } }
+  if (dist <= 35) { if (!t.a2) { t.a2 = t.a1 = true; say(`まもなく${vcWord(t.d)}です${then}`); } blkShowMap(5000); }
   else if (dist <= 120) { if (!t.a1) { t.a1 = true; say(`${Math.max(50, Math.round(dist / 10) * 10)}メートル先、${vcWord(t.d)}です${then}`); } }
 }
+// ---------- ⬛ さわらないと画面をまっ黒に（画面はついたままなので、GPS・音声は動く。有機ELなら黒は電池をほぼ使わない） ----------
+let blkScr = lsGet("hosomichi_black", false), blkTouch = Date.now(), blkUntil = 0;
+const BLK_IDLE = 15000;
+$("blkScr").checked = blkScr;
+$("blkScr").onchange = () => { blkScr = $("blkScr").checked; lsSet("hosomichi_black", blkScr); blkTouch = Date.now(); blkTick(); };
+function blkShowMap(ms) { blkUntil = Date.now() + ms; blkTick(); }   // 曲がる手前など：しばらく地図を出す
+document.addEventListener("pointerdown", () => { blkTouch = Date.now(); if ($("blk").style.display !== "none") $("blk").style.display = "none"; }, true);
+function blkTick() {
+  const now = Date.now(), on = blkScr && wid !== null && follow && !document.hidden && now - blkTouch > BLK_IDLE && now > blkUntil;
+  if (on) { $("blkNav").textContent = $("nav").style.display === "none" ? "" : $("nav").textContent; $("blkAddr").textContent = $("addr").style.display === "none" ? "" : $("addr").textContent; }
+  const d = on ? "flex" : "none"; if ($("blk").style.display !== d) $("blk").style.display = d;
+}
+setInterval(blkTick, 1000);
 async function wake() { if (ecoScr) { try { await lock?.release(); } catch {} lock = null; return; } try { lock = await navigator.wakeLock.request("screen"); } catch {} }
 // 🔋 節電モード（この端末の中だけに保存）
 let eco = lsGet("hosomichi_eco", false), ecoScr = lsGet("hosomichi_ecoscr", false);
