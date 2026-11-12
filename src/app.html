@@ -121,10 +121,11 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
   box-shadow:0 2px 8px #0003;padding:4px 10px;font-size:14px;font-weight:bold;display:none;pointer-events:none;text-align:right}   /* 一番下・見えなくてもいい */
 #nav.off{color:#c00}
 #ring{position:absolute;inset:0;z-index:900;pointer-events:none;display:none;background:radial-gradient(circle closest-side at 50% 50%,transparent 96%,#000 100%)}   /* ⭕ まわりだけ表示（丸の外は黒） */
-body.navi.ring:not(.ringOff) #ring{display:block}   /* さわってから15秒は丸をはずす */
-body.navi.ring:not(.ringOff) #panel,body.navi.ring:not(.ringOff) #legend{filter:invert(1) hue-rotate(180deg) brightness(.55)}   /* 上のパネルも暗く（白→黒） */
-body.navi.ring:not(.ringOff) button small{color:#ccc!important;text-shadow:0 0 3px #000!important}
+body.navi.ring:not(.ringOff):not(.ov) #ring{display:block}   /* さわってから15秒は丸をはずす */
+body.navi.ring:not(.ringOff):not(.ov) #panel,body.navi.ring:not(.ringOff):not(.ov) #legend{filter:invert(1) hue-rotate(180deg) brightness(.55)}   /* 上のパネルも暗く（白→黒） */
+body.navi.ring:not(.ringOff):not(.ov) button small{color:#ccc!important;text-shadow:0 0 3px #000!important}
 body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!important;background:#fffffff0!important;border-radius:10px!important;padding:3px 12px!important;box-shadow:0 2px 8px #0003!important;bottom:calc(64px + env(safe-area-inset-bottom))!important;pointer-events:auto!important;cursor:pointer}   /* ナビ中（現在地に固定中）は住所を大きく */
+body.navi.ov #addr::after{content:'　↩ タップでもどる';font-size:12px;font-weight:normal;color:#1a73e8}
 body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font-size:14px!important}
 .pin{font-size:13px}
 .spot{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #888;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;box-shadow:0 1px 4px #0007}
@@ -515,7 +516,7 @@ function geoErrText(e) {
 function onGeoErr(e) {
   addLog(`現在地エラー: code=${e && e.code} ${e && e.message}`, "e");
   if (wid !== null) navigator.geolocation.clearWatch(wid);
-  wid = null; follow = false; document.body.classList.remove("navi"); $("homeD").style.display = "none"; $("gps").classList.remove("on"); $("gpsL").classList.remove("on"); $("gpsL").textContent = "現在地"; $("dir").style.display = "none";
+  wid = null; follow = false; ovMode = false; document.body.classList.remove("navi", "ov"); $("homeD").style.display = "none"; $("gps").classList.remove("on"); $("gpsL").classList.remove("on"); $("gpsL").textContent = "現在地"; $("dir").style.display = "none";
   map.dragging.enable();
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   setMsg(geoErrText(e), true);
@@ -1523,18 +1524,19 @@ function updHeading(c, ll) {
   else if (lastFix && hav(lastFix, ll) > 8) heading = bearingDeg(lastFix, ll);
   if (!lastFix || hav(lastFix, ll) > 8) lastFix = ll;
 }
-// 🗺 住所をタップ：3秒だけ「北が上」でルート全体を見せて、もとにもどる
-let ovUntil = 0, ovZoom = 16, ovT = null;
-const ovOn = () => Date.now() < ovUntil;
-$("addr").onclick = () => {
-  if (!follow || !me) return;
-  if (!ovOn()) ovZoom = map.getZoom();
-  ovUntil = Date.now() + 3000; applyBearing();
-  const here = me.getLatLng(), bb = cur && cur.nav && cur.nav.length > 1 ? L.latLngBounds(cur.nav).extend(here) : here.toBounds(4000);
-  map.fitBounds(bb, { padding: [50, 50], animate: true });
-  clearTimeout(ovT);
-  ovT = setTimeout(() => { ovUntil = 0; applyBearing(); if (follow && me) map.setView(me.getLatLng(), ovZoom, { animate: true }); }, 3000);
-};
+// 🗺 住所をタップ：北が上でルート全体を見せる。もう一回タップでもとにもどる
+let ovMode = false, ovZoom = 16;
+const ovOn = () => ovMode;
+function ovSet(on) {
+  if (on === ovMode) return;
+  ovMode = on; document.body.classList.toggle("ov", on); applyBearing();
+  if (on) {
+    ovZoom = map.getZoom();
+    const here = me.getLatLng(), bb = cur && cur.nav && cur.nav.length > 1 ? L.latLngBounds(cur.nav).extend(here) : here.toBounds(4000);
+    map.fitBounds(bb, { padding: [50, 50], animate: true });
+  } else if (follow && me) map.setView(me.getLatLng(), ovZoom, { animate: true });
+}
+$("addr").onclick = () => { if (follow && me) ovSet(!ovMode); };
 function applyBearing() {
   const b = headUp && heading != null && !ovOn() ? -heading : 0;
   if (headUp) $("dirL").textContent = heading == null ? "動くと回るよ" : "進む向きが上";
@@ -1693,6 +1695,7 @@ $("dir").onclick = () => {
 };
 // ナビ中は地図を動かせない（拡大・縮小だけ。自分の位置を中心に）。◎をもう一度押すまで解除しない
 function setFollow(on) {
+  if (!on && ovMode) { ovMode = false; document.body.classList.remove("ov"); }
   follow = on; document.body.classList.toggle("navi", on);
   $("gps").classList.toggle("on", on);
   $("gpsL").classList.toggle("on", on); $("gpsL").textContent = on ? "現在地に固定中" : wid !== null ? "押すと固定" : "現在地";
