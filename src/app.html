@@ -883,7 +883,9 @@ worker.onmessage = ev => {
 // ---------- 計算の「お仕事」と、途中からの再開 ----------
 let job = null;   // { g, cfg, prefix: 続きを計算するときの、もう決まっているルート }
 function sumKinds(a, b) { const o = { ...(a || {}) }; for (const [k, v] of Object.entries(b || {})) o[k] = (o[k] || 0) + v; return o; }
+let viaPick = null;   // ルートタブの「経由」：{ p, name }（📣 SNS で「○○ 着」にするため）
 function midStops(st) {   // 🎯 寄り道スポットの名前をつける
+  if (viaPick && !(st || []).some(q => hav(q.p, viaPick.p) < 300)) st = [...(st || []), { p: viaPick.p, kind: "via", name: viaPick.name }];
   if (!st || !midPick) return st;
   return st.map(q => q.kind === "via" && hav(q.p, midPick.p) < 300 ? { ...q, name: "🎯 " + midPick.ic + " " + midPick.name, mid: 1, mtype: midPick.type } : q);
 }
@@ -1036,7 +1038,7 @@ $("go").onclick = async () => {
     addLog(`  出発 → ${sn}（${s[0].toFixed(5)},${s[1].toFixed(5)}）`, "m");
     if (LK) {   // 1周：出発のまわりを三角形にまわる。経由地が入っていれば、そこを通る1周
       let [v, vn] = viaT ? await geocode(viaT) : [null, ""];
-      midPick = null; midNone = false;
+      midPick = null; midNone = false; viaPick = null;
       if (!v && $("msnType").value !== "none") {
         if (LK === "auto") LK = 10;
         lastProg = { stage: 1, msg: "🎯 寄り道スポットをさがし中" }; showProg();
@@ -1070,6 +1072,7 @@ $("go").onclick = async () => {
     // 「現在地」「地図の地点」のままだと、あとで見てもどこかわからないので、町名にする
     const [sName, gName] = await Promise.all([placeName(fromT, s), placeName(toT, g)]);
     const vName = v ? await placeName(viaT, v) : "";
+    viaPick = v ? { p: v, name: vName } : null;
     pendingName = sName + " → " + gName + (v ? `（${vName}経由）` : "");
     addLog(`  ルート名: ${pendingName}`, "m");
     for (const [a, b, t] of v ? [[s, v, "出発と経由地"], [v, g, "経由地と到着"]] : [[s, g, "出発と到着"]])
@@ -1519,7 +1522,7 @@ async function snsData() {
     for (const e of ride.ev) {
       const hidden = e.p && inZones(e.p, zs);
       if (e.k === "start") continue;   // 出発の時刻は出さない（家を出た時刻がわかるので）
-      else if (e.k === "stop") L.push(`${e.name.replace(/^🎯\s*/, "")} 着`);   // 時刻は出さない
+      else if (e.k === "stop" && !hidden) L.push(`${e.name.replace(/^🎯\s*/, "").replace(/^\d+\.\s*/, "")} 着`);   // 時刻は出さない
       else if (e.k === "stamp" && !hidden) L.push(`🏁 ${e.name}`);
       else if (e.k === "goal") L.push(hidden || !e.name ? "帰着" : e.name + " 着");
     }
@@ -2402,6 +2405,7 @@ async function qTour(id, back, skipDone) {
     showTab("route");
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip(back ? "出発・到着" : "出発");
     map.fitBounds([s, ...order.map(p => [p[1], p[2]])], { padding: [40, 40] });
+    viaPick = null; midPick = null;
     startJob(s, back ? s : [order[order.length - 1][1], order[order.length - 1][2]], structuredClone(cfg), null, 0, null, null,
       { tour: order.map(p => [p[1], p[2], qLabel(p)]), back });
   } catch (e) { setMsg(e.message, true); }
