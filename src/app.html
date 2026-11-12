@@ -804,7 +804,8 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   job = { g, cfg: jcfg, prefix: prefix || null, loop: loop || 0 };
   drawPreview(null);
   if (!prefix) {   // 新しいルート：古いルートは画面から消す（ナビの「のこり」もまちがえないように）
-    cur = null; cum = [];
+    cur = null; cum = []; navAlong = null;
+    try { flowStop(); guideStop(); flowBtns(); } catch {}   // 前のルートのボールも消す
     $("result").style.display = "none"; $("share").style.display = "none"; $("qr").style.display = "none";
     $("nav").style.display = "none"; legend(null);
   }
