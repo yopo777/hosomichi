@@ -90,6 +90,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #gps.on{background:#1a73e8;color:#fff}
 #gpsL{position:absolute;top:calc(50% + 148px);right:4px;z-index:1000;width:76px;text-align:center;font-size:11px;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff;pointer-events:none;white-space:nowrap}
 #gpsL.on{color:#1a73e8;font-weight:bold}
+body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;font-weight:bold}   /* 本当の場所じゃないことがわかるように */
 #dir{position:absolute;top:calc(50% + 34px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0;display:none}
 #dir.on{background:#1a73e8}
@@ -160,7 +161,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1711</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1715</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2175,7 +2176,7 @@ function geoErrText(e) {
 }
 function onGeoErr(e) {
   addLog(`現在地エラー: code=${e && e.code} ${e && e.message}`, "e");
-  if (wid !== null) navigator.geolocation.clearWatch(wid);
+  if (wid !== null && wid >= 0) navigator.geolocation.clearWatch(wid);
   wid = null; follow = false; ovMode = false; document.body.classList.remove("navi", "ov"); $("homeD").style.display = "none"; $("gps").classList.remove("on"); $("gpsL").classList.remove("on"); $("gpsL").textContent = "現在地"; $("dir").style.display = "none";
   map.dragging.enable();
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
@@ -2183,7 +2184,20 @@ function onGeoErr(e) {
 }
 // 現在地：◎で取れている新しい位置があればそれを使う。なければ GPS（10秒）→ だめなら Wi-Fi などのおおまかな位置（数分前のものでもOK）
 let hereFix = null;   // [[緯度, 経度], 時刻, 精度m]（onPos で入れる）
+// 🧪 ためしの現在地（デバッグ用・SNSに画面を見せるとき家がばれないように）。地図を長おし →「ここを現在地にする」
+let fakePos = lsGet("hosomichi_fake", null);
+const fakeUi = () => document.body.classList.toggle("fake", !!fakePos);
+fakeUi();
+function feedFake() { if (fakePos) onPos({ coords: { latitude: fakePos[0], longitude: fakePos[1], accuracy: 5, heading: null, speed: null }, timestamp: Date.now() }); }
+function setFake(p) {
+  fakePos = p; lsSet("hosomichi_fake", p); fakeUi();
+  if (wid === null) return;
+  if (p) { if (wid >= 0) navigator.geolocation.clearWatch(wid); wid = -1; feedFake(); }               // 動いていたGPSは止めて、ためしの場所へ
+  else { wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 }); }   // 本当のGPSにもどす
+  addLog(p ? `🧪 ためしの現在地: ${p[0].toFixed(5)},${p[1].toFixed(5)}` : "🧪 本当の現在地にもどしたよ", "m");
+}
 function getHere(timeout = 10000) {
+  if (fakePos) return Promise.resolve(fakePos.slice());
   if (hereFix && Date.now() - hereFix[1] < 60000 && hereFix[2] < 100) return Promise.resolve(hereFix[0]);
   const once = opt => new Promise((ok, ng) => navigator.geolocation.getCurrentPosition(ok, ng, opt));
   return new Promise(async (ok, ng) => {
@@ -3198,12 +3212,14 @@ function openStreetView(ll) {
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
-    + "<button data-home='1'>🏠 ここを家にする</button><br>"
+    + "<button data-home='1'>🏠 ここを家にする</button><button data-fake='1'>🧪 ここを現在地にする</button><br>"
+    + (fakePos ? "<button data-fake='0' style='color:#1a73e8'>🧪 本当の現在地にもどす</button><br>" : "")
     + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button>";
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
     if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), ev.target.dataset.b); map.closePopup(pop); return; }   // 🚫／⚠ その場でつける
     if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
+    if (ev.target.dataset.fake) { L.DomEvent.stopPropagation(ev); setFake(ev.target.dataset.fake === "1" ? [+ll.lat.toFixed(6), +ll.lng.toFixed(6)] : null); map.closePopup(pop); return; }
     if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
@@ -3400,8 +3416,11 @@ $("ringOn").onchange = () => { ringOn = $("ringOn").checked; lsSet("hosomichi_ri
 async function wake() { try { lock = await navigator.wakeLock.request("screen"); } catch {} }
 $("gps").onclick = () => {
   if (wid === null) {
-    if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
-    wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 });
+    if (fakePos) { wid = -1; setTimeout(feedFake); }   // 🧪 ためしの現在地
+    else {
+      if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
+      wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 });
+    }
     setFollow(true); wake();
     audioUnlock(); if (vcOn) say(cur && cur.nav ? "音声案内を始めます" : "現在地を表示します");
     $("dir").style.display = "block";
