@@ -1670,17 +1670,19 @@ async function snsData() {
   L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !hideP(q.p));
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
-  return { runs, stops: here ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: L.join("\n"), sub, none: !useRide, link, here, dir };
+  return { runs, stops: here ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: L.join("\n"), sub, none: !useRide, link, here, dir,
+    big: useRide && !riding ? (hideP(pts[pts.length - 1], pts.length - 1) ? "帰宅しました" : "ゴールしました") : "" };   // 走り終わったら地図に大きく
 }
-async function snsImage({ runs, stops, sub, here, dir }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所
+async function snsImage({ runs, stops, sub, here, dir, big }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所
   const W = 1200, H = 1200, PAD = 140, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : []);
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
   g.fillStyle = "#f2efe9"; g.fillRect(0, 0, W, H);
   if (all.length) {
     let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; for (const [a, o] of all) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, o); lo1 = Math.max(lo1, o); }
     const wx = (lo, z) => (lo + 180) / 360 * 256 * 2 ** z, wy = (la, z) => { const s = Math.sin(la * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256 * 2 ** z; };
-    let z = 17; while (z > 5 && (wx(lo1, z) - wx(lo0, z) > W - 2 * PAD || wy(la0, z) - wy(la1, z) > H - 2 * PAD - 120)) z--;
-    const cx = (wx(lo0, z) + wx(lo1, z)) / 2, cy = (wy(la0, z) + wy(la1, z)) / 2 + 50, ox = cx - W / 2, oy = cy - H / 2;
+    const TOP = big ? 150 : 0;   // 上に大きい文字を入れるときは、そのぶん地図を下に
+    let z = 17; while (z > 5 && (wx(lo1, z) - wx(lo0, z) > W - 2 * PAD || wy(la0, z) - wy(la1, z) > H - 2 * PAD - 120 - TOP)) z--;
+    const cx = (wx(lo0, z) + wx(lo1, z)) / 2, cy = (wy(la0, z) + wy(la1, z)) / 2 + 50 - TOP / 2, ox = cx - W / 2, oy = cy - H / 2;
     const X = p => [wx(p[1], z) - ox, wy(p[0], z) - oy];
     // 地図：CyclOSM（自転車用）。読めない（CORSなど）ときは 国土地理院 淡色 にする
     const TILES = [["https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", "地図：© OpenStreetMap contributors / CyclOSM"], ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", "地図：国土地理院"]];
@@ -1727,6 +1729,11 @@ async function snsImage({ runs, stops, sub, here, dir }) {   // 1200×1200 の�
       g.fillStyle = "#1a73e8"; g.beginPath(); g.arc(x, y, 20, 0, 7); g.fill(); g.lineWidth = 7; g.strokeStyle = "#fff"; g.stroke();
       g.font = "bold 38px sans-serif"; g.textBaseline = "middle"; g.lineWidth = 9; g.strokeStyle = "#fff"; g.strokeText("いまここ", x + 34, y + 30); g.fillStyle = "#1a73e8"; g.fillText("いまここ", x + 34, y + 30);
     }
+  }
+  if (big) {   // 🏠 帰宅しました／🏁 ゴールしました
+    g.save(); g.font = "bold 110px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.lineJoin = "round"; g.lineWidth = 22; g.strokeStyle = "#fff"; g.strokeText(big, W / 2, 130);
+    g.fillStyle = big === "帰宅しました" ? "#188038" : "#d93025"; g.fillText(big, W / 2, 130); g.restore();
   }
   g.fillStyle = "#ffffffe8"; g.fillRect(0, H - 120, W, 120);
   g.fillStyle = "#222"; g.font = "bold 46px sans-serif"; g.textBaseline = "middle"; g.fillText("🚲 " + sub, 36, H - 70);
