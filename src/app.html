@@ -1497,8 +1497,9 @@ $("simGo").onclick = () => {
   }, dt);
 };
 // ---------- 📣 SNS：公開用の地図画像＋投稿文。投稿はXなどでじぶんで（アプリは勝手に投稿しない） ----------
-const SNS_R_OPTS = [100,200,500,1000,2000,3000,5000,10000,20000,30000], snsRName = m => m >= 1000 ? m / 1000 + "km" : m + "m";
-let snsR = lsGet("hosomichi_snsR", 2000);
+const SNS_R_OPTS = [1000,2000,3000,5000,10000,20000,30000],   // 最低1km・はじめは5km（トラブルをさけるため）
+  snsRName = m => m >= 1000 ? m / 1000 + "km" : m + "m";
+let snsR = Math.max(1000, lsGet("hosomichi_snsR", 5000));
 function snsROpts(el) { el.innerHTML = SNS_R_OPTS.map(m => `<option value="${m}"${m === snsR ? " selected" : ""}>${snsRName(m)}</option>`).join(""); }
 snsROpts($("snsR")); $("snsR").onchange = () => { snsR = +$("snsR").value; lsSet("hosomichi_snsR", snsR); };
 const SNS_MAX = 280 - 100 - 4;   // 自分のコメント（日本語50文字＝100）を書けるように、あけておく
