@@ -521,6 +521,7 @@ async function loopRoute(req, prog) {
       }
     } else {
       // 経由地あり：出発と経由地のまん中から左右に見えない点を出す。①左に三角形 ②右に三角形 ③行きは左・帰りは右（ひし形）
+      // 三角形は「遠まわりして経由地 → まっすぐ帰る」の順（経由地が 半分より後ろ に来るように。着いてひと休みしたら帰るだけ）
       // 目標が短すぎるときは 経由地まで行って別の道で帰る
       let kf = 1.25;   // 道のり ≒ 図形の周り × kf。1本目の結果で合わせる
       const ex = (V[1] - s[1]) * c0 * M, ny = (V[0] - s[0]) * M, mid = [(s[0] + V[0]) / 2, (s[1] + V[1]) / 2];
@@ -537,7 +538,7 @@ async function loopRoute(req, prog) {
             break;
           }
           const h = Math.sqrt(h2), W = off(mid, k === "L" ? 1 : -1, h);
-          await runCand(k === "L" ? "経由地へ行って左まわりで帰る" : "経由地へ行って右まわりで帰る", [Vp, W], ci, plan.length);
+          await runCand(k === "L" ? "左まわりで経由地へ行って帰る" : "右まわりで経由地へ行って帰る", [W, Vp], ci, plan.length);
         } else {
           const h2 = (P / 4) ** 2 - dV * dV / 4;
           if (h2 <= (dV * 0.15) ** 2) continue;
