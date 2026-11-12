@@ -152,7 +152,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <body>
 <div id="map"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0026</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.0923</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3186,7 +3186,7 @@ function setFollow(on) {
   if (on) { map.dragging.disable(); if (me) map.setView(me.getLatLng(), Math.max(map.getZoom(), 16)); }
   else map.dragging.enable();
   $("cdot").style.display = on ? "none" : "";
-  try { flowPrep(); } catch {}   // ルートのボール：現在地に固定中は止める   // まん中の黒い点は、現在地に固定中はいらない
+  try { flowBurstEnd = 0; flowPrep(); if (on) setTimeout(flowBurst, 3000); } catch {}   // ルートのボール：現在地に固定中は30秒ごとに5秒だけ（固定してすぐ1回）   // まん中の黒い点は、現在地に固定中はいらない
   try { spotUpdate(true); } catch {}   // まわりのスポット：固定（現在地のまわり）⇔ 見えている地図の中 を切りかえ
 }
 document.addEventListener("visibilitychange", () => { if (wid !== null && document.visibilityState === "visible") wake(); });
@@ -3816,9 +3816,24 @@ $("fl").onclick = () => {
   flowOn = flowMode !== "off"; flowRev = flowMode === "rev"; flowPrep();
 };
 function flowStop() { cancelAnimationFrame(flowRaf); flowRaf = 0; flowLayer.clearLayers(); flowBalls = []; }
+// 現在地に固定中（走っているとき）は、ずっとは動かさず、30秒ごとに5秒だけ流す（電池にやさしく）
+let flowBurstEnd = 0;
+const FLOW_EVERY = 30000, FLOW_FOR = 5000;
 function flowPrep() {
+  const fixed = follow && me;
+  if (fixed && performance.now() < flowBurstEnd) return;   // 走りながら流している最中：地図が動いても止めない
   flowStop(); flowBtns();
-  if (!flowOn || !cur || !cur.route || cur.route.length < 2 || (follow && me) || document.hidden) return;
+  if (!flowOn || !cur || !cur.route || cur.route.length < 2 || fixed || document.hidden) return;
+  flowBuild();
+}
+function flowBurst() {
+  if (!(follow && me) || !flowOn || !cur || !cur.route || cur.route.length < 2 || document.hidden) return;
+  flowStop(); flowBuild();
+  flowBurstEnd = performance.now() + FLOW_FOR;
+  setTimeout(() => { if (follow && me && performance.now() >= flowBurstEnd - 50) flowStop(); }, FLOW_FOR);
+}
+setInterval(flowBurst, FLOW_EVERY);
+function flowBuild() {
   const R = cur.route, b = map.getBounds().pad(0.1), runs = []; let run = null;
   for (let i = 0; i < R.length; i++) {   // ルートのうち、見えている所のつながり（何回も通る所は、それぞれ別に）
     if (b.contains(R[i])) { if (!run) { run = i > 0 ? [R[i - 1]] : []; } run.push(R[i]); }
@@ -3848,7 +3863,7 @@ function flowTick(now) {
     f.m.setLatLng([a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u]);
   }
 }
-map.on("movestart zoomstart", flowStop);
+map.on("movestart zoomstart", () => { if (!(follow && me && performance.now() < flowBurstEnd)) flowStop(); });
 map.on("moveend", () => flowPrep());
 document.addEventListener("visibilitychange", () => document.hidden ? flowStop() : flowPrep());
 
