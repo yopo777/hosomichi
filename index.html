@@ -168,7 +168,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2016</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2031</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -248,12 +248,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div class="row" style="margin-top:4px"><label style="width:auto">家から</label><select id="snsR" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px"></select><span style="font-size:12px">以内は出さない</span></div>
         <div style="font-size:11px;color:#666">地図の線も、通った所・着いた所の名前も、この中は出さないよ（家を決めていないときは出発から）</div>
       </div>
-      <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <b>🧪 ためし走行</b>
-        <div style="font-size:11px;color:#666;margin-top:2px">今のルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div>
-        <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
-          <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">■ 止める</button></div>
-      </div>
       </div>
     </div>
     <div id="tabLog" style="display:none">
@@ -279,6 +273,12 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <button class="ib" id="bSns">📣 SNS</button>
         <button class="ib" id="bNew" style="display:none">✏ 新しく作る</button>
         <button class="ib" id="bResume" style="display:none;flex-basis:100%;border-color:#188038;color:#188038;font-weight:bold">▶ 続きを計算</button>
+      </div>
+      <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <b>🧪 ためし走行</b>
+        <div style="font-size:11px;color:#666;margin-top:2px">このルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。一時停止して、つづきから走れるよ。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div>
+        <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
+          <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
       </div>
       <div id="share">
         <div>出発地のまわりを隠す
@@ -3105,22 +3105,24 @@ $("shareName").oninput = updateShare;
 $("bCopy").onclick = async () => { updateShare(); if (!confirmShare()) return; try { await navigator.clipboard.writeText($("url").value); $("bCopy").textContent = "コピーしたよ！"; } catch { $("url").select(); document.execCommand("copy"); } setTimeout(() => $("bCopy").textContent = "コピー", 1500); };
 $("bSys").onclick = () => { updateShare(); if (!confirmShare()) return; if (navigator.share) navigator.share({ title: "細道ルート", url: $("url").value }).catch(() => {}); else $("bCopy").click(); };
 // ---------- 🧪 ためし走行：ルートの上を ためしの現在地 で自動で動かす ----------
-let simT = null;
-function simStop() { clearInterval(simT); simT = null; if (fakePos) lsSet("hosomichi_fake", fakePos); $("simGo").textContent = "▶ 走る"; }
-$("simStop").onclick = simStop;
+let simT = null, simD = 0, simFor = null;
+function simPause() { clearInterval(simT); simT = null; if (fakePos) lsSet("hosomichi_fake", fakePos); $("simGo").textContent = simD > 0 ? "▶ つづきから" : "▶ 走る"; }
+$("simStop").onclick = () => { simPause(); simD = 0; simFor = null; $("simGo").textContent = "▶ 走る"; };
 $("simGo").onclick = () => {
-  if (simT) return simStop();
+  if (simT) return simPause();
   if (!cur || !cur.nav || cur.nav.length < 2) return alert("先にルートを作ってね");
   const R = cur.nav, c = [0]; for (let i = 1; i < R.length; i++) c.push(c[i - 1] + hav(R[i - 1], R[i]));
   const at = d => { let i = 1; while (i < c.length - 1 && c[i] < d) i++; const u = Math.min(1, (d - c[i - 1]) / ((c[i] - c[i - 1]) || 1)); return [R[i - 1][0] + (R[i][0] - R[i - 1][0]) * u, R[i - 1][1] + (R[i][1] - R[i - 1][1]) * u]; };
-  setFake(R[0].slice()); lsSet("hosomichi_geook", lsGet("hosomichi_geook", false));
+  if (simFor !== cur || simD >= c[c.length - 1]) { simFor = cur; simD = 0; }   // ルートが変わった・最後まで走った → はじめから
+  setFake(at(simD));
   if (wid === null) $("gps").onclick(); else feedFake();
-  let d = 0; const v = +$("simSp").value, dt = 250;   // v: m/秒
-  $("simGo").textContent = "⏸ 止める"; $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+  const dt = 250;
+  $("simGo").textContent = "⏸ 一時停止"; $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   simT = setInterval(() => {
-    d += v * dt / 1000; if (d >= c[c.length - 1]) { d = c[c.length - 1]; }
-    fakePos = at(d); feedFake();
-    if (d >= c[c.length - 1]) { simStop(); addLog("🧪 ためし走行おわり", "ok"); }
+    const v = +$("simSp").value;   // m/秒（走っている途中で速さを変えてもOK）
+    simD = Math.min(c[c.length - 1], simD + v * dt / 1000);
+    fakePos = at(simD); feedFake();
+    if (simD >= c[c.length - 1]) { simPause(); $("simGo").textContent = "▶ 走る"; addLog("🧪 ためし走行おわり", "ok"); }
   }, dt);
 };
 // ---------- 📣 SNS：公開用の地図画像＋投稿文。投稿はXなどでじぶんで（アプリは勝手に投稿しない） ----------
