@@ -315,6 +315,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="homeD" style="position:absolute;left:50%;bottom:36px;transform:translateX(-50%);z-index:1000;font-size:12px;font-weight:bold;color:#1a73e8;background:#fffffff0;border:1px solid #1a73e8;border-radius:12px;padding:2px 10px;white-space:nowrap;display:none;cursor:pointer"></div>
 <div id="blk" style="position:fixed;inset:0;z-index:5000;background:#000;color:#555;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-size:20px;font-weight:bold;text-align:center;padding:20px;touch-action:none">
   <div id="blkNav"></div><div id="blkAddr" style="font-size:16px"></div><div style="font-size:12px;color:#333;margin-top:20px">タッチで地図にもどるよ</div></div>
+<button id="rjBtn" style="display:none;position:absolute;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom));z-index:1001;padding:10px 16px;border:none;border-radius:999px;background:#1a73e8;color:#fff;font-size:15px;font-weight:bold;box-shadow:0 2px 10px #0005;white-space:nowrap">↩ ルートにもどる</button>
 <div id="addr" style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:1000;font-size:11px;color:#333;background:#ffffffcc;border-radius:6px;padding:1px 6px;pointer-events:none;white-space:nowrap;display:none"></div>
 <div id="qr" style="display:none;position:fixed;inset:0;z-index:3000;background:#fff;overflow:auto;text-align:center;padding:12px"></div>
 <button id="dir" title="地図の向き"><svg id="needle" width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 20,15 10,15" fill="#d93025"/><polygon points="15,28 20,15 10,15" fill="#999"/><text x="15" y="13" font-size="7" text-anchor="middle" fill="#fff" font-weight="bold">N</text></svg><small id="dirL">北が上</small></button>
@@ -823,6 +824,10 @@ worker.onmessage = ev => {
     $("stv").textContent = `${m.n}件・${(m.bytes / 1048576).toFixed(1)} MB（1年で自動更新）`;
     cachedKeys = m.keys || []; drawArea();
     return;
+  }
+  if (job && job.rejoin) {   // ↩ ルートにもどる道：とちゅうのルートは出さない
+    if (m.type === "partial" || m.type === "short") return;
+    if (m.type === "done" || m.type === "error" || m.type === "stopped") { rejoinEnd(m); return; }
   }
   if (m.type === "short") {   // あとから届く「ただの最短」
     if (cur && !cur.short) { cur.short = m.short; cur.slen = m.slen; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); }
@@ -1985,7 +1990,7 @@ function onPos(p) {
     nav.textContent = (rest < 30 && !cur.partial ? "🎉 とうちゃく！" : `のこり ${cur.partial ? "約" : ""}${fmtKm(rest)}` + (cur.partial ? "（計算中）" : ""))
       + (off > 60 ? `　⚠ ルートから ${Math.round(off)}m` : "");
     try { vcNav(off, rest); } catch {}
-    tripBar(rest);
+    tripBar(rest); try { backHint(off); } catch {}
   }
 }
 // ---------- 🗣 音声ナビ（ルートの線の曲がりぐあいから「曲がる所」を見つけて、近づいたらしゃべる） ----------
@@ -2035,12 +2040,55 @@ function vcFromShape() {   // 古いルート・共有URL用：前後20mの向�
   }
   return out;
 }
+// ---------- ↩ ミスコースのあと：①もどる方向を点線と声で ②「ルートにもどる」ボタンで、少し先のルートに合流する道を作る ----------
+const backLayer = L.layerGroup().addTo(map);
+function backNear() { return navAlong == null ? null : vcAt(navAlong); }
+function backWord(off) {   // 「ルートは右の方向、200メートルです」
+  const q = backNear(); if (!q || !me) return "";
+  const h = [me.getLatLng().lat, me.getLatLng().lng], b = bearingDeg(h, q), m = Math.max(50, Math.round(off / 50) * 50);
+  if (heading == null) return `ルートまで${m}メートルです`;
+  const d = ((b - heading + 540) % 360) - 180, a = Math.abs(d);
+  return `ルートは${a < 35 ? "前" : a > 145 ? "うしろ" : d > 0 ? "右" : "左"}の方向、${m}メートルです`;
+}
+function backHint(off) {
+  const show = follow && me && off > 60 && cur && !cur.partial;
+  backLayer.clearLayers();
+  $("rjBtn").style.display = show && !(job && job.rejoin) ? "block" : "none";
+  if (!show) return;
+  const q = backNear(); if (q) L.polyline([me.getLatLng(), q], { color: "#1a73e8", weight: 4, dashArray: "6 8", opacity: .9, interactive: false }).addTo(backLayer);
+  $("rjBtn").textContent = `↩ ルートにもどる（${fmtKm(off)}）`;
+}
+$("rjBtn").onclick = () => {
+  if (!cur || !me || (job && !job.rejoin && $("go").disabled)) return;
+  const old = cur, R = old.route, h = [me.getLatLng().lat, me.getLatLng().lng];
+  let ti = cum.findIndex(c => c >= (navAlong || 0) + 400); if (ti < 0 || ti >= R.length) ti = R.length - 1;   // 400m先で合流
+  job = { g: R[ti], cfg: structuredClone(cfg), prefix: null, loop: 0, rejoin: { old, ti } };
+  $("rjBtn").style.display = "none"; setMsg("↩ ルートにもどる道をさがしているよ…"); addLog("↩ ルートにもどる道をさがすよ（400m先で合流）", "h");
+  $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: "↩ ルートにもどる道" };
+  clearInterval(tickTimer); tickTimer = setInterval(showProg, 250);
+  worker.postMessage({ s: h, g: R[ti], cfg: job.cfg, blocks: blocks.filter(b => b.r !== "a").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), loop: 0, poi: null, via: null });
+};
+function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルート
+  const { old, ti } = job.rejoin; job = null;
+  clearInterval(tickTimer); $("go").disabled = $("msnGo").disabled = false; $("stop").style.display = "none";
+  if (m.type !== "done") { setMsg(m.type === "error" ? "もどる道が見つからなかったよ：" + m.msg : "止めたよ", m.type === "error"); return; }
+  const rest = old.route.slice(ti), mr = m.route || [];
+  let rl = 0; for (let i = 1; i < rest.length; i++) rl += hav(rest[i - 1], rest[i]);
+  const kc = old.kc && m.ek ? m.ek.map(catOf).concat([old.kc[ti - 1] ?? old.kc[ti] ?? catOf(m.ek[m.ek.length - 1])], old.kc.slice(ti)) : null;
+  const tp = old.tp && m.tp ? m.tp.concat(old.tp.filter(t => rest.some(q => hav(q, t) < 3))) : null;
+  const n = { ...old, route: mr.concat(rest), kc, ek: undefined, tp, opts: null, short: null, slen: 0, resume: null, partial: false, tent: null,
+    ok: (m.ok || []).concat(old.ok || []), xw: (m.xw || []).concat(old.xw || []), ng: (m.ng || []).concat(old.ng || []), len: (m.len || 0) + rl };
+  if (kc && kc.length !== n.route.length - 1) n.kc = null;
+  showRoute(n, false); lsSet(LKEY, packRoute(n));
+  setMsg(`↩ ルートにもどる道を作ったよ（合流まで ${fmtKm(m.len || 0)}）`); addLog(`↩ 合流まで ${fmtKm(m.len || 0)}`, "ok");
+  if (vcOn) say("ルートにもどる道を作ったよ");
+}
 function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a < 60 ? "ななめ" + lr : a < 150 ? lr : "大きく" + lr; }
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
   const say = t => { if (vcOn) window.say(t); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
   if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; }
-  if (off > 60) { if (!vcOff) { vcOff = true; if (vcOn) { boo(); setTimeout(() => say("ルートから外れています"), 700); } } blkShowMap(5000); return; }
+  if (off > 60) { if (!vcOff) { vcOff = true; if (vcOn) { boo(); const w = backWord(off); setTimeout(() => say("ルートから外れています。" + w), 700); } } blkShowMap(5000); return; }
   if (off < 30) vcOff = false;
   if (!cur.partial && rest < 30) { if (!vcEnd) { vcEnd = true; say("とうちゃくです。おつかれさまでした"); blkShowMap(60000); } return; }
   if (me && cur.stops) for (const q of cur.stops) if (q.mid && !q.said) {
@@ -2131,7 +2179,7 @@ $("dir").onclick = () => {
 // ナビ中は地図を動かせない（拡大・縮小だけ。自分の位置を中心に）。◎をもう一度押すまで解除しない
 function setFollow(on) {
   if (!on && ovMode) { ovMode = false; document.body.classList.remove("ov"); }
-  follow = on; document.body.classList.toggle("navi", on);
+  follow = on; document.body.classList.toggle("navi", on); if (!on) { try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {} }
   $("gps").classList.toggle("on", on);
   $("gpsL").classList.toggle("on", on); $("gpsL").textContent = on ? "現在地に固定中" : wid !== null ? "押すと固定" : "現在地";
   const z = on ? "center" : true;
