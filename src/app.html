@@ -248,8 +248,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div class="note" style="margin-top:8px">🏠 家・🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）して決めるよ</div>
       <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>📣 SNSに出さない範囲</b>
-        <div class="row" style="margin-top:4px"><label style="width:auto">家から</label><select id="snsR" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px"></select><span style="font-size:12px">以内は出さない</span></div>
-        <div style="font-size:11px;color:#666">地図の線も、通った所・着いた所の名前も、この中は出さないよ（家を決めていないときは出発から）</div>
+        <div class="row" style="margin-top:4px"><label style="width:auto">家のそばから道にそって</label><select id="snsR" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px"></select><span style="font-size:12px">は出さない</span></div>
+        <div style="font-size:11px;color:#666">地図の線も、通った所の名前も出さないよ。丸で消すと切れ目から家を推理されるので、道にそった距離で消すよ（家を決めていないときは出発から）</div>
       </div>
       </div>
     </div>
@@ -1509,7 +1509,7 @@ const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? m + "�
 const lineLen = pts => { let d = 0; for (let i = 1; i < pts.length; i++) d += hav(pts[i - 1], pts[i]); return d; };
 // 📍 通ったところ：走った道のそばの 駅・お寺・神社など を通った順に（家のまわりの丸の中はのぞく）
 const PASS_KINDS = { shrine: 40, temple: 40, castle: 60, kofun: 50, sight: 40, view: 40, spring: 40, fall: 50, michi: 60 };
-async function passList(rpts, zs) {
+async function passList(rpts, hid) {
   if (rpts.length < 2) return [];
   const keys = new Set(); for (const q of rpts) keys.add(Math.floor(q[0] / SPOT_T) + "_" + Math.floor(q[1] / SPOT_T));
   const tiles = await Promise.all([...keys].slice(0, 120).map(spotTile)), cand = [];
@@ -1521,20 +1521,38 @@ async function passList(rpts, zs) {
   } catch {}
   const seen = new Map();
   for (const c of cand) {
-    if (inZones(c.p, zs)) continue;
     let bi = -1, bd = c.r; for (let i = 0; i < rpts.length; i++) { const d = hav(rpts[i], c.p); if (d < bd) { bd = d; bi = i; } }
-    if (bi < 0) continue;
+    if (bi < 0 || hid(c.p, bi)) continue;
     const o = seen.get(c.name); if (!o || bi < o.i) seen.set(c.name, { ...c, i: bi, t: rpts[bi][2] });
   }
   return [...seen.values()].sort((a, b) => a.i - b.i);
 }
 const xLen = t => { let n = 0; for (const ch of t.replace(/https?:\/\/\S+/g, "x".repeat(23))) n += /[\u0000-\u10ff]/.test(ch) ? 1 : 2; return n; };   // Xの文字数（日本語は2）
+// 🔒 SNSで消す所：丸ではなく「ルートにそった距離」で消す（丸だと、切れ目から家の場所を推理できてしまうので）
+// 家（決めていないときは出発）の300m以内を通った所から、道にそって前後 R m（この端末だけの ずれ ×0.85〜1.25）を消す
+function snsHide(pts, R) {
+  const anchors = home ? [home] : pts.length ? [pts[0]] : [];
+  let j = lsGet("hosomichi_hidej", null); if (j == null) { j = 0.85 + Math.random() * 0.4; lsSet("hosomichi_hidej", j); }
+  const X = R * j, cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + hav(pts[i - 1], pts[i]));
+  const iv = []; for (let i = 0; i < pts.length; i++) if (anchors.some(a => hav(pts[i], a) < 300)) iv.push([cum[i] - X, cum[i] + X]);
+  const hidden = pts.map((_, i) => iv.some(([a, b]) => cum[i] >= a && cum[i] <= b));
+  const runs = []; let i0 = -1;
+  for (let i = 0; i <= pts.length; i++) {
+    const ok = i < pts.length && !hidden[i];
+    if (ok && i0 < 0) i0 = i; else if (!ok && i0 >= 0) { if (i - i0 > 1) runs.push(Object.assign(pts.slice(i0, i), { cutS: i0 > 0, cutE: i < pts.length })); i0 = -1; }
+  }
+  const hideP = (p, idx) => {   // その場所（ルートでいちばん近い点）が消す所なら true
+    if (idx == null) { let bd = 250; idx = -1; for (let i = 0; i < pts.length; i++) { const d = hav(pts[i], p); if (d < bd) { bd = d; idx = i; } } }
+    return idx < 0 ? anchors.some(a => hav(p, a) < X) : hidden[idx];
+  };
+  return { runs, hideP };
+}
 async function snsData() {
   const R = snsR;
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
   const riding = useRide && !ride.done && wid !== null;
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
-  const zs = pubZones(pts[0], pts[pts.length - 1], R, false, true), runs = pubRuns(pts, zs).map(([a, b]) => Object.assign(pts.slice(a, b), { cutS: a > 0, cutE: b < pts.length }));   // cutS/cutE：消した所で切れているはし（フェードアウトする）。SNSは今いる所・着いた所は出してOK（家のまわりと出発だけ消す）
+  const { runs, hideP } = snsHide(pts, R);   // runs の cutS/cutE：消した所で切れているはし（フェードアウトする）
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
   const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];
   const ymd = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
@@ -1544,8 +1562,8 @@ async function snsData() {
     // Xの文字数（280）に入るだけ、新しいものから入れて、表示は走った順（→）。家のまわりの所は出さない（「着」の行は出さない）
     const clean = n => n.replace(/^🎯\s*/, "").replace(/^\d+\.\s*/, "");
     const items = [];
-    for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp") && !(e.p && inZones(e.p, zs))) items.push({ t: e.t, name: clean(e.name) });
-    for (const c of await passList(ride.pts, zs).catch(() => [])) items.push({ t: c.t, name: c.name });
+    for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name) });
+    for (const c of await passList(ride.pts, hideP).catch(() => [])) items.push({ t: c.t, name: c.name });
     const seen = new Set(), list = items.sort((x, y) => x.t - y.t).filter(x => { const k = x.name.replace(/^\S+\s/, ""); if (seen.has(k)) return false; seen.add(k); return true; });
     const rest = [...L, "🗺 ルート共有link↓（開くだけなら位置情報は使いません）", SNS_URL, SNS_TAGS].join("\n"), pick = [];
     for (let i = list.length - 1; i >= 0; i--) {   // 新しいものから
@@ -1560,7 +1578,7 @@ async function snsData() {
   if (useRide && runs.length) {
     const best = runs.reduce((a, b) => (lineLen(b) > lineLen(a) ? b : a));
     if (best.length >= 2 && lineLen(best) > 300) {
-      const prm = new URLSearchParams(), mids = ride.ev.filter(e => e.k === "stop" && !(e.p && inZones(e.p, zs))).map(e => e.name.replace(/^🎯\s*\S+\s*/, ""));
+      const prm = new URLSearchParams(), mids = ride.ev.filter(e => e.k === "stop" && !(e.p && hideP(e.p))).map(e => e.name.replace(/^🎯\s*\S+\s*/, ""));
       prm.set("n", `${ymd} サイクリング` + (mids.length ? `（${mids.join("・")}）` : ""));
       prm.set("r", encPoly(simpRoute(best, null, 8).pts));
       link = location.origin + location.pathname + "#" + prm.toString();
@@ -1568,7 +1586,7 @@ async function snsData() {
     }
   }
   L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後
-  const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !inZones(q.p, zs));
+  const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !hideP(q.p));
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
   return { runs, stops, text: L.join("\n"), sub, none: !useRide, link };
 }
@@ -1635,7 +1653,7 @@ $("bSns").onclick = async () => {
   const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
-    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家から<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>以内は出さないよ<span style="font-size:11px">（家がまん中にならないように、少しずらした大きめの丸で。家を決めていないときは出発から）。投稿はXなどで自分でしてね</span></div>
+    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ<span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家を決めていないときは出発から）。投稿はXなどで自分でしてね</span></div>
     <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
     <textarea id="snsTxt"></textarea>
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
