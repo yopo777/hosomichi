@@ -1565,6 +1565,7 @@ function snsRSet(v) {   // 📣SNS・🔗共有URL・⚙設定 の3か所は同�
 snsROpts($("snsR")); snsROpts($("hide"));
 $("snsR").onchange = () => snsRSet(+$("snsR").value);
 $("hide").onchange = () => snsRSet(+$("hide").value);
+const SNS_TRAIL = 5000;   // 📣 いまここ の「来た道」の長さ
 const SNS_MAX = 280 - 100 - 4;   // 自分のコメント（日本語50文字＝100）を書けるように、あけておく
 const SNS_TAGS = "#サイクリング #ポタリング #細道ルートナビ", SNS_URL = "https://yopo777.github.io/hosomichi/";
 const hhmm = t => { const d = new Date(t); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); };
@@ -1616,7 +1617,16 @@ async function snsData() {
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
   const riding = useRide && !ride.done && wid !== null;
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
-  const { runs, hideP } = snsHide(pts, R);   // runs の cutS/cutE：消した所で切れているはし（フェードアウトする）
+  let { runs, hideP } = snsHide(pts, R);   // runs の cutS/cutE：消した所で切れているはし（フェードアウトする）
+  // 📍 いまここ：走っている途中で、今いる所が消す所でなければ、今いる所と「来た道」（さいごの5km）だけを見せる
+  let here = null, dir = null;
+  if (riding && pts.length > 1 && !hideP(pts[pts.length - 1], pts.length - 1)) {
+    here = pts[pts.length - 1];
+    let k = pts.length - 1; while (k > 0 && hav(pts[k], here) < 30) k--; dir = bearingDeg(pts[k], here);   // 進んでいる向き
+    const last = runs.find(r => r.i1 === pts.length);
+    if (last) { let d = 0, j = last.length - 1; while (j > 0 && d < SNS_TRAIL) { d += hav(last[j], last[j - 1]); j--; }
+      runs = [Object.assign(last.slice(j), { cutS: j > 0 || last.cutS, cutE: false })]; }
+  }
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
   const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];
   const ymd = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
@@ -1629,7 +1639,7 @@ async function snsData() {
     for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name) });
     for (const c of await passList(ride.pts, hideP).catch(() => [])) items.push({ t: c.t, name: c.name });
     const seen = new Set(), list = items.sort((x, y) => x.t - y.t).filter(x => { const k = x.name.replace(/^\S+\s/, ""); if (seen.has(k)) return false; seen.add(k); return true; });
-    const rest = [...L, "🗺 ルート共有link↓（開くだけなら位置情報は使いません）", SNS_URL, SNS_TAGS].join("\n"), pick = [];
+    const rest = [...L, SNS_URL, SNS_TAGS].join("\n"), pick = [];
     for (let i = list.length - 1; i >= 0; i--) {   // 新しいものから
       const line = "📍 " + [list[i], ...pick].map(x => x.name).join("→");
       if (xLen(rest + "\n" + line) > SNS_MAX) break;
@@ -1637,26 +1647,14 @@ async function snsData() {
     }
     if (pick.length) L.push("📍 " + pick.map(x => x.name).join("→"));
   }
-  // 🗺 公開用ルートのリンク：走ったところ（消す丸の外）のいちばん長い部分。開いた人はそのルートでナビできる
-  let link = SNS_URL;
-  if (useRide && runs.length) {
-    const best = runs.reduce((a, b) => (lineLen(b) > lineLen(a) ? b : a));
-    if (best.length >= 2 && lineLen(best) > 300) {
-      const prm = new URLSearchParams();
-      // 名前は入れない（開いた人には「共有されたルート」と出る）
-      prm.set("r", encPoly(simpRoute(best, null, 8).pts));
-      if (best.cutS || best.cutE) prm.set("x", (best.cutS ? "s" : "") + (best.cutE ? "e" : ""));
-      link = location.origin + location.pathname + "#" + prm.toString();
-      L.push("🗺 ルート共有link↓（開くだけなら位置情報は使いません）");
-    }
-  }
+  const link = SNS_URL;   // SNSは「今どこ・どっちから来たか」を見せるもの。ルート共有のリンクは入れない
   L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !hideP(q.p));
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
-  return { runs, stops, text: L.join("\n"), sub, none: !useRide, link };
+  return { runs, stops: here ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: L.join("\n"), sub, none: !useRide, link, here, dir };
 }
-async function snsImage({ runs, stops, sub }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所
-  const W = 1200, H = 1200, PAD = 140, all = runs.flat().concat(stops.map(q => q.p));
+async function snsImage({ runs, stops, sub, here, dir }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所
+  const W = 1200, H = 1200, PAD = 140, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : []);
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
   g.fillStyle = "#f2efe9"; g.fillRect(0, 0, W, H);
   if (all.length) {
@@ -1701,6 +1699,14 @@ async function snsImage({ runs, stops, sub }) {   // 1200×1200 の地図（国�
     for (const q of stops) {
       const [x, y] = X(q.p); g.fillStyle = "#e8710a"; g.beginPath(); g.arc(x, y, 16, 0, 7); g.fill(); g.lineWidth = 6; g.strokeStyle = "#fff"; g.stroke();
       g.lineWidth = 8; g.strokeStyle = "#fff"; g.strokeText(q.name, x + 26, y); g.fillStyle = "#222"; g.fillText(q.name, x + 26, y);
+    }
+    if (here) {   // 📍 いまここ（青い丸と、進んでいる向きの矢印）
+      const [x, y] = X(here), a = (dir || 0) * RAD;
+      g.save(); g.translate(x, y); g.rotate(a);
+      g.fillStyle = "#1a73e8"; g.strokeStyle = "#fff"; g.lineWidth = 6; g.beginPath(); g.moveTo(0, -46); g.lineTo(20, -18); g.lineTo(-20, -18); g.closePath(); g.fill(); g.stroke();
+      g.restore();
+      g.fillStyle = "#1a73e8"; g.beginPath(); g.arc(x, y, 20, 0, 7); g.fill(); g.lineWidth = 7; g.strokeStyle = "#fff"; g.stroke();
+      g.font = "bold 38px sans-serif"; g.textBaseline = "middle"; g.lineWidth = 9; g.strokeStyle = "#fff"; g.strokeText("いまここ", x + 34, y + 30); g.fillStyle = "#1a73e8"; g.fillText("いまここ", x + 34, y + 30);
     }
   }
   g.fillStyle = "#ffffffe8"; g.fillRect(0, H - 120, W, 120);
