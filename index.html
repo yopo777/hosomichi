@@ -168,7 +168,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2117</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2121</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3133,6 +3133,7 @@ const SNS_R_OPTS = [100,200,500,1000,2000,3000,5000,10000,20000,30000], snsRName
 let snsR = lsGet("hosomichi_snsR", 2000);
 function snsROpts(el) { el.innerHTML = SNS_R_OPTS.map(m => `<option value="${m}"${m === snsR ? " selected" : ""}>${snsRName(m)}</option>`).join(""); }
 snsROpts($("snsR")); $("snsR").onchange = () => { snsR = +$("snsR").value; lsSet("hosomichi_snsR", snsR); };
+const SNS_MAX = 280 - 100 - 4;   // 自分のコメント（日本語50文字＝100）を書けるように、あけておく
 const SNS_TAGS = "#サイクリング #ポタリング #細道ルートナビ", SNS_URL = "https://yopo777.github.io/hosomichi/";
 const hhmm = t => { const d = new Date(t); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); };
 const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? m + "分" : Math.floor(m / 60) + "時間" + (m % 60 ? (m % 60) + "分" : ""); };
@@ -3167,7 +3168,8 @@ async function snsData() {
   const zs = pubZones(pts[0], pts[pts.length - 1], R, false, true), runs = pubRuns(pts, zs).map(([a, b]) => Object.assign(pts.slice(a, b), { cutS: a > 0, cutE: b < pts.length }));   // cutS/cutE：消した所で切れているはし（フェードアウトする）。SNSは今いる所・着いた所は出してOK（家のまわりと出発だけ消す）
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
   const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];
-  const L = [`🚲 ${d.getMonth() + 1}/${d.getDate()}(${wd}) ${!useRide ? "これからポタリング" : riding ? "ポタリング中" : "ポタリング"}`];
+  const ymd = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+  const L = [`${ymd} ${!useRide ? "これからサイクリング" : riding ? "サイクリング中" : "サイクリング"}`];
   if (useRide) {
     // 📍 行った所：経由地・寄り道スポット・スタンプ・通った駅/お寺/神社 を時間順に。
     // Xの文字数（280）に入るだけ、新しいものから入れて、表示は走った順（→）。家のまわりの所は出さない（「着」の行は出さない）
@@ -3179,7 +3181,7 @@ async function snsData() {
     const rest = [...L, "🗺 ルート共有link↓（開くだけなら位置情報は使いません）", SNS_URL, SNS_TAGS].join("\n"), pick = [];
     for (let i = list.length - 1; i >= 0; i--) {   // 新しいものから
       const line = "📍 " + [list[i], ...pick].map(x => x.name).join("→");
-      if (xLen(rest + "\n" + line) > 276) break;
+      if (xLen(rest + "\n" + line) > SNS_MAX) break;
       pick.unshift(list[i]);
     }
     if (pick.length) L.push("📍 " + pick.map(x => x.name).join("→"));
@@ -3190,7 +3192,7 @@ async function snsData() {
     const best = runs.reduce((a, b) => (lineLen(b) > lineLen(a) ? b : a));
     if (best.length >= 2 && lineLen(best) > 300) {
       const prm = new URLSearchParams(), mids = ride.ev.filter(e => e.k === "stop" && !(e.p && inZones(e.p, zs))).map(e => e.name.replace(/^🎯\s*\S+\s*/, ""));
-      prm.set("n", `${d.getMonth() + 1}/${d.getDate()} ポタリング` + (mids.length ? `（${mids.join("・")}）` : ""));
+      prm.set("n", `${ymd} サイクリング` + (mids.length ? `（${mids.join("・")}）` : ""));
       prm.set("r", encPoly(simpRoute(best, null, 8).pts));
       link = location.origin + location.pathname + "#" + prm.toString();
       L.push("🗺 ルート共有link↓（開くだけなら位置情報は使いません）");
