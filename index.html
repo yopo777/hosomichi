@@ -119,6 +119,9 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #nav{position:absolute;bottom:calc(22px + env(safe-area-inset-bottom));right:10px;max-width:calc(40% - 10px);z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:4px 10px;font-size:14px;font-weight:bold;display:none;pointer-events:none;text-align:right}   /* 一番下・見えなくてもいい */
 #nav.off{color:#c00}
+#ring{position:absolute;inset:0;z-index:900;pointer-events:none;display:none;background:radial-gradient(circle closest-side at 50% 50%,transparent 96%,#000 100%)}   /* ⭕ まわりだけ表示（丸の外は黒） */
+body.navi.ring #ring{display:block}
+body.navi.ring button small{color:#ccc!important;text-shadow:0 0 3px #000!important}
 body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!important;background:#fffffff0!important;border-radius:10px!important;padding:3px 12px!important;box-shadow:0 2px 8px #0003!important;bottom:calc(64px + env(safe-area-inset-bottom))!important}   /* ナビ中（現在地に固定中）は住所を大きく */
 body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font-size:14px!important}
 .pin{font-size:13px}
@@ -154,8 +157,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 </head>
 <body>
 <div id="map"></div>
+<div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1419</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1423</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -201,6 +205,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="ecoOn">🔋 節電モード（ナビ中）</label>
         <div style="font-size:11px;color:#666;margin-top:2px">案内のボール・スポットの点滅を止めて、地図をすべらせずにパッと動かすよ</div>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="ringOn">⭕ ナビ中は自分のまわりだけ表示する</label>
+        <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="blkScr">⬛ ナビ中、さわらないと画面をまっ黒にする</label>
         <div style="font-size:11px;color:#666;margin-top:2px">15秒さわらないと黒くなるよ。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="ecoScr">📴 ナビ中も画面が消えていい</label>
@@ -3257,6 +3263,9 @@ function blkTick() {
   const d = on ? "flex" : "none"; if ($("blk").style.display !== d) $("blk").style.display = d;
 }
 setInterval(blkTick, 1000);
+let ringOn = lsGet("hosomichi_ring", false);
+$("ringOn").checked = ringOn; document.body.classList.toggle("ring", ringOn);
+$("ringOn").onchange = () => { ringOn = $("ringOn").checked; lsSet("hosomichi_ring", ringOn); document.body.classList.toggle("ring", ringOn); };
 async function wake() { if (ecoScr) { try { await lock?.release(); } catch {} lock = null; return; } try { lock = await navigator.wakeLock.request("screen"); } catch {} }
 // 🔋 節電モード（この端末の中だけに保存）
 let eco = lsGet("hosomichi_eco", false), ecoScr = lsGet("hosomichi_ecoscr", false);
