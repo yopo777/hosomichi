@@ -168,7 +168,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2009</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2016</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -243,6 +243,11 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。
       </div>
       <div class="note" style="margin-top:8px">🏠 家・🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）して決めるよ</div>
+      <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <b>📣 SNSに出さない範囲</b>
+        <div class="row" style="margin-top:4px"><label style="width:auto">家から</label><select id="snsR" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px"></select><span style="font-size:12px">以内は出さない</span></div>
+        <div style="font-size:11px;color:#666">地図の線も、通った所・着いた所の名前も、この中は出さないよ（家を決めていないときは出発から）</div>
+      </div>
       <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>🧪 ためし走行</b>
         <div style="font-size:11px;color:#666;margin-top:2px">今のルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div>
@@ -3119,6 +3124,10 @@ $("simGo").onclick = () => {
   }, dt);
 };
 // ---------- 📣 SNS：公開用の地図画像＋投稿文。投稿はXなどでじぶんで（アプリは勝手に投稿しない） ----------
+const SNS_R_OPTS = [100,200,500,1000,2000,3000,5000,10000,20000,30000], snsRName = m => m >= 1000 ? m / 1000 + "km" : m + "m";
+let snsR = lsGet("hosomichi_snsR", 2000);
+function snsROpts(el) { el.innerHTML = SNS_R_OPTS.map(m => `<option value="${m}"${m === snsR ? " selected" : ""}>${snsRName(m)}</option>`).join(""); }
+snsROpts($("snsR")); $("snsR").onchange = () => { snsR = +$("snsR").value; lsSet("hosomichi_snsR", snsR); };
 const SNS_TAGS = "#サイクリング #ポタリング #細道ルートナビ", SNS_URL = "https://yopo777.github.io/hosomichi/";
 const hhmm = t => { const d = new Date(t); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); };
 const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? m + "分" : Math.floor(m / 60) + "時間" + (m % 60 ? (m % 60) + "分" : ""); };
@@ -3146,7 +3155,7 @@ async function passList(rpts, zs) {
 }
 const xLen = t => { let n = 0; for (const ch of t.replace(/https?:\/\/\S+/g, "x".repeat(23))) n += /[\u0000-\u10ff]/.test(ch) ? 1 : 2; return n; };   // Xの文字数（日本語は2）
 async function snsData() {
-  const R = +$("hide").value || 2000;
+  const R = snsR;
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
   const riding = useRide && !ride.done && wid !== null;
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
@@ -3232,7 +3241,7 @@ $("bSns").onclick = async () => {
   const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
-    <div style="font-size:11px;color:#666;margin:4px 0 8px">🔒 家から${(+$("hide").value || 2000) / 1000}km以内は消してあるよ（家がまん中にならないように、少しずらした大きめの丸で）。家を決めていないときは出発から。投稿はXなどで自分でしてね</div>
+    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家から<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>以内は出さないよ<span style="font-size:11px">（家がまん中にならないように、少しずらした大きめの丸で。家を決めていないときは出発から）。投稿はXなどで自分でしてね</span></div>
     <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
     <textarea id="snsTxt"></textarea>
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
@@ -3240,11 +3249,16 @@ $("bSns").onclick = async () => {
     <div class="ph" id="snsPhs"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsClose">とじる</button></div></div>`;
   document.body.appendChild(box);
-  $("snsTxt").value = data.text;
   let map0 = null, photos = [];
-  const blob = data.none ? null : await snsImage(data);
-  if (blob) { map0 = new File([blob], "hosomichi_" + Date.now() + ".png", { type: "image/png" }); $("snsImg").innerHTML = `<img src="${URL.createObjectURL(blob)}">`; }
-  else $("snsImg").textContent = data.none ? "まだ走った記録がないよ。◎で走りはじめると、走ったところまでの地図を作れるよ（これから行く所は出さないよ）" : "地図の画像を作れなかったよ（文だけ使えるよ）";
+  const draw = async d => {
+    $("snsTxt").value = d.text; $("snsImg").textContent = "地図を作っているよ…"; map0 = null;
+    const blob = d.none ? null : await snsImage(d);
+    if (blob) { map0 = new File([blob], "hosomichi_" + Date.now() + ".png", { type: "image/png" }); $("snsImg").innerHTML = `<img src="${URL.createObjectURL(blob)}">`; }
+    else $("snsImg").textContent = d.none ? "まだ走った記録がないよ。◎で走りはじめると、走ったところまでの地図を作れるよ（これから行く所は出さないよ）" : "地図の画像を作れなかったよ（文だけ使えるよ）";
+  };
+  snsROpts($("snsR2"));
+  $("snsR2").onchange = async () => { snsR = +$("snsR2").value; lsSet("hosomichi_snsR", snsR); snsROpts($("snsR")); await draw(await snsData()); };
+  await draw(data);
   $("snsPh").onchange = async e => {
     photos = (await Promise.all([...e.target.files].slice(0, 3).map(snsPhoto))).filter(Boolean);
     $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
