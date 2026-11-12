@@ -1519,9 +1519,9 @@ async function snsData() {
     for (const e of ride.ev) {
       const hidden = e.p && inZones(e.p, zs);
       if (e.k === "start") continue;   // 出発の時刻は出さない（家を出た時刻がわかるので）
-      else if (e.k === "stop") L.push(`${hhmm(e.t)} ${e.name.replace(/^🎯\s*/, "")} 着`);
-      else if (e.k === "stamp" && !hidden) L.push(`${hhmm(e.t)} 🏁 ${e.name}`);
-      else if (e.k === "goal") L.push(`${hhmm(e.t)} ${hidden || !e.name ? "帰着" : e.name + " 着"}`);
+      else if (e.k === "stop") L.push(`${e.name.replace(/^🎯\s*/, "")} 着`);   // 時刻は出さない
+      else if (e.k === "stamp" && !hidden) L.push(`🏁 ${e.name}`);
+      else if (e.k === "goal") L.push(hidden || !e.name ? "帰着" : e.name + " 着");
     }
     const t1 = ride.pts[ride.pts.length - 1][2];
     // 走った距離・かかった時間は出さない（家の場所や、家を出た時刻がわかってしまうので）
@@ -1543,7 +1543,7 @@ async function snsData() {
       prm.set("n", `${d.getMonth() + 1}/${d.getDate()} ポタリング` + (mids.length ? `（${mids.join("・")}）` : ""));
       prm.set("r", encPoly(simpRoute(best, null, 8).pts));
       link = location.origin + location.pathname + "#" + prm.toString();
-      L.push("🗺 ルート共有link↓");
+      L.push("🗺 ルート共有link↓（開くだけなら位置情報は使いません）");
     }
   }
   L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後

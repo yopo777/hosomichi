@@ -168,7 +168,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2057</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2100</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3169,9 +3169,9 @@ async function snsData() {
     for (const e of ride.ev) {
       const hidden = e.p && inZones(e.p, zs);
       if (e.k === "start") continue;   // 出発の時刻は出さない（家を出た時刻がわかるので）
-      else if (e.k === "stop") L.push(`${hhmm(e.t)} ${e.name.replace(/^🎯\s*/, "")} 着`);
-      else if (e.k === "stamp" && !hidden) L.push(`${hhmm(e.t)} 🏁 ${e.name}`);
-      else if (e.k === "goal") L.push(`${hhmm(e.t)} ${hidden || !e.name ? "帰着" : e.name + " 着"}`);
+      else if (e.k === "stop") L.push(`${e.name.replace(/^🎯\s*/, "")} 着`);   // 時刻は出さない
+      else if (e.k === "stamp" && !hidden) L.push(`🏁 ${e.name}`);
+      else if (e.k === "goal") L.push(hidden || !e.name ? "帰着" : e.name + " 着");
     }
     const t1 = ride.pts[ride.pts.length - 1][2];
     // 走った距離・かかった時間は出さない（家の場所や、家を出た時刻がわかってしまうので）
@@ -3193,7 +3193,7 @@ async function snsData() {
       prm.set("n", `${d.getMonth() + 1}/${d.getDate()} ポタリング` + (mids.length ? `（${mids.join("・")}）` : ""));
       prm.set("r", encPoly(simpRoute(best, null, 8).pts));
       link = location.origin + location.pathname + "#" + prm.toString();
-      L.push("🗺 ルート共有link↓");
+      L.push("🗺 ルート共有link↓（開くだけなら位置情報は使いません）");
     }
   }
   L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後
