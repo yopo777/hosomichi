@@ -168,7 +168,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2107</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2117</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3211,10 +3211,19 @@ async function snsImage({ runs, stops, sub }) {   // 1200×1200 の地図（国�
     let z = 17; while (z > 5 && (wx(lo1, z) - wx(lo0, z) > W - 2 * PAD || wy(la0, z) - wy(la1, z) > H - 2 * PAD - 120)) z--;
     const cx = (wx(lo0, z) + wx(lo1, z)) / 2, cy = (wy(la0, z) + wy(la1, z)) / 2 + 50, ox = cx - W / 2, oy = cy - H / 2;
     const X = p => [wx(p[1], z) - ox, wy(p[0], z) - oy];
-    const tl = [];
-    for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W) / 256); tx++) for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++)
-      tl.push(new Promise(ok => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => { g.drawImage(im, tx * 256 - ox, ty * 256 - oy); ok(); }; im.onerror = ok; im.src = `https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${tx}/${ty}.png`; }));
-    await Promise.all(tl);
+    // 地図：CyclOSM（自転車用）。読めない（CORSなど）ときは 国土地理院 淡色 にする
+    const TILES = [["https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", "地図：© OpenStreetMap contributors / CyclOSM"], ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", "地図：国土地理院"]];
+    const xs = [], ys = []; for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W) / 256); tx++) xs.push(tx); for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++) ys.push(ty);
+    for (const [url, at] of TILES) {
+      const ims = await Promise.all(xs.flatMap(tx => ys.map(async ty => {
+        const u = url.replace("{s}", "abc"[(tx + ty) % 3]).replace("{z}", z).replace("{x}", tx).replace("{y}", ty);
+        const r = await fetch(u, { mode: "cors" }); if (!r.ok) throw new Error(r.status);
+        return [tx, ty, await createImageBitmap(await r.blob())];
+      }))).catch(() => null);
+      if (!ims) continue;
+      for (const [tx, ty, im] of ims) g.drawImage(im, tx * 256 - ox, ty * 256 - oy);
+      snsImage.attr = at; break;
+    }
     g.lineJoin = g.lineCap = "round";
     // 消した所で切れているはしは、だんだん薄く（ぶつっと切れると、そこが出発に見えるので）
     const FADE = 700, STEP = 24;
@@ -3242,7 +3251,7 @@ async function snsImage({ runs, stops, sub }) {   // 1200×1200 の地図（国�
   }
   g.fillStyle = "#ffffffe8"; g.fillRect(0, H - 120, W, 120);
   g.fillStyle = "#222"; g.font = "bold 46px sans-serif"; g.textBaseline = "middle"; g.fillText("🚲 " + sub, 36, H - 70);
-  g.font = "26px sans-serif"; g.fillStyle = "#666"; g.textAlign = "right"; g.fillText("細道ルートナビ", W - 30, H - 84); g.fillText("地図：国土地理院", W - 30, H - 44); g.textAlign = "left";
+  g.font = "26px sans-serif"; g.fillStyle = "#666"; g.textAlign = "right"; g.fillText("細道ルートナビ", W - 30, H - 84); g.font = "20px sans-serif"; g.fillText(snsImage.attr || "", W - 30, H - 44); g.textAlign = "left";
   return new Promise(ok => { try { cv.toBlob(b => ok(b), "image/png"); } catch { ok(null); } });
 }
 async function snsPhoto(f) {   // 写真は描きなおして、位置情報（Exif）を消す・大きすぎるのは小さく
