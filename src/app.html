@@ -576,6 +576,10 @@ let hereFix = null;   // [[緯度, 経度], 時刻, 精度m]（onPos で入れ�
 // 🧪 ためしの現在地（デバッグ用・SNSに画面を見せるとき家がばれないように）。地図を長おし →「ここを現在地にする」
 let fakePos = lsGet("hosomichi_fake", null);
 const fakeUi = () => document.body.classList.toggle("fake", !!fakePos);
+{ // 新しい版を読んだら、🧪ためしの現在地は本当の現在地にもどす（ためしのまま走りに出ないように）
+  const v = $("ver").textContent;
+  if (lsGet("hosomichi_ver", null) !== v) { if (fakePos) { fakePos = null; lsSet("hosomichi_fake", null); setTimeout(() => addLog("🧪 新しい版なので、ためしの現在地をやめて本当の現在地にもどしたよ", "m")); } lsSet("hosomichi_ver", v); }
+}
 fakeUi();
 function feedFake() { if (fakePos) onPos({ coords: { latitude: fakePos[0], longitude: fakePos[1], accuracy: 5, heading: null, speed: null }, timestamp: Date.now() }); }
 function setFake(p) {

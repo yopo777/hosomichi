@@ -173,7 +173,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0018</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0019</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2227,6 +2227,10 @@ let hereFix = null;   // [[緯度, 経度], 時刻, 精度m]（onPos で入れ�
 // 🧪 ためしの現在地（デバッグ用・SNSに画面を見せるとき家がばれないように）。地図を長おし →「ここを現在地にする」
 let fakePos = lsGet("hosomichi_fake", null);
 const fakeUi = () => document.body.classList.toggle("fake", !!fakePos);
+{ // 新しい版を読んだら、🧪ためしの現在地は本当の現在地にもどす（ためしのまま走りに出ないように）
+  const v = $("ver").textContent;
+  if (lsGet("hosomichi_ver", null) !== v) { if (fakePos) { fakePos = null; lsSet("hosomichi_fake", null); setTimeout(() => addLog("🧪 新しい版なので、ためしの現在地をやめて本当の現在地にもどしたよ", "m")); } lsSet("hosomichi_ver", v); }
+}
 fakeUi();
 function feedFake() { if (fakePos) onPos({ coords: { latitude: fakePos[0], longitude: fakePos[1], accuracy: 5, heading: null, speed: null }, timestamp: Date.now() }); }
 function setFake(p) {
