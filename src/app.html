@@ -2238,14 +2238,11 @@ function loadHash() {
 // 👋 共有リンク（Xなど）からはじめて開いた人へ
 function welcome(name) {
   const d = document.createElement("div"); d.id = "geoAsk";
-  d.innerHTML = `<div class="box"><b style="font-size:16px">🚲 細道ルートナビへようこそ</b>
-    <div style="margin:6px 0;padding:6px 8px;background:#f1f3f4;border-radius:8px">🗺 共有されたルート「${esc(name || "")}」を表示しているよ</div>
-    <ul style="padding-left:18px;margin:8px 0;line-height:1.6">
-      <li>細い道・走りやすい道を選んでルートを作る、自転車用のナビだよ</li>
-      <li><b>開いただけでは位置情報は使いません</b>。ナビで◎を押したときだけ、説明のあとに使うよ</li>
-      <li>ログインなし・お金もかからないよ</li>
-      <li><b>作者は、ほかの人の位置情報に関心がありません</b></li>
-      <li>コードはHTMLだけで、<a href="https://github.com/yopo777/hosomichi" target="_blank" rel="noopener">GitHub</a>にぜんぶアップしてあるよ（だれでも中身を見られるよ）</li>
+  d.innerHTML = `<div class="box"><b style="font-size:16px">🚲 細道ルートナビ</b>
+    <ul style="padding-left:18px;margin:8px 0;line-height:1.7">
+      <li>細い道を走る、自転車用のナビだよ</li>
+      <li><b>開いただけでは位置情報は使いません</b></li>
+      <li>作者は他人の位置情報に関心なし・コードは<a href="https://github.com/yopo777/hosomichi" target="_blank" rel="noopener">GitHub</a>で公開</li>
     </ul>
     <button data-a="ok" class="big">🗺 ルートを見る</button></div>`;
   document.body.appendChild(d);
