@@ -69,7 +69,7 @@ html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Hiragino San
 #bar div{height:100%;width:0;background:#d93025;transition:width .4s}
 #bar.busy div{width:30%!important;animation:busy 1.2s infinite linear}
 @keyframes busy{from{margin-left:-30%}to{margin-left:100%}}
-#msg{font-size:12px;color:#555;margin-top:4px;white-space:pre-wrap}
+#msg{font-size:12px;color:#555;margin-top:4px;white-space:pre-wrap;line-height:1.45;height:4.35em;overflow-y:auto}   /* 3行ぶんで固定（計算中に下のタブがガタガタ動かないように） */
 #msg.err{color:#c00}
 #result{display:none;margin-top:8px;font-size:13px;line-height:1.5}
 #result .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
@@ -131,10 +131,6 @@ body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font
 .spotS .spot{width:17px;height:17px;border-width:2px;font-size:10px}.spotS .spot.road{width:14px;height:14px;border-width:1.5px;font-size:8px}
 .spotS .spot svg{transform:scale(.62)}.spotS .spot.road svg{transform:scale(.5)}
 .spotL .spot{width:34px;height:34px;border-width:3px;font-size:20px}.spotL .spot.road{width:28px;height:28px;font-size:16px}.spotL .spot svg{transform:scale(1.25)}
-.spot.new{animation:spotPop .45s ease-out 3}   /* 出てきたときだけ3回ぴょこぴょこ */
-.spot.near{animation:spotBlink 1s ease-in-out infinite;border-color:#fbbc04 !important}   /* 150m以内は点滅 */
-@keyframes spotPop{0%,100%{transform:scale(1)}40%{transform:translateY(-6px) scale(1.35)}}
-@keyframes spotBlink{0%,100%{transform:scale(1);box-shadow:0 1px 4px #0007}50%{transform:scale(1.4);box-shadow:0 0 0 7px #fbbc0477}}
 .qtt{font-size:11px;padding:1px 4px}
 #qCand .c,#qList .q{padding:6px 4px;border-bottom:1px solid #eee;font-size:13px}
 #qCand .c{display:flex;align-items:center;gap:6px}#qCand .c div{flex:1}
@@ -159,7 +155,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1432</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1434</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3189,7 +3185,7 @@ function onPos(p) {
     me = L.marker(ll, { icon: icDot, interactive: false, zIndexOffset: 1000, rotateWithView: true, rotation: 0 }).addTo(map);
   }
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
-  qCheck(ll, p.coords.accuracy); spotUpdate(false); spotNear(ll); homeDist();
+  qCheck(ll, p.coords.accuracy); spotUpdate(false); homeDist();
   applyBearing();
   if (follow) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま
   if (cur && cur.nav && cur.nav.length > 1) {
@@ -3705,19 +3701,17 @@ let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
 let spotHide = lsGet("hosomichi_spothide", false);   // 右はしの📍ボタンで、えらんだマークをまとめて かくす／出す
 // はじめて使う人は、一方通行の矢印だけオン
-let spotOn = new Set(lsGet("hosomichi_spots", ["oneway"])), spotAt = null, spotFx = lsGet("hosomichi_spotfx", true), spotSz = lsGet("hosomichi_spotsz", "M");
+let spotOn = new Set(lsGet("hosomichi_spots", ["oneway"])), spotAt = null, spotSz = lsGet("hosomichi_spotsz", "M");
 const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
-spotSize();   // spotFx：出たときぴょこぴょこ・近づいたら点滅
+spotSize();
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
-  $("spotBox").innerHTML = `<label style="display:flex;align-items:center;gap:4px;font-weight:bold;margin:2px 0 4px"><input type="checkbox" data-fx="1"${spotFx ? " checked" : ""}>✨ 目立たせる（出たときぴょこぴょこ・150m以内は点滅）</label>
-    <div style="margin:0 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
+  $("spotBox").innerHTML = `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
     + SPOT_KINDS.map(([g, ks]) => `<div style="margin-top:4px"><span style="color:#666">${g}：</span>` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("") + "</div>").join("");
 }
 $("tabSpot").addEventListener("change", e => {
   if (e.target.dataset.sz) { spotSz = e.target.dataset.sz; lsSet("hosomichi_spotsz", spotSz); spotSize(); return; }
-  if (e.target.dataset.fx) { spotFx = e.target.checked; lsSet("hosomichi_spotfx", spotFx); for (const el of document.querySelectorAll(".spot.near,.spot.new")) el.classList.remove("near", "new"); return; }
   const k = e.target.dataset.sk; if (!k) return;
   if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
   lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn();
@@ -3778,17 +3772,12 @@ async function spotUpdate(force) {
     const [ic, nm, col] = SPOT_INFO[k], ll = [s[1], s[2]], id = k + s[1] + "," + s[2], isRoad = SPOT_ROAD.has(k);
     shown.add(id);
     const m = L.marker(ll, { icon: L.divIcon({ className: "", iconSize: [0, 0],
-        html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot${spotShown.has(id) || isRoad || !spotFx ? "" : " new"}${isRoad ? " road" : ""}" style="border-color:${col}">${spotIc(k, ic)}</div></div>` }), zIndexOffset: 200 })
+        html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot${isRoad ? " road" : ""}" style="border-color:${col}">${spotIc(k, ic)}</div></div>` }), zIndexOffset: 200 })
       .bindTooltip(s[0] || nm, { direction: "top", offset: [0, -14] })
       .on("click", () => pinPopup(L.latLng(ll), s[1].toFixed(6) + "," + s[2].toFixed(6), (SPOT_SVG[k] ? "" : ic + " ") + (s[0] || nm))).addTo(spotLayer);
     if (!isRoad) spotMk.push([m, ll]);   // 道・車止めは点滅させない（たくさんあるので）
   }
   spotShown = shown;
-  if (wid !== null && me) spotNear([me.getLatLng().lat, me.getLatLng().lng]);
-}
-function spotNear(p) {   // 150m以内のスポットだけ点滅（GPSが来るたび。多くても60個しか見ない）
-  if (!spotFx) return;
-  for (const [m, ll] of spotMk) { const el = m.getElement()?.querySelector(".spot"); if (el) el.classList.toggle("near", hav(p, ll) < SPOT_NEAR); }
 }
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
 map.on("zoomend", () => { if (follow && me) spotUpdate(true); });
