@@ -160,7 +160,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1708</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1711</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -231,7 +231,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row" id="loopRow"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="loopOn">🔁 ぐるっと1周して出発にもどる</label>
       <select id="loopKm" style="padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option>10</option><option>20</option><option selected>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
-    <div class="row" id="midRow" style="display:none"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="midOn">🎯 とちゅうの寄り道スポットをおまかせ（毎回ちがう所）</label></div>
+    <div class="row" id="midRow" style="display:none"><label style="width:auto;flex:1;display:flex;align-items:center;gap:6px;color:#333;font-size:14px"><input type="checkbox" id="midOn" checked>🎯 とちゅうの寄り道スポットをおまかせ（毎回ちがう所）</label></div>
     <div class="row" id="viaRow"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row" id="toRow"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図を長おし（パソコンは右クリック）しても出発・到着を選べるよ</div>
@@ -2453,7 +2453,9 @@ worker.onmessage = ev => {
   }
   if (job && job.next) { barMax = 0.5; setBar(0.5); } else { barMax = 0; setBar(1); }   // 経由地まで できた所は まん中
   if (m.tour) setMsg(`🏁 できた！ ${m.tour}か所をまわる ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）` + ((m.skip || []).length ? `\n⚠ 行けなかった所: ${m.skip.join("、")}` : "")); else
-  if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${m.sec.toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")); else
+  if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${m.sec.toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")
+    + (midNone ? "\n🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にしたよ" : "")
+    + (midPick && m.len > m.loop * 1000 * 1.4 ? `\n🎯 ${midPick.name}まで遠回りになったみたい（川などで）。もう一回押すと別の所になるよ` : "")); else
   setMsg(`できた！ ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）\n` +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
@@ -2585,12 +2587,12 @@ function loopUi() {
   $("go").textContent = on ? ($("loopKm").value === "auto" ? "🔁 おまかせの長さで1周ルートを作る" : `🔁 ${$("loopKm").value}kmの1周ルートを作る`) : "ルートを作る";
   try { localStorage.setItem("hosomichi_loop", JSON.stringify({ on, km: $("loopKm").value, mid: $("midOn").checked })); } catch {}
 }
-try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; $("midOn").checked = !!l.mid; } } catch {}
+try { const l = JSON.parse(localStorage.getItem("hosomichi_loop") || "null"); if (l) { $("loopOn").checked = !!l.on; $("loopKm").value = l.km || "30"; $("midOn").checked = l.mid !== false; } } catch {}
 for (const id of ["loopOn", "loopKm", "midOn"]) $(id).onchange = loopUi;
 // 🎯 とちゅうの寄り道スポット：1周の長さに合う距離にある「めぐる」系のマークから、まだ選んでいない所をランダムに1つ
 const MID_KINDS = ["shrine", "temple", "castle", "kofun", "monument", "sight", "view", "park", "jizo", "ichiri", "tree", "spring", "fall", "bridge", "michi"];
 const midKey = p => p[0].toFixed(4) + "," + p[1].toFixed(4);
-let midPick = null;   // { p, name, ic } いま作っている1周の寄り道スポット
+let midPick = null, midNone = false;   // { p, name, ic } いま作っている1周の寄り道スポット
 async function pickMid(s, km) {
   const T = km * 1000 / 2.9, lo = T * 0.7, hi = T * 1.1;   // 1周の長さ ≒ まっすぐの距離×2.9
   const dla = hi / 111000, dlo = hi / (111000 * Math.cos(s[0] * RAD)), keys = [];
@@ -2631,13 +2633,13 @@ $("go").onclick = async () => {
     addLog(`  出発 → ${sn}（${s[0].toFixed(5)},${s[1].toFixed(5)}）`, "m");
     if (LK) {   // 1周：出発のまわりを三角形にまわる。経由地が入っていれば、そこを通る1周
       let [v, vn] = viaT ? await geocode(viaT) : [null, ""];
-      midPick = null;
+      midPick = null; midNone = false;
       if (!v && $("midOn").checked) {
         if (LK === "auto") LK = 10;
         lastProg = { stage: 1, msg: "🎯 寄り道スポットをさがし中" }; showProg();
         midPick = await pickMid(s, LK);
         if (midPick) { v = midPick.p; vn = midPick.ic + " " + midPick.name; midSeen(v); }
-        else addLog("  🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にするよ", "w");
+        else { addLog("  🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にするよ", "w"); midNone = true; }
       }
       if (v) { addLog(`  経由 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
         if (hav(s, v) > 75000) throw new Error(`経由地が ${fmtKm(hav(s, v))} もはなれてるよ。1周なら75km以内にしてね`); }
