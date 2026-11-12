@@ -172,7 +172,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2324</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.2327</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2986,6 +2986,19 @@ let tickFor = null;
 function pulseShow(pts) {
   for (const [p, c] of pts) if (p) L.marker(p, { icon: L.divIcon({ className: "", html: `<div class="pulse ${c}"></div>`, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(layer);
 }
+function fadeEnds(r) {   // はしの 400m に、地図と同じような白をだんだん濃くかぶせる
+  const R = r.route; if (R.length < 2) return;
+  const c = [0]; for (let i = 1; i < R.length; i++) c.push(c[i - 1] + hav(R[i - 1], R[i]));
+  const T = c[c.length - 1], F = Math.min(900, T * 0.3), N = 10;
+  const at = d => { let i = 1; while (i < c.length - 1 && c[i] < d) i++; const u = Math.max(0, Math.min(1, (d - c[i - 1]) / ((c[i] - c[i - 1]) || 1))); return [R[i - 1][0] + (R[i][0] - R[i - 1][0]) * u, R[i - 1][1] + (R[i][1] - R[i - 1][1]) * u]; };
+  const seg = (a, b) => { a = Math.max(0, a); b = Math.min(T, b); const out = [at(a)]; for (let i = 0; i < R.length; i++) if (c[i] > a && c[i] < b) out.push(R[i]); out.push(at(b)); return out; };   // a〜b m の線（はしは補間）
+  for (let k = 0; k < N; k++) {
+    const op = 0.95 * (1 - k / N);   // はしほど白い
+    const w = { color: "#f5f3ef", weight: 14, opacity: op, interactive: false, lineCap: k ? "butt" : "round" };
+    if (r.cutS) { const p = seg(F * k / N, F * (k + 1) / N + 1); if (p.length > 1) L.polyline(p, w).addTo(layer); }
+    if (r.cutE) { const p = seg(T - F * (k + 1) / N - 1, T - F * k / N); if (p.length > 1) L.polyline(p, w).addTo(layer); }
+  }
+}
 function showRoute(r, fit) {
   if (r !== cur) { $("bar").classList.remove("trip"); for (const t of $("bar").querySelectorAll(".tick")) t.remove(); tickFor = null; }
   cur = r; layer.clearLayers(); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
@@ -2997,9 +3010,11 @@ function showRoute(r, fit) {
   const line = L.polyline(r.route.length ? r.route : tent, { opacity: 0, interactive: false }).addTo(layer);
   if (r.route.length > 1) drawRoute(r);
   if (tent.length > 1) L.polyline(tent, { color: "#d93025", weight: 6, opacity: .7, dashArray: "8 10" }).addTo(layer).bindTooltip("計算中（まだ変わるかも）");
-  L.circleMarker(r.nav[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(layer).bindTooltip("出発");
-  if (!r.partial) L.circleMarker(r.route[r.route.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
-  if (!r.partial) pulseShow([[r.nav[0], "s"], [r.route[r.route.length - 1], ""], ...(r.stops || []).map(q => [q.p, "m"])]);
+  // 🔒 共有で隠したはし（cutS/cutE）は、出発・到着の印を出さずに、線をだんだん薄くする（「ここが家？」と思われないように）
+  if (r.cutS || r.cutE) fadeEnds(r);
+  if (!r.cutS) L.circleMarker(r.nav[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#188038", fillOpacity: 1 }).addTo(layer).bindTooltip("出発");
+  if (!r.partial && !r.cutE) L.circleMarker(r.route[r.route.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
+  if (!r.partial) pulseShow([...(r.cutS ? [] : [[r.nav[0], "s"]]), ...(r.cutE ? [] : [[r.route[r.route.length - 1], ""]]), ...(r.stops || []).map(q => [q.p, "m"])]);
   (r.stops || []).forEach(q => L.marker(q.p, { icon: L.divIcon({ className: "", html: '<div style="font-size:24px;line-height:1;transform:translate(-50%,-90%);text-shadow:0 0 3px #fff">📍</div>', iconSize: [0, 0] }), zIndexOffset: 400 }).addTo(layer).bindTooltip(q.name));   // 1周の経由地
   (r.ok || []).forEach(p => L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("信号で横断"));
   (r.xw || []).forEach(p => L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("横断歩道で横断"));
@@ -3092,6 +3107,7 @@ function shareUrl(tol = 3) {
   const runs = snsHide(R, hs, anchors).runs;
   let { i0, i1 } = runs.length ? runs.reduce((a, b) => (b.i1 - b.i0 > a.i1 - a.i0 ? b : a)) : { i0: 0, i1: Math.min(2, R.length) };
   const rest = i0 > 0 || i1 < R.length;
+  const cutX = (i0 > 0 ? "s" : "") + (i1 < R.length ? "e" : "");
   const sub = R.slice(i0, i1), subK = cur.kc ? cur.kc.slice(i0, i1 - 1) : null;
   const keep = p => !rest || sub.some(q => hav(p, q) < 30);
   const sr = simpRoute(sub, subK, tol), pts = sr.pts;
@@ -3099,6 +3115,7 @@ function shareUrl(tol = 3) {
   const nm = $("shareName").value.trim();
   if (nm) prm.set("n", nm);
   prm.set("r", encPoly(pts));
+  if (cutX) prm.set("x", cutX);   // 隠したはし（開いた人の地図で、出発・到着の印を出さない）
   if (sr.kc) prm.set("k", encK(sr.kc));
   if (cur.resume && !he) {   // 続きから計算できるように、ゴールと設定も入れる
     prm.set("g", cur.resume.g.map(v => v.toFixed(5)).join(","));
@@ -3278,6 +3295,7 @@ async function snsData() {
       const prm = new URLSearchParams(), mids = ride.ev.filter(e => e.k === "stop" && !(e.p && hideP(e.p))).map(e => e.name.replace(/^🎯\s*\S+\s*/, ""));
       prm.set("n", `${ymd} サイクリング` + (mids.length ? `（${mids.join("・")}）` : ""));
       prm.set("r", encPoly(simpRoute(best, null, 8).pts));
+      if (best.cutS || best.cutE) prm.set("x", (best.cutS ? "s" : "") + (best.cutE ? "e" : ""));
       link = location.origin + location.pathname + "#" + prm.toString();
       L.push("🗺 ルート共有link↓（開くだけなら位置情報は使いません）");
     }
@@ -4000,7 +4018,7 @@ function loadHash() {
     const hr = decPoly(h.get("r")), hk = h.get("k") ? decK(h.get("k")) : null;
     let resume = null;
     if (h.get("g")) { try { resume = { g: h.get("g").split(",").map(Number), cfg: h.get("c") ? JSON.parse(decodeURIComponent(escape(atob(h.get("c"))))) : structuredClone(cfg) }; } catch { resume = null; } }
-    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
+    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), cutS: (h.get("x") || "").includes("s"), cutE: (h.get("x") || "").includes("e"), name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
     if (!lsGet("hosomichi_welcome", false)) welcome(cur.name);
   } catch (e) { setMsg("共有URLが読めませんでした", true); }
@@ -4030,7 +4048,7 @@ function packRoute(r) {
     s: r.short ? encPoly(simplify(r.short, 3)) : "", ok: encPoly(r.ok || []), xw: encPoly(r.xw || []), ng: encPoly(r.ng || []),
     tp: r.tp ? encPoly(r.tp) : undefined, ta: r.tp ? r.tp.map(t => t[2]).join(",") : undefined,
     len: r.len, slen: r.slen || 0, kinds: r.kinds || null, rs: r.resume || null, tn: r.turns ?? null,
-    st: r.stops && r.stops.length ? r.stops : undefined };
+    st: r.stops && r.stops.length ? r.stops : undefined, x: (r.cutS ? "s" : "") + (r.cutE ? "e" : "") || undefined };
 }
 function decTp(t, a) {   // 🗣 曲がり角：点の列＋角度の列。古いルート・共有URLにはないので null（線の形から見つける）
   if (t == null || a == null) return null;
@@ -4040,7 +4058,7 @@ function decTp(t, a) {   // 🗣 曲がり角：点の列＋角度の列。古�
 function unpackRoute(o) {
   const route = decPoly(o.r), kc = o.k ? decK(o.k) : null;
   return { name: o.name, created: o.created, route, kc: kc && kc.length === route.length - 1 ? kc : null, short: o.s ? decPoly(o.s) : null,
-    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), tp: decTp(o.tp, o.ta), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st };
+    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), tp: decTp(o.tp, o.ta), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st, cutS: (o.x || "").includes("s"), cutE: (o.x || "").includes("e") };
 }
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function renderList() {
