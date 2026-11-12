@@ -168,7 +168,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1953</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1955</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -2981,10 +2981,12 @@ function hideOff() {   // [北, 東] の割合（-0.45〜0.45）。一度決め�
   if (!o) { const a = Math.random() * 2 * Math.PI, r = 0.25 + Math.random() * 0.2; o = [Math.cos(a) * r, Math.sin(a) * r]; lsSet("hosomichi_hideoff", o); }
   return o;
 }
-function pubZones(start, end, R, withEnd) {
+function pubZones(start, end, R, withEnd, homeOnly) {
   if (!R) return [];
-  const o = hideOff(), z = c => [c[0] + o[0] * R / 111320, c[1] + o[1] * R / (111320 * Math.cos(c[0] * RAD)), R];
+  // 丸のまん中は少しずらすけど、そのぶん大きくして「家（出発）から R m 以内」はかならず丸の中に入るようにする
+  const o = hideOff(), k = 1 + Math.hypot(o[0], o[1]), z = c => [c[0] + o[0] * R / 111320, c[1] + o[1] * R / (111320 * Math.cos(c[0] * RAD)), R * k];
   const zs = []; if (home) zs.push(z(home));
+  if (homeOnly && zs.length) return zs;   // SNS：家から R m 以内だけ消す（家が決まっていないときは出発のまわり）
   const inZ = p => zs.some(q => hav(p, q) < q[2]);
   if (start && !inZ(start)) zs.push(z(start));
   if (withEnd && end && !inZ(end)) zs.push(z(end));
@@ -3123,14 +3125,14 @@ async function snsData() {
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
   const riding = useRide && !ride.done && wid !== null;
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
-  const zs = pubZones(pts[0], pts[pts.length - 1], R, false), runs = pubRuns(pts, zs).map(([a, b]) => pts.slice(a, b));   // SNSは今いる所・着いた所は出してOK（家のまわりと出発だけ消す）
+  const zs = pubZones(pts[0], pts[pts.length - 1], R, false, true), runs = pubRuns(pts, zs).map(([a, b]) => pts.slice(a, b));   // SNSは今いる所・着いた所は出してOK（家のまわりと出発だけ消す）
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
   const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];
   const L = [`🚲 ${d.getMonth() + 1}/${d.getDate()}(${wd}) ${!useRide ? "これからポタリング" : riding ? "ポタリング中" : "ポタリング"}`];
   if (useRide) {
     for (const e of ride.ev) {
       const hidden = e.p && inZones(e.p, zs);
-      if (e.k === "start") L.push(`${hhmm(e.t)} 出発`);
+      if (e.k === "start") continue;   // 出発の時刻は出さない（家を出た時刻がわかるので）
       else if (e.k === "stop") L.push(`${hhmm(e.t)} ${e.name.replace(/^🎯\s*/, "")} 着`);
       else if (e.k === "stamp" && !hidden) L.push(`${hhmm(e.t)} 🏁 ${e.name}`);
       else if (e.k === "goal") L.push(`${hhmm(e.t)} ${hidden || !e.name ? "帰着" : e.name + " 着"}`);
@@ -3188,7 +3190,7 @@ $("bSns").onclick = async () => {
   const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
-    <div style="font-size:11px;color:#666;margin:4px 0 8px">🔒 家と出発のまわり（${(+$("hide").value || 2000) / 1000}km・少しずらした丸）は消してあるよ。投稿はXなどで自分でしてね</div>
+    <div style="font-size:11px;color:#666;margin:4px 0 8px">🔒 家から${(+$("hide").value || 2000) / 1000}km以内は消してあるよ（家がまん中にならないように、少しずらした大きめの丸で）。家を決めていないときは出発から。投稿はXなどで自分でしてね</div>
     <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
     <textarea id="snsTxt"></textarea>
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
