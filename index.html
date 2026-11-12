@@ -155,7 +155,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1612</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1112.1617</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3287,7 +3287,11 @@ for (const r of document.querySelectorAll("[name=blkLv]")) {   // しない / 50
   r.onchange = () => { blkScr = +r.value; lsSet("hosomichi_black", blkScr); blkTouch = Date.now(); blkTick(); };
 }
 function blkShowMap(ms) { blkUntil = Date.now() + ms; blkTick(); }   // 曲がる手前など：しばらく地図を出す
-document.addEventListener("pointerdown", () => { blkTouch = Date.now(); if ($("blk").style.display !== "none") $("blk").style.display = "none"; }, true);
+document.addEventListener("pointerdown", () => { blkTouch = Date.now(); }, true);
+// 暗いときのタッチは「明るくする」だけ。下のボタンが押されないように、指をはなしてから少しして消す
+$("blk").addEventListener("touchstart", e => { blkTouch = Date.now(); e.preventDefault(); }, { passive: false });
+$("blk").addEventListener("pointerup", () => { blkTouch = Date.now(); setTimeout(() => { $("blk").style.display = "none"; }, 350); });
+$("blk").addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); });
 function blkTick() {
   const now = Date.now(), on = blkScr && wid !== null && follow && !document.hidden && now - blkTouch > BLK_IDLE && now > blkUntil;
   if (on) {

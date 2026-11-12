@@ -1638,7 +1638,11 @@ for (const r of document.querySelectorAll("[name=blkLv]")) {   // しない / 50
   r.onchange = () => { blkScr = +r.value; lsSet("hosomichi_black", blkScr); blkTouch = Date.now(); blkTick(); };
 }
 function blkShowMap(ms) { blkUntil = Date.now() + ms; blkTick(); }   // 曲がる手前など：しばらく地図を出す
-document.addEventListener("pointerdown", () => { blkTouch = Date.now(); if ($("blk").style.display !== "none") $("blk").style.display = "none"; }, true);
+document.addEventListener("pointerdown", () => { blkTouch = Date.now(); }, true);
+// 暗いときのタッチは「明るくする」だけ。下のボタンが押されないように、指をはなしてから少しして消す
+$("blk").addEventListener("touchstart", e => { blkTouch = Date.now(); e.preventDefault(); }, { passive: false });
+$("blk").addEventListener("pointerup", () => { blkTouch = Date.now(); setTimeout(() => { $("blk").style.display = "none"; }, 350); });
+$("blk").addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); });
 function blkTick() {
   const now = Date.now(), on = blkScr && wid !== null && follow && !document.hidden && now - blkTouch > BLK_IDLE && now > blkUntil;
   if (on) {
