@@ -173,7 +173,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0005</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 細道ルートナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0010</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3922,7 +3922,17 @@ function geoAsk() {
     d.onclick = e => { const a = e.target.dataset.a; if (!a) return; d.remove(); ok(a); };
   });
 }
+// 🔗 共有ルート（リンクから開いたもの）は「見るだけ」。◎を押したら消して、ふつうの地図にもどす
+function clearShared() {
+  history.replaceState(null, "", location.pathname);
+  layer.clearLayers(); cur = null; cum = []; navAlong = null;
+  try { flowStop(); guideStop(); flowPrep(); flowBtns(); } catch {}
+  for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
+  legend(null); setMsg(""); $("prog").style.display = "none"; $("bar").classList.remove("trip");
+  try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {}
+}
 $("gps").onclick = async () => {
+  if (wid === null && cur && cur.shared) clearShared();
   if (wid === null && !fakePos && !lsGet("hosomichi_geook", false)) {
     const a = await geoAsk();
     if (a === "no") return;
@@ -4050,7 +4060,7 @@ function loadHash() {
     const hr = decPoly(h.get("r")), hk = h.get("k") ? decK(h.get("k")) : null;
     let resume = null;
     if (h.get("g")) { try { resume = { g: h.get("g").split(",").map(Number), cfg: h.get("c") ? JSON.parse(decodeURIComponent(escape(atob(h.get("c"))))) : structuredClone(cfg) }; } catch { resume = null; } }
-    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), cutS: (h.get("x") || "").includes("s"), cutE: (h.get("x") || "").includes("e"), here: (h.get("x") || "").includes("h"), name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
+    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), cutS: (h.get("x") || "").includes("s"), cutE: (h.get("x") || "").includes("e"), here: (h.get("x") || "").includes("h"), shared: true, name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
     if (!lsGet("hosomichi_welcome", false)) welcome(cur.name);
   } catch (e) { setMsg("共有URLが読めませんでした", true); }

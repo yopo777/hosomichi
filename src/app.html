@@ -2271,7 +2271,17 @@ function geoAsk() {
     d.onclick = e => { const a = e.target.dataset.a; if (!a) return; d.remove(); ok(a); };
   });
 }
+// 🔗 共有ルート（リンクから開いたもの）は「見るだけ」。◎を押したら消して、ふつうの地図にもどす
+function clearShared() {
+  history.replaceState(null, "", location.pathname);
+  layer.clearLayers(); cur = null; cum = []; navAlong = null;
+  try { flowStop(); guideStop(); flowPrep(); flowBtns(); } catch {}
+  for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
+  legend(null); setMsg(""); $("prog").style.display = "none"; $("bar").classList.remove("trip");
+  try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {}
+}
 $("gps").onclick = async () => {
+  if (wid === null && cur && cur.shared) clearShared();
   if (wid === null && !fakePos && !lsGet("hosomichi_geook", false)) {
     const a = await geoAsk();
     if (a === "no") return;
@@ -2399,7 +2409,7 @@ function loadHash() {
     const hr = decPoly(h.get("r")), hk = h.get("k") ? decK(h.get("k")) : null;
     let resume = null;
     if (h.get("g")) { try { resume = { g: h.get("g").split(",").map(Number), cfg: h.get("c") ? JSON.parse(decodeURIComponent(escape(atob(h.get("c"))))) : structuredClone(cfg) }; } catch { resume = null; } }
-    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), cutS: (h.get("x") || "").includes("s"), cutE: (h.get("x") || "").includes("e"), here: (h.get("x") || "").includes("h"), name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
+    showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), cutS: (h.get("x") || "").includes("s"), cutE: (h.get("x") || "").includes("e"), here: (h.get("x") || "").includes("h"), shared: true, name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
     if (!lsGet("hosomichi_welcome", false)) welcome(cur.name);
   } catch (e) { setMsg("共有URLが読めませんでした", true); }
