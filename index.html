@@ -135,7 +135,8 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
 #nav{position:absolute;bottom:calc(22px + env(safe-area-inset-bottom));right:10px;max-width:calc(40% - 10px);z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:4px 10px;font-size:14px;font-weight:bold;display:none;pointer-events:none;text-align:right}   /* 一番下・見えなくてもいい */
 #nav.off{color:#c00}
-#ring{position:absolute;inset:0;z-index:900;pointer-events:none;display:none;background:radial-gradient(circle closest-side at 50% 50%,transparent 96%,#000 100%)}   /* ⭕ まわりだけ表示（丸の外は黒） */
+#ring{position:absolute;inset:0;z-index:900;pointer-events:none;display:none;background:radial-gradient(circle at 50% 50%,transparent var(--rr),#000 calc(var(--rr) + 4px))}   /* ⭕ まわりだけ表示（丸の外は黒） */
+body.ring1{--rr:34vmin}body.ring2{--rr:22vmin}   /* 小さめ / もっと小さく（半径・画面のせまいほうに対して） */
 body.navi.ring:not(.ringOff):not(.ov) #ring{display:block}   /* さわってから15秒は丸をはずす */
 body.navi.ring:not(.ringOff):not(.ov) #panel,body.navi.ring:not(.ringOff):not(.ov) #legend{filter:invert(1) hue-rotate(180deg) brightness(.55)}   /* 上のパネルも暗く（白→黒） */
 body.navi.ring:not(.ringOff):not(.ov) button small{color:#ccc!important;text-shadow:0 0 3px #000!important}
@@ -173,7 +174,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0920</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0927</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -226,7 +227,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div class="btns" style="margin-top:4px"><button class="ib" id="vcTest" style="font-size:12px">🔊 ためしに聞く</button></div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="ringOn">⭕ ナビ中は自分のまわりだけ表示する</label>
+        <div style="font-weight:bold">⭕ ナビ中は自分のまわりだけ表示する</div>
+        <div id="ringLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="ringLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="ringLv" value="1"> 小さい丸</label><label><input type="radio" name="ringLv" value="2"> もっと小さい丸</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ。さわると15秒だけ丸がはずれるよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
         <div style="font-weight:bold;margin-top:6px">⬛ ナビ中、さわらないと画面を暗くする</div>
         <div id="blkLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="blkLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="50"> 50%</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="70"> 70%</label><label><input type="radio" name="blkLv" value="100"> まっ黒</label></div>
@@ -3918,9 +3920,13 @@ function blkTick() {
   const d = on ? "flex" : "none"; if ($("blk").style.display !== d) $("blk").style.display = d;
 }
 setInterval(blkTick, 1000);
-let ringOn = lsGet("hosomichi_ring", false);
-$("ringOn").checked = ringOn; document.body.classList.toggle("ring", ringOn);
-$("ringOn").onchange = () => { ringOn = $("ringOn").checked; lsSet("hosomichi_ring", ringOn); document.body.classList.toggle("ring", ringOn); };
+let ringLv = (v => v === true ? 1 : +v || 0)(lsGet("hosomichi_ring", 0));   // 0=しない 1=小さい丸 2=もっと小さい丸（前の on は 1 に）
+function ringApply() { const b = document.body.classList; b.toggle("ring", ringLv > 0); b.toggle("ring1", ringLv === 1); b.toggle("ring2", ringLv === 2); }
+for (const r of document.querySelectorAll("[name=ringLv]")) {
+  r.checked = +r.value === ringLv;
+  r.onchange = () => { ringLv = +r.value; lsSet("hosomichi_ring", ringLv); ringApply(); };
+}
+ringApply();
 async function wake() { try { lock = await navigator.wakeLock.request("screen"); } catch {} }
 // 📍 はじめて◎を押したとき：いきなり「位置情報を許可しますか」が出るとこわいので、先に説明する
 function geoAsk() {
