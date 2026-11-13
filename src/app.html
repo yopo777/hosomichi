@@ -1624,7 +1624,7 @@ function snsRSet(v) {   // 📣SNS・🔗共有URL・⚙設定 の3か所は同�
 snsROpts($("snsR")); snsROpts($("hide"));
 $("snsR").onchange = () => snsRSet(+$("snsR").value);
 $("hide").onchange = () => snsRSet(+$("hide").value);
-const SNS_TRAIL = 5000;   // 📣 いまここ の「来た道」の長さ
+let snsTrail = +lsGet("hosomichi_trail", 0) || 0;   // 📣 走っているとちゅうの「来た道」の長さ m（0＝その日ぜんぶ）
 const SNS_MAX = 280 - 100 - 4;   // 自分のコメント（日本語50文字＝100）を書けるように、あけておく
 const SNS_TAGS = "#サイクリング #ポタリング #hosonavi", SNS_URL = "https://yopo777.github.io/hosomichi/";
 const hhmm = t => { const d = new Date(t); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); };
@@ -1689,8 +1689,8 @@ async function snsData() {
     here = pts[pts.length - 1];
     let k = pts.length - 1; while (k > 0 && hav(pts[k], here) < 30) k--; dir = bearingDeg(pts[k], here);   // 進んでいる向き
     const last = runs.find(r => r.i1 === pts.length);
-    if (last) { let d = 0, j = last.length - 1; while (j > 0 && d < SNS_TRAIL) { d += hav(last[j], last[j - 1]); j--; }
-      runs = [Object.assign(last.slice(j), { cutS: j > 0 || last.cutS, cutE: false })]; }
+    if (last && snsTrail) { const SNS_TRAIL = snsTrail; let d = 0, j = last.length - 1; while (j > 0 && d < SNS_TRAIL) { d += hav(last[j], last[j - 1]); j--; }
+      runs = [Object.assign(last.slice(j), { cutS: j > 0 || last.cutS, cutE: false, i0: last.i0 + j, i1: last.i1 })]; }
   }
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
   const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];   // 地図の画像の小さい字で使う
@@ -1720,7 +1720,7 @@ async function snsData() {
     if (best.length >= 2 && lineLen(best) > 300) {
       const prm = new URLSearchParams();   // 名前は入れない（開いた人には「共有されたルート」と出る）
       prm.set("r", encPoly(simpRoute(best, null, 8).pts));
-      const xf = (best.cutS ? "s" : "") + (best.cutE ? "e" : "") + (here && best === runs[0] ? "h" : "");   // h：線の先が「いまここ」
+      const xf = (best.cutS ? "s" : "") + (best.cutE ? "e" : "") + (here && best.i1 === pts.length ? "h" : "");   // h：線の先が「いまここ」
       if (xf) prm.set("x", xf);
       link = location.origin + location.pathname + "#" + prm.toString();
       L.push("🗺 ルート共有link↓（開くだけなら位置情報は使いません）");
@@ -1729,7 +1729,7 @@ async function snsData() {
   L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !hideP(q.p));
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
-  return { runs, stops: here ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: L.join("\n"), sub, none: !useRide, link, here, dir,
+  return { runs, stops: here && snsTrail ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: L.join("\n"), sub, none: !useRide, link, here, dir,
     big: useRide && !riding ? "サイクリング完了" : "" };   // 走り終わったら地図に大きく
 }
 async function snsImage({ runs, stops, sub, here, dir, big }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所
@@ -1809,7 +1809,7 @@ $("bSns").onclick = async () => {
   const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
-    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ<span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地と、20分以上止まっていた所もおなじように消すよ）。投稿はXなどで自分でしてね</span></div>
+    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地と、20分以上止まっていた所もおなじように消すよ）。投稿はXなどで自分でしてね</span></div>
     <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
     <textarea id="snsTxt"></textarea>
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
@@ -1828,6 +1828,7 @@ $("bSns").onclick = async () => {
   };
   snsROpts($("snsR2"));
   $("snsR2").onchange = async () => { snsRSet(+$("snsR2").value); await draw(await snsData()); };
+  $("snsTr").value = snsTrail; $("snsTr").onchange = async () => { snsTrail = +$("snsTr").value; lsSet("hosomichi_trail", snsTrail); await draw(await snsData()); };
   await draw(data);
   $("snsPh").onchange = async e => {
     photos = (await Promise.all([...e.target.files].slice(0, 3).map(snsPhoto))).filter(Boolean);
