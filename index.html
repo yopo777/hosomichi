@@ -178,7 +178,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1725</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1728</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3058,11 +3058,12 @@ function showRoute(r, fit) {
   } else if (!r.partial && !r.cutE) L.circleMarker(E, { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
   if (!r.partial) pulseShow([...(r.cutS ? [] : [[r.nav[0], "s"]]), ...(r.cutE || r.here ? [] : [[E, ""]]), ...(r.stops || []).map(q => [q.p, "m"])]);
   (r.stops || []).forEach(q => L.marker(q.p, { icon: L.divIcon({ className: "", html: '<div style="font-size:24px;line-height:1;transform:translate(-50%,-90%);text-shadow:0 0 3px #fff">📍</div>', iconSize: [0, 0] }), zIndexOffset: 400 }).addTo(layer).bindTooltip(q.name));   // 1周の経由地
-  // 横断の印（信号・横断歩道）は、近づいたときだけ出す（ナビ中は自分から300m・ふだんはズーム15より寄ったとき）
+  // 横断の印（信号・横断歩道・設定どおりに渡れなかった所）は、近づいたときだけ出す（ナビ中は自分から300m・ふだんはズーム15より寄ったとき）
   xMk = [...(r.ok || []).map(p => [L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).bindTooltip("信号で横断"), p]),
-         ...(r.xw || []).map(p => [L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).bindTooltip("横断歩道で横断"), p])];
+         ...(r.xw || []).map(p => [L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).bindTooltip("横断歩道で横断"), p]),
+         ...(r.ng || []).map(p => [L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).bindTooltip("⚠ 設定どおりに渡れなかった場所"), p])];
   xFor = r; xUpd();
-  (r.ng || []).forEach(p => L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).addTo(layer).bindTooltip("⚠ 設定どおりに渡れなかった場所"));
+
   if (fit === "start") map.fitBounds(L.latLngBounds(r.nav), { padding: [40, 40], maxZoom: 16 });
   else if (fit && r.shared) {   // SNS（X など）から開いたとき：下にアプリの画面がかぶさるので、下を広くあけて、いまここ を真ん中より上に
     const h = map.getSize().y;
@@ -3741,7 +3742,6 @@ const ovOn = () => ovMode;
 function ovSet(on) {
   if (on === ovMode) return;
   ovMode = on; document.body.classList.toggle("ov", on); applyBearing(); xUpd();
-  if (on) { guideStop(); flowStop(); } else setTimeout(flowPrep, 400);   // 全体図では赤白のボールを止める（じゃまなので）
   if (on) {
     ovZoom = map.getZoom();
     const here = me.getLatLng(), bb = cur && cur.nav && cur.nav.length > 1 ? L.latLngBounds(cur.nav).extend(here) : here.toBounds(4000);
@@ -4820,7 +4820,7 @@ const FLOW_MS = 100;   // ボールを動かす間かく（どのボールも同
 const guideLayer = L.layerGroup().addTo(map);
 function guideStop() { clearInterval(guideRaf); guideRaf = 0; guideLayer.clearLayers(); guide = null; }
 function guideStart() {
-  const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden && !saving && !ovMode;
+  const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden && !saving;
   if (!ok) return guideStop();
   if (guide) return;   // もう走っている
   guide = L.circleMarker(me.getLatLng(), { pane: "flowPane", radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
@@ -4845,7 +4845,7 @@ function flowPrep() {
   guideStart();
   if (fixed && performance.now() < flowBurstEnd) return;
   flowStop(); flowBtns();
-  if (saving || ovMode || !flowOn || !cur || !cur.route || cur.route.length < 2 || fixed || document.hidden) return;
+  if (saving || !flowOn || !cur || !cur.route || cur.route.length < 2 || fixed || document.hidden) return;
   flowBuild();
 }
 function flowBurst() {
