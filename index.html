@@ -178,7 +178,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2218</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2235</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3386,11 +3386,12 @@ async function snsData() {
   if (useRide) {
     // 📍 行った所：経由地・寄り道スポット・スタンプ・通った駅/お寺/神社 を時間順に。
     // Xの文字数（280）に入るだけ、新しいものから入れて、表示は走った順（→）。家のまわりの所は出さない（「着」の行は出さない）
-    const clean = n => n.replace(/^🎯\s*/, "").replace(/^\d+\.\s*/, "");
+    const clean = n => n.replace(/^[^\p{L}\p{N}]+/u, "").replace(/^\d+\.\s*/, "").trim();   // 先頭の絵文字（🎯 ⛲ など）・番号をとる
     const items = [];
     for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name) });
     for (const c of await passList(ride.pts, hideP).catch(() => [])) items.push({ t: c.t, name: c.name });
-    const seen = new Set(), list = items.sort((x, y) => x.t - y.t).filter(x => { const k = x.name.replace(/^\S+\s/, ""); if (seen.has(k)) return false; seen.add(k); return true; });
+    // 同じ所は1回だけ：名前が同じか、片方がもう片方をふくむ（「妙典寺」と「日蓮宗妙典寺」など）
+    const seen = [], list = items.sort((x, y) => x.t - y.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); x.name = k; return true; });
     // 地図に「いまここ」を出せるときは、さいごに「〇〇(イマココ)」（地名＝市区町村＋町名。行った所がなくても出す）
     const hn = here ? await placeName(here) : "", tail = hn ? [{ name: hn + "(イマココ)" }] : [];
     const rest = [...L, "🗺 ルート↓", SNS_URL, SNS_TAGS].join("\n"), pick = [];
@@ -3415,7 +3416,8 @@ async function snsData() {
     }
   }
   L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後
-  const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^🎯\s*/, "") })).filter(q => q.p && !hideP(q.p));
+  const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^[^\p{L}\p{N}]+/u, "").trim() })).filter(q => q.p && !hideP(q.p))
+    .filter((q, i, A) => !A.slice(0, i).some(o => o.name.includes(q.name) || q.name.includes(o.name)));   // 地図の印も、同じ所は1つ
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
   return { runs, stops: here && snsTrail ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: (snsCm.trim() ? snsCm.trim() + "\n\n" : "") + L.join("\n"), sub, none: !useRide, link, here, dir,
     big: useRide && !riding ? "サイクリング完了" : "", test: snsTest };   // 走り終わったら地図に大きく
@@ -3429,7 +3431,7 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test }) {   //
   if (all.length) {
     let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; for (const [a, o] of all) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, o); lo1 = Math.max(lo1, o); }
     const wx = (lo, z) => (lo + 180) / 360 * 256 * 2 ** z, wy = (la, z) => { const s = Math.sin(la * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256 * 2 ** z; };
-    const TOP = big ? 150 : 0;   // 上に大きい文字を入れるときは、そのぶん地図を下に
+    const TOP = (big ? 150 : 0) + (test ? 110 : 0);   // 上に大きい文字・テストの帯を入れるときは、そのぶん地図を下に
     let z = 17; while (z > 5 && (wx(lo1, z) - wx(lo0, z) > W - 2 * PAD || wy(la0, z) - wy(la1, z) > H - 2 * PAD - 120 - TOP)) z--;
     const cx = (wx(lo0, z) + wx(lo1, z)) / 2, cy = (wy(la0, z) + wy(la1, z)) / 2 + 50 - TOP / 2, ox = cx - W / 2, oy = cy - H / 2;
     const X = p => [wx(p[1], z) - ox, wy(p[0], z) - oy];
@@ -3497,8 +3499,8 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test }) {   //
   }
   if (big) {   // 🏁 サイクリング完了
     g.save(); g.font = "bold 110px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
-    g.lineJoin = "round"; g.lineWidth = 22; g.strokeStyle = "#fff"; g.strokeText(big, W / 2, 130);
-    g.fillStyle = "#188038"; g.fillText(big, W / 2, 130); g.restore();
+    g.lineJoin = "round"; g.lineWidth = 22; g.strokeStyle = "#fff"; g.strokeText(big, W / 2, 130 + (test ? 110 : 0));
+    g.fillStyle = "#188038"; g.fillText(big, W / 2, 130 + (test ? 110 : 0)); g.restore();
   }
   if (test) {   // 🧪 テスト用：家のまわりも消していないので、まちがって投稿しないように大きく書く
     g.save(); g.fillStyle = "#d93025e0"; g.fillRect(0, 0, W, 110); g.fillStyle = "#fff"; g.font = "bold 60px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
