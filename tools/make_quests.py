@@ -50,6 +50,7 @@ def is_station(t): return t.get("railway") in ("station", "halt") or (t.get("pub
 # スポットのジャンル（アプリの SPOT_KINDS と同じ名前）。名前がなくてもいいもの = NONAME
 NONAME = {"toilet", "water", "bikepark", "bike", "xing", "signal", "steps", "ramp", "elev", "cbar", "bollard", "gate",
           "railx", "footbr", "underpass", "stop", "bump", "constr", "bench", "shelter", "vending", "repair", "police", "aed", "jizo", "tree", "spring", "fall"}
+MACHI_KINDS = ("school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground")   # 面なら外形も入れる（アプリが「となりの道を走っているか」を見るため）
 MID_KINDS = ("bridge", "ramp", "steps", "cbar", "bollard", "gate", "footbr", "underpass", "constr")   # 線（way）のスポットは まん中の点
 def spot_kind(t, is_way=False):
     g = t.get; a, sh, hi, to = g("amenity"), g("shop"), g("historic"), g("tourism")
@@ -262,11 +263,18 @@ def main():
 
     # 市区町村
     pts = [("station", n, la, lo, 0) for n, la, lo in nh.sta] + nh.pow
+    outline = {}   # (ジャンル, 名前, 緯度, 経度) → 外形 [緯度, 経度, 緯度, 経度, …]（まちの建物の面だけ・約20mおき・16点まで）
     for k, n, ns, imp in wh.pow:   # 面のスポットは、まわりの点の平均（橋は まん中の点）
         ps = [L[x] for x in ns if x in L]
         if not ps: continue
         if k in MID_KINDS: pts.append((k, n) + ps[len(ps) // 2] + (imp,))
-        else: pts.append((k, n, sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps), imp))
+        else:
+            la, lo = sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps)
+            pts.append((k, n, la, lo, imp))
+            if k in MACHI_KINDS and len(ps) >= 3:
+                r = thin(ps, 0.0002)
+                if len(r) > 16: r = [r[i * len(r) // 16] for i in range(16)]
+                outline[(k, n, round(la, 5), round(lo, 5))] = [round(c, 5) for q in r for c in q]
     print(f"  スポット {len(pts):,}か所", flush=True)
     cities = []
     for cid, (nm, ms) in rh.city.items():
@@ -287,7 +295,8 @@ def main():
     pts.sort(key=lambda x: -x[4])   # 同じ所に2つあったら有名なほうをのこす
     for k, n, la, lo, imp in pts:
         if k == "station": continue
-        tiles[f"{int(la // T)}_{int(lo // T)}"][k].append((n, round(la, 5), round(lo, 5)) + ((1,) if imp else ()))
+        rla, rlo = round(la, 5), round(lo, 5); ol = outline.get((k, n, rla, rlo))
+        tiles[f"{int(la // T)}_{int(lo // T)}"][k].append((n, rla, rlo) + ((1 if imp else 0, ol) if ol else (1,) if imp else ()))
     sdir = os.path.join(out, "spots"); os.makedirs(sdir, exist_ok=True)
     for f in os.listdir(sdir):
         if f.endswith(".json"): os.remove(os.path.join(sdir, f))
