@@ -3138,6 +3138,12 @@ else {
   const last = lsGet(LKEY, null);
   // 前回のルートは出さない（新しい版を読むたびに出てじゃまなので）。計算が途中だったときだけ、続きができるように出す
   if (last && last.rs) { try { const lr = unpackRoute(last); showRoute(lr, true); setMsg("前回の計算が途中だったよ。「▶ 続きを計算」で再開できるよ"); } catch {} }
+  else if (last) {   // 走っているとちゅうに新しい版を読んだときは、ルートをもどす（消えると困るので）
+    try {
+      const rd = lsGet("hosomichi_ride", null), lt = rd && (rd.pts && rd.pts.length ? rd.pts[rd.pts.length - 1][2] : rd.t0);
+      if (rd && !rd.done && Date.now() - lt < RIDE_GAP) { const lr = unpackRoute(last); showRoute(lr, false); setMsg("走っているとちゅうだったので、ルートをもどしたよ。◎ で案内を再開してね"); }
+    } catch {}
+  }
 }
 </script>
 </body></html>
