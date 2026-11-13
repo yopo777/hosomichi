@@ -174,7 +174,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1007</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1123</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -225,6 +225,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="vcOn">🗣 音声で案内（ナビ中）</label>
         <div style="font-size:11px;color:#666;margin-top:2px">曲がる所の手前（100mくらい・まもなく）、ルートから外れたとき、とうちゃくをしゃべるよ。道なりのカーブは案内しないよ（前に作ったルートは線の形から見つけるので、カーブでもしゃべることがあるよ。作りなおすと直るよ）</div>
         <div class="btns" style="margin-top:4px"><button class="ib" id="vcTest" style="font-size:12px">🔊 ためしに聞く</button></div>
+        <div style="font-weight:bold;margin-top:6px">🏯 名所の近くに来たら教える</div>
+        <div style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="vcSpot" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpot" value="1"> 有名な所だけ</label><label><input type="radio" name="vcSpot" value="2"> いろいろ</label></div>
+        <div style="font-size:11px;color:#666;margin-top:2px">「めぐる」の神社・お寺・城・名所・展望・古墳・湧き水…の近く（70m）を通ると「近くに〇〇があります」と言うよ。公園と橋は多すぎるので言わないよ。地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <div style="font-weight:bold">⭕ ナビ中は自分のまわりだけ表示する</div>
@@ -237,7 +240,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div id="idleLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="idleLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="idleLv" value="10"> 10秒</label><label><input type="radio" name="idleLv" value="15"> 15秒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">⬛で暗くしているあいだは、ボールも止めるよ（⭕丸のときは動くよ）</div>
         <div style="font-weight:bold;margin-top:6px">📡 地図を動かす間かく</div>
-        <div id="gpsLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="gpsLv" value="1"> 1秒（ふつう）</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="3"> 3秒</label><label><input type="radio" name="gpsLv" value="5"> 5秒</label></div>
+        <div id="gpsLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="gpsLv" value="1"> 1秒（ふつう）</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="2"> 2秒</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="3"> 3秒</label><label><input type="radio" name="gpsLv" value="5"> 5秒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">間かくを長くすると、地図の描きなおしがへって電池にやさしいよ。走った記録はいままでどおり取るよ。曲がる所の手前200mと、ルートから外れたときは1秒ごとにもどすよ</div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
       </div>
@@ -3762,7 +3765,7 @@ function rideAdd(ll, accu) {
   if (ride.pts.length > 6000) ride.pts.splice(1, 1);
   rideSave(false);
 }
-// 📡 地図の更新の間かく（1 / 3 / 5 秒）。走った記録はぜんぶ取る。曲がる所の近く・ルートから外れたときは毎回更新
+// 📡 地図の更新の間かく（1 / 2 / 3 / 5 秒）。走った記録はぜんぶ取る。曲がる所の近く・ルートから外れたときは毎回更新
 let gpsEvery = +lsGet("hosomichi_gps", 1) || 1, gpsLast = 0;
 for (const r of document.querySelectorAll("[name=gpsLv]")) {
   r.checked = +r.value === gpsEvery;
@@ -3790,6 +3793,7 @@ function onPos(p) {
   }
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
   qCheck(ll, p.coords.accuracy); spotUpdate(false); homeDist();
+  setTimeout(() => vcSpotCheck(ll), 0);   // 案内（vcNav）のあとで
   applyBearing();
   if (follow && !ovOn()) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま（全体を見ているあいだは動かさない）
   if (cur && cur.nav && cur.nav.length > 1) {
@@ -3817,6 +3821,30 @@ function say(t) {
     const v = speechSynthesis.getVoices().find(v => /^ja/i.test(v.lang)); if (v) u.voice = v;
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   } catch {}
+}
+// 🏯 名所の近くを通ったら声で教える（0=しない 1=有名な所だけ 2=いろいろ）。同じ所は1回だけ
+let vcSpot = +lsGet("hosomichi_vcspot", 0) || 0;
+const VS_KINDS = ["shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"], VS_R = 70;
+const vsDone = new Set(); let vsBusy = false;
+for (const r of document.querySelectorAll("[name=vcSpot]")) {
+  r.checked = +r.value === vcSpot;
+  r.onchange = () => { vcSpot = +r.value; lsSet("hosomichi_vcspot", vcSpot); };
+}
+async function vcSpotCheck(ll) {
+  if (!vcOn || !vcSpot || vsBusy || wid === null || !follow) return;
+  if (vcOff || (vcTurns && navAlong != null && vcTurns.some(t => t.s > navAlong - 5 && t.s - navAlong < 150))) return;   // 曲がる手前・コース外れのときは案内を優先
+  vsBusy = true;
+  try {
+    const t = await spotTile(Math.floor(ll[0] / SPOT_T) + "_" + Math.floor(ll[1] / SPOT_T));
+    let best = null;
+    for (const k of VS_KINDS) for (const s of t[k] || []) {
+      if (!s[0] || (vcSpot === 1 && !s[3])) continue;
+      const id = k + s[1] + "," + s[2]; if (vsDone.has(id)) continue;
+      const d = hav(ll, [s[1], s[2]]);
+      if (d < VS_R && (!best || (s[3] || 0) > (best[1][3] || 0) || d < best[2])) best = [id, s, d];
+    }
+    if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); say(`近くに、${best[1][0]}があります`); }
+  } catch {} finally { vsBusy = false; }
 }
 function vcAt(d) {   // ルートの先頭から d m の点
   const R = cur.nav; d = Math.max(0, Math.min(cum[cum.length - 1], d));
