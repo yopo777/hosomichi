@@ -179,7 +179,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2304</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2314</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3576,7 +3576,7 @@ async function trkOpen() {
     </div>
     <div id="trkImg" style="text-align:center;color:#888;padding:30px 0;border:1px solid #eee;border-radius:8px">地図を作っているよ…</div>
     <div class="btns" style="margin-top:6px"><button class="ib" id="trkSns" style="border-color:#1d9bf0;color:#1d9bf0;font-weight:bold">📣 SNSに出す</button><button class="ib" id="trkReset">🔄 リセット</button></div>
-    <div style="font-weight:bold;margin:10px 0 4px">📍 通った所</div><div id="trkList" style="color:#888">さがしているよ…</div>
+    <div style="font-weight:bold;margin:10px 0 4px">📍 通った所</div><div id="trkList" style="color:#888;max-height:42vh;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:2px 6px">さがしているよ…</div>
     <div style="font-size:11px;color:#888;margin-top:8px">この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ。過去の記録の合計は、あとで入れるよ</div></div>`;
   $("trkSns").onclick = () => snsOpen();
   const d0 = new Date(ride.t0);
@@ -3591,10 +3591,10 @@ async function trkOpen() {
   const list = items.sort((a, b) => a.t - b.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); return true; });
   // 縦にならべる：いちばん上が新しい（さいご）→ 下へいくほど古い（はじめ）。古いものほど うすくする
   const rows = [{ t: P[P.length - 1][2], name: "さいご（いまの記録）", ic: "🏁" }, ...list.slice().reverse(), { t: P[0][2], name: "記録のはじめ", ic: "🚩" }];
-  if ($("trkList")) $("trkList").innerHTML = rows.map((x, i) => `<div style="display:flex;align-items:stretch;color:#222;min-height:30px;opacity:${(1 - 0.6 * i / Math.max(1, rows.length - 1)).toFixed(2)}">
-      <span style="width:42px;color:#888;font-size:12px;padding-top:6px">${hhmm(x.t)}</span>
-      <span style="width:18px;position:relative;flex:none"><i style="position:absolute;left:8px;top:${i ? 0 : 12}px;bottom:${i === rows.length - 1 ? "calc(100% - 12px)" : 0};width:2px;background:#e8384f"></i><i style="position:absolute;left:4px;top:8px;width:10px;height:10px;border-radius:50%;background:${x.ic ? "#e8384f" : "#fff"};border:2px solid #e8384f;box-sizing:border-box"></i></span>
-      <span style="padding:5px 0 5px 6px;flex:1">${x.ic ? x.ic + " " : ""}${esc(x.name)}</span></div>`).join("");
+  if ($("trkList")) $("trkList").innerHTML = rows.map((x, i) => `<div style="display:flex;align-items:stretch;color:#222;min-height:22px;font-size:11px;opacity:${(1 - 0.6 * Math.min(1, i / Math.max(1, Math.min(rows.length - 1, 40)))).toFixed(2)}">
+      <span style="width:34px;color:#888;font-size:10px;padding-top:4px">${hhmm(x.t)}</span>
+      <span style="width:18px;position:relative;flex:none"><i style="position:absolute;left:8px;top:${i ? 0 : 9}px;bottom:${i === rows.length - 1 ? "calc(100% - 9px)" : 0};width:2px;background:#e8384f"></i><i style="position:absolute;left:5px;top:6px;width:8px;height:8px;border-radius:50%;background:${x.ic ? "#e8384f" : "#fff"};border:2px solid #e8384f;box-sizing:border-box"></i></span>
+      <span style="padding:3px 0 3px 4px;flex:1">${x.ic ? x.ic + " " : ""}${esc(x.name)}</span></div>`).join("");
 }
 async function snsOpen() {
   snsCm = ""; snsTest = false;
