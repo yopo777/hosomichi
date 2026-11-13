@@ -304,7 +304,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <button class="ib" id="bSave">💾 保存</button>
         <button class="ib" id="bShare" style="display:none">🔗 共有URL</button>
         <button class="ib" id="bGpx">⬇ GPX</button>
-        <button class="ib" id="bSns">📣 SNS</button>
+
         <button class="ib" id="bNew" style="display:none">✏ 新しく作る</button>
         <button class="ib" id="bResume" style="display:none;flex-basis:100%;border-color:#188038;color:#188038;font-weight:bold">▶ 続きを計算</button>
       </div>
@@ -1889,7 +1889,6 @@ async function snsPhoto(f) {   // 写真は描きなおして、位置情報（E
   return new Promise(ok => cv.toBlob(b => ok(b && new File([b], "photo_" + Date.now() + ".jpg", { type: "image/jpeg" })), "image/jpeg", 0.9));
 }
 const xLeft = t => { const n = 280 - xLen(t); return n >= 0 ? `Xの文字数：あと${n}（日本語だと${Math.floor(n / 2)}文字くらい）` : `⚠ Xの文字数を ${-n} こえてるよ`; };
-$("bSns").onclick = () => { showTab("trk"); snsOpen(); };   // ルートタブのボタンは、軌跡タブのSNSへ
 // 🛤 軌跡タブ：今日走った線をぜんぶ地図に出して、通った所と時刻を一覧にする（この端末の中だけ・消す所もそのまま出す）
 const trkLayer = L.layerGroup().addTo(map);
 async function trkOpen() {
