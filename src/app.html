@@ -235,7 +235,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">さわらないと暗くなるよ（50%でも、光の量は2割くらいになるよ）。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
         <div style="font-weight:bold;margin-top:6px">⏱ さわらないで何秒たったら節電する？</div>
         <div id="idleLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="idleLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="idleLv" value="10"> 10秒</label><label><input type="radio" name="idleLv" value="15"> 15秒</label></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">⭕か⬛をオンにしているとき、節電のあいだはマークとボールも消すよ（さわるともどるよ）</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">⬛で暗くしているあいだは、マークとボールも消すよ（⭕丸のときは出すよ）</div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
       </div>
       </div>
@@ -2254,7 +2254,7 @@ for (const r of document.querySelectorAll("[name=idleLv]")) {
   r.checked = +r.value * 1000 === BLK_IDLE;
   r.onchange = () => { BLK_IDLE = +r.value * 1000; lsSet("hosomichi_idle", +r.value); blkTouch = Date.now(); blkTick(); };
 }
-// 🔋 節電中（⭕か⬛がオンで、さわらずにしばらくたった）：マーク・一方通行の矢印・ボールも消して、描きなおしを減らす
+// 🔋 ⬛で暗くしているあいだ：マーク・一方通行の矢印・ボールも消して、描きなおしを減らす
 let saving = false;
 function saveSet(on) {
   if (on === saving) return; saving = on; document.body.classList.toggle("save", on);
@@ -2273,7 +2273,6 @@ $("blk").addEventListener("pointerup", () => { blkTouch = Date.now(); setTimeout
 $("blk").addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); });
 function blkTick() {
   document.body.classList.toggle("ringOff", Date.now() - blkTouch < BLK_IDLE);
-  saveSet(!!((blkScr || ringLv) && wid !== null && follow && !document.hidden && Date.now() - blkTouch > BLK_IDLE && !document.body.classList.contains("ov")));
   const now = Date.now(), on = blkScr && wid !== null && follow && !document.hidden && now - blkTouch > BLK_IDLE && now > blkUntil;
   if (on) {
     const full = blkScr >= 100;   // まっ黒のときだけ、のこり・住所を出す（暗くするだけなら地図が見えるので）
@@ -2281,6 +2280,7 @@ function blkTick() {
     for (const id of ["blkNav", "blkAddr"]) $(id).style.display = full ? "" : "none";
     $("blk").lastElementChild.style.display = full ? "" : "none";
     $("blkNav").textContent = $("nav").style.display === "none" ? "" : $("nav").textContent; $("blkAddr").textContent = $("addr").style.display === "none" ? "" : $("addr").textContent; }
+  saveSet(!!on);   // 暗くしているあいだだけ、マーク・ボールも消す（⭕丸だけのときは出す）
   const d = on ? "flex" : "none"; if ($("blk").style.display !== d) $("blk").style.display = d;
 }
 setInterval(blkTick, 1000);
