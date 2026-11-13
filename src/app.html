@@ -1755,8 +1755,9 @@ async function snsData() {
   return { runs, stops: here && snsTrail ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: (snsCm.trim() ? snsCm.trim() + "\n\n" : "") + L.join("\n"), sub, none: !useRide, link, here, dir,
     big: useRide && !riding ? "サイクリング完了" : "" };   // 走り終わったら地図に大きく
 }
-async function snsImage({ runs, stops, sub, here, dir, big }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所
-  const W = 1200, H = 1200, PAD = 140, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : []);
+async function snsImage({ runs, stops, sub, here, dir, big, pins }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所＋写真
+  pins = pins || [];
+  const W = 1200, H = 1200, PAD = pins.length ? 200 : 140, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p));
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
   g.fillStyle = "#f2efe9"; g.fillRect(0, 0, W, H);
   if (all.length) {
@@ -1811,6 +1812,21 @@ async function snsImage({ runs, stops, sub, here, dir, big }) {   // 1200×1200 
       g.fillStyle = "#1a73e8"; g.beginPath(); g.arc(x, y, 20, 0, 7); g.fill(); g.lineWidth = 7; g.strokeStyle = "#fff"; g.stroke();
       g.font = "bold 38px sans-serif"; g.textBaseline = "middle"; g.lineWidth = 9; g.strokeStyle = "#fff"; g.strokeText("いまここ", x + 34, y + 30); g.fillStyle = "#1a73e8"; g.fillText("いまここ", x + 34, y + 30);
     }
+    // 📷 写真：撮った所に小さくして置く（まわりの4か所から、はみ出さない・重ならない所をえらぶ）
+    const S = 230, boxes = [];
+    for (const q of pins) {
+      const [x, y] = X(q.p), k = S / Math.max(q.bm.width, q.bm.height), w = q.bm.width * k, h = q.bm.height * k;
+      const cands = [[40, -h - 40], [-w - 40, -h - 40], [40, 40], [-w - 40, 40], [-w / 2, -h - 60], [-w / 2, 60]].map(([dx, dy]) => [x + dx, y + dy]);
+      const fit = ([bx, by]) => bx > 10 && by > 10 && bx + w < W - 10 && by + h < H - 130;
+      const free = ([bx, by]) => boxes.every(([cx, cy, cw, ch]) => bx + w + 12 < cx || cx + cw + 12 < bx || by + h + 12 < cy || cy + ch + 12 < by);
+      const [bx, by] = cands.find(c => fit(c) && free(c)) || cands.find(fit) || cands[0];
+      boxes.push([bx, by, w, h]);
+      g.strokeStyle = "#fff"; g.lineWidth = 10; g.beginPath(); g.moveTo(x, y); g.lineTo(bx + w / 2, by + h / 2); g.stroke();
+      g.strokeStyle = "#e8710a"; g.lineWidth = 4; g.stroke();
+      g.save(); g.shadowColor = "#0007"; g.shadowBlur = 16; g.fillStyle = "#fff"; g.fillRect(bx - 8, by - 8, w + 16, h + 16); g.restore();
+      g.drawImage(q.bm, bx, by, w, h);
+      if (!(here && hav(here, q.p) < 40)) { g.fillStyle = "#e8710a"; g.beginPath(); g.arc(x, y, 13, 0, 7); g.fill(); g.lineWidth = 5; g.strokeStyle = "#fff"; g.stroke(); }   // いまここ の上には点を描かない
+    }
   }
   if (big) {   // 🏁 サイクリング完了
     g.save(); g.font = "bold 110px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
@@ -1821,6 +1837,40 @@ async function snsImage({ runs, stops, sub, here, dir, big }) {   // 1200×1200 
   g.fillStyle = "#222"; g.font = "bold 46px sans-serif"; g.textBaseline = "middle"; g.fillText("🚲 " + sub, 36, H - 70);
   g.font = "26px sans-serif"; g.fillStyle = "#666"; g.textAlign = "right"; g.fillText("ほそみちナビ", W - 30, H - 84); g.font = "20px sans-serif"; g.fillText(snsImage.attr || "", W - 30, H - 44); g.textAlign = "left";
   return new Promise(ok => { try { cv.toBlob(b => ok(b), "image/png"); } catch { ok(null); } });
+}
+// 📷 写真の撮った場所と時刻（Exif）を読む。位置情報は ここで読むだけで、わたす写真からは消す
+async function exifOf(f) {
+  try {
+    const b = new DataView(await f.slice(0, 256 * 1024).arrayBuffer());
+    if (b.getUint16(0) !== 0xFFD8) return {};
+    let o = 2;
+    while (o < b.byteLength - 4) {
+      const mk = b.getUint16(o), len = b.getUint16(o + 2);
+      if (mk === 0xFFE1 && b.getUint32(o + 4) === 0x45786966) {
+        const t = o + 10, le = b.getUint16(t) === 0x4949, u16 = i => b.getUint16(t + i, le), u32 = i => b.getUint32(t + i, le);
+        const ifd = at => { const n = u16(at), r = {}; for (let i = 0; i < n; i++) { const e = at + 2 + i * 12; r[u16(e)] = { ty: u16(e + 2), cnt: u32(e + 4), off: e + 8 }; } return r; };
+        const val = e => (e.ty === 3 ? u16(e.off) : u32(e.off));
+        const rat = (e, k) => { const a = u32(e.off) + k * 8; return u32(a) / (u32(a + 4) || 1); };
+        const str = e => { const a = e.cnt > 4 ? u32(e.off) : e.off; let s = ""; for (let i = 0; i < e.cnt - 1; i++) s += String.fromCharCode(b.getUint8(t + a + i)); return s; };
+        const z = ifd(u32(4)), out = {};
+        if (z[0x8769]) { const ex = ifd(val(z[0x8769])); const d = ex[0x9003] && str(ex[0x9003]).match(/(\d+):(\d+):(\d+) (\d+):(\d+):(\d+)/); if (d) out.t = new Date(d[1], d[2] - 1, d[3], d[4], d[5], d[6]).getTime(); }
+        if (z[0x8825]) { const gp = ifd(val(z[0x8825])), dms = e => rat(e, 0) + rat(e, 1) / 60 + rat(e, 2) / 3600;
+          if (gp[2] && gp[4]) { let la = dms(gp[2]), lo = dms(gp[4]); if (gp[1] && str(gp[1]) === "S") la = -la; if (gp[3] && str(gp[3]) === "W") lo = -lo; if (la && lo) out.p = [la, lo]; } }
+        return out;
+      }
+      if ((mk & 0xFF00) !== 0xFF00) break; o += 2 + len;
+    }
+  } catch {}
+  return {};
+}
+// 写真を置く場所：写真の位置情報 → なければ 撮った時刻（なければファイルの時刻）に走っていた所。地図に出している線の近く（150m）だけ（家のまわりなどは置かない）
+function photoPlace(ex, f, d) {
+  const near = p => d.runs.some(r => r.some(q => hav(q, p) < 150)) || (d.here && hav(d.here, p) < 150);
+  if (ex.p && near(ex.p)) return ex.p;
+  const t = ex.t || f.lastModified; if (!t || !ride || !ride.pts.length) return null;
+  let bi = -1, bd = 10 * 60e3; ride.pts.forEach((q, i) => { const dt = Math.abs(q[2] - t); if (dt < bd) { bd = dt; bi = i; } });
+  if (bi < 0) return null; const p = [ride.pts[bi][0], ride.pts[bi][1]];
+  return near(p) ? p : null;
 }
 async function snsPhoto(f) {   // 写真は描きなおして、位置情報（Exif）を消す・大きすぎるのは小さく
   const bm = await createImageBitmap(f, { imageOrientation: "from-image" }).catch(() => null); if (!bm) return null;
@@ -1848,7 +1898,13 @@ $("bSns").onclick = async () => {
   let cmT = null;
   $("snsCm").oninput = () => { clearTimeout(cmT); cmT = setTimeout(async () => { snsCm = $("snsCm").value; const d = await snsData(); $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); }, 400); };
   $("snsTxt").oninput = () => { $("snsLeft").textContent = xLeft($("snsTxt").value); };
-  const draw = async d => {
+  let lastD = null, pinSrc = [];   // pinSrc：えらんだ写真の { ex, f }
+  const pinsFor = async d => (await Promise.all(pinSrc.map(async ({ ex, f }) => {
+    const p = photoPlace(ex, f, d); if (!p) return null;
+    const bm = await createImageBitmap(f, { imageOrientation: "from-image" }).catch(() => null); return bm && { p, bm };
+  }))).filter(Boolean);
+  const draw = async d0 => {
+    const d = { ...d0, pins: d0.none ? [] : await pinsFor(d0) }; lastD = d0;
     link = d.link;
     $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); $("snsImg").textContent = "地図を作っているよ…"; map0 = null;
     const blob = d.none ? null : await snsImage(d);
@@ -1860,8 +1916,11 @@ $("bSns").onclick = async () => {
   $("snsTr").value = snsTrail; $("snsTr").onchange = async () => { snsTrail = +$("snsTr").value; lsSet("hosomichi_trail", snsTrail); await draw(await snsData()); };
   await draw(data);
   $("snsPh").onchange = async e => {
-    photos = (await Promise.all([...e.target.files].slice(0, 3).map(snsPhoto))).filter(Boolean);
+    const fs = [...e.target.files].slice(0, 3);
+    pinSrc = await Promise.all(fs.map(async f => ({ f, ex: await exifOf(f) })));
+    photos = (await Promise.all(fs.map(snsPhoto))).filter(Boolean);
     $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
+    if (lastD) await draw(lastD);   // 地図の画像に写真を置きなおす
   };
   $("snsClose").onclick = () => box.remove();
   $("snsReset").onclick = async () => {
