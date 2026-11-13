@@ -68,7 +68,7 @@ html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-a
 #cfgBox .note{font-size:11px;color:#888}
 #prog{margin-top:8px;display:none}
 #geoAsk{position:fixed;inset:0;z-index:6000;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px}#geoAsk .box{background:#fff;border-radius:14px;padding:16px;max-width:420px;font-size:13px;box-shadow:0 6px 24px #0005}#geoAsk button{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#geoAsk button.big{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold;font-size:15px}
-#snsBox{padding:2px 0}#snsBox .box{background:#fff;max-width:520px;margin:0 auto;font-size:13px}   /* 📣 SNSタブの中 */
+#snsBox{padding:2px 0}.trkN{flex:1;min-width:90px;border:1px solid #eee;border-radius:10px;padding:6px 8px}.trkN small{display:block;color:#888;font-size:11px}.trkN b{font-size:16px}#snsBox .box{background:#fff;max-width:520px;margin:0 auto;font-size:13px}   /* 📣 SNSタブの中 */
 #snsBox img{width:100%;border-radius:8px;border:1px solid #ddd;display:block}#snsBox textarea{width:100%;box-sizing:border-box;height:150px;font-size:14px;margin-top:8px;border:1px solid #ccc;border-radius:8px;padding:8px}
 #snsBox .ph{display:flex;gap:6px;margin-top:6px}#snsBox .ph img{width:80px;height:80px;object-fit:cover}
 #snsBox button{padding:9px 12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#snsBox .go{background:#1d9bf0;border-color:#1d9bf0;color:#fff;font-weight:bold}
@@ -181,7 +181,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v__VER__</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="sns"><span class="ti">📣</span><span class="tl">SNS</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
+    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
     <div id="tabSpot" style="display:none">
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
@@ -282,7 +282,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       </div>
       </div>
     </div>
-    <div id="tabSns" style="display:none"></div>
+    <div id="tabTrk" style="display:none"></div>
     <div id="tabLog" style="display:none">
       <div class="btns" style="margin:6px 0"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
         <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="lgAuto" checked>自動スクロール</label></div>
@@ -1888,10 +1888,52 @@ async function snsPhoto(f) {   // 写真は描きなおして、位置情報（E
   return new Promise(ok => cv.toBlob(b => ok(b && new File([b], "photo_" + Date.now() + ".jpg", { type: "image/jpeg" })), "image/jpeg", 0.9));
 }
 const xLeft = t => { const n = 280 - xLen(t); return n >= 0 ? `Xの文字数：あと${n}（日本語だと${Math.floor(n / 2)}文字くらい）` : `⚠ Xの文字数を ${-n} こえてるよ`; };
-$("bSns").onclick = () => showTab("sns");   // ルートタブのボタンは、SNSタブへ
+$("bSns").onclick = () => { showTab("trk"); snsOpen(); };   // ルートタブのボタンは、軌跡タブのSNSへ
+// 🛤 軌跡タブ：今日走った線をぜんぶ地図に出して、通った所と時刻を一覧にする（この端末の中だけ・消す所もそのまま出す）
+const trkLayer = L.layerGroup().addTo(map);
+async function trkOpen() {
+  const T = $("tabTrk"); trkLayer.clearLayers();
+  const P = ride && dayOf(ride.t0) === dayOf(Date.now()) ? ride.pts : [];
+  if (P.length < 2) {
+    T.innerHTML = `<div style="padding:10px;font-size:13px;color:#666">🛤 今日はまだ走った記録がないよ。◎で現在地を追いかけはじめると、走ったところが記録されるよ（この端末の中だけ・夜0時に新しくなるよ）</div>`;
+    return;
+  }
+  // 地図：記録が切れている所（アプリを閉じていた所）は点線
+  let seg = [P[0]];
+  const flush = () => { if (seg.length > 1) L.polyline(seg, { color: "#a142f4", weight: 6, opacity: .85, interactive: false }).addTo(trkLayer); };
+  for (let i = 1; i < P.length; i++) {
+    if (P[i][2] - P[i - 1][2] > 5 * 60e3 && hav(P[i - 1], P[i]) > 300) { flush(); L.polyline([P[i - 1], P[i]], { color: "#a142f4", weight: 3, dashArray: "4 8", opacity: .7, interactive: false }).addTo(trkLayer); seg = [P[i]]; }
+    else seg.push(P[i]);
+  }
+  flush();
+  L.circleMarker(P[0], { radius: 7, color: "#fff", weight: 3, fillColor: "#a142f4", fillOpacity: 1 }).addTo(trkLayer).bindTooltip("記録のはじめ " + hhmm(P[0][2]));
+  if (!follow) map.fitBounds(L.latLngBounds(P.map(q => [q[0], q[1]])), { padding: [40, 40] });
+  // 数字：走ったきょり・走っていた時間（止まっていた・記録がない時間はのぞく）
+  let dist = 0, move = 0;
+  for (let i = 1; i < P.length; i++) { const d = hav(P[i - 1], P[i]), dt = P[i][2] - P[i - 1][2]; if (dt < 5 * 60e3) { dist += d; move += dt; } }
+  T.innerHTML = `<div style="font-size:13px;padding:2px 2px 6px">
+    <b style="font-size:15px">🛤 今日の軌跡（${new Date(ride.t0).getMonth() + 1}/${new Date(ride.t0).getDate()}）</b>
+    <div style="display:flex;gap:8px;margin:6px 0;flex-wrap:wrap">
+      <div class="trkN"><small>走ったきょり</small><b>${fmtKm(dist)}</b></div>
+      <div class="trkN"><small>走っていた時間</small><b>${(m => (m >= 60 ? Math.floor(m / 60) + "時間" : "") + (m % 60) + "分")(Math.round(move / 60e3))}</b></div>
+      <div class="trkN"><small>はじめ〜さいご</small><b>${hhmm(P[0][2])}〜${hhmm(P[P.length - 1][2])}</b></div>
+    </div>
+    <div class="btns"><button class="ib" id="trkSns" style="border-color:#1d9bf0;color:#1d9bf0;font-weight:bold">📣 SNSに出す</button><button class="ib" id="trkFit">🗺 地図で見る</button><button class="ib" id="trkReset">🔄 リセット</button></div>
+    <div style="font-weight:bold;margin:10px 0 4px">📍 通った所</div><div id="trkList" style="color:#888">さがしているよ…</div>
+    <div style="font-size:11px;color:#888;margin-top:8px">この画面と地図のむらさきの線は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。点線はアプリを閉じていて記録がない所だよ。過去の記録の合計は、あとで入れるよ</div></div>`;
+  $("trkSns").onclick = () => snsOpen();
+  $("trkFit").onclick = () => { if (follow) setFollow(false); map.fitBounds(L.latLngBounds(P.map(q => [q[0], q[1]])), { padding: [40, 40] }); $("panel").classList.add("min"); $("tog").textContent = "ひらく"; };
+  $("trkReset").onclick = () => { if (!confirm("今日の軌跡をリセットして、ここから新しく記録する？")) return; rideNew(); trkOpen(); };
+  // 通った所（経由地・スタンプ・となりを通った名所や施設・駅）と時刻
+  const items = ride.ev.filter(e => e.k === "stop" || e.k === "stamp").map(e => ({ t: e.t, name: e.name }));
+  for (const c of await passList(P, () => false).catch(() => [])) items.push({ t: c.t, name: (c.ic ? c.ic + " " : "") + c.name });
+  const clean = n => n.replace(/^[^\p{L}\p{N}]+/u, "").trim(), seen = [];
+  const list = items.sort((a, b) => a.t - b.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); return true; });
+  if ($("trkList")) $("trkList").innerHTML = list.length ? list.map(x => `<div style="color:#222;padding:2px 0;border-bottom:1px solid #f0f0f0"><span style="display:inline-block;width:46px;color:#888">${hhmm(x.t)}</span>${esc(x.name)}</div>`).join("") : "まだないよ";
+}
 async function snsOpen() {
   snsCm = ""; snsTest = false;
-  $("tabSns").innerHTML = '<div style="color:#888;padding:20px;text-align:center">📣 投稿を作っているよ…</div>';
+  $("tabTrk").innerHTML = '<div style="color:#888;padding:20px;text-align:center">📣 投稿を作っているよ…</div>';
   const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
@@ -1903,9 +1945,9 @@ async function snsOpen() {
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
       <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ</span></div>
     <div class="ph" id="snsPhs"></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button><button id="snsClose">🚲 ルートにもどる</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button><button id="snsClose">← 軌跡にもどる</button></div>
     <div style="margin-top:10px;font-size:11px;color:#888">走った記録（軌跡）は 夜の0時に新しくなるよ <button id="snsReset" style="font-size:11px;padding:3px 8px">🔄 いまリセット</button></div></div>`;
-  $("tabSns").innerHTML = ""; $("tabSns").appendChild(box);
+  $("tabTrk").innerHTML = ""; $("tabTrk").appendChild(box);
   let map0 = null, photos = [], link = data.link;
   let cmT = null;
   $("snsCm").oninput = () => { clearTimeout(cmT); cmT = setTimeout(async () => { snsCm = $("snsCm").value; const d = await snsData(); $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); }, 400); };
@@ -1941,7 +1983,7 @@ async function snsOpen() {
     $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
     if (lastD) await draw(lastD);   // 地図の画像に写真を置きなおす
   };
-  $("snsClose").onclick = () => showTab("route");
+  $("snsClose").onclick = () => { snsTest = false; trkOpen(); };
   $("snsReset").onclick = async () => {
     if (!confirm("走った記録（軌跡）をリセットして、ここから新しく記録する？")) return;
     rideNew(); if (wid === null) ride.t0 = Date.now(); draw(await snsData());
@@ -2009,8 +2051,8 @@ function showTab(t) {
   $("tabLog").style.display = t === "log" ? "" : "none";
   $("tabQuest").style.display = t === "quest" ? "" : "none";
   $("tabSpot").style.display = t === "spot" ? "" : "none";
-  $("tabSns").style.display = t === "sns" ? "" : "none";
-  if (t === "sns") snsOpen(); else if (snsTest) { snsTest = false; $("tabSns").innerHTML = ""; }   // ほかのタブにうつったらテストは終わり
+  $("tabTrk").style.display = t === "trk" ? "" : "none";
+  if (t === "trk") trkOpen(); else { snsTest = false; trkLayer.clearLayers(); }   // ほかのタブにうつったら、地図の軌跡を消す・SNSのテストは終わり
   if (t === "quest") qRender();
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
