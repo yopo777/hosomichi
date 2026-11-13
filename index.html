@@ -3307,6 +3307,7 @@ async function snsData() {
       runs = [Object.assign(last.slice(j), { cutS: j > 0 || last.cutS, cutE: false })]; }
   }
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
+  const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];   // 地図の画像の小さい字で使う
   const L = [`ほそみちナビで${!useRide ? "これからサイクリング" : riding ? "サイクリング中" : "サイクリング完了"}`];   // 日付は入れない
   if (useRide) {
     // 📍 行った所：経由地・寄り道スポット・スタンプ・通った駅/お寺/神社 を時間順に。
