@@ -1656,9 +1656,7 @@ async function snsData() {
       runs = [Object.assign(last.slice(j), { cutS: j > 0 || last.cutS, cutE: false })]; }
   }
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
-  const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];
-  const ymd = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
-  const L = [`${ymd} ${!useRide ? "これからサイクリング" : riding ? "サイクリング中" : "サイクリング完了"}`];
+  const L = [`ほそみちナビで${!useRide ? "これからサイクリング" : riding ? "サイクリング中" : "サイクリング完了"}`];   // 日付は入れない
   if (useRide) {
     // 📍 行った所：経由地・寄り道スポット・スタンプ・通った駅/お寺/神社 を時間順に。
     // Xの文字数（280）に入るだけ、新しいものから入れて、表示は走った順（→）。家のまわりの所は出さない（「着」の行は出さない）
