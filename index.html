@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="細道ナビ">
 <title>ほそみちナビ（関東版）hosomichi</title>
+<link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.5.3/dist/leaflet-rotate.js"></script>
@@ -178,13 +179,10 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2244</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2246</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
-    <div id="tabSpot" style="display:none">
-      <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
-    </div>
+    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
     <div id="tabQuest" style="display:none">
       <h4 style="margin:8px 0 2px">🎯 ミッション <span style="font-size:11px;color:#666;font-weight:normal">1か所に寄って、ぐるっと1周してもどる</span></h4>
       <div class="row"><label style="width:auto">行き先</label><select id="msnType" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px">
@@ -198,7 +196,12 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="qCand"></div>
       <div id="qList"></div>
     </div>
-    <div id="tabData" style="display:none">
+    <div id="tabCfg" style="display:none">
+      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 ナビ</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="data">🗺 データ</button><button data-s="etc">🔒 その他</button></div>
+    <div id="tabSpot" class="spane" data-s="spot">
+      <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
+    </div>
+    <div id="tabData" class="spane" data-s="data">
       <div style="font-size:11px;color:#666;margin-top:6px">ルートを作るのに使う道路データのこと。地図がカラーの所は、もう端末に入っているよ</div>
     <div id="pfBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
 <div style="margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:6px">
@@ -222,8 +225,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
     </div>
-    <div id="tabCfg" style="display:none">
-      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 ナビ</button><button data-s="map">🗺 地図</button><button data-s="etc">🔒 その他</button></div>
       <div class="spane" data-s="navi">
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="vcOn">🗣 音声で案内（ナビ中）</label>
@@ -3712,10 +3713,8 @@ function showTab(t) {
   for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.t === t);
   $("tabRoute").style.display = t === "route" ? "" : "none";
   $("tabCfg").style.display = t === "cfg" ? "" : "none";
-  $("tabData").style.display = t === "data" ? "" : "none";
   $("tabLog").style.display = t === "log" ? "" : "none";
   $("tabQuest").style.display = t === "quest" ? "" : "none";
-  $("tabSpot").style.display = t === "spot" ? "" : "none";
   $("tabTrk").style.display = t === "trk" ? "" : "none";
   if (t === "trk") trkOpen(); else { snsTest = false; trkLayer.clearLayers(); }   // ほかのタブにうつったら、地図の軌跡を消す・SNSのテストは終わり
   if (t === "quest") qRender();
