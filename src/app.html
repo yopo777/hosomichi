@@ -1919,17 +1919,23 @@ async function trkOpen() {
       <div class="trkN"><small>はじめ〜さいご</small><b>${hhmm(P[0][2])}〜${hhmm(P[P.length - 1][2])}</b></div>
     </div>
     ${oldImg ? `<img id="trkImg" src="${oldImg}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="text-align:center;color:#888;padding:30px 0;border:1px solid #eee;border-radius:8px">地図を作っているよ…</div>'}
-    <div class="btns" style="margin-top:6px"><button class="ib" id="trkSns" style="border-color:#1d9bf0;color:#1d9bf0;font-weight:bold">📣 SNSに出す</button><button class="ib" id="trkReset">🔄 リセット</button></div>
+    <div class="btns" style="margin-top:6px"><button class="ib" id="trkSns" style="border-color:#1d9bf0;color:#1d9bf0;font-weight:bold">📣 SNSに出す</button><button class="ib" id="trkRe">🔃 いま更新</button></div>
     <div style="font-size:11px;color:#666;margin-top:4px">自動で更新：<select id="trkInt" style="font-size:11px;padding:2px">${[[0, "しない"], [1, "1分ごと"], [2, "2分ごと"], [5, "5分ごと"], [10, "10分ごと"], [15, "15分ごと"], [30, "30分ごと"]].map(([v, t]) => `<option value="${v}"${v === trkInt ? " selected" : ""}>${t}</option>`).join("")}</select>（このタブを開いているあいだ・走って記録がふえたときだけ）</div>
     <div style="font-weight:bold;margin:10px 0 4px">📍 通った所</div><div id="trkList" style="color:#888;max-height:42vh;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:2px 6px">さがしているよ…</div>
-    <div style="font-size:11px;color:#888;margin-top:8px">この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ。過去の記録の合計は、あとで入れるよ</div></div>`;
+    <div style="font-size:11px;color:#888;margin-top:8px"><div style="text-align:right;margin-top:6px"><button id="trkReset" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 今日の軌跡をリセット</button></div>
+    この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ。過去の記録の合計は、あとで入れるよ</div></div>`;
   $("trkSns").onclick = () => snsOpen();
   $("trkInt").onchange = () => { trkInt = +$("trkInt").value; lsSet("hosomichi_trkint", trkInt); };
   const d0 = new Date(ride.t0);
   snsImage({ runs, stops: [], sub: `${d0.getMonth() + 1}/${d0.getDate()}(${"日月火水木金土"[d0.getDay()]})`, here: null, dir: null, big: "", pins: [] })
     .then(b => { if ($("trkImg")) $("trkImg").outerHTML = b ? `<img id="trkImg" src="${URL.createObjectURL(b)}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; })
     .catch(() => {});
-  $("trkReset").onclick = () => { if (!confirm("今日の軌跡をリセットして、ここから新しく記録する？")) return; rideNew(); trkOpen(); };
+  $("trkRe").onclick = () => trkOpen();
+  $("trkReset").onclick = () => {   // うっかり消さないように、何を消すか見せて2回きく
+    if (!confirm(`今日の軌跡（${fmtKm(dist)}・記録 ${P.length}点）を消して、ここから新しく記録する？\n消したら元にもどせないよ`)) return;
+    if (!confirm("ほんとうに消していい？")) return;
+    rideNew(); trkOpen();
+  };
   // 通った所（経由地・スタンプ・となりを通った名所や施設・駅）と時刻
   const items = ride.ev.filter(e => e.k === "stop" || e.k === "stamp").map(e => ({ t: e.t, name: e.name }));
   for (const c of await passList(P, () => false).catch(() => [])) items.push({ t: c.t, name: (c.ic ? c.ic + " " : "") + c.name });
@@ -1958,7 +1964,7 @@ async function snsOpen() {
       <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ</span></div>
     <div class="ph" id="snsPhs"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button><button id="snsClose">← 軌跡にもどる</button></div>
-    <div style="margin-top:10px;font-size:11px;color:#888">走った記録（軌跡）は 夜の0時に新しくなるよ <button id="snsReset" style="font-size:11px;padding:3px 8px">🔄 いまリセット</button></div></div>`;
+</div>`;
   $("tabTrk").innerHTML = ""; $("tabTrk").appendChild(box);
   let map0 = null, photos = [], link = data.link;
   let cmT = null;
@@ -1996,10 +2002,6 @@ async function snsOpen() {
     if (lastD) await draw(lastD);   // 地図の画像に写真を置きなおす
   };
   $("snsClose").onclick = () => { snsTest = false; trkOpen(); };
-  $("snsReset").onclick = async () => {
-    if (!confirm("走った記録（軌跡）をリセットして、ここから新しく記録する？")) return;
-    rideNew(); if (wid === null) ride.t0 = Date.now(); draw(await snsData());
-  };
   $("snsUrl").onclick = async () => { if (snsTest) return; try { await navigator.clipboard.writeText(link); $("snsUrl").textContent = "✅ コピーしたよ"; setTimeout(() => $("snsUrl") && ($("snsUrl").textContent = "🔗 URLだけコピー"), 2000); } catch { prompt("URL", link); } };
   $("snsCopy").onclick = async () => { if (snsTest) return; try { await navigator.clipboard.writeText($("snsTxt").value); $("snsCopy").textContent = "✅ コピーしたよ"; } catch { $("snsTxt").select(); } };
   const save = f => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); };
