@@ -1671,7 +1671,13 @@ async function snsData() {
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
   const riding = useRide && !ride.done && wid !== null;
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
-  let { runs, hideP } = snsHide(pts, R);   // runs の cutS/cutE：消した所で切れているはし（フェードアウトする）
+  // 🔒 消す所：家・その日の出発地（親せきの家などから出ても）・長く止まっていた所（20分以上、記録があいた所）
+  const anchors = home ? [home] : [];
+  if (useRide) {
+    anchors.push(pts[0]);
+    for (let i = 1; i < ride.pts.length; i++) if (ride.pts[i][2] - ride.pts[i - 1][2] > 20 * 60e3) anchors.push(pts[i - 1], pts[i]);
+  }
+  let { runs, hideP } = snsHide(pts, R, anchors);   // runs の cutS/cutE：消した所で切れているはし（フェードアウトする）
   // 📍 いまここ：走っている途中で、今いる所が消す所でなければ、今いる所と「来た道」（さいごの5km）だけを見せる
   let here = null, dir = null;
   if (riding && pts.length > 1 && !hideP(pts[pts.length - 1], pts.length - 1)) {
@@ -1798,7 +1804,7 @@ $("bSns").onclick = async () => {
   const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
-    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ<span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家を決めていないときは出発から）。投稿はXなどで自分でしてね</span></div>
+    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ<span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地と、20分以上止まっていた所もおなじように消すよ）。投稿はXなどで自分でしてね</span></div>
     <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
     <textarea id="snsTxt"></textarea>
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
