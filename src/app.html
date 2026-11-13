@@ -1713,7 +1713,7 @@ async function snsData() {
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
   const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];   // 地図の画像の小さい字で使う
   const SNS_MAX = 280 - 4 - (snsCm.trim() ? xLen(snsCm.trim()) + 2 : 0);
-  const L = [`ほそみちナビ🚴で${!useRide ? "これからサイクリング" : riding ? "サイクリング中" : "サイクリング完了"}`];   // 日付は入れない
+  const L = ["ほそみちナビ🚴でサイクリング中"];   // いつも同じ（どこがスタートでどこが終わりかは決めない）   // 日付は入れない
   if (useRide) {
     // 📍 行った所：経由地・寄り道スポット・スタンプ・通った駅/お寺/神社 を時間順に。
     // Xの文字数（280）に入るだけ、新しいものから入れて、表示は走った順（→）。家のまわりの所は出さない（「着」の行は出さない）
@@ -2548,11 +2548,11 @@ function vcNav(off, rest) {
   if (off > 60) { if (!vcOff) { vcOff = true; if (vcOn) { boo(); const w = backWord(off); setTimeout(() => say("ルートから外れています。" + w), 700); } } blkShowMap(5000); return; }
   if (off < 30) vcOff = false;
   // とうちゃく：ゴールの300mより手前でルートに乗って、走ってきたときだけ（いまここ の共有ルートを、その場で開いたとき などは言わない）
-  if (!cur.partial && rest < 30) { if (!vcEnd && rodeToEnd(rest)) { vcEnd = true; say(cur.here ? "いまここ（投稿したとき）に着いたよ" : "とうちゃくです。おつかれさまでした"); blkShowMap(60000); } vcEnd = true; return; }
+  if (!cur.partial && rest < 30) { if (!vcEnd && rodeToEnd(rest)) { vcEnd = true; blkShowMap(60000); /* 「とうちゃく」は言わない（どこが終わりかは決めない） */ } vcEnd = true; return; }
   if (me && cur.stops) for (const q of cur.stops) if (q.mid && !q.said) {
     if (!q.at) { let bd = Infinity; for (const r of cur.nav) { const d = hav(r, q.p); if (d < bd) { bd = d; q.at = r; } } }   // 公園などは まん中の点なので、ルートでいちばん近い所で「着いた」にする
     const h = [me.getLatLng().lat, me.getLatLng().lng]; if (hav(q.at, h) > 40 && hav(q.p, h) > 60) continue;
-    q.said = true; say(`${q.name.replace(/^🎯\s*\S+\s*/, "")}に着いたよ。${MID_SAY[q.mtype] || MID_SAY.spot}`); blkShowMap(20000);
+    q.said = true; blkShowMap(20000); /* 「着いたよ・ひと休みしよう」は言わない */
   }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
@@ -2646,7 +2646,7 @@ $("gps").onclick = async () => {
       wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 });
     }
     setFollow(true); wake();
-    audioUnlock(); if (vcOn) say(cur && cur.nav ? "音声案内を始めます" : "現在地を表示します");
+    audioUnlock(); if (vcOn) try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch {} /* 「始めます」は言わない（音の出ない一言で、あとの読み上げを使えるようにしておく） */
     $("dir").style.display = "block";
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   } else {
