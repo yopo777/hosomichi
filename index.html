@@ -178,7 +178,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2129</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2144</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3423,7 +3423,8 @@ async function snsData() {
 async function snsImage({ runs, stops, sub, here, dir, big, pins }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所＋写真
   pins = pins || [];
   const W = 1200, H = 1200, PAD = pins.length ? 200 : 140, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p));
-  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
+  // 画像は2倍（2400×2400）で作る：描くのは 1200 のつもりで、地図は1つ細かいズームのタイルを半分の大きさで並べる（くっきり・写真も大きく見られる）
+  const K = 2, cv = document.createElement("canvas"); cv.width = W * K; cv.height = H * K; const g = cv.getContext("2d"); g.scale(K, K);
   g.fillStyle = "#f2efe9"; g.fillRect(0, 0, W, H);
   if (all.length) {
     let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; for (const [a, o] of all) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, o); lo1 = Math.max(lo1, o); }
@@ -3434,15 +3435,16 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins }) {   // 1200�
     const X = p => [wx(p[1], z) - ox, wy(p[0], z) - oy];
     // 地図：CyclOSM（自転車用）。読めない（CORSなど）ときは 国土地理院 淡色 にする
     const TILES = [["https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", "地図：© OpenStreetMap contributors / CyclOSM"], ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", "地図：国土地理院"]];
-    const xs = [], ys = []; for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W) / 256); tx++) xs.push(tx); for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++) ys.push(ty);
-    for (const [url, at] of TILES) {
+    for (const [url, at, zmax] of TILES.map((t, i) => [...t, i ? 18 : 20])) {
+      const zt = Math.min(z + 1, zmax), f = 2 ** (zt - z), T = 256 / f, ox2 = ox * f, oy2 = oy * f;   // T：タイル1枚の大きさ（1200のつもりの座標で）
+      const xs = [], ys = []; for (let tx = Math.floor(ox2 / 256); tx <= Math.floor((ox2 + W * f) / 256); tx++) xs.push(tx); for (let ty = Math.floor(oy2 / 256); ty <= Math.floor((oy2 + H * f) / 256); ty++) ys.push(ty);
       const ims = await Promise.all(xs.flatMap(tx => ys.map(async ty => {
-        const u = url.replace("{s}", "abc"[(tx + ty) % 3]).replace("{z}", z).replace("{x}", tx).replace("{y}", ty);
+        const u = url.replace("{s}", "abc"[(tx + ty) % 3]).replace("{z}", zt).replace("{x}", tx).replace("{y}", ty);
         const r = await fetch(u, { mode: "cors" }); if (!r.ok) throw new Error(r.status);
         return [tx, ty, await createImageBitmap(await r.blob())];
       }))).catch(() => null);
       if (!ims) continue;
-      for (const [tx, ty, im] of ims) g.drawImage(im, tx * 256 - ox, ty * 256 - oy);
+      for (const [tx, ty, im] of ims) g.drawImage(im, tx * T - ox, ty * T - oy, T, T);
       snsImage.attr = at; break;
     }
     g.lineJoin = g.lineCap = "round";
@@ -3478,7 +3480,7 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins }) {   // 1200�
       g.font = "bold 38px sans-serif"; g.textBaseline = "middle"; g.lineWidth = 9; g.strokeStyle = "#fff"; g.strokeText("いまここ", x + 34, y + 30); g.fillStyle = "#1a73e8"; g.fillText("いまここ", x + 34, y + 30);
     }
     // 📷 写真：撮った所に小さくして置く（まわりの4か所から、はみ出さない・重ならない所をえらぶ）
-    const S = 230, boxes = [];
+    const S = 300, boxes = [];
     for (const q of pins) {
       const [x, y] = X(q.p), k = S / Math.max(q.bm.width, q.bm.height), w = q.bm.width * k, h = q.bm.height * k;
       const cands = [[40, -h - 40], [-w - 40, -h - 40], [40, 40], [-w - 40, 40], [-w / 2, -h - 60], [-w / 2, 60]].map(([dx, dy]) => [x + dx, y + dy]);
@@ -3501,7 +3503,7 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins }) {   // 1200�
   g.fillStyle = "#ffffffe8"; g.fillRect(0, H - 120, W, 120);
   g.fillStyle = "#222"; g.font = "bold 46px sans-serif"; g.textBaseline = "middle"; g.fillText("🚲 " + sub, 36, H - 70);
   g.font = "26px sans-serif"; g.fillStyle = "#666"; g.textAlign = "right"; g.fillText("ほそみちナビ", W - 30, H - 84); g.font = "20px sans-serif"; g.fillText(snsImage.attr || "", W - 30, H - 44); g.textAlign = "left";
-  return new Promise(ok => { try { cv.toBlob(b => ok(b), "image/png"); } catch { ok(null); } });
+  return new Promise(ok => { try { cv.toBlob(b => ok(b), "image/jpeg", 0.9); } catch { ok(null); } });   // 大きいので JPEG（Xの5MBに入るように）
 }
 // 📷 写真の撮った場所と時刻（Exif）を読む。位置情報は ここで読むだけで、わたす写真からは消す
 async function exifOf(f) {
@@ -3573,7 +3575,7 @@ $("bSns").onclick = async () => {
     link = d.link;
     $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); $("snsImg").textContent = "地図を作っているよ…"; map0 = null;
     const blob = d.none ? null : await snsImage(d);
-    if (blob) { map0 = new File([blob], "hosomichi_" + Date.now() + ".png", { type: "image/png" }); $("snsImg").innerHTML = `<img src="${URL.createObjectURL(blob)}">`; }
+    if (blob) { map0 = new File([blob], "hosomichi_" + Date.now() + ".jpg", { type: "image/jpeg" }); $("snsImg").innerHTML = `<img src="${URL.createObjectURL(blob)}">`; }
     else $("snsImg").textContent = d.none ? "まだ走った記録がないよ。◎で走りはじめると、走ったところまでの地図を作れるよ（これから行く所は出さないよ）" : "地図の画像を作れなかったよ（文だけ使えるよ）";
   };
   snsROpts($("snsR2"));
