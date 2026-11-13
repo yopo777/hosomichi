@@ -846,6 +846,17 @@ function chime() {
     });
   } catch {}
 }
+function pirorin() {   // 🎯 寄り道の場所に着いた「ピローン」（2つの音・家やゴールでは鳴らさない）
+  try {
+    audioUnlock(); if (!actx) return; const t = actx.currentTime;
+    [[1319, 0, 0.18], [1760, 0.16, 0.7]].forEach(([f, d, len]) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
+      g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.35, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + len);
+      o.start(t + d); o.stop(t + d + len + 0.05);
+    });
+  } catch {}
+}
 worker.onmessage = ev => {
   const m = ev.data;
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
@@ -2572,7 +2583,7 @@ function vcNav(off, rest) {
   if (me && cur.stops) for (const q of cur.stops) if (q.mid && !q.said) {
     if (!q.at) { let bd = Infinity; for (const r of cur.nav) { const d = hav(r, q.p); if (d < bd) { bd = d; q.at = r; } } }   // 公園などは まん中の点なので、ルートでいちばん近い所で「着いた」にする
     const h = [me.getLatLng().lat, me.getLatLng().lng]; if (hav(q.at, h) > 40 && hav(q.p, h) > 60) continue;
-    q.said = true; blkShowMap(20000); /* 「着いたよ・ひと休みしよう」は言わない */
+    q.said = true; pirorin(); try { navigator.vibrate?.([80, 60, 160]); } catch {} blkShowMap(20000); /* 声では言わないで「ピローン」だけ（家・ゴールでは鳴らさない） */
   }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
