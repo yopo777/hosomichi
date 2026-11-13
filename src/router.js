@@ -331,6 +331,9 @@ function buildGraph(osm, cfg, onProg) {
       if (stPen === null) continue;
       pen = Math.max(pen, cfg.pen.footway || 1) * stPen; name = "駅の通路";
     }
+    // 🏫 学校・病院・工場などの敷地の中の通路は通らない（ふつうの道路と、自転車OKの印がある道はのぞく）
+    if (areaGrids && areaGrids.closed && !BIG_HW.has(hw) && !["residential", "unclassified", "living_street"].includes(hw)
+      && !["yes", "permissive", "designated"].includes(t.access) && !["yes", "permissive", "designated"].includes(t.bicycle) && inArea("closed", nd)) continue;
     if (areaGrids && cfg.cemetery !== 1 && !BIG_HW.has(hw) && inArea("cemetery", nd)) {   // 霊園・墓地の中の道
       if (cemPen === null) continue;
       pen *= cemPen; name = "霊園の中";
@@ -1134,7 +1137,7 @@ async function loadAreas() {
   try {
     const res = await fetch(packBase + "areas.json"); if (!res.ok) { areaTried = false; return; }
     const j = await res.json(), out = {}, cnt = [];
-    for (const kind of ["cemetery", "park"]) {
+    for (const kind of ["cemetery", "park", "closed"]) {
       const g = new Map(); let n = 0;
       for (const pts of j[kind] || []) {
         let s = 90, w = 180, nn = -90, e = -180;
@@ -1145,7 +1148,7 @@ async function loadAreas() {
         }
       }
       if (n) out[kind] = g;
-      cnt.push(`${kind === "park" ? "公園" : "霊園・墓地"} ${n}か所`);
+      cnt.push(`${kind === "park" ? "公園" : kind === "closed" ? "学校や工場の敷地" : "霊園・墓地"} ${n}か所`);
     }
     areaGrids = out; log(`はんいのデータ: ${cnt.join("・")}`);
   } catch { areaTried = false; }

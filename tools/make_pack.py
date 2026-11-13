@@ -226,16 +226,20 @@ def write_stations(src, out):
     print(f"  駅 {len(rows)}か所（{len(h.st)}種類の名前）→ stations.json（{time.time() - t0:.0f}秒）")
 
 # ---- 霊園・墓地／公園のはんい（アプリの設定「霊園の中の道」「公園の中の道」用）----
-# areas.json = {"cemetery": [[[緯度, 経度], …], …], "park": […]}（外がわの輪だけ・5m より近い点は間引く）
+# areas.json = {"cemetery": [[[緯度, 経度], …], …], "park": […], "closed": […]}（外がわの輪だけ・5m より近い点は間引く）
+# closed：学校・病院・工場などの敷地（中の通路は ふつうは入れないので、ルートに使わない）
 def write_areas(src, out):
     t0 = time.time()
     print(f"霊園・墓地／公園のはんいをさがし中: {src}", flush=True)
-    TF = (("landuse", "cemetery"), ("amenity", "grave_yard"), ("leisure", "park"))
+    TF = (("landuse", "cemetery"), ("amenity", "grave_yard"), ("leisure", "park"),
+          ("amenity", "school"), ("amenity", "university"), ("amenity", "college"), ("amenity", "kindergarten"), ("amenity", "hospital"),
+          ("amenity", "prison"), ("man_made", "works"), ("landuse", "military"))
     fp = osmium.FileProcessor(src).with_areas(osmium.filter.TagFilter(*TF)) \
         .with_filter(osmium.filter.EntityFilter(osmium.osm.AREA)).with_filter(osmium.filter.TagFilter(*TF))
-    found = {"cemetery": [], "park": []}
+    found = {"cemetery": [], "park": [], "closed": []}
     for o in fp:
-        kind = "park" if o.tags.get("leisure") == "park" else "cemetery"
+        tg = o.tags
+        kind = "park" if tg.get("leisure") == "park" else "cemetery" if tg.get("landuse") == "cemetery" or tg.get("amenity") == "grave_yard" else "closed"
         polys = found[kind]
         for ring in o.outer_rings():
             pts = []
@@ -246,7 +250,7 @@ def write_areas(src, out):
             if not any(S0 < la < N0 and W0 < lo < E0 for (la, lo) in pts): continue
             polys.append(pts)
     with open(os.path.join(out, "areas.json"), "w", encoding="utf-8") as f: json.dump(found, f, separators=(",", ":"))
-    print(f"  霊園・墓地 {len(found['cemetery']):,}か所・公園 {len(found['park']):,}か所 → areas.json（{os.path.getsize(os.path.join(out, 'areas.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
+    print(f"  霊園・墓地 {len(found['cemetery']):,}か所・公園 {len(found['park']):,}か所・学校や工場の敷地 {len(found['closed']):,}か所 → areas.json（{os.path.getsize(os.path.join(out, 'areas.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
 
 def write_index(out, src_date, keys, total, built=None):
     empty = empty_tiles(keys)
