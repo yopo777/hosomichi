@@ -174,7 +174,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1001</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1007</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -235,7 +235,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">さわらないと暗くなるよ（50%でも、光の量は2割くらいになるよ）。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
         <div style="font-weight:bold;margin-top:6px">⏱ さわらないで何秒たったら節電する？</div>
         <div id="idleLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="idleLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="idleLv" value="10"> 10秒</label><label><input type="radio" name="idleLv" value="15"> 15秒</label></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">⬛で暗くしているあいだは、マークとボールも消すよ（⭕丸のときは出すよ）</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">⬛で暗くしているあいだは、ボールも止めるよ（⭕丸のときは動くよ）</div>
         <div style="font-weight:bold;margin-top:6px">📡 地図を動かす間かく</div>
         <div id="gpsLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="gpsLv" value="1"> 1秒（ふつう）</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="3"> 3秒</label><label><input type="radio" name="gpsLv" value="5"> 5秒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">間かくを長くすると、地図の描きなおしがへって電池にやさしいよ。走った記録はいままでどおり取るよ。曲がる所の手前200mと、ルートから外れたときは1秒ごとにもどすよ</div>
@@ -3924,12 +3924,11 @@ for (const r of document.querySelectorAll("[name=idleLv]")) {
   r.checked = +r.value * 1000 === BLK_IDLE;
   r.onchange = () => { BLK_IDLE = +r.value * 1000; lsSet("hosomichi_idle", +r.value); blkTouch = Date.now(); blkTick(); };
 }
-// 🔋 ⬛で暗くしているあいだ：マーク・一方通行の矢印・ボールも消して、描きなおしを減らす
+// 🔋 ⬛で暗くしているあいだ：ボールを止めて、描きなおしを減らす
 let saving = false;
 function saveSet(on) {
   if (on === saving) return; saving = on; document.body.classList.toggle("save", on);
-  if (on) { map.removeLayer(spotLayer); map.removeLayer(owLayer); guideStop(); flowStop(); }
-  else { mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } flowPrep(); }
+  if (on) { guideStop(); flowStop(); } else flowPrep();   // マークは出したまま
 }
 for (const r of document.querySelectorAll("[name=blkLv]")) {   // しない / 50% / 70% / まっ黒
   r.checked = +r.value === blkScr;
@@ -4594,7 +4593,7 @@ map.on("moveend", () => owUpdate(false));
 function mkBtn() {
   $("mk").style.display = spotOn.size ? "block" : "none";
   $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
-  for (const ly of [spotLayer, owLayer]) { if (spotHide || saving) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
+  for (const ly of [spotLayer, owLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
 }
 $("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } };
 mkBtn();
