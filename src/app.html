@@ -1394,6 +1394,11 @@ function showRoute(r, fit) {
   (r.xw || []).forEach(p => L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("横断歩道で横断"));
   (r.ng || []).forEach(p => L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).addTo(layer).bindTooltip("⚠ 設定どおりに渡れなかった場所"));
   if (fit === "start") map.fitBounds(L.latLngBounds(r.nav), { padding: [40, 40], maxZoom: 16 });
+  else if (fit && r.shared) {   // SNS（X など）から開いたとき：下にアプリの画面がかぶさるので、下を広くあけて、いまここ を真ん中より上に
+    const h = map.getSize().y;
+    map.fitBounds(line.getBounds(), { paddingTopLeft: [30, 110], paddingBottomRight: [30, Math.round(h * 0.45)] });
+    if (r.here) setTimeout(() => { const E = r.route[r.route.length - 1], pt = map.latLngToContainerPoint(E); if (pt.y > h * 0.55 || pt.y < 110) map.panTo(map.containerPointToLatLng(map.latLngToContainerPoint(E).add([0, h * 0.15])), { animate: false }); }, 50);
+  }
   else if (fit) map.fitBounds(line.getBounds(), { padding: [30, 30] });
   cum = [0]; for (let i = 1; i < r.nav.length; i++) cum.push(cum[i - 1] + hav(r.nav[i - 1], r.nav[i]));
   if (!r.partial) r.len = r.len || cum[cum.length - 1];
