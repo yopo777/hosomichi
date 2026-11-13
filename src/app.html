@@ -1891,7 +1891,7 @@ $("bSns").onclick = async () => {
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
     <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地もかならず消すよ。とちゅうで長くいた所は、ただ通りすぎたように見せるよ）。投稿はXなどで自分でしてね</span></div>
-    <div id="snsWarn" style="display:none;background:#fde7e9;color:#c5221f;font-weight:bold;font-size:13px;padding:6px 8px;border-radius:8px;margin-bottom:6px">🧪 テスト中：家のまわりも出発地も消していないよ。<u>投稿しないでね</u>（画像にも「テスト」と入るよ。画面をとじるともどるよ）</div>
+    <div id="snsWarn" style="display:none;background:#fde7e9;color:#c5221f;font-weight:bold;font-size:13px;padding:6px 8px;border-radius:8px;margin-bottom:6px">🧪 テスト中：家のまわりも出発地も消していないよ。共有・文やURLのコピーはできないよ（画像の保存だけできるよ。画像にも「テスト」と入るよ。画面をとじるともどるよ）</div>
     <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
     <textarea id="snsCm" placeholder="ひとこと（ここに書くと、入りきらない分は 通った所 を古いほうからけずるよ）" style="width:100%;box-sizing:border-box;height:56px;margin-bottom:4px"></textarea>
     <textarea id="snsTxt"></textarea><div id="snsLeft" style="font-size:11px;color:#888;text-align:right"></div>
@@ -1923,7 +1923,9 @@ $("bSns").onclick = async () => {
   $("snsR2").onchange = async () => {
     const v = +$("snsR2").value; snsTest = v === 0;
     if (!snsTest) snsRSet(v);   // テスト用は保存しない（ほかの画面の長さも変えない）
-    r2Opts(); $("snsWarn").style.display = snsTest ? "block" : "none"; await draw(await snsData());
+    r2Opts(); $("snsWarn").style.display = snsTest ? "block" : "none";
+    for (const id of ["snsShare", "snsCopy", "snsUrl"]) { $(id).disabled = snsTest; $(id).style.opacity = snsTest ? .35 : 1; }   // テスト中は共有・コピーできない（画像の保存だけOK）
+    await draw(await snsData());
   };
   $("snsTr").value = snsTrail; $("snsTr").onchange = async () => { snsTrail = +$("snsTr").value; lsSet("hosomichi_trail", snsTrail); await draw(await snsData()); };
   await draw(data);
@@ -1939,12 +1941,12 @@ $("bSns").onclick = async () => {
     if (!confirm("走った記録（軌跡）をリセットして、ここから新しく記録する？")) return;
     rideNew(); if (wid === null) ride.t0 = Date.now(); draw(await snsData());
   };
-  $("snsUrl").onclick = async () => { try { await navigator.clipboard.writeText(link); $("snsUrl").textContent = "✅ コピーしたよ"; setTimeout(() => $("snsUrl") && ($("snsUrl").textContent = "🔗 URLだけコピー"), 2000); } catch { prompt("URL", link); } };
-  $("snsCopy").onclick = async () => { try { await navigator.clipboard.writeText($("snsTxt").value); $("snsCopy").textContent = "✅ コピーしたよ"; } catch { $("snsTxt").select(); } };
+  $("snsUrl").onclick = async () => { if (snsTest) return; try { await navigator.clipboard.writeText(link); $("snsUrl").textContent = "✅ コピーしたよ"; setTimeout(() => $("snsUrl") && ($("snsUrl").textContent = "🔗 URLだけコピー"), 2000); } catch { prompt("URL", link); } };
+  $("snsCopy").onclick = async () => { if (snsTest) return; try { await navigator.clipboard.writeText($("snsTxt").value); $("snsCopy").textContent = "✅ コピーしたよ"; } catch { $("snsTxt").select(); } };
   const save = f => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); };
   $("snsSave").onclick = () => { if (map0) save(map0); photos.forEach(save); };
   $("snsShare").onclick = async () => {
-    if (snsTest && !confirm("🧪 テスト中で、家のまわりも出ているよ。ほんとうに共有する？")) return;
+    if (snsTest) return;   // テスト中は共有できない
     const files = [map0, ...photos].filter(Boolean), text = $("snsTxt").value;
     try {
       if (navigator.canShare && navigator.canShare({ files, text })) { await navigator.share({ files, text }); return; }
