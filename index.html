@@ -179,7 +179,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.0008</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.0011</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -4248,7 +4248,8 @@ function vcNav(off, rest) {
   if (me && cur.stops) for (const q of cur.stops) if (q.mid && !q.said) {
     if (!q.at) { let bd = Infinity; for (const r of cur.nav) { const d = hav(r, q.p); if (d < bd) { bd = d; q.at = r; } } }   // 公園などは まん中の点なので、ルートでいちばん近い所で「着いた」にする
     const h = [me.getLatLng().lat, me.getLatLng().lng]; if (hav(q.at, h) > 40 && hav(q.p, h) > 60) continue;
-    q.said = true; pirorin(); try { navigator.vibrate?.([80, 60, 160]); } catch {} blkShowMap(20000); /* 声では言わないで「ピローン」だけ（家・ゴールでは鳴らさない） */
+    q.said = true; pirorin(); try { navigator.vibrate?.([80, 60, 160]); } catch {} blkShowMap(20000);   /* 「ピローン」→「〇〇に着きました。休憩です」（寄り道の場所だけ。家・ゴールでは鳴らさない・言わない） */
+    setTimeout(() => say(`${q.name.replace(/^🎯\s*\S+\s*/, "").replace(/^[^\p{L}\p{N}]+/u, "")}に着きました。休憩です`), 900);
   }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
