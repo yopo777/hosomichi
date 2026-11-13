@@ -363,13 +363,14 @@ function buildGraph(osm, cfg, onProg) {
     }
     const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
     const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);
+    const lift = yes(t.bridge) || yes(t.tunnel) || t.tunnel === "building_passage" || (t.layer && t.layer !== "0") ? 1 : 0;   // 橋・トンネル（標高のデータと高さが合わない）
     for (let i = 1; i < nd.length; i++) {
       const u = nd[i - 1], v = nd[i], L = d(u, v);
       inGraph[u] = 1; inGraph[v] = 1;
       const m = swRoad && (swAll || hasSW(u, v)) ? swPen : 1;   // 歩道のある道は避ける
       if (m > 1) swLen += L;
-      if (fwd) adj[u].push({ v, c: L * (rev ? rp : pen) * m, L, l: L0, k: rev ? rname : name, w: e.id });
-      if (back) adj[v].push({ v: u, c: L * (rev ? pen : rp) * m, L, l: L0, k: rev ? name : rname, w: e.id });
+      if (fwd) adj[u].push({ v, c: L * (rev ? rp : pen) * m, L, l: L0, k: rev ? rname : name, w: e.id, b: lift, hw });
+      if (back) adj[v].push({ v: u, c: L * (rev ? pen : rp) * m, L, l: L0, k: rev ? name : rname, w: e.id, b: lift, hw });
     }
   }
   // 大きい道の向き（横断かどうか＝道の反対側に出るかを判定するため）
@@ -1205,8 +1206,11 @@ function heightAt(la, lo) {
   return h[Math.min(255, Math.floor(py - y * 256)) * 256 + Math.min(255, Math.floor(px - x * 256))];
 }
 // のぼり 1m を k m 分と数える。8% をこえる急な所はその2倍。標高のゆれ（橋・切り通し）に強くするため 15% で頭打ち
-// 階段を通らない設定のとき：歩道・小道なのに すごく急（20%より急）な所は、印のない階段かもしれないので ほとんど通らない（30倍）
+// 階段を通らない設定のとき：印のない階段かもしれない所は ほとんど通らない（30倍）
+//  ・歩道・小道で 20%より急 ／ 細い道（住宅街の道・私道など）で 25%より急（大きい道にぶつかる所の段差・階段など）
+//  橋・トンネルは標高のデータと高さが合わないので見ない。標高は10mごとなので、短すぎる所（8m未満）も見ない
 const FOOT_K = new Set(["歩道", "小道", "歩行者道", "公園の中", "霊園の中"]);
+const MINOR_HW = new Set(["residential", "service", "unclassified", "living_street", "track", "footway", "path", "pedestrian", "cycleway"]);
 function applySlope(G, k, noSteps) {
   if ((!k && !noSteps) || typeof OffscreenCanvas === "undefined") return G;
   const n = G.lat.length, h = new Float32Array(n);
@@ -1214,13 +1218,13 @@ function applySlope(G, k, noSteps) {
   let up = 0, st = 0;
   for (let u = 0; u < n; u++) for (const e of G.adj[u]) {
     let dh = h[e.v] - h[u];
-    if (noSteps && FOOT_K.has(e.k) && e.L >= 8 && e.L <= 120 && Math.abs(dh) / e.L > 0.2) { e.c *= 30; e.k = "急な歩道（階段かも）"; st++; continue; }
+    if (noSteps && !e.b && e.L >= 8 && e.L <= 120 && (FOOT_K.has(e.k) ? Math.abs(dh) / e.L > 0.2 : MINOR_HW.has(e.hw) && Math.abs(dh) / e.L > 0.25)) { e.c *= 30; e.k = "急すぎる所（階段かも）"; st++; continue; }
     if (!k) continue;
     if (!(dh > 0) || e.L < 3) continue;
     dh = Math.min(dh, e.L * 0.15);
     e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1); up++;
   }
-  if (st) log(`急な歩道・小道（印のない階段かも）${st}本は、ほとんど通らないよ`);
+  if (st) log(`急すぎる歩道・細い道（印のない階段かも）${st}か所は、ほとんど通らないよ`);
   return G;
 }
 // 道がつながらないとき（大きい川の橋が範囲の外にある、など）：データが手元にあれば範囲を広げてやりなおす
