@@ -74,6 +74,8 @@ html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-a
 #snsBox button{padding:9px 12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#snsBox .go{background:#1d9bf0;border-color:#1d9bf0;color:#fff;font-weight:bold}
 .pulse{width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:4px solid #d93025;box-sizing:border-box;animation:pulse 1s ease-out infinite;pointer-events:none}.pulse.s{border-color:#188038}.pulse.m{border-color:#e8710a}
 body.navi .pulse{display:none;animation:none}
+.vsHi{position:relative;width:0;height:0}.vsHi i{position:absolute;left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;border:5px solid #a142f4;box-sizing:border-box;animation:pulse 1.2s ease-out infinite}
+.vsHi b{position:absolute;left:0;top:-48px;transform:translateX(-50%);white-space:nowrap;background:#a142f4;color:#fff;font-size:13px;padding:2px 8px;border-radius:10px;box-shadow:0 1px 4px #0006}   /* 🏯 案内した名所（ナビ中も出す） */
 @keyframes pulse{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.4);opacity:0}}
 #msnAsk{position:fixed;left:0;right:0;bottom:0;z-index:6000;padding:10px}#msnAsk .box{background:#fff;border-radius:14px;padding:14px;max-width:440px;margin:0 auto;box-shadow:0 -2px 16px #0004}#msnAsk button{padding:11px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:15px}#msnAsk button.big{background:#d93025;border-color:#d93025;color:#fff;font-weight:bold}
 .hereTip{color:#1a73e8;font-weight:bold;font-size:13px}
@@ -174,7 +176,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1131</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1149</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3830,7 +3832,16 @@ for (const r of document.querySelectorAll("[name=vcSpot]")) {
   r.checked = +r.value === vcSpot;
   r.onchange = () => { vcSpot = +r.value; lsSet("hosomichi_vcspot", vcSpot); };
 }
+// 案内した名所に、むらさきの輪と名前を出す（2分たつか、300m はなれたら消す。出すのは新しい2つまで）
+const vsLayer = L.layerGroup().addTo(map); let vsMk = [];
+function vsMark(s) {
+  const m = L.marker([s[1], s[2]], { icon: L.divIcon({ className: "", html: `<div class="vsHi"><i></i><b>${esc(s[0])}</b></div>`, iconSize: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: 900 }).addTo(vsLayer);
+  vsMk.push({ m, p: [s[1], s[2]], t: Date.now() });
+  while (vsMk.length > 2) vsLayer.removeLayer(vsMk.shift().m);
+}
+function vsTidy(ll) { vsMk = vsMk.filter(x => { const keep = Date.now() - x.t < 120000 && hav(ll, x.p) < 300; if (!keep) vsLayer.removeLayer(x.m); return keep; }); }
 async function vcSpotCheck(ll) {
+  vsTidy(ll);
   if (!vcOn || !vcSpot || vsBusy || wid === null || !follow) return;
   if (vcOff || (vcTurns && navAlong != null && vcTurns.some(t => t.s > navAlong - 5 && t.s - navAlong < 150))) return;   // 曲がる手前・コース外れのときは案内を優先
   vsBusy = true;
@@ -3843,7 +3854,7 @@ async function vcSpotCheck(ll) {
       const d = hav(ll, [s[1], s[2]]);
       if (d < VS_R && (!best || (s[3] || 0) > (best[1][3] || 0) || d < best[2])) best = [id, s, d];
     }
-    if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); say(`近くに、${best[1][0]}があります`); }
+    if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); say(`近くに、${best[1][0]}があります`); vsMark(best[1]); }
   } catch {} finally { vsBusy = false; }
 }
 function vcAt(d) {   // ルートの先頭から d m の点
