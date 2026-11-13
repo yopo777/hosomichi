@@ -229,10 +229,13 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <div style="font-weight:bold">⭕ ナビ中は自分のまわりだけ表示する</div>
         <div id="ringLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="ringLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="ringLv" value="1"> 小さい丸</label><label><input type="radio" name="ringLv" value="2"> もっと小さい丸</label></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ。さわると15秒だけ丸がはずれるよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ。さわるとしばらく丸がはずれるよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
         <div style="font-weight:bold;margin-top:6px">⬛ ナビ中、さわらないと画面を暗くする</div>
         <div id="blkLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="blkLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="50"> 50%</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="70"> 70%</label><label><input type="radio" name="blkLv" value="100"> まっ黒</label></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">15秒さわらないと暗くなるよ（50%でも、光の量は2割くらいになるよ）。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">さわらないと暗くなるよ（50%でも、光の量は2割くらいになるよ）。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
+        <div style="font-weight:bold;margin-top:6px">⏱ さわらないで何秒たったら節電する？</div>
+        <div id="idleLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="idleLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="idleLv" value="10"> 10秒</label><label><input type="radio" name="idleLv" value="15"> 15秒</label></div>
+        <div style="font-size:11px;color:#666;margin-top:2px">⭕か⬛をオンにしているとき、節電のあいだはマークとボールも消すよ（さわるともどるよ）</div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
       </div>
       </div>
@@ -2246,7 +2249,18 @@ function vcNav(off, rest) {
 }
 // ---------- ⬛ さわらないと画面をまっ黒に（画面はついたままなので、GPS・音声は動く。有機ELなら黒は電池をほぼ使わない） ----------
 let blkScr = (v => v === true ? 100 : +v || 0)(lsGet("hosomichi_black", 0)), blkTouch = Date.now(), blkUntil = 0;
-const BLK_IDLE = 15000;
+let BLK_IDLE = (+lsGet("hosomichi_idle", 15) || 15) * 1000;   // 節電に入るまでの秒数（5 / 10 / 15）
+for (const r of document.querySelectorAll("[name=idleLv]")) {
+  r.checked = +r.value * 1000 === BLK_IDLE;
+  r.onchange = () => { BLK_IDLE = +r.value * 1000; lsSet("hosomichi_idle", +r.value); blkTouch = Date.now(); blkTick(); };
+}
+// 🔋 節電中（⭕か⬛がオンで、さわらずにしばらくたった）：マーク・一方通行の矢印・ボールも消して、描きなおしを減らす
+let saving = false;
+function saveSet(on) {
+  if (on === saving) return; saving = on; document.body.classList.toggle("save", on);
+  if (on) { map.removeLayer(spotLayer); map.removeLayer(owLayer); guideStop(); flowStop(); }
+  else { mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } flowPrep(); }
+}
 for (const r of document.querySelectorAll("[name=blkLv]")) {   // しない / 50% / 70% / まっ黒
   r.checked = +r.value === blkScr;
   r.onchange = () => { blkScr = +r.value; lsSet("hosomichi_black", blkScr); blkTouch = Date.now(); blkTick(); };
@@ -2259,6 +2273,7 @@ $("blk").addEventListener("pointerup", () => { blkTouch = Date.now(); setTimeout
 $("blk").addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); });
 function blkTick() {
   document.body.classList.toggle("ringOff", Date.now() - blkTouch < BLK_IDLE);
+  saveSet(!!((blkScr || ringLv) && wid !== null && follow && !document.hidden && Date.now() - blkTouch > BLK_IDLE && !document.body.classList.contains("ov")));
   const now = Date.now(), on = blkScr && wid !== null && follow && !document.hidden && now - blkTouch > BLK_IDLE && now > blkUntil;
   if (on) {
     const full = blkScr >= 100;   // まっ黒のときだけ、のこり・住所を出す（暗くするだけなら地図が見えるので）
@@ -2909,7 +2924,7 @@ map.on("moveend", () => owUpdate(false));
 function mkBtn() {
   $("mk").style.display = spotOn.size ? "block" : "none";
   $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
-  for (const ly of [spotLayer, owLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
+  for (const ly of [spotLayer, owLayer]) { if (spotHide || saving) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
 }
 $("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } };
 mkBtn();
@@ -3003,7 +3018,7 @@ const FLOW_MS = 100;   // ボールを動かす間かく（どのボールも同
 const guideLayer = L.layerGroup().addTo(map);
 function guideStop() { clearInterval(guideRaf); guideRaf = 0; guideLayer.clearLayers(); guide = null; }
 function guideStart() {
-  const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden;
+  const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden && !saving;
   if (!ok) return guideStop();
   if (guide) return;   // もう走っている
   guide = L.circleMarker(me.getLatLng(), { pane: "flowPane", radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
@@ -3028,7 +3043,7 @@ function flowPrep() {
   guideStart();
   if (fixed && performance.now() < flowBurstEnd) return;
   flowStop(); flowBtns();
-  if (!flowOn || !cur || !cur.route || cur.route.length < 2 || fixed || document.hidden) return;
+  if (saving || !flowOn || !cur || !cur.route || cur.route.length < 2 || fixed || document.hidden) return;
   flowBuild();
 }
 function flowBurst() {
