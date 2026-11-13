@@ -178,7 +178,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1948</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1954</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3282,7 +3282,7 @@ const hhmm = t => { const d = new Date(t); return d.getHours() + ":" + String(d.
 const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? m + "分" : Math.floor(m / 60) + "時間" + (m % 60 ? (m % 60) + "分" : ""); };
 const lineLen = pts => { let d = 0; for (let i = 1; i < pts.length; i++) d += hav(pts[i - 1], pts[i]); return d; };
 // 📍 通ったところ：走った道のそばの 駅・お寺・神社など を通った順に（家のまわりの丸の中はのぞく）
-const PASS_KINDS = { shrine: 40, temple: 40, castle: 60, kofun: 50, sight: 40, view: 40, spring: 40, fall: 50, michi: 60 };
+const PASS_KINDS = { shrine: 80, temple: 80, castle: 100, kofun: 80, sight: 60, view: 60, spring: 50, fall: 60, michi: 100, tree: 50, ichiri: 50 };   // 通った所（m）：神社やお寺は敷地のまん中の点なので広めに
 async function passList(rpts, hid) {
   if (rpts.length < 2) return [];
   const keys = new Set(); for (const q of rpts) keys.add(Math.floor(q[0] / SPOT_T) + "_" + Math.floor(q[1] / SPOT_T));
@@ -3365,12 +3365,12 @@ async function snsData() {
     // Xの文字数（280）に入るだけ、新しいものから入れて、表示は走った順（→）。家のまわりの所は出さない（「着」の行は出さない）
     const clean = n => n.replace(/^🎯\s*/, "").replace(/^\d+\.\s*/, "");
     const items = [];
-    for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name) });
+    for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp" || e.k === "spot") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name) });
     for (const c of await passList(ride.pts, hideP).catch(() => [])) items.push({ t: c.t, name: c.name });
     const seen = new Set(), list = items.sort((x, y) => x.t - y.t).filter(x => { const k = x.name.replace(/^\S+\s/, ""); if (seen.has(k)) return false; seen.add(k); return true; });
     // 地図に「いまここ」を出せるときは、さいごに「〇〇(イマココ)」（地名＝市区町村＋町名。行った所がなくても出す）
     const hn = here ? await placeName(here) : "", tail = hn ? [{ name: hn + "(イマココ)" }] : [];
-    const rest = [...L, "🗺 ルート共有link↓（開くだけなら位置情報は使いません）", SNS_URL, SNS_TAGS].join("\n"), pick = [];
+    const rest = [...L, "🗺 ルート↓（位置情報は使いません）", SNS_URL, SNS_TAGS].join("\n"), pick = [];
     for (let i = list.length - 1; i >= 0; i--) {   // 新しいものから
       const line = "📍 " + [list[i], ...pick, ...tail].map(x => x.name).join("→");
       if (xLen(rest + "\n" + line) > SNS_MAX) break;
@@ -3388,7 +3388,7 @@ async function snsData() {
       const xf = (best.cutS ? "s" : "") + (best.cutE ? "e" : "") + (here && best.i1 === pts.length ? "h" : "");   // h：線の先が「いまここ」
       if (xf) prm.set("x", xf);
       link = location.origin + location.pathname + "#" + prm.toString();
-      L.push("🗺 ルート共有link↓（開くだけなら位置情報は使いません）");
+      L.push("🗺 ルート↓（位置情報は使いません）");
     }
   }
   L.push(link, SNS_TAGS);   // ハッシュタグはいつもいちばん最後
@@ -3972,7 +3972,9 @@ async function vcSpotCheck(ll) {
       else if (k === "park") { d = s[4] ? polyDist(ll, s[4]) : d; if (d > (s[4] ? 30 : 40)) continue; }   // 公園：となりを通ったときだけ   // まちの建物：となりの道を走っているときだけ（外形から30m・外形がなければ点から40m）
       if (d < VS_R && (!best || (s[3] || 0) > (best[1][3] || 0) || d < best[2])) best = [id, s, d, k];
     }
-    if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); vsDone.add(best[1][0]); say(VS_MACHI.has(best[3]) || best[3] === "bridge" || best[3] === "park" ? `これは、${best[1][0]}です` : `近くに、${best[1][0]}があります`); vsMark(best[1]); }
+    if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); vsDone.add(best[1][0]);
+      if (!VS_MACHI.has(best[3]) && best[3] !== "bridge") rideEv("spot", best[1][0], [best[1][1], best[1][2]]);   // 名所・公園は「通った所」としてSNSにも出す
+      say(VS_MACHI.has(best[3]) || best[3] === "bridge" || best[3] === "park" ? `これは、${best[1][0]}です` : `近くに、${best[1][0]}があります`); vsMark(best[1]); }
   } catch {} finally { vsBusy = false; }
 }
 function vcAt(d) {   // ルートの先頭から d m の点
