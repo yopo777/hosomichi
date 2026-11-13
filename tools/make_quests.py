@@ -100,6 +100,7 @@ def spot_kind(t, is_way=False):
     if mm in ("water_works", "wastewater_plant") or (plain and re.search(r"浄水場|水道局|水道部|下水|水再生|汚水処理|浄化センター|配水場|給水所", n)): return "waterw"   # 🚰 浄水場・水道局
     if mm == "works" or (plain and (g("building") in ("industrial", "factory") or re.search(r"工場|製作所|製造所", n))): return "factory"   # 🏭 工場
     if g("power") == "plant": return "power"   # ⚡ 発電所
+    if g("leisure") in ("pitch", "stadium", "sports_centre", "track", "golf_course") or g("landuse") == "recreation_ground" or (plain and re.search(r"グラウンド|グランド|運動場|球場|競技場|運動公園|スポーツ公園", n)): return "ground"   # 🏟 グラウンド・球場
     if a == "townhall": return "townhall"   # 🏛 役所
     if a == "fire_station": return "fire"   # 🚒 消防署
     if a == "post_office": return "post"   # 📮 郵便局
