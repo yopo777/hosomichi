@@ -230,7 +230,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-weight:bold;margin-top:6px">🏯 名所の近くに来たら教える</div>
         <div style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="vcSpot" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpot" value="1"> 有名な所だけ</label><label><input type="radio" name="vcSpot" value="2"> いろいろ</label></div>
         <div style="margin-top:2px">知らせる範囲：<select id="vcSpotR"><option value="50">50m</option><option value="70">70m</option><option value="100">100m</option><option value="150">150m</option><option value="200">200m</option><option value="300">300m</option></select></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">学校・病院や、「めぐる」の神社・お寺・城・名所・展望・古墳・湧き水…の近くを通ると「近くに〇〇があります」と言うよ。公園と橋は多すぎるので言わないよ。地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">学校・病院・役所・工場・浄水場…（「まち」）や、「めぐる」の神社・お寺・城・名所・展望・古墳・湧き水…の近くを通ると「近くに〇〇があります」と言うよ。公園と橋は多すぎるので言わないよ。地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <div style="font-weight:bold">⭕ ナビ中は自分のまわりだけ表示する</div>
@@ -2177,7 +2177,7 @@ function say(t) {
 }
 // 🏯 名所の近くを通ったら声で教える（0=しない 1=有名な所だけ 2=いろいろ）。同じ所は1回だけ
 let vcSpot = +lsGet("hosomichi_vcspot", 0) || 0;
-const VS_KINDS = ["school", "univ", "hospital", "shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"];
+const VS_KINDS = ["school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"];
 let VS_R = +lsGet("hosomichi_vcspotr", 70) || 70;   // 知らせる範囲（50〜300m）
 $("vcSpotR").value = VS_R; $("vcSpotR").onchange = () => { VS_R = +$("vcSpotR").value; lsSet("hosomichi_vcspotr", VS_R); };
 const vsDone = new Set(); let vsBusy = false;
@@ -2829,7 +2829,8 @@ const SPOT_KINDS = [
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"]]],
   ["こまったとき", [["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
-  ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"]]],
+  ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"], ["townhall", "🏛", "役所"], ["library", "📚", "図書館"], ["post", "📮", "郵便局"], ["fire", "🚒", "消防署"],
+    ["factory", "🏭", "工場"], ["waterw", "🚰", "浄水場・水道局"], ["power", "⚡", "発電所"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
     ["oneway", "➡", "一方通行"]]],
