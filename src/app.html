@@ -1671,17 +1671,31 @@ function snsHide(pts, R, anchors) {
   };
   return { runs, hideP };
 }
+// ⏸ とちゅうで長くいた所（150m以内に20分以上）は、ただ通りすぎたように見せる：
+// そのまわり200mの線をぬいて、入る前と出たあとの点をまっすぐつなぐ（よった家に入っていく線・行ったり来たりが見えないように）
+// その日の出発・いまいる所（さいご）は べつあつかい
+function snsPassBy(P) {
+  const out = P.map(q => [q[0], q[1]]), cut = new Array(P.length).fill(false);
+  for (let i = 1; i < P.length - 1;) {
+    let j = i + 1; while (j < P.length && hav(P[j], P[i]) < 150) j++;
+    if (j < P.length && P[j - 1][2] - P[i][2] >= 20 * 60e3) {
+      let a = i, b = j - 1;
+      while (a > 1 && hav(P[a - 1], P[i]) < 200) a--;
+      while (b < P.length - 2 && hav(P[b + 1], P[i]) < 200) b++;
+      for (let k = a; k <= b; k++) cut[k] = true;
+      i = b + 1;
+    } else i++;
+  }
+  return out.filter((_, k) => !cut[k]);
+}
 async function snsData() {
   const R = snsR;
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
   const riding = useRide && !ride.done && wid !== null;
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
-  // 🔒 消す所：家・その日の出発地（親せきの家などから出ても）・長く止まっていた所（20分以上、記録があいた所）
+  // 🔒 消す所：家と、その日の出発地（親せきの家などから出ても、かならず消す）
   const anchors = home ? [home] : [];
-  if (useRide) {
-    anchors.push(pts[0]);
-    for (let i = 1; i < ride.pts.length; i++) if (ride.pts[i][2] - ride.pts[i - 1][2] > 20 * 60e3) anchors.push(pts[i - 1], pts[i]);
-  }
+  if (useRide) { pts = snsPassBy(ride.pts); anchors.push(pts[0]); }
   let { runs, hideP } = snsHide(pts, R, anchors);   // runs の cutS/cutE：消した所で切れているはし（フェードアウトする）
   // 📍 いまここ：走っている途中で、今いる所が消す所でなければ、今いる所と「来た道」（さいごの5km）だけを見せる
   let here = null, dir = null;
@@ -1809,7 +1823,7 @@ $("bSns").onclick = async () => {
   const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
-    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地と、20分以上止まっていた所もおなじように消すよ）。投稿はXなどで自分でしてね</span></div>
+    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地もかならず消すよ。とちゅうで長くいた所は、ただ通りすぎたように見せるよ）。投稿はXなどで自分でしてね</span></div>
     <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
     <textarea id="snsTxt"></textarea>
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
