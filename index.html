@@ -5,7 +5,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="細道ナビ">
-<title>ほそみちナビ hosomichi</title>
+<title>ほそみちナビ（関東版）hosomichi</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.5.3/dist/leaflet-rotate.js"></script>
@@ -68,7 +68,7 @@ html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-a
 #cfgBox .note{font-size:11px;color:#888}
 #prog{margin-top:8px;display:none}
 #geoAsk{position:fixed;inset:0;z-index:6000;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px}#geoAsk .box{background:#fff;border-radius:14px;padding:16px;max-width:420px;font-size:13px;box-shadow:0 6px 24px #0005}#geoAsk button{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#geoAsk button.big{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold;font-size:15px}
-#snsBox{position:fixed;inset:0;z-index:6000;background:#0008;overflow:auto;padding:12px}#snsBox .box{background:#fff;border-radius:14px;padding:12px;max-width:520px;margin:0 auto;font-size:13px}
+#snsBox{padding:2px 0}#snsBox .box{background:#fff;max-width:520px;margin:0 auto;font-size:13px}   /* 📣 SNSタブの中 */
 #snsBox img{width:100%;border-radius:8px;border:1px solid #ddd;display:block}#snsBox textarea{width:100%;box-sizing:border-box;height:150px;font-size:14px;margin-top:8px;border:1px solid #ccc;border-radius:8px;padding:8px}
 #snsBox .ph{display:flex;gap:6px;margin-top:6px}#snsBox .ph img{width:80px;height:80px;object-fit:cover}
 #snsBox button{padding:9px 12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#snsBox .go{background:#1d9bf0;border-color:#1d9bf0;color:#fff;font-weight:bold}
@@ -178,10 +178,10 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2235</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2237</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
+    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="sns"><span class="ti">📣</span><span class="tl">SNS</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
     <div id="tabSpot" style="display:none">
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
@@ -282,6 +282,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       </div>
       </div>
     </div>
+    <div id="tabSns" style="display:none"></div>
     <div id="tabLog" style="display:none">
       <div class="btns" style="margin:6px 0"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
         <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="lgAuto" checked>自動スクロール</label></div>
@@ -3552,8 +3553,10 @@ async function snsPhoto(f) {   // 写真は描きなおして、位置情報（E
   return new Promise(ok => cv.toBlob(b => ok(b && new File([b], "photo_" + Date.now() + ".jpg", { type: "image/jpeg" })), "image/jpeg", 0.9));
 }
 const xLeft = t => { const n = 280 - xLen(t); return n >= 0 ? `Xの文字数：あと${n}（日本語だと${Math.floor(n / 2)}文字くらい）` : `⚠ Xの文字数を ${-n} こえてるよ`; };
-$("bSns").onclick = async () => {
+$("bSns").onclick = () => showTab("sns");   // ルートタブのボタンは、SNSタブへ
+async function snsOpen() {
   snsCm = ""; snsTest = false;
+  $("tabSns").innerHTML = '<div style="color:#888;padding:20px;text-align:center">📣 投稿を作っているよ…</div>';
   const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
@@ -3565,9 +3568,9 @@ $("bSns").onclick = async () => {
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
       <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ</span></div>
     <div class="ph" id="snsPhs"></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button><button id="snsClose">とじる</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button><button id="snsClose">🚲 ルートにもどる</button></div>
     <div style="margin-top:10px;font-size:11px;color:#888">走った記録（軌跡）は 夜の0時に新しくなるよ <button id="snsReset" style="font-size:11px;padding:3px 8px">🔄 いまリセット</button></div></div>`;
-  document.body.appendChild(box);
+  $("tabSns").innerHTML = ""; $("tabSns").appendChild(box);
   let map0 = null, photos = [], link = data.link;
   let cmT = null;
   $("snsCm").oninput = () => { clearTimeout(cmT); cmT = setTimeout(async () => { snsCm = $("snsCm").value; const d = await snsData(); $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); }, 400); };
@@ -3603,7 +3606,7 @@ $("bSns").onclick = async () => {
     $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
     if (lastD) await draw(lastD);   // 地図の画像に写真を置きなおす
   };
-  $("snsClose").onclick = () => { snsTest = false; box.remove(); };
+  $("snsClose").onclick = () => showTab("route");
   $("snsReset").onclick = async () => {
     if (!confirm("走った記録（軌跡）をリセットして、ここから新しく記録する？")) return;
     rideNew(); if (wid === null) ride.t0 = Date.now(); draw(await snsData());
@@ -3671,6 +3674,8 @@ function showTab(t) {
   $("tabLog").style.display = t === "log" ? "" : "none";
   $("tabQuest").style.display = t === "quest" ? "" : "none";
   $("tabSpot").style.display = t === "spot" ? "" : "none";
+  $("tabSns").style.display = t === "sns" ? "" : "none";
+  if (t === "sns") snsOpen(); else if (snsTest) { snsTest = false; $("tabSns").innerHTML = ""; }   // ほかのタブにうつったらテストは終わり
   if (t === "quest") qRender();
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
