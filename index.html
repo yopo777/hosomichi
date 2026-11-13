@@ -179,7 +179,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2320</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2330</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3550,8 +3550,17 @@ async function snsPhoto(f) {   // 写真は描きなおして、位置情報（E
 const xLeft = t => { const n = 280 - xLen(t); return n >= 0 ? `Xの文字数：あと${n}（日本語だと${Math.floor(n / 2)}文字くらい）` : `⚠ Xの文字数を ${-n} こえてるよ`; };
 // 🛤 軌跡タブ：今日走った線をぜんぶ地図に出して、通った所と時刻を一覧にする（この端末の中だけ・消す所もそのまま出す）
 const trkLayer = L.layerGroup().addTo(map);
+// 軌跡タブを開いているあいだ、X分ごとに作りなおす（記録がふえていたときだけ・SNSの画面やたたんでいるときはしない）
+let trkInt = +lsGet("hosomichi_trkint", 1), trkAt = 0, trkN = -1;
+setInterval(() => {
+  if (!trkInt || $("tabTrk").style.display === "none" || $("snsBox") || $("panel").classList.contains("min") || document.hidden) return;
+  if (Date.now() - trkAt < trkInt * 60e3 || !ride || ride.pts.length === trkN) return;
+  trkOpen();
+}, 15000);
 async function trkOpen() {
   const T = $("tabTrk"); trkLayer.clearLayers();
+  const sc = $("trkList") ? $("trkList").scrollTop : 0, oldImg = $("trkImg") && $("trkImg").src;   // 前の地図は、新しいのができるまで出しておく   // 作りなおしても、一覧のスクロールの位置はそのまま
+  trkAt = Date.now(); trkN = ride ? ride.pts.length : -1;
   const P = ride && dayOf(ride.t0) === dayOf(Date.now()) ? ride.pts : [];
   if (P.length < 2) {
     T.innerHTML = `<div style="padding:10px;font-size:13px;color:#666">🛤 今日はまだ走った記録がないよ。◎で現在地を追いかけはじめると、走ったところが記録されるよ（この端末の中だけ・夜0時に新しくなるよ）</div>`;
@@ -3574,11 +3583,13 @@ async function trkOpen() {
       <div class="trkN"><small>走っていた時間</small><b>${(m => (m >= 60 ? Math.floor(m / 60) + "時間" : "") + (m % 60) + "分")(Math.round(move / 60e3))}</b></div>
       <div class="trkN"><small>はじめ〜さいご</small><b>${hhmm(P[0][2])}〜${hhmm(P[P.length - 1][2])}</b></div>
     </div>
-    <div id="trkImg" style="text-align:center;color:#888;padding:30px 0;border:1px solid #eee;border-radius:8px">地図を作っているよ…</div>
+    ${oldImg ? `<img id="trkImg" src="${oldImg}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="text-align:center;color:#888;padding:30px 0;border:1px solid #eee;border-radius:8px">地図を作っているよ…</div>'}
     <div class="btns" style="margin-top:6px"><button class="ib" id="trkSns" style="border-color:#1d9bf0;color:#1d9bf0;font-weight:bold">📣 SNSに出す</button><button class="ib" id="trkReset">🔄 リセット</button></div>
+    <div style="font-size:11px;color:#666;margin-top:4px">自動で更新：<select id="trkInt" style="font-size:11px;padding:2px">${[[0, "しない"], [1, "1分ごと"], [2, "2分ごと"], [5, "5分ごと"], [10, "10分ごと"], [15, "15分ごと"], [30, "30分ごと"]].map(([v, t]) => `<option value="${v}"${v === trkInt ? " selected" : ""}>${t}</option>`).join("")}</select>（このタブを開いているあいだ・走って記録がふえたときだけ）</div>
     <div style="font-weight:bold;margin:10px 0 4px">📍 通った所</div><div id="trkList" style="color:#888;max-height:42vh;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:2px 6px">さがしているよ…</div>
     <div style="font-size:11px;color:#888;margin-top:8px">この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ。過去の記録の合計は、あとで入れるよ</div></div>`;
   $("trkSns").onclick = () => snsOpen();
+  $("trkInt").onchange = () => { trkInt = +$("trkInt").value; lsSet("hosomichi_trkint", trkInt); };
   const d0 = new Date(ride.t0);
   snsImage({ runs, stops: [], sub: `${d0.getMonth() + 1}/${d0.getDate()}(${"日月火水木金土"[d0.getDay()]})`, here: null, dir: null, big: "", pins: [] })
     .then(b => { if ($("trkImg")) $("trkImg").outerHTML = b ? `<img id="trkImg" src="${URL.createObjectURL(b)}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; })
@@ -3595,6 +3606,7 @@ async function trkOpen() {
       <span style="width:34px;color:#888;font-size:10px;padding-top:4px">${hhmm(x.t)}</span>
       <span style="width:18px;position:relative;flex:none"><i style="position:absolute;left:8px;top:${i ? 0 : 9}px;bottom:${i === rows.length - 1 ? "calc(100% - 9px)" : 0};width:2px;background:#e8384f"></i><i style="position:absolute;left:5px;top:6px;width:8px;height:8px;border-radius:50%;background:${x.ic ? "#e8384f" : "#fff"};border:2px solid #e8384f;box-sizing:border-box"></i></span>
       <span style="padding:3px 0 3px 4px;flex:1">${x.ic ? x.ic + " " : ""}${esc(x.name)}</span></div>`).join("");
+  if ($("trkList")) $("trkList").scrollTop = sc;
 }
 async function snsOpen() {
   snsCm = ""; snsTest = false;
