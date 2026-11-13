@@ -229,7 +229,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div class="btns" style="margin-top:4px"><button class="ib" id="vcTest" style="font-size:12px">🔊 ためしに聞く</button></div>
         <div style="font-weight:bold;margin-top:6px">🏯 名所の近くに来たら教える</div>
         <div style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="vcSpot" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpot" value="1"> 有名な所だけ</label><label><input type="radio" name="vcSpot" value="2"> いろいろ</label></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">「めぐる」の神社・お寺・城・名所・展望・古墳・湧き水…の近く（70m）を通ると「近くに〇〇があります」と言うよ。公園と橋は多すぎるので言わないよ。地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
+        <div style="margin-top:2px">知らせる範囲：<select id="vcSpotR"><option value="50">50m</option><option value="70">70m</option><option value="100">100m</option><option value="150">150m</option><option value="200">200m</option><option value="300">300m</option></select></div>
+        <div style="font-size:11px;color:#666;margin-top:2px">「めぐる」の神社・お寺・城・名所・展望・古墳・湧き水…の近くを通ると「近くに〇〇があります」と言うよ。公園と橋は多すぎるので言わないよ。地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <div style="font-weight:bold">⭕ ナビ中は自分のまわりだけ表示する</div>
@@ -2174,7 +2175,9 @@ function say(t) {
 }
 // 🏯 名所の近くを通ったら声で教える（0=しない 1=有名な所だけ 2=いろいろ）。同じ所は1回だけ
 let vcSpot = +lsGet("hosomichi_vcspot", 0) || 0;
-const VS_KINDS = ["shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"], VS_R = 70;
+const VS_KINDS = ["shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"];
+let VS_R = +lsGet("hosomichi_vcspotr", 70) || 70;   // 知らせる範囲（50〜300m）
+$("vcSpotR").value = VS_R; $("vcSpotR").onchange = () => { VS_R = +$("vcSpotR").value; lsSet("hosomichi_vcspotr", VS_R); };
 const vsDone = new Set(); let vsBusy = false;
 for (const r of document.querySelectorAll("[name=vcSpot]")) {
   r.checked = +r.value === vcSpot;
@@ -2187,7 +2190,7 @@ function vsMark(s) {
   vsMk.push({ m, p: [s[1], s[2]], t: Date.now() });
   while (vsMk.length > 2) vsLayer.removeLayer(vsMk.shift().m);
 }
-function vsTidy(ll) { vsMk = vsMk.filter(x => { const keep = Date.now() - x.t < 120000 && hav(ll, x.p) < 300; if (!keep) vsLayer.removeLayer(x.m); return keep; }); }
+function vsTidy(ll) { vsMk = vsMk.filter(x => { const keep = Date.now() - x.t < 120000 && hav(ll, x.p) < Math.max(300, VS_R + 150); if (!keep) vsLayer.removeLayer(x.m); return keep; }); }
 async function vcSpotCheck(ll) {
   vsTidy(ll);
   if (!vcOn || !vcSpot || vsBusy || wid === null || !follow) return;
