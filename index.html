@@ -178,7 +178,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1718</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1720</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3454,7 +3454,8 @@ $("bSns").onclick = async () => {
     <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
       <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ</span></div>
     <div class="ph" id="snsPhs"></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button><button id="snsClose">とじる</button></div></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button><button id="snsClose">とじる</button></div>
+    <div style="margin-top:10px;font-size:11px;color:#888">走った記録（軌跡）は 夜の0時に新しくなるよ <button id="snsReset" style="font-size:11px;padding:3px 8px">🔄 いまリセット</button></div></div>`;
   document.body.appendChild(box);
   let map0 = null, photos = [], link = data.link;
   const draw = async d => {
@@ -3472,6 +3473,10 @@ $("bSns").onclick = async () => {
     $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
   };
   $("snsClose").onclick = () => box.remove();
+  $("snsReset").onclick = async () => {
+    if (!confirm("走った記録（軌跡）をリセットして、ここから新しく記録する？")) return;
+    rideNew(); if (wid === null) ride.t0 = Date.now(); draw(await snsData());
+  };
   $("snsUrl").onclick = async () => { try { await navigator.clipboard.writeText(link); $("snsUrl").textContent = "✅ コピーしたよ"; setTimeout(() => $("snsUrl") && ($("snsUrl").textContent = "🔗 URLだけコピー"), 2000); } catch { prompt("URL", link); } };
   $("snsCopy").onclick = async () => { try { await navigator.clipboard.writeText($("snsTxt").value); $("snsCopy").textContent = "✅ コピーしたよ"; } catch { $("snsTxt").select(); } };
   const save = f => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); };
@@ -3772,12 +3777,18 @@ function nearestOnRoute(p) {
 // ---------- 📣 走った記録（SNS用）：走った道と、着いた所・時刻。この端末の中だけ ----------
 let ride = lsGet("hosomichi_ride", null), rideSaveT = 0;
 const RIDE_GAP = 3 * 3600e3;
+// 🚲 走った記録は「その日の分」：夜の0時か、🔄リセットで新しくなる（ルートを作りなおしても、ゴールに着いても切れない）
+const dayOf = t => new Date(t).toDateString();
+function rideNew() {
+  ride = { t0: Date.now(), rn: cur ? cur.name || "" : "", pts: [], ev: [], stops: [] }; rideStops(); rideSave(true);
+}
+function rideStops() {   // いまのルートの経由地をたす（同じものは1回）
+  if (!ride || !cur || !cur.stops) return;
+  for (const q of cur.stops) if (!ride.stops.some(o => o.name === q.name && hav(o.p, q.p) < 50)) ride.stops.push({ p: q.p, name: q.name, mid: q.mid });
+}
 function rideStart() {
-  const now = Date.now(), last = ride && (ride.pts.length ? ride.pts[ride.pts.length - 1][2] : ride.t0);
-  const rn = cur ? cur.name || "" : "";
-  if (ride && !ride.done && now - last < RIDE_GAP && ride.rn === rn) return;   // 同じルートのつづき
-  ride = { t0: now, rn, pts: [], ev: [], stops: cur && cur.stops ? cur.stops.map(q => ({ p: q.p, name: q.name, mid: q.mid })) : [] };
-  rideSave(true);
+  if (!ride || dayOf(ride.t0) !== dayOf(Date.now())) return rideNew();
+  ride.done = false; ride.rn = cur ? cur.name || "" : ride.rn; rideStops(); rideSave(true);   // その日のつづき
 }
 function rideSave(now) { if (!ride) return; if (now || Date.now() - rideSaveT > 20000) { rideSaveT = Date.now(); lsSet("hosomichi_ride", ride); } }
 function rideEv(k, name, ll) {
@@ -3786,6 +3797,7 @@ function rideEv(k, name, ll) {
 }
 function rideAdd(ll, accu) {
   if (!ride || wid === null || accu > 60) return;
+  if (dayOf(ride.t0) !== dayOf(Date.now())) rideNew();   // 走っているとちゅうに0時をこえた
   const L = ride.pts[ride.pts.length - 1];
   if (!L) { ride.pts.push([+ll[0].toFixed(6), +ll[1].toFixed(6), Date.now()]); rideEv("start", "", ll); return; }
   if (hav(L, ll) < 20) return;
