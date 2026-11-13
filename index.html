@@ -179,7 +179,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2301</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2304</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -276,11 +276,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       </div>
       <div class="btns" style="margin-top:8px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
       <div class="note" style="margin-top:8px">🏠 家・🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）して決めるよ</div>
-      <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <b>📣 SNS・🔗 共有URLに出さない範囲</b>
-        <div class="row" style="margin-top:4px"><label style="width:auto">家のそばから道にそって</label><select id="snsR" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px"></select><span style="font-size:12px">は出さない</span></div>
-        <div style="font-size:11px;color:#666">地図の線も、通った所の名前も出さないよ。丸で消すと切れ目から家を推理されるので、道にそった距離で消すよ（家を決めていないときは出発から）</div>
-      </div>
       </div>
     </div>
     <div id="tabTrk" style="display:none"></div>
@@ -3288,8 +3283,7 @@ function snsRSet(v) {   // 📣SNS・🔗共有URL・⚙設定 の3か所は同�
   for (const id of ["snsR", "snsR2", "hide"]) if ($(id)) snsROpts($(id));
   try { if (cur && $("share").style.display !== "none") updateShare(); } catch {}
 }
-snsROpts($("snsR")); snsROpts($("hide"));
-$("snsR").onchange = () => snsRSet(+$("snsR").value);
+snsROpts($("hide"));   // 出さない範囲は 📣SNS の画面でえらぶ（⚙設定からはなくした）
 $("hide").onchange = () => snsRSet(+$("hide").value);
 let snsTrail = +lsGet("hosomichi_trail", 0) || 0;   // 📣 走っているとちゅうの「来た道」の長さ m（0＝その日ぜんぶ）
 let snsCm = "";   // 📣 SNSの画面で入れた自分のコメント（投稿文のいちばん上。入りきらない分は 通った所 を古いほうからけずる）
