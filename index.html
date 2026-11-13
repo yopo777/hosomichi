@@ -179,7 +179,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2255</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2258</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3563,16 +3563,13 @@ async function trkOpen() {
     T.innerHTML = `<div style="padding:10px;font-size:13px;color:#666">🛤 今日はまだ走った記録がないよ。◎で現在地を追いかけはじめると、走ったところが記録されるよ（この端末の中だけ・夜0時に新しくなるよ）</div>`;
     return;
   }
-  // 地図：記録が切れている所（アプリを閉じていた所）は点線
-  let seg = [P[0]];
-  const flush = () => { if (seg.length > 1) L.polyline(seg, { color: "#a142f4", weight: 6, opacity: .85, interactive: false }).addTo(trkLayer); };
+  // 地図の画像（SNSと同じ作りかた。この端末の中だけなので、家のまわりも消さない）。記録が切れている所（アプリを閉じていた所）で線を分ける
+  const runs = []; let seg = [[P[0][0], P[0][1]]];
   for (let i = 1; i < P.length; i++) {
-    if (P[i][2] - P[i - 1][2] > 5 * 60e3 && hav(P[i - 1], P[i]) > 300) { flush(); L.polyline([P[i - 1], P[i]], { color: "#a142f4", weight: 3, dashArray: "4 8", opacity: .7, interactive: false }).addTo(trkLayer); seg = [P[i]]; }
-    else seg.push(P[i]);
+    if (P[i][2] - P[i - 1][2] > 5 * 60e3 && hav(P[i - 1], P[i]) > 300) { if (seg.length > 1) runs.push(seg); seg = []; }
+    seg.push([P[i][0], P[i][1]]);
   }
-  flush();
-  L.circleMarker(P[0], { radius: 7, color: "#fff", weight: 3, fillColor: "#a142f4", fillOpacity: 1 }).addTo(trkLayer).bindTooltip("記録のはじめ " + hhmm(P[0][2]));
-  if (!follow) map.fitBounds(L.latLngBounds(P.map(q => [q[0], q[1]])), { padding: [40, 40] });
+  if (seg.length > 1) runs.push(seg);
   // 数字：走ったきょり・走っていた時間（止まっていた・記録がない時間はのぞく）
   let dist = 0, move = 0;
   for (let i = 1; i < P.length; i++) { const d = hav(P[i - 1], P[i]), dt = P[i][2] - P[i - 1][2]; if (dt < 5 * 60e3) { dist += d; move += dt; } }
@@ -3583,18 +3580,27 @@ async function trkOpen() {
       <div class="trkN"><small>走っていた時間</small><b>${(m => (m >= 60 ? Math.floor(m / 60) + "時間" : "") + (m % 60) + "分")(Math.round(move / 60e3))}</b></div>
       <div class="trkN"><small>はじめ〜さいご</small><b>${hhmm(P[0][2])}〜${hhmm(P[P.length - 1][2])}</b></div>
     </div>
-    <div class="btns"><button class="ib" id="trkSns" style="border-color:#1d9bf0;color:#1d9bf0;font-weight:bold">📣 SNSに出す</button><button class="ib" id="trkFit">🗺 地図で見る</button><button class="ib" id="trkReset">🔄 リセット</button></div>
+    <div id="trkImg" style="text-align:center;color:#888;padding:30px 0;border:1px solid #eee;border-radius:8px">地図を作っているよ…</div>
+    <div class="btns" style="margin-top:6px"><button class="ib" id="trkSns" style="border-color:#1d9bf0;color:#1d9bf0;font-weight:bold">📣 SNSに出す</button><button class="ib" id="trkReset">🔄 リセット</button></div>
     <div style="font-weight:bold;margin:10px 0 4px">📍 通った所</div><div id="trkList" style="color:#888">さがしているよ…</div>
-    <div style="font-size:11px;color:#888;margin-top:8px">この画面と地図のむらさきの線は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。点線はアプリを閉じていて記録がない所だよ。過去の記録の合計は、あとで入れるよ</div></div>`;
+    <div style="font-size:11px;color:#888;margin-top:8px">この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ。過去の記録の合計は、あとで入れるよ</div></div>`;
   $("trkSns").onclick = () => snsOpen();
-  $("trkFit").onclick = () => { if (follow) setFollow(false); map.fitBounds(L.latLngBounds(P.map(q => [q[0], q[1]])), { padding: [40, 40] }); $("panel").classList.add("min"); $("tog").textContent = "ひらく"; };
+  const d0 = new Date(ride.t0);
+  snsImage({ runs, stops: [], sub: `${d0.getMonth() + 1}/${d0.getDate()}(${"日月火水木金土"[d0.getDay()]})`, here: null, dir: null, big: "", pins: [] })
+    .then(b => { if ($("trkImg")) $("trkImg").outerHTML = b ? `<img id="trkImg" src="${URL.createObjectURL(b)}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; })
+    .catch(() => {});
   $("trkReset").onclick = () => { if (!confirm("今日の軌跡をリセットして、ここから新しく記録する？")) return; rideNew(); trkOpen(); };
   // 通った所（経由地・スタンプ・となりを通った名所や施設・駅）と時刻
   const items = ride.ev.filter(e => e.k === "stop" || e.k === "stamp").map(e => ({ t: e.t, name: e.name }));
   for (const c of await passList(P, () => false).catch(() => [])) items.push({ t: c.t, name: (c.ic ? c.ic + " " : "") + c.name });
   const clean = n => n.replace(/^[^\p{L}\p{N}]+/u, "").trim(), seen = [];
   const list = items.sort((a, b) => a.t - b.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); return true; });
-  if ($("trkList")) $("trkList").innerHTML = list.length ? list.map(x => `<div style="color:#222;padding:2px 0;border-bottom:1px solid #f0f0f0"><span style="display:inline-block;width:46px;color:#888">${hhmm(x.t)}</span>${esc(x.name)}</div>`).join("") : "まだないよ";
+  // 縦にならべる（はじめ → 通った所 → さいご）。左に時刻、まん中に点と線
+  const rows = [{ t: P[0][2], name: "記録のはじめ", ic: "🚩" }, ...list, { t: P[P.length - 1][2], name: "さいご（いまの記録）", ic: "🏁" }];
+  if ($("trkList")) $("trkList").innerHTML = rows.map((x, i) => `<div style="display:flex;align-items:stretch;color:#222;min-height:30px">
+      <span style="width:42px;color:#888;font-size:12px;padding-top:6px">${hhmm(x.t)}</span>
+      <span style="width:18px;position:relative;flex:none"><i style="position:absolute;left:8px;top:${i ? 0 : 12}px;bottom:${i === rows.length - 1 ? "calc(100% - 12px)" : 0};width:2px;background:#e8384f"></i><i style="position:absolute;left:4px;top:8px;width:10px;height:10px;border-radius:50%;background:${x.ic ? "#e8384f" : "#fff"};border:2px solid #e8384f;box-sizing:border-box"></i></span>
+      <span style="padding:5px 0 5px 6px;flex:1">${x.ic ? x.ic + " " : ""}${esc(x.name)}</span></div>`).join("");
 }
 async function snsOpen() {
   snsCm = ""; snsTest = false;
