@@ -93,6 +93,8 @@ def spot_kind(t, is_way=False):
         return "bikepark"
     if sh == "bicycle": return "bike"
     if not n: return None
+    if a == "school": return "school"   # 🏫 小学校・中学校・高校（名前のあるもの）
+    if a in ("university", "college"): return "univ"   # 🎓 大学・専門学校
     if a == "hospital": return "hospital"
     if a == "ferry_terminal" or (g("route") == "ferry"): return "ferry"   # 渡し船
     if hi == "milestone" and "一里塚" in n: return "ichiri"

@@ -176,7 +176,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1227</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1232</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -230,7 +230,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-weight:bold;margin-top:6px">🏯 名所の近くに来たら教える</div>
         <div style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="vcSpot" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpot" value="1"> 有名な所だけ</label><label><input type="radio" name="vcSpot" value="2"> いろいろ</label></div>
         <div style="margin-top:2px">知らせる範囲：<select id="vcSpotR"><option value="50">50m</option><option value="70">70m</option><option value="100">100m</option><option value="150">150m</option><option value="200">200m</option><option value="300">300m</option></select></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">「めぐる」の神社・お寺・城・名所・展望・古墳・湧き水…の近くを通ると「近くに〇〇があります」と言うよ。公園と橋は多すぎるので言わないよ。地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">学校・病院や、「めぐる」の神社・お寺・城・名所・展望・古墳・湧き水…の近くを通ると「近くに〇〇があります」と言うよ。公園と橋は多すぎるので言わないよ。地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <div style="font-weight:bold">⭕ ナビ中は自分のまわりだけ表示する</div>
@@ -3828,7 +3828,7 @@ function say(t) {
 }
 // 🏯 名所の近くを通ったら声で教える（0=しない 1=有名な所だけ 2=いろいろ）。同じ所は1回だけ
 let vcSpot = +lsGet("hosomichi_vcspot", 0) || 0;
-const VS_KINDS = ["shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"];
+const VS_KINDS = ["school", "univ", "hospital", "shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"];
 let VS_R = +lsGet("hosomichi_vcspotr", 70) || 70;   // 知らせる範囲（50〜300m）
 $("vcSpotR").value = VS_R; $("vcSpotR").onchange = () => { VS_R = +$("vcSpotR").value; lsSet("hosomichi_vcspotr", VS_R); };
 const vsDone = new Set(); let vsBusy = false;
@@ -3854,11 +3854,11 @@ async function vcSpotCheck(ll) {
     let best = null;
     for (const k of VS_KINDS) for (const s of t[k] || []) {
       if (!s[0] || (vcSpot === 1 && !s[3])) continue;
-      const id = k + s[1] + "," + s[2]; if (vsDone.has(id)) continue;
+      const id = k + s[1] + "," + s[2]; if (vsDone.has(id) || vsDone.has(s[0])) continue;   // 同じ名前（建物と敷地の両方ある学校など）も1回だけ
       const d = hav(ll, [s[1], s[2]]);
       if (d < VS_R && (!best || (s[3] || 0) > (best[1][3] || 0) || d < best[2])) best = [id, s, d];
     }
-    if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); say(`近くに、${best[1][0]}があります`); vsMark(best[1]); }
+    if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); vsDone.add(best[1][0]); say(`近くに、${best[1][0]}があります`); vsMark(best[1]); }
   } catch {} finally { vsBusy = false; }
 }
 function vcAt(d) {   // ルートの先頭から d m の点
@@ -4480,6 +4480,7 @@ const SPOT_KINDS = [
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"]]],
   ["こまったとき", [["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
+  ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
     ["oneway", "➡", "一方通行"]]],
@@ -4501,7 +4502,7 @@ const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style=
   // ゲート・遮断機（柱と、赤白のバー）
   gate: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><rect x="0.8" y="2" width="2.6" height="11" rx="1" fill="#555"/><rect x="3" y="5" width="12.4" height="3" fill="#d93025"/><g fill="#fff"><rect x="5.6" y="5" width="2.2" height="3"/><rect x="10" y="5" width="2.2" height="3"/></g></svg>' };
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
-const SPOT_COL = { "道": "#188038", "車止め": "#d93025", "こまったとき": "#d01884", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "ランチ": "#e8710a", "めぐる": "#a142f4" };   // ジャンルのふちの色
+const SPOT_COL = { "道": "#188038", "車止め": "#d93025", "こまったとき": "#d01884", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "ランチ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];
