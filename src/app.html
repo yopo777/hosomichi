@@ -1667,13 +1667,15 @@ async function snsData() {
     for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name) });
     for (const c of await passList(ride.pts, hideP).catch(() => [])) items.push({ t: c.t, name: c.name });
     const seen = new Set(), list = items.sort((x, y) => x.t - y.t).filter(x => { const k = x.name.replace(/^\S+\s/, ""); if (seen.has(k)) return false; seen.add(k); return true; });
+    // 地図に「いまここ」を出せるときは、さいごに「〇〇(イマココ)」（地名＝市区町村＋町名。行った所がなくても出す）
+    const hn = here ? await placeName(here) : "", tail = hn ? [{ name: hn + "(イマココ)" }] : [];
     const rest = [...L, "🗺 ルート共有link↓（開くだけなら位置情報は使いません）", SNS_URL, SNS_TAGS].join("\n"), pick = [];
     for (let i = list.length - 1; i >= 0; i--) {   // 新しいものから
-      const line = "📍 " + [list[i], ...pick].map(x => x.name).join("→");
+      const line = "📍 " + [list[i], ...pick, ...tail].map(x => x.name).join("→");
       if (xLen(rest + "\n" + line) > SNS_MAX) break;
       pick.unshift(list[i]);
     }
-    if (pick.length) L.push("📍 " + pick.map(x => x.name).join("→"));
+    if (pick.length || tail.length) L.push("📍 " + [...pick, ...tail].map(x => x.name).join("→"));
   }
   // 🗺 共有ルートのリンク：地図に出している線（走っている途中は来た道、走り終わったら走ったところ）。開いた人はそのルートを見られる
   let link = SNS_URL;
@@ -3001,6 +3003,13 @@ async function muniTable() {   // 市区町村コード → 名前（地理院�
     for (const m of t.matchAll(/MUNI_ARRAY\["(\d+)"\]\s*=\s*'[^,]*,([^,]*),\d+,([^']*)'/g)) muni[+m[1]] = m[3].replace(/[\s　]/g, "");
   } catch {}
   return muni;
+}
+async function placeName(p) {   // 地名（市区町村＋町名）。わからなければ ""
+  try {
+    const r = await (await tfetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${p[0].toFixed(6)}&lon=${p[1].toFixed(6)}`, {}, 6000)).json();
+    const t = r.results; if (!t) return "";
+    return ((await muniTable())[+t.muniCd] || "") + (t.lv01Nm && t.lv01Nm !== "－" ? t.lv01Nm : "");
+  } catch { return ""; }
 }
 async function showAddr() {
   const c = follow && me ? me.getLatLng() : map.getCenter(), p = [c.lat, c.lng];
