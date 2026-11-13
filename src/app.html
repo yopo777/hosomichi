@@ -1751,7 +1751,7 @@ async function snsData() {
     .filter((q, i, A) => !A.slice(0, i).some(o => o.name.includes(q.name) || q.name.includes(o.name)));   // 地図の印も、同じ所は1つ
   const sub = `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
   return { runs, stops: here && snsTrail ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: (snsCm.trim() ? snsCm.trim() + "\n\n" : "") + L.join("\n"), sub, none: !useRide, link, here, dir,
-    big: useRide && !riding ? "サイクリング完了" : "", test: snsTest };   // 走り終わったら地図に大きく
+    big: "", test: snsTest };   // 地図の大きい文字（サイクリング完了など）は出さない：どこがスタートでどこが終わりかは決めないアプリなので   // 走り終わったら地図に大きく
 }
 async function snsImage({ runs, stops, sub, here, dir, big, pins, test }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所＋写真
   pins = pins || [];
@@ -1924,9 +1924,9 @@ async function trkOpen() {
   for (const c of await passList(P, () => false).catch(() => [])) items.push({ t: c.t, name: (c.ic ? c.ic + " " : "") + c.name });
   const clean = n => n.replace(/^[^\p{L}\p{N}]+/u, "").trim(), seen = [];
   const list = items.sort((a, b) => a.t - b.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); return true; });
-  // 縦にならべる：いちばん上が新しい（さいご）→ 下へいくほど古い（はじめ）。古いものほど うすくする
+  // 縦にならべる：いちばん上が新しい（さいご）→ 下へいくほど古い（はじめ）
   const rows = [{ t: P[P.length - 1][2], name: "さいご（いまの記録）", ic: "🏁" }, ...list.slice().reverse(), { t: P[0][2], name: "記録のはじめ", ic: "🚩" }];
-  if ($("trkList")) $("trkList").innerHTML = rows.map((x, i) => `<div style="display:flex;align-items:stretch;color:#222;min-height:22px;font-size:11px;opacity:${(1 - 0.6 * Math.min(1, i / Math.max(1, Math.min(rows.length - 1, 40)))).toFixed(2)}">
+  if ($("trkList")) $("trkList").innerHTML = rows.map((x, i) => `<div style="display:flex;align-items:stretch;color:#222;min-height:22px;font-size:11px">
       <span style="width:34px;color:#888;font-size:10px;padding-top:4px">${hhmm(x.t)}</span>
       <span style="width:18px;position:relative;flex:none"><i style="position:absolute;left:8px;top:${i ? 0 : 9}px;bottom:${i === rows.length - 1 ? "calc(100% - 9px)" : 0};width:2px;background:#e8384f"></i><i style="position:absolute;left:5px;top:6px;width:8px;height:8px;border-radius:50%;background:${x.ic ? "#e8384f" : "#fff"};border:2px solid #e8384f;box-sizing:border-box"></i></span>
       <span style="padding:3px 0 3px 4px;flex:1">${x.ic ? x.ic + " " : ""}${esc(x.name)}</span></div>`).join("");
