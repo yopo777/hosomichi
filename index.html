@@ -174,7 +174,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0958</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1001</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -236,6 +236,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-weight:bold;margin-top:6px">⏱ さわらないで何秒たったら節電する？</div>
         <div id="idleLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="idleLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="idleLv" value="10"> 10秒</label><label><input type="radio" name="idleLv" value="15"> 15秒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">⬛で暗くしているあいだは、マークとボールも消すよ（⭕丸のときは出すよ）</div>
+        <div style="font-weight:bold;margin-top:6px">📡 地図を動かす間かく</div>
+        <div id="gpsLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="gpsLv" value="1"> 1秒（ふつう）</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="3"> 3秒</label><label><input type="radio" name="gpsLv" value="5"> 5秒</label></div>
+        <div style="font-size:11px;color:#666;margin-top:2px">間かくを長くすると、地図の描きなおしがへって電池にやさしいよ。走った記録はいままでどおり取るよ。曲がる所の手前200mと、ルートから外れたときは1秒ごとにもどすよ</div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
       </div>
       </div>
@@ -3759,10 +3762,26 @@ function rideAdd(ll, accu) {
   if (ride.pts.length > 6000) ride.pts.splice(1, 1);
   rideSave(false);
 }
+// 📡 地図の更新の間かく（1 / 3 / 5 秒）。走った記録はぜんぶ取る。曲がる所の近く・ルートから外れたときは毎回更新
+let gpsEvery = +lsGet("hosomichi_gps", 1) || 1, gpsLast = 0;
+for (const r of document.querySelectorAll("[name=gpsLv]")) {
+  r.checked = +r.value === gpsEvery;
+  r.onchange = () => { gpsEvery = +r.value; lsSet("hosomichi_gps", gpsEvery); };
+}
+function gpsSkip() {
+  if (gpsEvery <= 1 || !me || wid === null || wid < 0) return false;   // ためしの現在地・試し走行はいつも更新
+  if (Date.now() - gpsLast > gpsEvery * 1000 - 300) return false;
+  if (vcOff) return false;
+  const t = vcTurns && navAlong != null && vcTurns.find(t => t.s > navAlong - 5);
+  if (t && t.s - navAlong < 200) return false;   // 曲がる手前200m：案内がおくれないように毎回
+  return true;
+}
 function onPos(p) {
   const ll = [p.coords.latitude, p.coords.longitude];
   try { rideAdd(ll, p.coords.accuracy); } catch {}
   hereFix = [ll, Date.now(), p.coords.accuracy];
+  if (gpsSkip()) return;
+  gpsLast = Date.now();
   updHeading(p.coords, ll);
   const first = !me;
   if (!me) {
