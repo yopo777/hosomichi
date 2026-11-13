@@ -77,6 +77,8 @@ body.navi .pulse{display:none;animation:none}
 .vsHi{position:relative;width:0;height:0}.vsHi i{position:absolute;left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;border:5px solid #a142f4;box-sizing:border-box;animation:pulse 1.2s ease-out infinite}
 .vsHi b{position:absolute;left:0;top:-48px;transform:translateX(-50%);white-space:nowrap;background:#a142f4;color:#fff;font-size:13px;padding:2px 8px;border-radius:10px;box-shadow:0 1px 4px #0006}   /* 🏯 案内した名所（ナビ中も出す） */
 @keyframes pulse{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.4);opacity:0}}
+body.ov .me-ic svg{transform:scale(1.7)}
+body.ov .me-ic::before{content:"";position:absolute;left:50%;top:50%;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;border:6px solid #1a73e8;box-sizing:border-box;animation:pulse 1.4s ease-out infinite;pointer-events:none}   /* 🗺 全体図では自分を大きく・輪で目立たせる */
 #msnAsk{position:fixed;left:0;right:0;bottom:0;z-index:6000;padding:10px}#msnAsk .box{background:#fff;border-radius:14px;padding:14px;max-width:440px;margin:0 auto;box-shadow:0 -2px 16px #0004}#msnAsk button{padding:11px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:15px}#msnAsk button.big{background:#d93025;border-color:#d93025;color:#fff;font-weight:bold}
 .hereTip{color:#1a73e8;font-weight:bold;font-size:13px}
 #stabs{display:flex;gap:4px;margin:6px 0 2px;flex-wrap:wrap}#stabs button{flex:1;border:1px solid #ddd;background:#fff;border-radius:999px;padding:5px 2px;font-size:12px;color:#555;white-space:nowrap}#stabs button.on{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold}   /* 設定の中の小さいタブ */
@@ -176,7 +178,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1511</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.1718</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -230,6 +232,11 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-weight:bold;margin-top:6px">🏯 名所の近くに来たら教える</div>
         <div style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="vcSpot" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpot" value="1"> 有名な所だけ</label><label><input type="radio" name="vcSpot" value="2"> いろいろ</label></div>
         <div style="margin-top:2px">知らせる範囲：<select id="vcSpotR"><option value="50">50m</option><option value="70">70m</option><option value="100">100m</option><option value="150">150m</option><option value="200">200m</option><option value="300">300m</option></select></div>
+        <div style="font-weight:bold;margin-top:6px">🗺 ときどき全体図を見せて、いまの住所を言う</div>
+        <div style="margin-top:2px"><select id="autoOvMin"><option value="0">しない</option><option value="5">5分ごと</option><option value="10">10分ごと</option><option value="15">15分ごと</option><option value="30">30分ごと</option></select>
+          <select id="autoOvSec"><option value="5">5秒見せる</option><option value="10">10秒見せる</option><option value="15">15秒見せる</option></select></div>
+        <div style="font-size:11px;color:#666;margin-top:2px">道なりで、曲がる所が近くないときだけ。「現在地は、〇〇市〇〇三丁目です」と言うよ</div>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="jihoOn">🕐 30分ごとに時刻を言う（時報）</label>
         <div style="font-size:11px;color:#666;margin-top:2px">学校・病院・役所・工場・浄水場・グラウンド…（「まち」）や、「めぐる」の神社・お寺・城・名所・展望・古墳・湧き水…の近くを通ると、名所は「近くに〇〇があります」、まちの建物は となりの道を通ったときだけ「これは〇〇です」と言うよ。公園と橋は多すぎるので言わないよ。地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -3018,6 +3025,16 @@ function fadeEnds(r) {   // はしの 400m に、地図と同じような白を�
     if (r.cutE) { const p = seg(T - F * (k + 1) / N - 1, T - F * k / N); if (p.length > 1) L.polyline(p, w).addTo(layer); }
   }
 }
+let xMk = [], xFor = null;
+function xUpd() {
+  if (xFor !== cur) { xMk = []; return; }   // ルートが消えた・かわった
+  const nav = follow && me, here = nav && me.getLatLng(), z = map.getZoom();
+  for (const [m, p] of xMk) {
+    const on = !ovMode && (nav ? hav([here.lat, here.lng], p) < 300 : z >= 15);
+    if (on !== layer.hasLayer(m)) on ? m.addTo(layer) : layer.removeLayer(m);
+  }
+}
+map.on("zoomend", () => { try { xUpd(); } catch {} });
 function showRoute(r, fit) {
   if (r !== cur) { $("bar").classList.remove("trip"); for (const t of $("bar").querySelectorAll(".tick")) t.remove(); tickFor = null; }
   cur = r; layer.clearLayers(); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
@@ -3041,8 +3058,10 @@ function showRoute(r, fit) {
   } else if (!r.partial && !r.cutE) L.circleMarker(E, { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
   if (!r.partial) pulseShow([...(r.cutS ? [] : [[r.nav[0], "s"]]), ...(r.cutE || r.here ? [] : [[E, ""]]), ...(r.stops || []).map(q => [q.p, "m"])]);
   (r.stops || []).forEach(q => L.marker(q.p, { icon: L.divIcon({ className: "", html: '<div style="font-size:24px;line-height:1;transform:translate(-50%,-90%);text-shadow:0 0 3px #fff">📍</div>', iconSize: [0, 0] }), zIndexOffset: 400 }).addTo(layer).bindTooltip(q.name));   // 1周の経由地
-  (r.ok || []).forEach(p => L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("信号で横断"));
-  (r.xw || []).forEach(p => L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).addTo(layer).bindTooltip("横断歩道で横断"));
+  // 横断の印（信号・横断歩道）は、近づいたときだけ出す（ナビ中は自分から300m・ふだんはズーム15より寄ったとき）
+  xMk = [...(r.ok || []).map(p => [L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).bindTooltip("信号で横断"), p]),
+         ...(r.xw || []).map(p => [L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).bindTooltip("横断歩道で横断"), p])];
+  xFor = r; xUpd();
   (r.ng || []).forEach(p => L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).addTo(layer).bindTooltip("⚠ 設定どおりに渡れなかった場所"));
   if (fit === "start") map.fitBounds(L.latLngBounds(r.nav), { padding: [40, 40], maxZoom: 16 });
   else if (fit && r.shared) {   // SNS（X など）から開いたとき：下にアプリの画面がかぶさるので、下を広くあけて、いまここ を真ん中より上に
@@ -3716,7 +3735,7 @@ let ovMode = false, ovZoom = 16;
 const ovOn = () => ovMode;
 function ovSet(on) {
   if (on === ovMode) return;
-  ovMode = on; document.body.classList.toggle("ov", on); applyBearing();
+  ovMode = on; document.body.classList.toggle("ov", on); applyBearing(); xUpd();
   if (on) {
     ovZoom = map.getZoom();
     const here = me.getLatLng(), bb = cur && cur.nav && cur.nav.length > 1 ? L.latLngBounds(cur.nav).extend(here) : here.toBounds(4000);
@@ -3794,6 +3813,7 @@ function onPos(p) {
   hereFix = [ll, Date.now(), p.coords.accuracy];
   if (gpsSkip()) return;
   gpsLast = Date.now();
+  try { xUpd(); } catch {}
   updHeading(p.coords, ll);
   const first = !me;
   if (!me) {
@@ -3850,6 +3870,35 @@ function vsMark(s) {
   while (vsMk.length > 2) vsLayer.removeLayer(vsMk.shift().m);
 }
 function vsTidy(ll) { vsMk = vsMk.filter(x => { const keep = Date.now() - x.t < 120000 && hav(ll, x.p) < Math.max(300, VS_R + 150); if (!keep) vsLayer.removeLayer(x.m); return keep; }); }
+// 🗺 ときどき全体図 ＋ 住所、🕐 時報（ナビ中だけ。曲がる手前・コース外れ・しゃべっている最中はあとまわし）
+let autoOvMin = +lsGet("hosomichi_aovmin", 0) || 0, autoOvSec = +lsGet("hosomichi_aovsec", 10) || 10, jihoOn = !!lsGet("hosomichi_jiho", false);
+let autoOvLast = Date.now(), autoOvBy = false, jihoLast = null;
+$("autoOvMin").value = autoOvMin; $("autoOvSec").value = autoOvSec; $("jihoOn").checked = jihoOn;
+$("autoOvMin").onchange = () => { autoOvMin = +$("autoOvMin").value; lsSet("hosomichi_aovmin", autoOvMin); autoOvLast = Date.now(); };
+$("autoOvSec").onchange = () => { autoOvSec = +$("autoOvSec").value; lsSet("hosomichi_aovsec", autoOvSec); };
+$("jihoOn").onchange = () => { jihoOn = $("jihoOn").checked; lsSet("hosomichi_jiho", jihoOn); };
+function quietNow() {   // いまは案内をじゃましない？
+  if (vcOff || speechSynthesis.speaking) return false;
+  return !(vcTurns && navAlong != null && vcTurns.some(t => t.s > navAlong - 5 && t.s - navAlong < 250));
+}
+function autoTick() {
+  if (wid === null || !follow || !me || document.hidden) { autoOvLast = Date.now(); return; }
+  const now = new Date();
+  if (vcOn && jihoOn) {   // 🕐 0分と30分（あとまわしは5分まで）
+    const slot = now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0), m = now.getMinutes() % 30;
+    if (jihoLast === null) jihoLast = slot;
+    else if (slot !== jihoLast && m >= 5) jihoLast = slot;
+    else if (slot !== jihoLast && quietNow()) { jihoLast = slot; say(`${now.getHours()}時${now.getMinutes() >= 30 ? "半" : ""}です`); return; }
+  }
+  if (autoOvMin && !ovMode && Date.now() - autoOvLast > autoOvMin * 60000 && Date.now() - blkTouch > 15000 && quietNow()) {
+    autoOvLast = Date.now(); autoOvBy = true; ovSet(true); blkShowMap(autoOvSec * 1000);
+    const ll = me.getLatLng();
+    if (vcOn) placeName([ll.lat, ll.lng]).then(n => { if (n && autoOvBy) say(`現在地は、${n}です`); });
+    setTimeout(() => { if (autoOvBy && ovMode) ovSet(false); autoOvBy = false; }, autoOvSec * 1000);
+  }
+}
+setInterval(() => { try { autoTick(); } catch {} }, 5000);
+document.addEventListener("pointerdown", () => { autoOvBy = false; }, true);   // さわったら自動でもどすのはやめる（自分で見ているので）
 function polyDist(ll, f) {   // 外形（[緯度, 経度, …]）までの距離 m。中にいたら 0
   const ky = 111320, kx = 111320 * Math.cos(ll[0] * Math.PI / 180), P = [];
   for (let i = 0; i < f.length; i += 2) P.push([(f[i + 1] - ll[1]) * kx, (f[i] - ll[0]) * ky]);
