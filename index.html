@@ -174,7 +174,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0927</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.0934</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -3791,7 +3791,7 @@ $("vcTest").onclick = () => { boo(); setTimeout(() => say("100メートル先、
 window.say = say;
 function say(t) {
   try {
-    const u = new SpeechSynthesisUtterance(t); u.lang = "ja-JP"; u.rate = 1.05;
+    const u = new SpeechSynthesisUtterance(t); u.lang = "ja-JP"; u.rate = 1.05; u.volume = 1;
     const v = speechSynthesis.getVoices().find(v => /^ja/i.test(v.lang)); if (v) u.voice = v;
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   } catch {}
@@ -3893,7 +3893,7 @@ function vcNav(off, rest) {
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
   const then = nx && nx.s - t.s < 60 ? `、すぐ${vcWord(nx.d)}` : "";
   if (dist <= 35) { if (!t.a2) { t.a2 = t.a1 = true; say(`まもなく${vcWord(t.d)}です${then}`); } blkShowMap(5000); }
-  else if (dist <= 120) { if (!t.a1) { t.a1 = true; say(`${Math.max(50, Math.round(dist / 10) * 10)}メートル先、${vcWord(t.d)}です${then}`); } }
+  else if (dist <= 120) { if (!t.a1) { t.a1 = true; say(`${Math.max(50, Math.round(dist / 50) * 50)}メートル先、${vcWord(t.d)}です${then}`); } }
 }
 // ---------- ⬛ さわらないと画面をまっ黒に（画面はついたままなので、GPS・音声は動く。有機ELなら黒は電池をほぼ使わない） ----------
 let blkScr = (v => v === true ? 100 : +v || 0)(lsGet("hosomichi_black", 0)), blkTouch = Date.now(), blkUntil = 0;
