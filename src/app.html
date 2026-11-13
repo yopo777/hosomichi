@@ -185,9 +185,15 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
     <div id="tabQuest" style="display:none">
       <h4 style="margin:8px 0 2px">🎯 ミッション <span style="font-size:11px;color:#666;font-weight:normal">1か所に寄って、ぐるっと1周してもどる</span></h4>
-      <div class="row"><label style="width:auto">行き先</label><select id="msnType" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px">
-        <option value="spot">⛩ 寄り道（神社・公園・湧き水…）</option><option value="lunch">🍜 ランチ（ラーメン・そば・定食・中華・カフェ…）</option><option value="snack">🍰 おやつ（スイーツ・パン屋・カフェ）</option><option value="none">🔁 なし（ふつうの1周）</option></select></div>
+      <div class="row"><label style="width:auto">行き先</label><select id="msnType" style="flex:1;min-width:0;width:100%;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px">
+        <option value="spot">⛩ 寄り道</option><option value="lunch">🍜 ランチ</option><option value="snack">🍰 おやつ</option><option value="none">🔁 なし（ふつうの1周）</option></select></div>
+      <div id="msnNote" style="font-size:11px;color:#666;margin:-2px 0 2px 4px"></div>
       <div class="row"><label style="width:auto">長さ</label><select id="loopKm" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option>5</option><option selected>10</option><option>20</option><option>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
+      <script>
+        { const N = { spot: "神社・お寺・公園・湧き水・名所…のどれか", lunch: "ラーメン・そば・定食・中華・カフェ…のどれか", snack: "スイーツ・パン屋・カフェのどれか", none: "寄り道なしで、ぐるっと1周" };
+          const f = () => { document.getElementById("msnNote").textContent = N[document.getElementById("msnType").value] || ""; };
+          document.getElementById("msnType").addEventListener("change", f); setTimeout(f); }
+      </script>
       <div style="font-size:11px;color:#666">出発は 🚲ルートの「出発」（空なら現在地）。行き先は毎回ちがう所をおまかせで選ぶよ。気に入らなかったらもう一回押してね</div>
       <button id="msnGo" style="margin-top:6px">🎯 ミッションを作る</button>
       <h4 style="margin:14px 0 2px;border-top:1px solid #eee;padding-top:10px">🏆 チャレンジ <span style="font-size:11px;color:#666;font-weight:normal">ぜんぶ回る</span></h4>
