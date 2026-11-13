@@ -1631,20 +1631,28 @@ const hhmm = t => { const d = new Date(t); return d.getHours() + ":" + String(d.
 const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? m + "分" : Math.floor(m / 60) + "時間" + (m % 60 ? (m % 60) + "分" : ""); };
 const lineLen = pts => { let d = 0; for (let i = 1; i < pts.length; i++) d += hav(pts[i - 1], pts[i]); return d; };
 // 📍 通ったところ：走った道のそばの 駅・お寺・神社など を通った順に（家のまわりの丸の中はのぞく）
-const PASS_KINDS = { shrine: 80, temple: 80, castle: 100, kofun: 80, sight: 60, view: 60, spring: 50, fall: 60, michi: 100, tree: 50, ichiri: 50 };   // 通った所（m）：神社やお寺は敷地のまん中の点なので広めに
+// 📍 通った所＝ほんとうに となりの道を通ったもの：外形があれば外形から30m、点だけなら点から40m、橋はわたったとき（まん中から40m）、駅は120m
+const PASS_KINDS = ["shrine", "temple", "church", "castle", "kofun", "sight", "view", "michi", "spring", "fall", "tree", "ichiri",
+  "park", "bridge", "school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground"];
 async function passList(rpts, hid) {
   if (rpts.length < 2) return [];
   const keys = new Set(); for (const q of rpts) keys.add(Math.floor(q[0] / SPOT_T) + "_" + Math.floor(q[1] / SPOT_T));
   const tiles = await Promise.all([...keys].slice(0, 120).map(spotTile)), cand = [];
-  for (const t of tiles) for (const k in PASS_KINDS) for (const e of t[k] || []) if (e[0]) cand.push({ name: e[0], ic: SPOT_INFO[k][0], p: [e[1], e[2]], r: PASS_KINDS[k] });
+  for (const t of tiles) for (const k of PASS_KINDS) for (const e of t[k] || []) if (e[0]) cand.push({ name: e[0], ic: SPOT_INFO[k][0], p: [e[1], e[2]], r: e[4] ? 30 : 40, ol: e[4] });
   try {
     if (!packStations) { const res = await tfetch(new URL("../hosomichi-data/stations.json", location.href), { cache: "no-cache" }); if (res.ok) packStations = await res.json(); }
     let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; for (const [a, o] of rpts) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, o); lo1 = Math.max(lo1, o); }
     for (const x of packStations || []) if (x[1] > la0 - .01 && x[1] < la1 + .01 && x[2] > lo0 - .01 && x[2] < lo1 + .01) cand.push({ name: x[0] + "駅", ic: "🚉", p: [x[1], x[2]], r: 120 });
   } catch {}
-  const seen = new Map();
+  const seen = new Map(), G = 0.005, grid = new Map();   // 走った点を約500mのマスに分けて、近くのマスだけ見る（候補が多くても速く）
+  rpts.forEach((q, i) => { const k = Math.floor(q[0] / G) + "_" + Math.floor(q[1] / G); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); });
   for (const c of cand) {
-    let bi = -1, bd = c.r; for (let i = 0; i < rpts.length; i++) { const d = hav(rpts[i], c.p); if (d < bd) { bd = d; bi = i; } }
+    let bi = -1, bd = c.r;
+    const gi = Math.floor(c.p[0] / G), gj = Math.floor(c.p[1] / G), w = c.ol ? 3 : 1;   // 外形は大きいこともあるので広めに
+    for (let a = gi - w; a <= gi + w; a++) for (let b = gj - w; b <= gj + w; b++) for (const i of grid.get(a + "_" + b) || []) {
+      const d = c.ol ? polyDist(rpts[i], c.ol) : hav(rpts[i], c.p);
+      if (d < bd) { bd = d; bi = i; }
+    }
     if (bi < 0 || hid(c.p, bi)) continue;
     const o = seen.get(c.name); if (!o || bi < o.i) seen.set(c.name, { ...c, i: bi, t: rpts[bi][2] });
   }
@@ -1715,7 +1723,7 @@ async function snsData() {
     // Xの文字数（280）に入るだけ、新しいものから入れて、表示は走った順（→）。家のまわりの所は出さない（「着」の行は出さない）
     const clean = n => n.replace(/^🎯\s*/, "").replace(/^\d+\.\s*/, "");
     const items = [];
-    for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp" || e.k === "spot") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name) });
+    for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name) });
     for (const c of await passList(ride.pts, hideP).catch(() => [])) items.push({ t: c.t, name: c.name });
     const seen = new Set(), list = items.sort((x, y) => x.t - y.t).filter(x => { const k = x.name.replace(/^\S+\s/, ""); if (seen.has(k)) return false; seen.add(k); return true; });
     // 地図に「いまここ」を出せるときは、さいごに「〇〇(イマココ)」（地名＝市区町村＋町名。行った所がなくても出す）
@@ -2329,7 +2337,6 @@ async function vcSpotCheck(ll) {
       if (d < VS_R && (!best || (s[3] || 0) > (best[1][3] || 0) || d < best[2])) best = [id, s, d, k];
     }
     if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); vsDone.add(best[1][0]);
-      if (!VS_MACHI.has(best[3]) && best[3] !== "bridge") rideEv("spot", best[1][0], [best[1][1], best[1][2]]);   // 名所・公園は「通った所」としてSNSにも出す
       say(VS_MACHI.has(best[3]) || best[3] === "bridge" || best[3] === "park" ? `これは、${best[1][0]}です` : `近くに、${best[1][0]}があります`); vsMark(best[1]); }
   } catch {} finally { vsBusy = false; }
 }
