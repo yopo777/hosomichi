@@ -178,7 +178,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2056</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1113.2100</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="spot"><span class="ti">📍</span><span class="tl">マーク</span></button><button data-t="data"><span class="ti">🗺</span><span class="tl">データ</span></button><button data-t="log"><span class="ti">📜</span><span class="tl">ログ <span id="logN"></span></span></button></div>
@@ -451,7 +451,9 @@ function kodoOf(t) {
 function wayCost(t, cfg) {
   const hw = t.highway, b = BASE[hw] || hw;
   let p, name = KIND_JA[b] || b;
-  if (hw === "steps") {
+  // 「歩道」「小道」なのに階段っぽい印（段の数・自転車やベビーカーのスロープ・名前に階段）があるものは階段あつかい
+  const stairy = FOOTLIKE.has(hw) && hw !== "steps" && (t.step_count || t["ramp:bicycle"] || t["ramp:stroller"] || /階段|石段/.test(t.name || ""));
+  if (hw === "steps" || stairy) {
     if (cfg.steps === "no") return null;
     if (cfg.steps === "ramp" && t["ramp:bicycle"] !== "yes") return null;
     p = cfg.steps === "ramp" ? 8 : 5;
@@ -1554,17 +1556,22 @@ function heightAt(la, lo) {
   return h[Math.min(255, Math.floor(py - y * 256)) * 256 + Math.min(255, Math.floor(px - x * 256))];
 }
 // のぼり 1m を k m 分と数える。8% をこえる急な所はその2倍。標高のゆれ（橋・切り通し）に強くするため 15% で頭打ち
-function applySlope(G, k) {
-  if (!k || typeof OffscreenCanvas === "undefined") return G;
+// 階段を通らない設定のとき：歩道・小道なのに すごく急（20%より急）な所は、印のない階段かもしれないので ほとんど通らない（30倍）
+const FOOT_K = new Set(["歩道", "小道", "歩行者道", "公園の中", "霊園の中"]);
+function applySlope(G, k, noSteps) {
+  if ((!k && !noSteps) || typeof OffscreenCanvas === "undefined") return G;
   const n = G.lat.length, h = new Float32Array(n);
   for (let i = 0; i < n; i++) h[i] = G.inGraph[i] ? heightAt(G.lat[i], G.lon[i]) : NaN;
-  let up = 0;
+  let up = 0, st = 0;
   for (let u = 0; u < n; u++) for (const e of G.adj[u]) {
     let dh = h[e.v] - h[u];
+    if (noSteps && FOOT_K.has(e.k) && e.L >= 8 && e.L <= 120 && Math.abs(dh) / e.L > 0.2) { e.c *= 30; e.k = "急な歩道（階段かも）"; st++; continue; }
+    if (!k) continue;
     if (!(dh > 0) || e.L < 3) continue;
     dh = Math.min(dh, e.L * 0.15);
     e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1); up++;
   }
+  if (st) log(`急な歩道・小道（印のない階段かも）${st}本は、ほとんど通らないよ`);
   return G;
 }
 // 道がつながらないとき（大きい川の橋が範囲の外にある、など）：データが手元にあれば範囲を広げてやりなおす
@@ -1611,8 +1618,8 @@ async function routeOnce(req, prog, partial) {
   const pad = req.pad || padFor(s, g, area);
   const slopeK = +(cfg && cfg.slope) || 0;
   if (cfg && cfg.station !== 1) await loadStations();
-  if (cfg && (cfg.cemetery !== 1 || cfg.park !== 1)) await loadAreas();
-  const demP = slopeK ? loadDem(s, g, pad + 0.005).catch(() => false) : Promise.resolve(false);
+  await loadAreas();   // 霊園・公園のほか、学校や工場の敷地（中の通路は通らない）にも使うので いつも読む
+  const demP = slopeK || (cfg && cfg.steps === "no") ? loadDem(s, g, pad + 0.005).catch(() => false) : Promise.resolve(false);   // 標高：坂道と、印のない階段さがしに使う
   const noLink = msg => Object.assign(new Error(msg), { noLink: true, usedPad: pad });
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
   { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
@@ -1670,7 +1677,7 @@ async function routeOnce(req, prog, partial) {
     }
   }
   const demOK = await demP;   // 坂道のデータ（あとで道に坂の重みをつける）
-  const BG = (osm, c, p) => { const G0 = buildGraph(osm, c, p); return demOK ? applySlope(G0, slopeK) : G0; };
+  const BG = (osm, c, p) => { const G0 = buildGraph(osm, c, p); return demOK ? applySlope(G0, slopeK, c && c.steps === "no") : G0; };
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   if (oldPack) log(`配布データが新しくなったので、${oldPack}マスを配布データから取りなおすよ`);
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
