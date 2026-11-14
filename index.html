@@ -182,7 +182,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1033</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1039</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
@@ -244,10 +244,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="vcSpot" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpot" value="1"> 有名な所だけ</label><label><input type="radio" name="vcSpot" value="2"> いろいろ</label></div>
         <div style="margin-top:2px">名所を知らせる範囲：<select id="vcSpotR"><option value="50">50m</option><option value="70">70m</option><option value="100">100m</option><option value="150">150m</option><option value="200">200m</option><option value="300">300m</option></select></div>
         <div style="font-size:11px;color:#666;margin-top:2px">神社・お寺・城・名所・展望・古墳・湧き水…（「めぐる」）の近くを通ると「近くに〇〇があります」と言うよ</div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="vcParkOn">🌳 となりの公園を教える（「これは、〇〇公園です」）</label>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:2px"><input type="checkbox" id="vcBridgeOn">🌉 名前のある橋をわたるとき教える（「これは、〇〇橋です」）</label>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="vcMachiOn">🏫 となりの施設を教える</label>
-        <div style="font-size:11px;color:#666;margin-top:2px">学校・病院・役所・図書館・郵便局・消防署・工場・浄水場・グラウンド…（「まち」）の となりの道を通ったときだけ「これは〇〇です」と言うよ</div>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="vcMachiOn">🏫 となりの施設・公園・橋を教える</label>
+        <div style="font-size:11px;color:#666;margin-top:2px">学校・病院・役所・図書館・郵便局・消防署・工場・浄水場・グラウンド…と公園の となりの道を通ったとき、名前のある橋をわたるときに「これは、〇〇です」と言うよ</div>
         <div style="font-size:11px;color:#666;margin-top:2px">どちらも地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
         <div style="font-weight:bold;margin-top:6px">🗺 ときどき全体図を見せて、いまの住所を言う</div>
         <div style="margin-top:2px"><select id="autoOvMin"><option value="0">しない</option><option value="5">5分ごと</option><option value="10">10分ごと</option><option value="15">15分ごと</option><option value="30">30分ごと</option></select>
@@ -4164,10 +4162,10 @@ function say(t) {
 }
 // 🏯 名所の近くを通ったら声で教える（0=しない 1=有名な所だけ 2=いろいろ）。同じ所は1回だけ
 let vcSpot = +lsGet("hosomichi_vcspot", 0) || 0, vcMachi = !!lsGet("hosomichi_vcmachi", +lsGet("hosomichi_vcspot", 0) === 2);   // 名所（0/1/2）と施設（on/off）は別々
-let vcPark = !!lsGet("hosomichi_vcpark", false), vcBridge = !!lsGet("hosomichi_vcbridge", false);
-$("vcParkOn").checked = vcPark; $("vcParkOn").onchange = () => { vcPark = $("vcParkOn").checked; lsSet("hosomichi_vcpark", vcPark); };
-$("vcBridgeOn").checked = vcBridge; $("vcBridgeOn").onchange = () => { vcBridge = $("vcBridgeOn").checked; lsSet("hosomichi_vcbridge", vcBridge); };
-$("vcMachiOn").checked = vcMachi; $("vcMachiOn").onchange = () => { vcMachi = $("vcMachiOn").checked; lsSet("hosomichi_vcmachi", vcMachi); };
+// 施設・公園・橋は1つのスイッチ（前に公園か橋だけオンにしていた人もオンにする）
+if (lsGet("hosomichi_vcpark", false) || lsGet("hosomichi_vcbridge", false)) { vcMachi = true; lsSet("hosomichi_vcmachi", true); lsSet("hosomichi_vcpark", null); lsSet("hosomichi_vcbridge", null); }
+let vcPark = vcMachi, vcBridge = vcMachi;
+$("vcMachiOn").checked = vcMachi; $("vcMachiOn").onchange = () => { vcMachi = vcPark = vcBridge = $("vcMachiOn").checked; lsSet("hosomichi_vcmachi", vcMachi); };
 const VS_KINDS = ["park", "bridge", "school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground", "shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"];
 const VS_MACHI = new Set(["school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground"]);   // まちの建物は「これは〇〇です」
 let VS_R = +lsGet("hosomichi_vcspotr", 70) || 70;   // 知らせる範囲（50〜300m）
