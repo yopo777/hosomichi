@@ -183,7 +183,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2307</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2314</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -293,6 +293,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">🚲ルートタブで作ったルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。一時停止して、つづきから走れるよ。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div>
         <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="footDbg">🎨 ためし走行も足あとに入れる（今日の分だけ・保存しない・過去には入らないよ）</label>
       </div>
       <div style="font-size:11px;color:#666;margin-bottom:6px">🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）→「ここを現在地にする」で決めるよ。もどすときも長おし →「本当の現在地にもどす」</div>
       </div>
@@ -3778,13 +3779,12 @@ async function footTab() {
     <div style="display:flex;gap:12px;align-items:center;margin:4px 0;font-size:13px">出しかた：
       <label><input type="radio" name="footMode" value="line" ${footMode === "line" ? "checked" : ""}> 走った線</label>
       <label><input type="radio" name="footMode" value="road" ${footMode === "road" ? "checked" : ""}> <span style="color:#e8384f">塗れた道</span></label></div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:4px 0"><input type="checkbox" id="footDbg" ${footDbg ? "checked" : ""}>🧪 ためし走行も入れる（デバッグ用・今日の分だけ・過去には入らないよ）</label>
+    ${footDbg ? '<div style="font-size:11px;color:#c5221f;margin:2px 0">🧪 いまは ためし走行も入れているよ（🛠デバッグ → ツール で切りかえ）</div>' : ""}
     <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
     <div style="font-size:11px;color:#888;line-height:1.6">今まで走った線（🗓過去＋今日）をぜんぶ重ねて、メインの地図に<b style="color:#ff6d00">オレンジ</b>で出すよ。何回も通った道ほど こくなるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
   $("footOn").onchange = e => footSet(e.target.checked);
   for (const r of document.querySelectorAll("[name=footMode]")) r.onchange = () => { footMode = r.value; lsSet("hosomichi_footMode", footMode); if (!footOn) { footOn = true; lsSet("hosomichi_foot", true); $("footOn").checked = true; } footDraw(); };
-  $("footDbg").onchange = e => { footDbg = e.target.checked; lsSet("hosomichi_footDbg", footDbg); footDraw(); footCityShow(); };
   $("footFit").onclick = async () => {
     if (!footRuns) await footLoad();
     const all = footRuns.concat(ride ? footSplit(ride.pts, footDbg) : []);
@@ -3860,6 +3860,8 @@ async function footCityShow() {
   finally { footBusy = false; }
 }
 if (footOn) setTimeout(footDraw, 1500);   // 起動したとき（ONなら）
+$("footDbg").checked = footDbg;   // 🛠デバッグ → ツール の 🧪ためし走行 の中
+$("footDbg").onchange = e => { footDbg = e.target.checked; lsSet("hosomichi_footDbg", footDbg); footTodayN = -1; footDraw(); if ($("footCity")) footCityShow(); };
 let trkYM = null;
 async function trkPast() {
   const T = $("trkBody"); if (!T) return; trkLayer.clearLayers();
