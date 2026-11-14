@@ -183,7 +183,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1522</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1525</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ ✏ 新しく作る -->
@@ -2030,6 +2030,12 @@ if (typeof module !== "undefined") module.exports = { shortest, padFor, buildGra
 </script>
 <script>
 "use strict";
+// ❌ 思わぬエラーを 🛠デバッグ → 📜ログ に出す（ログの準備ができる前のぶんは ためておく）
+var ERR_Q = [], ERR_ON = false;
+const errLog = m => { if (ERR_ON) { try { addLog(m, "e"); } catch {} } else ERR_Q.push(m); };
+addEventListener("error", e => errLog(`❌ エラー: ${e.message}（${e.lineno || "?"}行目）`));
+addEventListener("unhandledrejection", e => errLog(`❌ エラー: ${(e.reason && e.reason.message) || e.reason}`));
+setTimeout(() => { ERR_ON = true; for (const m of ERR_Q.splice(0)) errLog(m); }, 0);
 const $ = id => document.getElementById(id);
 // ---------- 地図 ----------
 // 出典の表示は必要（地理院タイル・OpenStreetMap）。まちがえて開かないようにリンクにはしない
@@ -3844,7 +3850,7 @@ function showTab(t) {
   $("rtabs").style.display = t === "route" || t === "quest" ? "" : "none";
   for (const b of document.querySelectorAll("#rtabs button")) b.classList.toggle("on", b.dataset.r === t);
   $("tabPts").style.display = t === "pts" ? "" : "none";
-  if (t === "pts") spotsTabDraw();
+  if (t === "pts") try { spotsTabDraw(); } catch (e) { addLog("❌ スポットの一覧を出せなかった: " + e.message, "e"); }
   $("tabRoute").style.display = t === "route" ? "" : "none";
   $("tabCfg").style.display = t === "cfg" ? "" : "none";
   $("tabLog").style.display = t === "log" ? "" : "none";
