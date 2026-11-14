@@ -183,7 +183,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1525</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1526</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ ✏ 新しく作る -->
@@ -2037,6 +2037,7 @@ addEventListener("error", e => errLog(`❌ エラー: ${e.message}（${e.lineno 
 addEventListener("unhandledrejection", e => errLog(`❌ エラー: ${(e.reason && e.reason.message) || e.reason}`));
 setTimeout(() => { ERR_ON = true; for (const m of ERR_Q.splice(0)) errLog(m); }, 0);
 const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));   // 上のほうに置く（読みこみ中に 印の名前を出すときにも使うので）
 // ---------- 地図 ----------
 // 出典の表示は必要（地理院タイル・OpenStreetMap）。まちがえて開かないようにリンクにはしない
 const attr = '地理院タイル | 経路 &copy; OpenStreetMap contributors';
@@ -4689,7 +4690,6 @@ function unpackRoute(o) {
   return { name: o.name, created: o.created, route, kc: kc && kc.length === route.length - 1 ? kc : null, short: o.s ? decPoly(o.s) : null,
     ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), tp: decTp(o.tp, o.ta), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st, cutS: (o.x || "").includes("s"), cutE: (o.x || "").includes("e"), here: (o.x || "").includes("h") };
 }
-const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function renderList() {
   const rs = lsGet(RKEY, []);
   $("nSaved").textContent = rs.length;
