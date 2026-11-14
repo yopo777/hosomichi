@@ -3826,7 +3826,7 @@ function guideStart() {
   const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden && !saving;
   if (!ok) return guideStop();
   if (guide) return;   // もう走っている
-  const g0 = me.getLatLng(); guide = L.polygon([[g0.lat, g0.lng], [g0.lat, g0.lng], [g0.lat, g0.lng]], { ...FLOW_TRI, fillColor: "#d93025" }).addTo(guideLayer);
+  const g0 = me.getLatLng(); guide = L.polygon([[g0.lat, g0.lng], [g0.lat, g0.lng], [g0.lat, g0.lng]], { ...FLOW_TRI, fillColor: "#fff" }).addTo(guideLayer);
   const tick = () => {   // requestAnimationFrame だと1秒に60回起きてしまうので、10回だけ起きるタイマーにした（電池にやさしく）
     const now = performance.now();
     if (navAlong == null) return;
@@ -3872,7 +3872,7 @@ function flowBuild() {
     const len = cs[cs.length - 1]; if (len < gap * 0.6) continue;
     const n = Math.max(1, Math.floor(len / gap));
     for (let k = 0; k < n && flowBalls.length < 150; k++)
-      flowBalls.push({ r, cs, len, base: k * len / n, m: L.polygon([r[0], r[0], r[0]], { ...FLOW_TRI, fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025" }).addTo(flowLayer) });   // 赤と白をこうごに
+      flowBalls.push({ r, cs, len, base: k * len / n, m: L.polygon([r[0], r[0], r[0]], { ...FLOW_TRI, fillColor: (flowBalls.length % 2) ? "#fff" : "#263238" }).addTo(flowLayer) });   // 白と黒をこうごに（👣塗れた道の赤とまぎれないように）
   }
   if (flowBalls.length) { flowT0 = performance.now(); flowRaf = setInterval(flowTick, FLOW_MS); }
 }

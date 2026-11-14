@@ -187,7 +187,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2351</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2358</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -5567,7 +5567,7 @@ function guideStart() {
   const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden && !saving;
   if (!ok) return guideStop();
   if (guide) return;   // もう走っている
-  const g0 = me.getLatLng(); guide = L.polygon([[g0.lat, g0.lng], [g0.lat, g0.lng], [g0.lat, g0.lng]], { ...FLOW_TRI, fillColor: "#d93025" }).addTo(guideLayer);
+  const g0 = me.getLatLng(); guide = L.polygon([[g0.lat, g0.lng], [g0.lat, g0.lng], [g0.lat, g0.lng]], { ...FLOW_TRI, fillColor: "#fff" }).addTo(guideLayer);
   const tick = () => {   // requestAnimationFrame だと1秒に60回起きてしまうので、10回だけ起きるタイマーにした（電池にやさしく）
     const now = performance.now();
     if (navAlong == null) return;
@@ -5613,7 +5613,7 @@ function flowBuild() {
     const len = cs[cs.length - 1]; if (len < gap * 0.6) continue;
     const n = Math.max(1, Math.floor(len / gap));
     for (let k = 0; k < n && flowBalls.length < 150; k++)
-      flowBalls.push({ r, cs, len, base: k * len / n, m: L.polygon([r[0], r[0], r[0]], { ...FLOW_TRI, fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025" }).addTo(flowLayer) });   // 赤と白をこうごに
+      flowBalls.push({ r, cs, len, base: k * len / n, m: L.polygon([r[0], r[0], r[0]], { ...FLOW_TRI, fillColor: (flowBalls.length % 2) ? "#fff" : "#263238" }).addTo(flowLayer) });   // 白と黒をこうごに（👣塗れた道の赤とまぎれないように）
   }
   if (flowBalls.length) { flowT0 = performance.now(); flowRaf = setInterval(flowTick, FLOW_MS); }
 }
