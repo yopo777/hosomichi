@@ -187,7 +187,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2344</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2348</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -298,7 +298,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="footDbg">🎨 ためし走行も足あとに入れる（今日の分だけ・保存しない・過去には入らないよ）</label>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="footDbg">👣 ためし走行も足あとに入れる（今日の分だけ・保存しない・過去には入らないよ）</label>
       </div>
       <div style="font-size:11px;color:#666;margin-bottom:6px">🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）→「ここを現在地にする」で決めるよ。もどすときも長おし →「本当の現在地にもどす」</div>
       </div>
@@ -349,7 +349,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <div id="inappGo" style="display:none;margin-top:6px"><a style="display:inline-block;background:#1a73e8;color:#fff;border-radius:8px;padding:6px 12px;text-decoration:none;font-weight:bold">🌐 Chrome で開く</a></div></div>
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
-<button id="ft" title="🎨足あと（塗れた道）を出す／かくす">🎨<small id="ftL">足あと</small></button>
+<button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
 <button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
 <button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">➤</span><small id="flL">進行方向</small></button>
 <button id="col" title="地図の種類">🗺<small id="colL"></small></button>
@@ -3679,7 +3679,7 @@ let trkV = "today", trkImgC = {};   // trkImgC：作った軌跡の画像（日�
 function trkOpen(v) {
   if (v) trkV = v;
   const T = $("tabTrk");
-  if (!$("trkBody")) T.innerHTML = `<div class="ttabs" id="ttabs"><button data-v="today">📅 今日</button><button data-v="sns">📣 SNS</button><button data-v="past">🗓 過去</button><button data-v="foot">🎨 足あと</button></div><div id="trkBody"></div>`;
+  if (!$("trkBody")) T.innerHTML = `<div class="ttabs" id="ttabs"><button data-v="today">📅 今日</button><button data-v="sns">📣 SNS</button><button data-v="past">🗓 過去</button><button data-v="foot">👣 足あと</button></div><div id="trkBody"></div>`;
   for (const b of T.querySelectorAll("#ttabs button")) { b.classList.toggle("on", b.dataset.v === trkV); b.onclick = () => { snsTest = false; trkOpen(b.dataset.v); }; }
   if (ride && ride.pts.length > 1 && dayOf(ride.t0) !== dayOf(Date.now())) histPut(ride);   // 0時をすぎて まだ新しくなっていない前の日の分も、過去に入れておく
   if (trkV === "sns") return snsOpen();
@@ -3716,8 +3716,8 @@ async function histMonth(ym) {   // その月の日ごとの きょり（中身�
     return await new Promise(ok => { const out = {}, r = db.transaction("days").objectStore("days").openCursor(IDBKeyRange.bound(ym + "-01", ym + "-31")); r.onsuccess = () => { const c = r.result; if (!c) return ok(out); out[c.value.d] = c.value.dist; c.continue(); }; r.onerror = () => ok(out); });
   } catch { return {}; }
 }
-// ==== 🎨 足あと：今までの軌跡（🗓過去＋今日）をぜんぶ重ねて、メインの地図に出す ====
-// 何回も通った道ほど色がこくなる（うすい線を重ねるだけ）。まだ色がない道＝まだ行ってない所。ON/OFFは 🛤軌跡 → 🎨足あと（ほかのタブでも出たまま）
+// ==== 👣 足あと：今までの軌跡（🗓過去＋今日）をぜんぶ重ねて、メインの地図に出す ====
+// 何回も通った道ほど色がこくなる（うすい線を重ねるだけ）。まだ色がない道＝まだ行ってない所。ON/OFFは 🛤軌跡 → 👣足あと（ほかのタブでも出たまま）
 map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 420;   // ルートの線（400）より上：ルートの まん中に赤い細い線が見える map.getPane("footPane").style.pointerEvents = "none";
 const footRend = L.canvas({ pane: "footPane" }), footLayer = L.layerGroup().addTo(map), footTodayLayer = L.layerGroup().addTo(map);
 let footOn = !!lsGet("hosomichi_foot", false), footRuns = null, footStat = null, footTodayN = -1;
@@ -3783,7 +3783,7 @@ function pi() {
     o.start(t); o.stop(t + 0.14);
   } catch {}
 }
-let footPiT = 0;
+let footPiM = 0;   // 前の「ピッ」から 新しく塗れた長さ（m）
 function footLiveAdd(a, b) {   // rideAdd から：前の点 a → 新しい点 b
   if (!footOn || !ride) return;
   if (!footKnownP && !footKnown) footKnownP = footSegsAll(() => {}).then(all => { footKnown = new Set(Object.keys(all)); footKnownP = null; const p = footPend; footPend = []; footLiveGot(p); }).catch(() => { footKnownP = null; });
@@ -3795,11 +3795,11 @@ function footLiveGot(segs) {
   if (!segs.length) return;
   const fresh = segs.filter(v => !footKnown.has(v[0]));
   if (!fresh.length) return;
-  for (const v of fresh) { footKnown.add(v[0]); footLiveLines.push([[v[4], v[5]], [v[6], v[7]]]); }
+  for (const v of fresh) { footKnown.add(v[0]); footLiveLines.push([[v[4], v[5]], [v[6], v[7]]]); footPiM += v[1]; }
   if (footOn && footMode === "road") {   // 白いふちを ぜんぶ先に描いてから赤（つなぎめが白く切れないように）
     footTodayLayer.clearLayers(); L.polyline(footLiveLines, FOOT_ROAD_BG).addTo(footTodayLayer); L.polyline(footLiveLines, FOOT_ROAD).addTo(footTodayLayer);
   }
-  if (footPi && Date.now() - footPiT > 400) { footPiT = Date.now(); pi(); }   // つづけて塗れても、0.4秒に1回まで
+  if (footPi && footPiM >= 100) { footPiM = 0; pi(); }   // 新しく 100m 塗れるごとに1回（区間は短いので、1本ごとだと鳴りすぎる）
 }
 function footToday() {   // 今日の分だけ描きなおす（点がふえたときだけ）
   if (!footOn || !ride) return;
@@ -3821,13 +3821,13 @@ async function footTab() {
   const td = ride && ride.pts.length > 1 && dkey(ride.t0) === dkey(Date.now()) ? trkStats(ride.pts).dist : 0;
   const days = footStat.days + (td ? 1 : 0), dist = footStat.dist + td;
   T.innerHTML = `<div style="font-size:13px;padding:2px">
-    <label style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:bold;padding:6px 0"><input type="checkbox" id="footOn" ${footOn ? "checked" : ""} style="width:20px;height:20px">🎨 地図に足あとを出す</label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:bold;padding:6px 0"><input type="checkbox" id="footOn" ${footOn ? "checked" : ""} style="width:20px;height:20px">👣 地図に足あとを出す</label>
     <div style="display:flex;gap:8px;margin:6px 0;flex-wrap:wrap">
       <div class="trkN"><small>走った日</small><b>${days}日</b></div>
       <div class="trkN"><small>走ったきょり（合計）</small><b>${fmtKm(dist)}</b></div>
       ${footStat.first ? `<div class="trkN"><small>記録のはじめ</small><b>${footStat.first.replace(/-/g, "/")}</b></div>` : ""}
     </div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:4px 0"><input type="checkbox" id="footPi" ${footPi ? "checked" : ""}>🔔 走っていて 新しく塗れたら「ピッ」</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:4px 0"><input type="checkbox" id="footPi" ${footPi ? "checked" : ""}>🔔 走っていて 新しく100m塗れるごとに「ピッ」</label>
     ${footDbg ? '<div style="font-size:11px;color:#c5221f;margin:2px 0">🧪 いまは ためし走行も入れているよ（🛠デバッグ → ツール で切りかえ）</div>' : ""}
     <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
@@ -3941,9 +3941,9 @@ async function trkPast() {
   $("histDel").onclick = async () => {   // うっかり消さないように、何日分か見せて2回きく（今日の分は消さない）
     const n = await histCount();
     if (!n) return alert("過去の記録はまだないよ");
-    if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？（🎨足あと・市ごとの塗りも消えるよ）\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
+    if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？（👣足あと・市ごとの塗りも消えるよ）\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
     if (!confirm("ほんとうに ぜんぶ消していい？")) return;
-    try { await histClear(); await footKv("segs3", {}); await footKv("done3", {}); footRuns = null; footStat = null; footKnown = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（🎨足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
+    try { await histClear(); await footKv("segs3", {}); await footKv("done3", {}); footRuns = null; footStat = null; footKnown = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（👣足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
     trkPast();
   };
   $("calPrev").onclick = () => { trkYM = m ? [y, m - 1] : [y - 1, 11]; trkPast(); };
@@ -4411,11 +4411,11 @@ function rideAdd(ll, accu) {
   if (dayOf(ride.t0) !== dayOf(Date.now())) rideNew();   // 走っているとちゅうに0時をこえた
   const L = ride.pts[ride.pts.length - 1];
   const q = [+ll[0].toFixed(6), +ll[1].toFixed(6), Date.now()];
-  if (wid < 0) q.push(1);   // 4つ目の 1＝🧪ためしの現在地・ためし走行（🎨足あとには入れない）
+  if (wid < 0) q.push(1);   // 4つ目の 1＝🧪ためしの現在地・ためし走行（👣足あとには入れない）
   if (!L) { ride.pts.push(q); rideEv("start", "", ll); return; }
   if (hav(L, ll) < 20) return;
   ride.pts.push(q);
-  if ((!L[3] && !q[3]) || footDbg) try { footLiveAdd(L, q); } catch {}   // 🎨 新しく塗れたら ピッ
+  if ((!L[3] && !q[3]) || footDbg) try { footLiveAdd(L, q); } catch {}   // 👣 新しく塗れたら ピッ
   if (ride.pts.length > 6000) ride.pts.splice(1, 1);
   rideSave(false);
 }
