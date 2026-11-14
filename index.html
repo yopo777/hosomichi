@@ -183,10 +183,12 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1104</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1108</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
+    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="pts"><span class="ti">📌</span><span class="tl">スポット</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
+    <div id="rtabs" class="ttabs"><button data-r="route">🚲 シンプル</button><button data-r="quest">🏁 クエスト</button></div>
+    <div id="tabPts" style="display:none"></div>
     <div id="tabQuest" style="display:none">
       <h4 style="margin:8px 0 2px">🎯 ミッション <span style="font-size:11px;color:#666;font-weight:normal">1か所に寄って、ぐるっと1周してもどる</span></h4>
       <div class="row"><label style="width:auto">行き先</label><select id="msnType" style="flex:1;min-width:0;width:100%;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px">
@@ -207,8 +209,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="qList"></div>
     </div>
     <div id="tabCfg" style="display:none">
-      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 ナビ</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="pts">📌 スポット</button><button data-s="data">📦 データ・その他</button></div>
-    <div id="tabPts" class="spane" data-s="pts"></div>
+      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 ナビ</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="data">📦 データ・その他</button></div>
     <div id="tabSpot" class="spane" data-s="spot">
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
@@ -3822,8 +3823,14 @@ $("lgCopy").onclick = async () => {
   catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
   setTimeout(() => $("lgCopy").textContent = "コピー", 1500);
 };
+let rtLast = lsGet("hosomichi_rt", "route") === "quest" ? "quest" : "route";   // ルートタブの中の小さいタブ（シンプル・クエスト）
 function showTab(t) {
-  for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.t === t);
+  if (t === "route" || t === "quest") { rtLast = t; lsSet("hosomichi_rt", t); }
+  for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.t === (t === "quest" ? "route" : t));
+  $("rtabs").style.display = t === "route" || t === "quest" ? "" : "none";
+  for (const b of document.querySelectorAll("#rtabs button")) b.classList.toggle("on", b.dataset.r === t);
+  $("tabPts").style.display = t === "pts" ? "" : "none";
+  if (t === "pts") spotsTabDraw();
   $("tabRoute").style.display = t === "route" ? "" : "none";
   $("tabCfg").style.display = t === "cfg" ? "" : "none";
   $("tabLog").style.display = t === "log" ? "" : "none";
@@ -3834,7 +3841,8 @@ function showTab(t) {
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
 }
-document.querySelector(".tabs").onclick = e => { const t = e.target.closest("button")?.dataset.t; if (t) showTab(t); };
+for (const b of document.querySelectorAll("#rtabs button")) b.onclick = () => { rtLast = b.dataset.r; showTab(b.dataset.r); };
+document.querySelector(".tabs").onclick = e => { const t = e.target.closest("button")?.dataset.t; if (t) showTab(t === "route" ? rtLast : t); };   // 下の「ルート」は、さいごに見ていた小さいタブ
 addLog(`ほそみちナビ ${$("ver").textContent} を開いたよ（${navigator.userAgent.match(/(Android [\d.]+|iPhone OS [\d_]+|Windows NT [\d.]+|Mac OS X [\d_]+)/)?.[0] || "?"}）`, "h");
 
 // ---------- 新しい版のチェック（GitHub Pages は10分くらい古いのを出すことがあるので） ----------
@@ -4502,6 +4510,7 @@ function spotsTabDraw() {
   const T = $("tabPts"); if (!T) return;
   const row = (ic, name, sub, key) => `<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid #f3f3f3;font-size:12px">
       <span style="font-size:15px">${ic}</span><span style="flex:1;cursor:pointer" data-go="${key}">${esc(name)} <span style="color:#888;font-size:11px">${sub || ""}</span> <span style="color:#1a73e8;font-size:11px">地図で見る</span></span>
+      ${key[0] === "b" ? "" : `<button data-use="from:${key}" style="font-size:11px;padding:2px 6px;border:1px solid #188038;color:#188038;border-radius:6px;background:#fff">出発</button><button data-use="to:${key}" style="font-size:11px;padding:2px 6px;border:1px solid #d93025;color:#d93025;border-radius:6px;background:#fff">到着</button>`}
       <button data-del="${key}" style="font-size:11px;padding:2px 6px;border:1px solid #ddd;border-radius:6px;background:#fff">🗑</button></div>`;
   const sec = (title, note, rows) => `<div style="margin:8px 0 2px;font-weight:bold;font-size:13px">${title}</div><div style="font-size:11px;color:#666;margin-bottom:3px">${note}</div>
       <div style="border:1px solid #eee;border-radius:8px;max-height:28vh;overflow-y:auto">${rows || '<div style="padding:6px 8px;color:#aaa;font-size:12px">まだないよ</div>'}</div>`;
@@ -4512,6 +4521,10 @@ function spotsTabDraw() {
     + sec(`🚫 通れない ${bo.length}`, "いちばん近い道（12m以内）を ルートに使わないよ", bo.map(([b, i]) => row("🚫", "通れない", b.t, "b" + i)).join(""))
     + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", "通りたくない", b.t, "b" + i)).join(""));
   const pos = k => k === "h" ? home : k[0] === "s" ? secrets[+k.slice(1)].p : blocks[+k.slice(1)].p;
+  for (const e of T.querySelectorAll("[data-use]")) e.onclick = () => {   // 🚲ルートの 出発・到着に入れる（すぐ引ける）
+    const [k, key] = e.dataset.use.split(":"), q = pos(key);
+    $(k).value = q[0].toFixed(6) + "," + q[1].toFixed(6); rtLast = "route"; showTab("route"); setMsg(`${k === "from" ? "出発" : "到着"}に入れたよ`);
+  };
   for (const e of T.querySelectorAll("[data-go]")) e.onclick = () => { if (follow) setFollow(false); map.setView(pos(e.dataset.go), 18); $("panel").classList.add("min"); $("tog").textContent = "ひらく"; };
   for (const e of T.querySelectorAll("[data-del]")) e.onclick = () => {
     const k = e.dataset.del;
