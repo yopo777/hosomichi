@@ -1972,10 +1972,10 @@ async function histMonth(ym) {   // その月の日ごとの きょり（中身�
 }
 // ==== 🎨 足あと：今までの軌跡（🗓過去＋今日）をぜんぶ重ねて、メインの地図に出す ====
 // 何回も通った道ほど色がこくなる（うすい線を重ねるだけ）。まだ色がない道＝まだ行ってない所。ON/OFFは 🛤軌跡 → 🎨足あと（ほかのタブでも出たまま）
-map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 360; map.getPane("footPane").style.pointerEvents = "none";
+map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 420;   // ルートの線（400）・通った所のかくし（410）より上 map.getPane("footPane").style.pointerEvents = "none";
 const footRend = L.canvas({ pane: "footPane" }), footLayer = L.layerGroup().addTo(map), footTodayLayer = L.layerGroup().addTo(map);
 let footOn = !!lsGet("hosomichi_foot", false), footRuns = null, footStat = null, footTodayN = -1;
-let footMode = lsGet("hosomichi_footMode", "line"), footDbg = !!lsGet("hosomichi_footDbg", false);   // footMode：line＝走った線 / road＝塗れた道（道にあてはめた結果）。footDbg：🧪ためし走行も入れる（デバッグ用・今日の分だけ・保存しない）
+let footMode = "road", footDbg = !!lsGet("hosomichi_footDbg", false);   // footMode：line＝走った線 / road＝塗れた道（道にあてはめた結果）。footDbg：🧪ためし走行も入れる（デバッグ用・今日の分だけ・保存しない）
 const FOOT_ROAD = { renderer: footRend, color: "#ff1744", weight: 6, opacity: 1, lineCap: "round", interactive: false },
   FOOT_ROAD_BG = { renderer: footRend, color: "#fff", weight: 10, opacity: 0.9, lineCap: "round", interactive: false };   // 白いふちどり＋こい赤（目立つように。線は1本にまとめて描くので軽い）
 let footPi = lsGet("hosomichi_footPi", true) !== false;   // 🔔 新しく塗れたら「ピッ」
@@ -2081,23 +2081,18 @@ async function footTab() {
       <div class="trkN"><small>走ったきょり（合計）</small><b>${fmtKm(dist)}</b></div>
       ${footStat.first ? `<div class="trkN"><small>記録のはじめ</small><b>${footStat.first.replace(/-/g, "/")}</b></div>` : ""}
     </div>
-    <div style="display:flex;gap:12px;align-items:center;margin:4px 0;font-size:13px">出しかた：
-      <label><input type="radio" name="footMode" value="line" ${footMode === "line" ? "checked" : ""}> 走った線</label>
-      <label><input type="radio" name="footMode" value="road" ${footMode === "road" ? "checked" : ""}> <span style="color:#e8384f">塗れた道</span></label></div>
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:4px 0"><input type="checkbox" id="footPi" ${footPi ? "checked" : ""}>🔔 走っていて 新しく塗れたら「ピッ」</label>
     ${footDbg ? '<div style="font-size:11px;color:#c5221f;margin:2px 0">🧪 いまは ためし走行も入れているよ（🛠デバッグ → ツール で切りかえ）</div>' : ""}
     <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
-    <div style="font-size:11px;color:#888;line-height:1.6">今まで走った線（🗓過去＋今日）をぜんぶ重ねて、メインの地図に<b style="color:#ff6d00">オレンジ</b>で出すよ。何回も通った道ほど こくなるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
+    <div style="font-size:11px;color:#888;line-height:1.6">今まで走った所（🗓過去＋今日）を道にあてはめて、塗れた道をメインの地図に<b style="color:#ff1744">赤</b>で出すよ。道の6割（短い道は少しでも）を通ったら塗れるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
   $("footOn").onchange = e => footSet(e.target.checked);
   $("footPi").onchange = e => { footPi = e.target.checked; lsSet("hosomichi_footPi", footPi); if (footPi) { audioUnlock(); pi(); } };
-  for (const r of document.querySelectorAll("[name=footMode]")) r.onchange = () => { footMode = r.value; lsSet("hosomichi_footMode", footMode); if (!footOn) { footOn = true; lsSet("hosomichi_foot", true); $("footOn").checked = true; } footDraw(); };
   $("footFit").onclick = async () => {
-    if (!footRuns) await footLoad();
-    const all = footRuns.concat(ride ? footSplit(ride.pts, footDbg) : []);
-    if (!all.length) return alert("まだ足あとがないよ。◎で走ると たまっていくよ");
+    const all = Object.values(await footSegsAll(() => {})).filter(v => v.length >= 7);
+    if (!all.length) return alert("まだ塗れた道がないよ。◎で走ると たまっていくよ");
     if (!footOn) { footSet(true); $("footOn").checked = true; }
-    map.fitBounds(L.latLngBounds(all.flat()), { padding: [20, 20] });
+    map.fitBounds(L.latLngBounds(all.flatMap(v => [[v[3], v[4]], [v[5], v[6]]])), { padding: [20, 20] });
   };  footCityShow();
 }
 // ---- 🏙 市ごとの塗り％：通った道の区間（way の何番目の区間）をためて、市ごとに「通った長さ ÷ 市の道の長さ」----
@@ -2621,6 +2616,25 @@ function applyBearing() {
   if (me) { me.setIcon(heading != null ? icArrow : icDot); me.setRotation(heading != null ? heading * RAD : 0); }
 }
 let navFor = null, navPrev = 0;
+// ---- 通りすぎたルートの線を、地図の色でうすくかくす（ルートの上にいるときだけ進める。外れている間・ミスコース中は そのまま）----
+map.createPane("passPane", map._rotatePane || map.getPane("mapPane")); map.getPane("passPane").style.zIndex = 410; map.getPane("passPane").style.pointerEvents = "none";
+let passFor = null, passMax = 0, passDrawn = -1, passLine = null;
+function passUpd(off) {
+  if (passFor !== cur) { passFor = cur; passMax = 0; passDrawn = -1; }
+  if (navAlong == null || !cum.length) return;
+  if (off <= 30) {
+    if (navAlong < passMax - 300) { passMax = navAlong; passDrawn = -1; }   // 2周目（ゴールからまたスタートへ）
+    else if (navAlong > passMax) passMax = navAlong;
+  }
+  if (passMax - passDrawn < 10 && passLine && layer.hasLayer(passLine)) return;   // 10m 進むごとに描きなおす
+  passDrawn = passMax;
+  const R = cur.nav, pts = [];
+  for (let i = 0; i < R.length && cum[i] <= passMax; i++) pts.push(R[i]);
+  const i = pts.length;
+  if (i && i < R.length) { const u = (passMax - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1); pts.push([R[i - 1][0] + (R[i][0] - R[i - 1][0]) * u, R[i - 1][1] + (R[i][1] - R[i - 1][1]) * u]); }
+  if (passLine && layer.hasLayer(passLine)) passLine.setLatLngs(pts.length > 1 ? pts : []);
+  else if (pts.length > 1) passLine = L.polyline(pts, { pane: "passPane", color: "#f5f3ef", weight: 14, opacity: 0.85, lineCap: "butt", interactive: false }).addTo(layer);
+}
 function nearestOnRoute(p) {
   const r = cur.nav, c = Math.cos(p[0] * RAD), X = q => [(q[1] - p[1]) * c * 111320, (q[0] - p[0]) * 111320];
   // 1周ルートや同じ道を2回通るルートでは、近い所が2つ以上ある（スタート＝ゴールなど）。
@@ -2709,6 +2723,7 @@ function onPos(p) {
   if (follow && !ovOn()) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま（全体を見ているあいだは動かさない）
   if (cur && cur.nav && cur.nav.length > 1) {
     const [off, rest] = nearestOnRoute(ll), nav = $("nav");
+    try { passUpd(off); } catch {}
     nav.style.display = "block";
     nav.className = off > 60 ? "off" : "";
     nav.textContent = (rest < 30 && !cur.partial ? "🎉 とうちゃく！" : `のこり ${cur.partial ? "約" : ""}${fmtKm(rest)}` + (cur.partial ? "（計算中）" : ""))
