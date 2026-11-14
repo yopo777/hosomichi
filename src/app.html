@@ -1977,12 +1977,15 @@ async function histMonth(ym) {   // その月の日ごとの きょり（中身�
 }
 // ==== 👣 足あと：今までの軌跡（🗓過去＋今日）をぜんぶ重ねて、メインの地図に出す ====
 // 何回も通った道ほど色がこくなる（うすい線を重ねるだけ）。まだ色がない道＝まだ行ってない所。ON/OFFは 🛤軌跡 → 👣足あと（ほかのタブでも出たまま）
-map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 420;   // ルートの線（400）より上：ルートの まん中に赤い細い線が見える map.getPane("footPane").style.pointerEvents = "none";
+map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 360;   // ルートの線（400）より下（蛍光ペン方式） map.getPane("footPane").style.pointerEvents = "none";
 const footRend = L.canvas({ pane: "footPane" }), footLayer = L.layerGroup().addTo(map), footTodayLayer = L.layerGroup().addTo(map);
 let footOn = !!lsGet("hosomichi_foot", false), footRuns = null, footStat = null, footTodayN = -1;
 let footMode = "road", footDbg = !!lsGet("hosomichi_footDbg", false);   // footMode：line＝走った線 / road＝塗れた道（道にあてはめた結果）。footDbg：🧪ためし走行も入れる（デバッグ用・今日の分だけ・保存しない）
-const FOOT_ROAD = { renderer: footRend, color: "#ff1744", weight: 3, opacity: 1, lineCap: "round", interactive: false },
-  FOOT_ROAD_BG = { renderer: footRend, color: "#fff", weight: 5, opacity: 0.8, lineCap: "round", interactive: false };   // 細い赤＋白い細いふち（ルート7pxの まん中に入る）   // 白いふちどり＋こい赤（目立つように。線は1本にまとめて描くので軽い）
+// 蛍光ペン方式：地図の道くらい太い 半透明の赤を ルートの下に（ルートのまわりに赤がはみ出す）。引いたら細く
+const footW = () => { const z = map.getZoom(); return z >= 17 ? 16 : z >= 16 ? 12 : z >= 15 ? 8 : z >= 14 ? 5 : 3; };
+const FOOT_ROAD = { renderer: footRend, color: "#ff1744", weight: 16, opacity: 0.45, lineCap: "round", lineJoin: "round", interactive: false };
+const footLine = pts => L.polyline(pts, { ...FOOT_ROAD, weight: footW() });   // 線は1本にまとめて描く（重なっても こくならない・軽い）
+map.on("zoomend", () => { const w = footW(); for (const g of [footLayer, footTodayLayer]) g.eachLayer(l => l.setStyle && l.setStyle({ weight: w })); });
 let footPi = lsGet("hosomichi_footPi", true) !== false;   // 🔔 新しく塗れたら「ピッ」
 const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
 // 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
@@ -2028,7 +2031,7 @@ async function footRoad() {   // 🛣 塗れた道：道にあてはめた区間
     footLayer.clearLayers(); footTodayLayer.clearLayers();
     if (!footOn || footMode !== "road") return;
     const lines = []; for (const k in all) { const v = all[k]; if (v.length >= 7) lines.push([[v[3], v[4]], [v[5], v[6]]]); }
-    if (lines.length) { L.polyline(lines, FOOT_ROAD_BG).addTo(footLayer); L.polyline(lines, FOOT_ROAD).addTo(footLayer); }
+    if (lines.length) footLine(lines).addTo(footLayer);
     footKnown = new Set(Object.keys(all)); footLiveLines = [];
   } finally { footRoadBusy = false; }
 }
@@ -2056,7 +2059,7 @@ function footLiveGot(segs) {
   if (!fresh.length) return;
   for (const v of fresh) { footKnown.add(v[0]); footLiveLines.push([[v[4], v[5]], [v[6], v[7]]]); }
   if (footOn && footMode === "road") {   // 白いふちを ぜんぶ先に描いてから赤（つなぎめが白く切れないように）
-    footTodayLayer.clearLayers(); L.polyline(footLiveLines, FOOT_ROAD_BG).addTo(footTodayLayer); L.polyline(footLiveLines, FOOT_ROAD).addTo(footTodayLayer);
+    footTodayLayer.clearLayers(); footLine(footLiveLines).addTo(footTodayLayer);
   }
   if (footPi && Date.now() - footPiT > 400) { footPiT = Date.now(); pi(); }   // つづけて塗れても、0.4秒に1回まで
 }
