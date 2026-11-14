@@ -1739,7 +1739,7 @@ async function snsData() {
     // 同じ所は1回だけ：名前が同じか、片方がもう片方をふくむ（「妙典寺」と「日蓮宗妙典寺」など）
     const seen = [], list = items.sort((x, y) => x.t - y.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); x.name = k; return true; });
     // 地図に「いまここ」を出せるときは、さいごに「〇〇(イマココ)」（地名＝市区町村＋町名。行った所がなくても出す）
-    const hn = here ? await placeName(here) : "", tail = hn ? [{ name: hn + "(イマココ)" }] : [];
+    const hn = here ? await addrName(here) : "", tail = hn ? [{ name: hn + "(イマココ)" }] : [];
     const rest = [...L, "🗺 ルート↓", SNS_URL, SNS_TAGS].join("\n"), pick = [];
     for (let i = list.length - 1; i >= 0; i--) {   // 新しいものから
       const line = "📍 " + [list[i], ...pick, ...tail].map(x => x.name).join("→");
@@ -2322,7 +2322,7 @@ function openStreetView(ll) {
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
-    + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br>"
+    + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br><button data-fav='1'>⭐ お気に入り</button>"
     + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button>"
     + "<br><button data-fake='1' style='color:#888'>🧪 ここを現在地にする（debug用）</button>"   // いちばん下：ふだんは使わない
     + (fakePos ? "<br><button data-fake='0' style='color:#1a73e8'>🧪 本当の現在地にもどす（debug用）</button>" : "");
@@ -2333,6 +2333,7 @@ function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着に�
     if (ev.target.dataset.fake) { L.DomEvent.stopPropagation(ev); setFake(ev.target.dataset.fake === "1" ? [+ll.lat.toFixed(6), +ll.lng.toFixed(6)] : null); map.closePopup(pop); return; }
     if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); return; }
     if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); return; }
+    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll)); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 }
@@ -2547,7 +2548,7 @@ function autoTick() {
   if (autoOvMin && !ovMode && Date.now() - autoOvLast > autoOvMin * 60000 && Date.now() - blkTouch > 15000 && quietNow()) {
     autoOvLast = Date.now(); autoOvBy = true; ovSet(true); blkShowMap(autoOvSec * 1000);
     const ll = me.getLatLng();
-    if (vcOn) placeName([ll.lat, ll.lng]).then(n => { if (n && autoOvBy) say(`現在地は、${n}です`); });
+    if (vcOn) addrName([ll.lat, ll.lng]).then(n => { if (n && autoOvBy) say(`現在地は、${n}です`); });
     setTimeout(() => { if (autoOvBy && ovMode) ovSet(false); autoOvBy = false; }, autoOvSec * 1000);
   }
 }
@@ -2844,20 +2845,22 @@ function spotsTabDraw() {
   const T = $("tabPts"); if (!T) return;
   const row = (ic, name, sub, key) => `<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid #f3f3f3;font-size:12px">
       <span style="font-size:15px">${ic}</span><span style="flex:1;cursor:pointer" data-go="${key}">${esc(name)} <span style="color:#888;font-size:11px">${sub || ""}</span> <span style="color:#1a73e8;font-size:11px">地図で見る</span></span>
-      ${key[0] === "b" ? "" : `<button data-use="from:${key}" style="font-size:11px;padding:2px 6px;border:1px solid #188038;color:#188038;border-radius:6px;background:#fff">出発</button><button data-use="to:${key}" style="font-size:11px;padding:2px 6px;border:1px solid #d93025;color:#d93025;border-radius:6px;background:#fff">到着</button>`}
+      ${key[0] === "b" ? "" : `<button data-use="from:${key}" style="font-size:11px;padding:2px 6px;border:1px solid #188038;color:#188038;border-radius:6px;background:#fff">出発</button>${key[0] === "f" ? `<button data-use="via:${key}" style="font-size:11px;padding:2px 6px;border:1px solid #1a73e8;color:#1a73e8;border-radius:6px;background:#fff">経由</button>` : ""}<button data-use="to:${key}" style="font-size:11px;padding:2px 6px;border:1px solid #d93025;color:#d93025;border-radius:6px;background:#fff">到着</button>`}
       <button data-del="${key}" style="font-size:11px;padding:2px 6px;border:1px solid #ddd;border-radius:6px;background:#fff">🗑</button></div>`;
   const sec = (title, note, rows) => `<div style="margin:8px 0 2px;font-weight:bold;font-size:13px">${title}</div><div style="font-size:11px;color:#666;margin-bottom:3px">${note}</div>
       <div style="border:1px solid #eee;border-radius:8px;max-height:28vh;overflow-y:auto">${rows || '<div style="padding:6px 8px;color:#aaa;font-size:12px">まだないよ</div>'}</div>`;
   const bo = blocks.map((b, i) => [b, i]).filter(([b]) => b.r !== "a"), ba = blocks.map((b, i) => [b, i]).filter(([b]) => b.r === "a");
+  const favRows = favs.map((q, i) => row("⭐", q.name || "お気に入り", q.t, "f" + i)).join("");
   T.innerHTML = `<div style="font-size:12px;color:#666;margin:2px 0 4px">📌 登録した地点の一覧だよ。つけるのは 地図を長おし（パソコンは右クリック）から。ぜんぶ この端末の中だけに保存して、どこにも送らないよ</div>`
+    + sec(`⭐ お気に入り ${favs.length}`, "よく行く所。SNSでは消さないよ", favRows)
     + sec("🏠 家", "SNSでは まわりを消すよ。「家まで約○km」にも使うよ", home ? row("🏠", "家", "", "h") : "")
     + sec(`🔒 秘密の場所 ${secrets.length}`, "親せきの家・職場など。SNSでは家と同じように まわりを消すよ", secrets.map((q, i) => row("🔒", q.name || "秘密の場所", q.t, "s" + i)).join(""))
     + sec(`🚫 通れない ${bo.length}`, "いちばん近い道（12m以内）を ルートに使わないよ", bo.map(([b, i]) => row("🚫", "通れない", b.t, "b" + i)).join(""))
     + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", "通りたくない", b.t, "b" + i)).join(""));
-  const pos = k => k === "h" ? home : k[0] === "s" ? secrets[+k.slice(1)].p : blocks[+k.slice(1)].p;
+  const pos = k => k === "h" ? home : k[0] === "s" ? secrets[+k.slice(1)].p : k[0] === "f" ? favs[+k.slice(1)].p : blocks[+k.slice(1)].p;
   for (const e of T.querySelectorAll("[data-use]")) e.onclick = () => {   // 🚲ルートの 出発・到着に入れる（すぐ引ける）
     const [k, key] = e.dataset.use.split(":"), q = pos(key);
-    $(k).value = q[0].toFixed(6) + "," + q[1].toFixed(6); rtLast = "route"; showTab("route"); setMsg(`${k === "from" ? "出発" : "到着"}に入れたよ`);
+    $(k).value = q[0].toFixed(6) + "," + q[1].toFixed(6); rtLast = "route"; showTab("route"); setMsg(`${{ from: "出発", via: "経由", to: "到着" }[k]}に入れたよ`);
   };
   for (const e of T.querySelectorAll("[data-go]")) e.onclick = () => { if (follow) setFollow(false); map.setView(pos(e.dataset.go), 18); $("panel").classList.add("min"); $("tog").textContent = "ひらく"; };
   for (const e of T.querySelectorAll("[data-del]")) e.onclick = () => {
@@ -2865,6 +2868,7 @@ function spotsTabDraw() {
     if (!confirm(k === "h" ? "家の登録を消す？（SNSで家のまわりが消えなくなるよ）" : "この地点を消す？")) return;
     if (k === "h") { home = null; lsSet("hosomichi_home", null); drawHome(); homeDist(); }
     else if (k[0] === "s") { secrets.splice(+k.slice(1), 1); lsSet("hosomichi_secret", secrets); drawSecrets(); }
+    else if (k[0] === "f") { favs.splice(+k.slice(1), 1); lsSet("hosomichi_fav", favs); drawFavs(); }
     else { blocks.splice(+k.slice(1), 1); saveBlocks(); }
     spotsTabDraw();
   };
@@ -3401,7 +3405,7 @@ async function muniTable() {   // 市区町村コード → 名前（地理院�
   } catch {}
   return muni;
 }
-async function placeName(p) {   // 地名（市区町村＋町名）。わからなければ ""
+async function addrName(p) {   // 地名（市区町村＋町名）。わからなければ ""（ルート名の placeName とは別）
   try {
     const r = await (await tfetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${p[0].toFixed(6)}&lon=${p[1].toFixed(6)}`, {}, 6000)).json();
     const t = r.results; if (!t) return "";
@@ -3449,6 +3453,24 @@ function addSecret(ll) {
   lsSet("hosomichi_secret", secrets); drawSecrets(); setMsg("🔒 秘密の場所にしたよ（SNSでは家と同じように、まわりを消すよ）");
 }
 drawSecrets();
+// ⭐ お気に入り（よく行く所）：名前は はじめ その場所の住所（市区町村＋町名）。SNSでは消さない。この端末の中だけ
+let favs = lsGet("hosomichi_fav", []).filter(q => q && Array.isArray(q.p));
+const favLayer = L.layerGroup().addTo(map);
+function drawFavs() {
+  favLayer.clearLayers();
+  for (const q of favs) L.marker(q.p, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">⭐</div>' }) }).bindTooltip(esc(q.name || "お気に入り")).addTo(favLayer);
+  try { spotsTabDraw(); } catch {}
+}
+async function addFav(ll) {
+  setMsg("⭐ 住所をしらべているよ…");
+  const a = await addrName([ll.lat, ll.lng]).catch(() => "");
+  const name = prompt("⭐ お気に入りの名前（はじめは住所だよ。かえてもいいよ）", a || "");
+  if (name === null) { setMsg(""); return; }
+  const d = new Date();
+  favs.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], name: name.trim() || a || "お気に入り", t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
+  lsSet("hosomichi_fav", favs); drawFavs(); setMsg("⭐ お気に入りにしたよ（📌スポットから出発・到着にすぐ入れられるよ）");
+}
+drawFavs();
 function setHome(ll) {
   if (home && hav(home, [ll.lat, ll.lng]) > 30 && !confirm("家の場所を、ここに変える？")) return;
   home = [+ll.lat.toFixed(6), +ll.lng.toFixed(6)]; lsSet("hosomichi_home", home); drawHome(); homeDist(); try { spotsTabDraw(); } catch {}
