@@ -183,10 +183,10 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1056</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1102</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="pts"><span class="ti">📌</span><span class="tl">スポット</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
+    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
     <div id="tabQuest" style="display:none">
       <h4 style="margin:8px 0 2px">🎯 ミッション <span style="font-size:11px;color:#666;font-weight:normal">1か所に寄って、ぐるっと1周してもどる</span></h4>
       <div class="row"><label style="width:auto">行き先</label><select id="msnType" style="flex:1;min-width:0;width:100%;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px">
@@ -207,7 +207,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="qList"></div>
     </div>
     <div id="tabCfg" style="display:none">
-      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 ナビ</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="data">📦 データ・その他</button></div>
+      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 ナビ</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="pts">📌 スポット</button><button data-s="data">📦 データ・その他</button></div>
+    <div id="tabPts" class="spane" data-s="pts"></div>
     <div id="tabSpot" class="spane" data-s="spot">
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
@@ -278,7 +279,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       </div>
     </div>
     <div id="tabTrk" style="display:none"></div>
-    <div id="tabPts" style="display:none"></div>
     <div id="tabLog" style="display:none">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
       <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -3829,8 +3829,6 @@ function showTab(t) {
   $("tabLog").style.display = t === "log" ? "" : "none";
   $("tabQuest").style.display = t === "quest" ? "" : "none";
   $("tabTrk").style.display = t === "trk" ? "" : "none";
-  $("tabPts").style.display = t === "pts" ? "" : "none";
-  if (t === "pts") spotsTabDraw();
   if (t === "trk") trkOpen(); else { snsTest = false; trkLayer.clearLayers(); }   // ほかのタブにうつったら、地図の軌跡を消す・SNSのテストは終わり
   if (t === "quest") qRender();
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
@@ -4501,7 +4499,7 @@ function drawBlocks() {
 }
 // 📌 スポットタブ：登録した地点をぜんぶ一覧に（🏠家・🔒秘密の場所・🚫通れない・⚠通りたくない）
 function spotsTabDraw() {
-  const T = $("tabPts"); if (!T || T.style.display === "none") return;
+  const T = $("tabPts"); if (!T) return;
   const row = (ic, name, sub, key) => `<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid #f3f3f3;font-size:12px">
       <span style="font-size:15px">${ic}</span><span style="flex:1;cursor:pointer" data-go="${key}">${esc(name)} <span style="color:#888;font-size:11px">${sub || ""}</span> <span style="color:#1a73e8;font-size:11px">地図で見る</span></span>
       <button data-del="${key}" style="font-size:11px;padding:2px 6px;border:1px solid #ddd;border-radius:6px;background:#fff">🗑</button></div>`;
