@@ -1946,6 +1946,8 @@ async function histPut(R) {
     await new Promise((ok, ng) => { const tx = db.transaction("days", "readwrite"); tx.objectStore("days").put({ d: dkey(R.t0), t0: R.t0, pts: R.pts, ev: R.ev || [], dist, move }); tx.oncomplete = ok; tx.onerror = () => ng(tx.error); });
   } catch (e) { addLog("過去の記録を保存できなかったよ: " + e, "warn"); }
 }
+async function histCount() { try { const db = await histOpen(); return await new Promise(ok => { const r = db.transaction("days").objectStore("days").count(); r.onsuccess = () => ok(r.result); r.onerror = () => ok(0); }); } catch { return 0; } }
+async function histClear() { const db = await histOpen(); await new Promise((ok, ng) => { const tx = db.transaction("days", "readwrite"); tx.objectStore("days").clear(); tx.oncomplete = ok; tx.onerror = () => ng(tx.error); }); }
 async function histGet(d) { try { const db = await histOpen(); return await new Promise(ok => { const r = db.transaction("days").objectStore("days").get(d); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); }); } catch { return null; } }
 async function histMonth(ym) {   // その月の日ごとの きょり（中身の点は読まない）
   try {
@@ -1971,7 +1973,16 @@ async function trkPast() {
     <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 6px"><button class="ib" id="calPrev">‹ 前の月</button><b style="font-size:15px">${y}年${m + 1}月</b><button class="ib" id="calNext">次の月 ›</button></div>
     <div class="cal">${cells}</div>
     <div style="margin-top:8px;font-size:12px">この月：<b>${cnt}日</b>・<b>${fmtKm(total)}</b></div>
-    <div style="font-size:11px;color:#888;margin-top:4px">走った日をタップすると、その日の軌跡が見られるよ。記録は夜0時に今日の分から ここに入るよ（この端末の中だけ）</div></div>`;
+    <div style="font-size:11px;color:#888;margin-top:4px">走った日をタップすると、その日の軌跡が見られるよ。記録は夜0時に今日の分から ここに入るよ（この端末の中だけ）</div>
+    <div style="text-align:right;margin-top:14px"><button id="histDel" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 過去の記録をぜんぶ消す</button></div></div>`;
+  $("histDel").onclick = async () => {   // うっかり消さないように、何日分か見せて2回きく（今日の分は消さない）
+    const n = await histCount();
+    if (!n) return alert("過去の記録はまだないよ");
+    if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
+    if (!confirm("ほんとうに ぜんぶ消していい？")) return;
+    try { await histClear(); addLog(`🗑 過去の記録 ${n}日分を消したよ`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
+    trkPast();
+  };
   $("calPrev").onclick = () => { trkYM = m ? [y, m - 1] : [y - 1, 11]; trkPast(); };
   $("calNext").onclick = () => { trkYM = m < 11 ? [y, m + 1] : [y + 1, 0]; trkPast(); };
   for (const c of T.querySelectorAll(".calD[data-k]")) if (c.dataset.k) c.onclick = async () => {
