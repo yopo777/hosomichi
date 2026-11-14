@@ -69,7 +69,8 @@ html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-a
 #cfgBox .note{font-size:11px;color:#888}
 #prog{margin-top:8px;display:none}
 #geoAsk{position:fixed;inset:0;z-index:6000;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px}#geoAsk .box{background:#fff;border-radius:14px;padding:16px;max-width:420px;font-size:13px;box-shadow:0 6px 24px #0005}#geoAsk button{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#geoAsk button.big{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold;font-size:15px}
-#snsBox{padding:2px 0}.ttabs{display:flex;gap:4px;margin:2px 0 8px}.ttabs button{flex:1;padding:6px 0;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:13px}.ttabs button.on{background:#e8f0fe;border-color:#1a73e8;color:#1a73e8;font-weight:bold}
+#snsBox{padding:2px 0}.pw{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;font-size:10px;font-weight:bold;vertical-align:middle;white-space:nowrap}.pw.u{background:#fff4e5;color:#b45309;border:1px solid #f6c38b}.pw.s{background:#e6f4ea;color:#188038;border:1px solid #a8dab5}
+.ttabs{display:flex;gap:4px;margin:2px 0 8px}.ttabs button{flex:1;padding:6px 0;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:13px}.ttabs button.on{background:#e8f0fe;border-color:#1a73e8;color:#1a73e8;font-weight:bold}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.calW{text-align:center;font-size:11px}.calD{border:1px solid #eee;border-radius:6px;min-height:42px;padding:2px;text-align:center;font-size:12px;color:#aaa}.calD b{display:block;font-weight:normal}
 .calD.has{color:#222;background:#fff3f4;border-color:#f3b4bd;cursor:pointer}.calD.has small{display:block;color:#d93025;font-weight:bold;font-size:10px}.calD.today{outline:2px solid #1a73e8}
 .trkN{flex:1;min-width:90px;border:1px solid #eee;border-radius:10px;padding:6px 8px}.trkN small{display:block;color:#888;font-size:11px}.trkN b{font-size:16px}#snsBox .box{background:#fff;max-width:520px;margin:0 auto;font-size:13px}   /* 📣 SNSタブの中 */
@@ -217,7 +218,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <button class="ib" id="pkAll" style="font-size:12px;width:100%">📦 関東の配布データをまとめて入れる</button>
         <div id="pkMsg" style="font-size:11px;color:#666;margin-top:2px">配布データがある所は、ルートを作るときもサーバーにアクセスしないですぐ取れるよ。まとめて入れるのはパソコン（Wi-Fi）向け（数百MB）</div>
       </div>
-      <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="pfAuto">🗺 地図のまわりの道路データを自動でためる</label>
+      <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="pfAuto">🗺 地図のまわりの道路データを自動でためる<span class="pw u">⚡大</span></label>
       <div style="font-size:11px;color:#b45309;font-weight:bold;margin-top:2px">⚠ パソコン（Wi-Fi・光回線）用だよ。スマホではオンにしないでね！ギガをたくさん使っちゃう（1日 最大100MBくらい）</div>
       <div id="pfMsg" style="font-size:11px;color:#666;margin-top:2px">もう持っている道路データのとなりを、いつも使うあたりに近い順に、ゆっくり1マスずつ取るよ（ルート計算中はお休み）</div>
       <div class="btns" style="margin-top:6px"><button class="ib" id="pfExp" style="font-size:12px">⬇ ためたデータを書き出す</button><button class="ib" id="pfImp" style="font-size:12px">⬆ 読みこむ</button></div>
@@ -236,34 +237,35 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div class="note" style="margin-top:8px">🏠 家・🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）して決めるよ</div>
     </div>
       <div class="spane" data-s="navi">
+      <div style="font-size:11px;color:#666;margin:2px 0 4px">右の印：<span class="pw u">⚡大・中・小</span>＝電池を使う量　<span class="pw s">🔋節電 大・中・小</span>＝電池の節約になる量（いちばん効くのは画面の明るさ・GPS・地図の描きなおし）</div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="vcOn">🗣 音声で案内（ナビ中）</label>
-        <div style="font-size:11px;color:#666;margin-top:2px">曲がる所の手前（100mくらい・まもなく）、ルートから外れたとき、とうちゃくをしゃべるよ。道なりのカーブは案内しないよ（前に作ったルートは線の形から見つけるので、カーブでもしゃべることがあるよ。作りなおすと直るよ）</div>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="vcOn">🗣 音声で案内（ナビ中）<span class="pw u">⚡小</span></label>
+        <div style="font-size:11px;color:#666;margin-top:2px">曲がる所の手前（100mくらい・まもなく）と、ルートから外れたときにしゃべるよ（ゴールでは言わないよ）。道なりのカーブは案内しないよ（前に作ったルートは線の形から見つけるので、カーブでもしゃべることがあるよ。作りなおすと直るよ）</div>
         <div class="btns" style="margin-top:4px"><button class="ib" id="vcTest" style="font-size:12px">🔊 ためしに聞く</button></div>
-        <div style="font-weight:bold;margin-top:6px">🏯 名所の近くに来たら教える</div>
+        <div style="font-weight:bold;margin-top:6px">🏯 名所の近くに来たら教える<span class="pw u">⚡小</span></div>
         <div style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="vcSpot" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpot" value="1"> 有名な所だけ</label><label><input type="radio" name="vcSpot" value="2"> いろいろ</label></div>
         <div style="margin-top:2px">名所を知らせる範囲：<select id="vcSpotR"><option value="50">50m</option><option value="70">70m</option><option value="100">100m</option><option value="150">150m</option><option value="200">200m</option><option value="300">300m</option></select></div>
         <div style="font-size:11px;color:#666;margin-top:2px">神社・お寺・城・名所・展望・古墳・湧き水…（「めぐる」）の近くを通ると「近くに〇〇があります」と言うよ</div>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="vcMachiOn">🏫 となりの施設・公園・橋を教える</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="vcMachiOn">🏫 となりの施設・公園・橋を教える<span class="pw u">⚡小</span></label>
         <div style="font-size:11px;color:#666;margin-top:2px">学校・病院・役所・図書館・郵便局・消防署・工場・浄水場・グラウンド…と公園の となりの道を通ったとき、名前のある橋をわたるときに「これは、〇〇です」と言うよ</div>
         <div style="font-size:11px;color:#666;margin-top:2px">どちらも地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
-        <div style="font-weight:bold;margin-top:6px">🗺 ときどき全体図を見せて、いまの住所を言う</div>
+        <div style="font-weight:bold;margin-top:6px">🗺 ときどき全体図を見せて、いまの住所を言う<span class="pw u">⚡小</span></div>
         <div style="margin-top:2px"><select id="autoOvMin"><option value="0">しない</option><option value="5">5分ごと</option><option value="10">10分ごと</option><option value="15">15分ごと</option><option value="30">30分ごと</option></select>
           <select id="autoOvSec"><option value="5">5秒見せる</option><option value="10">10秒見せる</option><option value="15">15秒見せる</option></select></div>
         <div style="font-size:11px;color:#666;margin-top:2px">道なりで、曲がる所が近くないときだけ。「現在地は、〇〇市〇〇三丁目です」と言うよ</div>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="jihoOn">🕐 30分ごとに時刻を言う（時報）</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="jihoOn">🕐 30分ごとに時刻を言う（時報）<span class="pw u">⚡小</span></label>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <div style="font-weight:bold">⭕ ナビ中は自分のまわりだけ表示する</div>
+        <div style="font-weight:bold">⭕ ナビ中は自分のまわりだけ表示する<span class="pw s">🔋節電中</span></div>
         <div id="ringLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="ringLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="ringLv" value="1"> 小さい丸</label><label><input type="radio" name="ringLv" value="2"> もっと小さい丸</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ。さわるとしばらく丸がはずれるよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
-        <div style="font-weight:bold;margin-top:6px">⬛ ナビ中、さわらないと画面を暗くする</div>
+        <div style="font-weight:bold;margin-top:6px">⬛ ナビ中、さわらないと画面を暗くする<span class="pw s">🔋節電大</span></div>
         <div id="blkLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="blkLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="50"> 50%</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="70"> 70%</label><label><input type="radio" name="blkLv" value="100"> まっ黒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">さわらないと暗くなるよ（50%でも、光の量は2割くらいになるよ）。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
-        <div style="font-weight:bold;margin-top:6px">⏱ さわらないで何秒たったら節電する？</div>
+        <div style="font-weight:bold;margin-top:6px">⏱ さわらないで何秒たったら節電する？<span class="pw s">🔋節電中</span></div>
         <div id="idleLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="idleLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="idleLv" value="10"> 10秒</label><label><input type="radio" name="idleLv" value="15"> 15秒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">⬛で暗くしているあいだは、進行方向の丸も止めるよ（⭕丸のときは動くよ）</div>
-        <div style="font-weight:bold;margin-top:6px">📡 地図を動かす間かく</div>
+        <div style="font-weight:bold;margin-top:6px">📡 地図を動かす間かく<span class="pw s">🔋節電中</span></div>
         <div id="gpsLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="gpsLv" value="1"> 1秒（ふつう）</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="2"> 2秒</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="3"> 3秒</label><label><input type="radio" name="gpsLv" value="5"> 5秒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">間かくを長くすると、地図の描きなおしがへって電池にやさしいよ。走った記録はいままでどおり取るよ。曲がる所の手前200mと、ルートから外れたときは1秒ごとにもどすよ</div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
