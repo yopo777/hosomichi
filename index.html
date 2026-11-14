@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0048</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0050</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3822,22 +3822,33 @@ const EV_KINDS = {
   minor: { n: "しっとり和音（ドミ♭ソ）", w: [["sine", 1, 0.4], ["sine", 1.189, 0.3], ["sine", 1.5, 0.3], ["sine", 0.5, 0.12]], f: [290, 580], lp: [1600, 1.4], vib: [0, 0], trem: [0.35, 0.1], v: 0.95 },
   sus4: { n: "ふしぎ和音（ドファソ）", w: [["sine", 1, 0.4], ["sine", 1.335, 0.3], ["sine", 1.5, 0.3], ["sine", 2, 0.08]], f: [320, 640], lp: [1900, 1.5], vib: [0, 0], trem: [0.6, 0.1], v: 0.9 },
   sparkle: { n: "キラキラ和音（ドミソレ）", w: [["sine", 1, 0.35], ["sine", 1.26, 0.25], ["sine", 1.5, 0.25], ["sine", 2.245, 0.14], ["sine", 2.25, 0.14]], f: [360, 720], lp: [2600, 1.6], vib: [0, 0], trem: [0.7, 0.12], v: 0.85 },
-  ratchet: { n: "ラチェット（カラカラ）", click: 18, tone: 3800, v: 1 },   // click：1周に何回カチッと鳴るか（ホイール1周 2.1m）
-  ratchetHi: { n: "高級ハブ（ジーーー）", click: 54, tone: 5200, v: 0.7 },
   glass: { n: "ガラス（キーン）", w: [["sine", 1, 0.5], ["sine", 2.76, 0.15], ["sine", 5.4, 0.05]], f: [900, 1800], lp: [5000, 1], vib: [6, 0.002], trem: [0, 0], v: 0.9 },
+  // 🚲 ハブのラチェット音。click：1周に何回カチッと鳴るか（ホイール1周 2.1m）・tone：カチッの音の高さ・dec：ひびく長さ(ms)・nz：ザラザラ具合・alt：2つの音をこうごに（ツメ2枚）
+  ratchet: { n: "🚲 ラチェット（カラカラ）", click: 18, tone: 3800, dec: 2, nz: 0.6, v: 1 },
+  ratchetHi: { n: "🚲 高級ハブ（ジーーー）", click: 54, tone: 5200, dec: 1.5, nz: 0.6, v: 0.7 },
+  mama: { n: "🚲 ママチャリ（チキチキ）", click: 12, tone: 2600, dec: 3.5, nz: 0.4, v: 0.9 },
+  quiet: { n: "🚲 静かなハブ（チリチリ）", click: 30, tone: 4600, dec: 1, nz: 0.3, v: 1 },
+  star: { n: "🚲 スターラチェット（ブィーン）", click: 36, tone: 3000, dec: 2.5, nz: 0.8, v: 0.6 },
+  bee: { n: "🚲 超高速（ハチの羽音）", click: 72, tone: 6200, dec: 1, nz: 0.5, v: 0.6 },
+  bmx: { n: "🚲 BMX（ガラガラ）", click: 8, tone: 1800, dec: 4, nz: 1, v: 1.2 },
+  wood: { n: "🚲 木の音（コトコト）", click: 16, tone: 900, dec: 6, nz: 0.15, v: 0.6 },
+  clock: { n: "🚲 時計（カチカチ）", click: 24, tone: 6800, dec: 0.6, nz: 0.1, v: 1.6 },
+  twin: { n: "🚲 ツメ2枚（チャリチャリ）", click: 30, tone: 4200, alt: 0.85, dec: 1.8, nz: 0.5, v: 0.8 },
 };
 let evKind = EV_KINDS[lsGet("hosomichi_evKind", "hybrid")] ? lsGet("hosomichi_evKind", "hybrid") : "hybrid";
 function evClickNodes(K) {   // 🚲 ラチェット：カチッという短い音を、速さに合わせた間かくで先に予約していく
-  const g = actx.createGain(), cp = actx.createDynamicsCompressor(), sr = actx.sampleRate, n = Math.floor(sr * 0.012);
+  const g = actx.createGain(), cp = actx.createDynamicsCompressor(), sr = actx.sampleRate, n = Math.floor(sr * Math.max(0.012, K.dec * 0.006));
   g.gain.value = 0; cp.threshold.value = -14; cp.ratio.value = 6; g.connect(cp); cp.connect(actx.destination);
-  const buf = actx.createBuffer(1, n, sr), d = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) { const t = i / sr; d[i] = ((Math.random() * 2 - 1) * 0.6 * Math.exp(-t / 0.0007) + Math.sin(2 * Math.PI * K.tone * t) * Math.exp(-t / 0.002)) * 0.9; }
-  const st = { g, K, buf, rate: 0, next: 0, stops: [] };
+  const mk = tone => { const b = actx.createBuffer(1, n, sr), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) { const t = i / sr; d[i] = ((Math.random() * 2 - 1) * K.nz * Math.exp(-t / 0.0007) + Math.sin(2 * Math.PI * tone * t) * Math.exp(-t / (K.dec / 1000))) * 0.9; }
+    return b; };
+  const bufs = [mk(K.tone)]; if (K.alt) bufs.push(mk(K.tone * K.alt));
+  const st = { g, K, buf: bufs[0], bufs, k: 0, rate: 0, next: 0, stops: [] };
   st.timer = setInterval(() => {   // 0.12秒先まで予約（JSが少しおくれても リズムがくずれないように）
     if (!st.rate) { st.next = 0; return; }
     const now = actx.currentTime; if (st.next < now) st.next = now + 0.01;
     while (st.next < now + 0.12) {
-      const s = actx.createBufferSource(), sg = actx.createGain(); s.buffer = st.buf; s.playbackRate.value = 0.94 + Math.random() * 0.12; sg.gain.value = 0.7 + Math.random() * 0.3;
+      const s = actx.createBufferSource(), sg = actx.createGain(); s.buffer = st.bufs[st.k++ % st.bufs.length]; s.playbackRate.value = 0.94 + Math.random() * 0.12; sg.gain.value = 0.7 + Math.random() * 0.3;
       s.connect(sg); sg.connect(g); s.start(st.next); st.next += 1 / st.rate;
     }
   }, 40);
