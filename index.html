@@ -124,6 +124,10 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
 #fl{top:calc(50% - 146px)}
 #fl.off{opacity:.45;filter:grayscale(1)}
 #fl small,#flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+#ev{position:absolute;top:calc(50% + 186px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
+#ev.off{opacity:.45;filter:grayscale(1)}
+#ev small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 #ft{position:absolute;top:calc(50% - 266px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
 #ft.off{opacity:.45;filter:grayscale(1)}
@@ -187,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0016</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0022</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -247,6 +251,12 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
       <div class="spane" data-s="navi">
       <div style="font-size:11px;color:#666;margin:2px 0 4px">右の印：<span class="pw u">⚡大・中・小</span>＝電池を使う量　<span class="pw s">🔋節電 大・中・小</span>＝電池の節約になる量（いちばん効くのは画面の明るさ・GPS・地図の描きなおし）</div>
+      <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <b>〰 接近音（ウィーン）</b><span class="pw u">⚡小</span>
+        <div style="font-size:11px;color:#666;margin-top:2px">EVみたいに、走っているあいだ「ウィーン」と小さく鳴らして、歩いている人に気づいてもらうよ。速さに合わせて音が高くなるよ。止まると消えるよ。オン・オフは右はしの〰ボタン。<b>ベルのかわりにはならないから、ベルははずさないでね</b>。画面を消すと止まることがあるよ（⬛暗くするなら鳴りつづけるよ）</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:4px">🔈<input type="range" id="evVol" min="0.02" max="1" step="0.02" style="flex:1">🔊</label>
+        <div class="btns" style="margin-top:4px"><button class="ib" id="evTest" style="font-size:12px">🔊 ためしに聞く（時速5→25km）</button></div>
+      </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="vcOn">🗣 音声で案内（ナビ中）<span class="pw u">⚡小</span></label>
         <div style="font-size:11px;color:#666;margin-top:2px">曲がる所の手前（100mくらい・まもなく）と、ルートから外れたときにしゃべるよ（ゴールでは言わないよ）。道なりのカーブは案内しないよ（前に作ったルートは線の形から見つけるので、カーブでもしゃべることがあるよ。作りなおすと直るよ）</div>
@@ -349,6 +359,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <div id="inappGo" style="display:none;margin-top:6px"><a style="display:inline-block;background:#1a73e8;color:#fff;border-radius:8px;padding:6px 12px;text-decoration:none;font-weight:bold">🌐 Chrome で開く</a></div></div>
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
+<button id="ev" title="〰 接近音（ウィーン）を鳴らす／止める">〰<small id="evL">接近音</small></button>
 <button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
 <button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
 <button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">➤</span><small id="flL">進行方向</small></button>
@@ -3789,6 +3800,41 @@ function pi() {
   } catch {}
 }
 let footPiT = 0;
+// ---- 〰 接近音（EV みたいな「ウィーン」）：走っているあいだ ずっと小さく鳴らす。速さで音が高くなる・止まると消える ----
+let evOn = !!lsGet("hosomichi_ev", false), evVol = +lsGet("hosomichi_evVol", 0.25), evN = null, evLast = null, evSp = 0, evT = 0;
+function evNodes() {   // のこぎり波2つ（少しずらして うなりを出す）→ ローパスでやわらかく → 音量
+  if (evN || !actx) return evN;
+  const g = actx.createGain(), f = actx.createBiquadFilter(), o1 = actx.createOscillator(), o2 = actx.createOscillator(), lfo = actx.createOscillator(), lg = actx.createGain();
+  g.gain.value = 0; f.type = "lowpass"; f.frequency.value = 1400; f.Q.value = 4;
+  o1.type = "sawtooth"; o2.type = "sawtooth"; o1.frequency.value = 300; o2.frequency.value = 303;
+  lfo.frequency.value = 5; lg.gain.value = 6; lfo.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);   // ゆらぎ
+  o1.connect(f); o2.connect(f); f.connect(g); g.connect(actx.destination);
+  o1.start(); o2.start(); lfo.start();
+  return evN = { g, f, o1, o2 };
+}
+function evSet(sp) {   // sp：m/秒。音の高さ 時速3km≒250Hz → 時速36km 以上≒750Hz
+  if (!evOn) return;
+  audioUnlock(); const n = evNodes(); if (!n) return;
+  const t = actx.currentTime, run = sp > 0.8, fq = 230 + Math.min(sp, 10) * 52;
+  n.o1.frequency.setTargetAtTime(fq, t, 0.4); n.o2.frequency.setTargetAtTime(fq * 1.01, t, 0.4); n.f.frequency.setTargetAtTime(900 + fq * 1.5, t, 0.4);
+  n.g.gain.setTargetAtTime(run ? evVol * 0.35 : 0, t, run ? 0.3 : 0.5);   // 止まったら スッと消える
+}
+function evPos(ll, gsp) {   // GPS（ためしもふくむ）が来るたび
+  if (!evOn) return;
+  const now = Date.now();
+  let sp = gsp != null && !isNaN(gsp) ? gsp : null;
+  if (sp == null && evLast) { const dt = (now - evLast[1]) / 1000; if (dt > 0.2) sp = hav(evLast[0], ll) / dt; }
+  if (!evLast || now - evLast[1] > 200) evLast = [ll, now];
+  if (sp == null) return;
+  evSp = evSp ? evSp * 0.6 + sp * 0.4 : sp; evT = now; evSet(evSp);
+}
+setInterval(() => { if (evOn && evN && Date.now() - evT > 4000) { evSp = 0; evSet(0); } }, 1000);   // 位置が来なくなったら止める
+function evBtn() { $("ev").classList.toggle("off", !evOn); $("evL").textContent = evOn ? "接近音" : "接近音OFF"; }
+function evToggle(on) {
+  evOn = on; lsSet("hosomichi_ev", on); evBtn();
+  if (on) { audioUnlock(); evNodes(); evSet(Date.now() - evT < 4000 ? evSp : 0); }
+  else if (evN) evN.g.gain.setTargetAtTime(0, actx.currentTime, 0.2);
+}
 function footLiveAdd(a, b) {   // rideAdd から：前の点 a → 新しい点 b
   if (!footOn || !ride) return;
   if (!footKnownP && !footKnown) footKnownP = footSegsAll(() => {}).then(all => { footKnown = new Set(Object.keys(all)); footKnownP = null; const p = footPend; footPend = []; footLiveGot(p); }).catch(() => { footKnownP = null; });
@@ -3916,7 +3962,14 @@ async function footCityShow() {
 }
 if (footOn) setTimeout(footDraw, 1500);   // 起動したとき（ONなら）
 function ftBtn() { $("ft").classList.toggle("off", !footOn); $("ftL").textContent = footOn ? "足あと" : "かくし中"; }
-ftBtn();
+ftBtn(); evBtn();
+$("ev").onclick = () => evToggle(!evOn);
+$("evVol").value = evVol;
+$("evVol").oninput = e => { evVol = +e.target.value; lsSet("hosomichi_evVol", evVol); if (evOn) evSet(evSp); };
+$("evTest").onclick = () => {   // 時速5km → 25km → 止まる を3秒で
+  audioUnlock(); const was = evOn; evOn = true; evNodes(); let k = 0;
+  const T = setInterval(() => { k++; evSet(k < 12 ? 1.4 + k * 0.5 : 0); if (k > 16) { clearInterval(T); evOn = was; if (!was && evN) evN.g.gain.setTargetAtTime(0, actx.currentTime, 0.2); } }, 250);
+};
 $("ft").onclick = () => { footSet(!footOn); if ($("footOn")) $("footOn").checked = footOn; };
 $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす（デバッグ用。ナビはそのまま動く）
   const h = e.target.checked;
@@ -4442,6 +4495,7 @@ function gpsSkip() {
 }
 function onPos(p) {
   const ll = [p.coords.latitude, p.coords.longitude];
+  try { evPos(ll, p.coords.speed); } catch {}
   try { rideAdd(ll, p.coords.accuracy); } catch {}
   hereFix = [ll, Date.now(), p.coords.accuracy];
   if (gpsSkip()) return;
