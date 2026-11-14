@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0042</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0047</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3822,11 +3822,30 @@ const EV_KINDS = {
   minor: { n: "しっとり和音（ドミ♭ソ）", w: [["sine", 1, 0.4], ["sine", 1.189, 0.3], ["sine", 1.5, 0.3], ["sine", 0.5, 0.12]], f: [290, 580], lp: [1600, 1.4], vib: [0, 0], trem: [0.35, 0.1], v: 0.95 },
   sus4: { n: "ふしぎ和音（ドファソ）", w: [["sine", 1, 0.4], ["sine", 1.335, 0.3], ["sine", 1.5, 0.3], ["sine", 2, 0.08]], f: [320, 640], lp: [1900, 1.5], vib: [0, 0], trem: [0.6, 0.1], v: 0.9 },
   sparkle: { n: "キラキラ和音（ドミソレ）", w: [["sine", 1, 0.35], ["sine", 1.26, 0.25], ["sine", 1.5, 0.25], ["sine", 2.245, 0.14], ["sine", 2.25, 0.14]], f: [360, 720], lp: [2600, 1.6], vib: [0, 0], trem: [0.7, 0.12], v: 0.85 },
+  ratchet: { n: "ラチェット（カラカラ）", click: 18, tone: 3800, v: 1 },   // click：1周に何回カチッと鳴るか（ホイール1周 2.1m）
+  ratchetHi: { n: "高級ハブ（ジーーー）", click: 54, tone: 5200, v: 0.7 },
   glass: { n: "ガラス（キーン）", w: [["sine", 1, 0.5], ["sine", 2.76, 0.15], ["sine", 5.4, 0.05]], f: [900, 1800], lp: [5000, 1], vib: [6, 0.002], trem: [0, 0], v: 0.9 },
 };
 let evKind = EV_KINDS[lsGet("hosomichi_evKind", "hybrid")] ? lsGet("hosomichi_evKind", "hybrid") : "hybrid";
+function evClickNodes(K) {   // 🚲 ラチェット：カチッという短い音を、速さに合わせた間かくで先に予約していく
+  const g = actx.createGain(), cp = actx.createDynamicsCompressor(), sr = actx.sampleRate, n = Math.floor(sr * 0.012);
+  g.gain.value = 0; cp.threshold.value = -14; cp.ratio.value = 6; g.connect(cp); cp.connect(actx.destination);
+  const buf = actx.createBuffer(1, n, sr), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) { const t = i / sr; d[i] = ((Math.random() * 2 - 1) * 0.6 * Math.exp(-t / 0.0007) + Math.sin(2 * Math.PI * K.tone * t) * Math.exp(-t / 0.002)) * 0.9; }
+  const st = { g, K, buf, rate: 0, next: 0, stops: [] };
+  st.timer = setInterval(() => {   // 0.12秒先まで予約（JSが少しおくれても リズムがくずれないように）
+    if (!st.rate) { st.next = 0; return; }
+    const now = actx.currentTime; if (st.next < now) st.next = now + 0.01;
+    while (st.next < now + 0.12) {
+      const s = actx.createBufferSource(), sg = actx.createGain(); s.buffer = st.buf; s.playbackRate.value = 0.94 + Math.random() * 0.12; sg.gain.value = 0.7 + Math.random() * 0.3;
+      s.connect(sg); sg.connect(g); s.start(st.next); st.next += 1 / st.rate;
+    }
+  }, 40);
+  return st;
+}
 function evNodes() {
   if (evN || !actx) return evN;
+  if (EV_KINDS[evKind].click) return evN = evClickNodes(EV_KINDS[evKind]);
   const K = EV_KINDS[evKind], g = actx.createGain(), f = actx.createBiquadFilter(), mix = actx.createGain(), amp = actx.createGain(), stops = [];
   g.gain.value = 0; f.type = "lowpass"; f.frequency.value = K.lp[0]; f.Q.value = 0.8;
   const vib = actx.createOscillator(), vg = actx.createGain(); vib.frequency.value = K.vib[0] || 1; vg.gain.value = 0; vib.connect(vg); vib.start(); stops.push(vib);
@@ -3843,10 +3862,16 @@ function evNodes() {
   mix.connect(amp); amp.connect(f); f.connect(g); g.connect(cp); cp.connect(actx.destination);
   return evN = { g, f, os, vg, nzf, K, stops };
 }
-function evKill() { if (!evN) return; const n = evN; evN = null; try { n.g.gain.setTargetAtTime(0, actx.currentTime, 0.05); } catch {} setTimeout(() => { for (const o of n.stops) try { o.stop(); } catch {} try { n.g.disconnect(); } catch {} }, 300); }
+function evKill() { if (!evN) return; const n = evN; evN = null; clearInterval(n.timer); try { n.g.gain.setTargetAtTime(0, actx.currentTime, 0.05); } catch {} setTimeout(() => { for (const o of n.stops) try { o.stop(); } catch {} try { n.g.disconnect(); } catch {} }, 300); }
 function evSet(sp) {   // sp：m/秒。止まりぎわ → 時速36km 以上で、音の高さが f[0] → f[1]
   if (!evOn) return;
   audioUnlock(); const n = evNodes(); if (!n) return;
+  if (n.K.click) {   // ラチェット：カチッの回数＝ホイールの回転 × 1周の回数
+    const run = sp > 0.8, t = actx.currentTime;
+    n.rate = run ? Math.min(sp, 15) / 2.1 * n.K.click : 0;
+    n.g.gain.setTargetAtTime(run ? evVol * 0.5 * n.K.v : 0, t, run ? 0.1 : 0.3);
+    return;
+  }
   const K = n.K, t = actx.currentTime, run = sp > 0.8, fq = K.f[0] + (K.f[1] - K.f[0]) * Math.min(sp, 10) / 10;
   for (const [o, k] of n.os) o.frequency.setTargetAtTime(fq * k, t, 0.5);
   n.vg.gain.setTargetAtTime(fq * K.vib[1], t, 0.5);
