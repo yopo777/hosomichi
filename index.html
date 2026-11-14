@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0050</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0053</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -255,8 +255,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <b>〰 接近音（ウィーン）</b><span class="pw u">⚡小</span>
         <div style="margin-top:4px">音：<select id="evKind" style="padding:4px;border:1px solid #ccc;border-radius:8px"></select></div>
         <div style="font-size:11px;color:#666;margin-top:2px">EVみたいに、走っているあいだ「ウィーン」と小さく鳴らして、歩いている人に気づいてもらうよ。速さに合わせて音が高くなるよ。止まると消えるよ。オン・オフは右はしの〰ボタン。<b>ベルのかわりにはならないから、ベルははずさないでね</b>。画面を消すと止まることがあるよ（⬛暗くするなら鳴りつづけるよ）</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="evCoast">🚲 ラチェット音は、速さがへっている時（こいでいない時）だけ鳴らす</label>
         <label style="display:flex;align-items:center;gap:6px;margin-top:4px">🔈<input type="range" id="evVol" min="0.02" max="3" step="0.02" style="flex:1">🔊</label>
-        <div class="btns" style="margin-top:4px"><button class="ib" id="evTest" style="font-size:12px">🔊 ためしに聞く（時速5→30km→止まる）</button></div>
+        <div class="btns" style="margin-top:4px"><button class="ib" id="evTest" style="font-size:12px">🔊 ためしに聞く</button></div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="vcOn">🗣 音声で案内（ナビ中）<span class="pw u">⚡小</span></label>
@@ -3805,6 +3806,7 @@ function pi() {
 }
 let footPiT = 0;
 // ---- 〰 接近音（EV みたいな「ウィーン」）：走っているあいだ ずっと小さく鳴らす。速さで音が高くなる・止まると消える ----
+let evAcc = 0, evCoast = lsGet("hosomichi_evCoast", true) !== false;   // evCoast：🚲ラチェットは 速さがへっている時（こいでいない時）だけ鳴らす
 let evOn = !!lsGet("hosomichi_ev", false), evVol = +lsGet("hosomichi_evVol", 0.25), evN = null, evLast = null, evSp = 0, evT = 0;
 // 音の種類（10こ）。w：[波の形, 何倍の高さ, 大きさ]…・f：止まりぎわ〜時速36km の高さ(Hz)・lp：こもらせ具合（基本Hz, 高さに対する倍）
 // vib：ゆらぎ [速さHz, 深さ（高さに対する割合）]・trem：音量のゆれ [速さ, 深さ]・nz：風の音 [大きさ, 帯域の基本Hz, 高さに対する倍, Q]・v：全体の大きさ
@@ -3878,12 +3880,12 @@ function evSet(sp) {   // sp：m/秒。止まりぎわ → 時速36km 以上で�
   if (!evOn) return;
   audioUnlock(); const n = evNodes(); if (!n) return;
   if (n.K.click) {   // ラチェット：カチッの回数＝ホイールの回転 × 1周の回数
-    const run = sp > 0.8, t = actx.currentTime;
+    const run = sp > 1.8 && (!evCoast || evAcc < -0.08), t = actx.currentTime;   // 時速6.5kmより遅い（GPSの速さは少しおくれる）＝止まりぎわ・止まっている時は鳴らさない
     n.rate = run ? Math.min(sp, 15) / 2.1 * n.K.click : 0;
-    n.g.gain.setTargetAtTime(run ? evVol * 0.5 * n.K.v : 0, t, run ? 0.1 : 0.3);
+    n.g.gain.setTargetAtTime(run ? evVol * 0.5 * n.K.v : 0, t, run ? 0.1 : 0.08);   // 止めるときは すぐ
     return;
   }
-  const K = n.K, t = actx.currentTime, run = sp > 0.8, fq = K.f[0] + (K.f[1] - K.f[0]) * Math.min(sp, 10) / 10;
+  const K = n.K, t = actx.currentTime, run = sp > 1, fq = K.f[0] + (K.f[1] - K.f[0]) * Math.min(sp, 10) / 10;
   for (const [o, k] of n.os) o.frequency.setTargetAtTime(fq * k, t, 0.5);
   n.vg.gain.setTargetAtTime(fq * K.vib[1], t, 0.5);
   n.f.frequency.setTargetAtTime(K.lp[0] + fq * K.lp[1], t, 0.5);
@@ -3897,7 +3899,10 @@ function evPos(ll, gsp) {   // GPS（ためしもふくむ）が来るたび
   if (sp == null && evLast) { const dt = (now - evLast[1]) / 1000; if (dt > 0.2) sp = hav(evLast[0], ll) / dt; }
   if (!evLast || now - evLast[1] > 200) evLast = [ll, now];
   if (sp == null) return;
-  evSp = evSp ? evSp * 0.6 + sp * 0.4 : sp; evT = now; evSet(evSp);
+  const prev = evSp, pt = evT;
+  evSp = evSp ? evSp * 0.6 + sp * 0.4 : sp; evT = now;
+  if (pt && now - pt < 5000) { const a = (evSp - prev) / Math.max(0.3, (now - pt) / 1000); evAcc = evAcc * 0.6 + a * 0.4; }   // 速さの変わりかた（m/秒²）。マイナス＝へっている
+  evSet(evSp);
 }
 setInterval(() => { if (evOn && evN && Date.now() - evT > 4000) { evSp = 0; evSet(0); } }, 1000);   // 位置が来なくなったら止める
 function evBtn() { $("ev").classList.toggle("off", !evOn); $("evL").textContent = evOn ? "接近音" : "接近音OFF"; }
@@ -4036,12 +4041,16 @@ function ftBtn() { $("ft").classList.toggle("off", !footOn); $("ftL").textConten
 ftBtn(); evBtn();
 $("ev").onclick = () => evToggle(!evOn);
 $("evVol").value = evVol;
+$("evCoast").checked = evCoast;
+$("evCoast").onchange = e => { evCoast = e.target.checked; lsSet("hosomichi_evCoast", evCoast); };
 $("evKind").innerHTML = Object.entries(EV_KINDS).map(([k, K]) => `<option value="${k}"${k === evKind ? " selected" : ""}>${K.n}</option>`).join("");
 $("evKind").onchange = e => { evKind = e.target.value; lsSet("hosomichi_evKind", evKind); evKill(); if (evOn) evSet(Date.now() - evT < 4000 ? evSp : 0); $("evTest").onclick(); };
 $("evVol").oninput = e => { evVol = +e.target.value; lsSet("hosomichi_evVol", evVol); if (evOn) evSet(evSp); };
 $("evTest").onclick = () => {   // 時速5km → 25km → 止まる を3秒で
   audioUnlock(); const was = evOn; evOn = true; evNodes(); let k = 0; clearInterval(window.evTestT);
-  const T = window.evTestT = setInterval(() => { k++; evT = Date.now(); evSet(k < 18 ? 1.4 + k * 0.4 : 0); if (k > 24) { clearInterval(T); evOn = was; if (!was && evN) evN.g.gain.setTargetAtTime(0, actx.currentTime, 0.2); } }, 250);
+  const click = EV_KINDS[evKind].click;   // ラチェットは「こいで速くなる → 足を止めて だんだん遅くなる → 止まる」
+  const spAt = k => click ? (k < 8 ? 1.4 + k * 0.9 : Math.max(0, 8.6 - (k - 8) * 0.45)) : (k < 18 ? 1.4 + k * 0.4 : 0);
+  const T = window.evTestT = setInterval(() => { k++; evT = Date.now(); const sp = spAt(k); evAcc = (sp - spAt(k - 1)) / 0.25; evSet(sp); if (k > (click ? 30 : 24)) { clearInterval(T); evOn = was; if (!was && evN) evN.g.gain.setTargetAtTime(0, actx.currentTime, 0.2); } }, 250);
 };
 $("ft").onclick = () => { footSet(!footOn); if ($("footOn")) $("footOn").checked = footOn; };
 $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす（デバッグ用。ナビはそのまま動く）
