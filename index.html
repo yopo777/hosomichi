@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0022</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0029</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3739,7 +3739,7 @@ const FOOT_ROAD = { color: "#ff1744", weight: 16, opacity: 0.45, lineCap: "round
 // ルートと同じ層（overlayPane の SVG）に入れて、いちばん下へ。べつの層だと 地図が動いているあいだ ルートとずれて見えた
 const footLine = (pts, g) => L.polyline(pts, { ...FOOT_ROAD, weight: footW() }).addTo(g).bringToBack();   // 線は1本にまとめて描く（重なっても こくならない・軽い）
 map.on("zoomend", () => { const w = footW(); for (const g of [footLayer, footTodayLayer]) g.eachLayer(l => l.setStyle && l.setStyle({ weight: w })); });
-let footPi = lsGet("hosomichi_footPi", true) !== false, footPiVol = +lsGet("hosomichi_footPiVol", 0.3);   // 🔔 新しく塗れたら「ピッ」
+let footPi = lsGet("hosomichi_footPi", true) !== false, footPiVol = +lsGet("hosomichi_footPiVol2", 0.5);   // 🔔 新しく塗れたら「ピッ」
 const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
 // 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
 // 🧪ためし（4つ目が1）と、時速60kmより速い所（前のためし走行・GPSが飛んだ所）は入れない
@@ -3794,7 +3794,7 @@ function pi() {
   try {
     audioUnlock(); if (!actx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
     o.type = "sine"; o.frequency.value = 2093; o.connect(g); g.connect(actx.destination);
-    const v = Math.max(0.0002, footPiVol);   // 🔊 音の大きさ（👣足あと の画面で決める）
+    const v = Math.max(0.0002, footPiVol * 0.6);   // スライダーまん中（50%）＝はじめの大きさ   // 🔊 音の大きさ（👣足あと の画面で決める）
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
     o.start(t); o.stop(t + 0.14);
   } catch {}
@@ -3802,22 +3802,24 @@ function pi() {
 let footPiT = 0;
 // ---- 〰 接近音（EV みたいな「ウィーン」）：走っているあいだ ずっと小さく鳴らす。速さで音が高くなる・止まると消える ----
 let evOn = !!lsGet("hosomichi_ev", false), evVol = +lsGet("hosomichi_evVol", 0.25), evN = null, evLast = null, evSp = 0, evT = 0;
-function evNodes() {   // のこぎり波2つ（少しずらして うなりを出す）→ ローパスでやわらかく → 音量
+function evNodes() {   // 近未来っぽい和音：三角波（もと）＋サイン5度上＋サイン1オクターブ上（少しずらしてコーラス）→ やわらかく → 音量
   if (evN || !actx) return evN;
-  const g = actx.createGain(), f = actx.createBiquadFilter(), o1 = actx.createOscillator(), o2 = actx.createOscillator(), lfo = actx.createOscillator(), lg = actx.createGain();
-  g.gain.value = 0; f.type = "lowpass"; f.frequency.value = 1400; f.Q.value = 4;
-  o1.type = "sawtooth"; o2.type = "sawtooth"; o1.frequency.value = 300; o2.frequency.value = 303;
-  lfo.frequency.value = 5; lg.gain.value = 6; lfo.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);   // ゆらぎ
-  o1.connect(f); o2.connect(f); f.connect(g); g.connect(actx.destination);
-  o1.start(); o2.start(); lfo.start();
-  return evN = { g, f, o1, o2 };
+  const g = actx.createGain(), f = actx.createBiquadFilter(), mix = actx.createGain();
+  g.gain.value = 0; f.type = "lowpass"; f.frequency.value = 2400; f.Q.value = 0.8;
+  const osc = (type, k, v) => { const o = actx.createOscillator(), og = actx.createGain(); o.type = type; o.frequency.value = 220 * k; og.gain.value = v; o.connect(og); og.connect(mix); o.start(); return [o, k]; };
+  const os = [osc("triangle", 1, 0.55), osc("sine", 1.5, 0.3), osc("sine", 2.004, 0.22), osc("sine", 1.996, 0.22), osc("sine", 3, 0.06)];
+  const lfo = actx.createOscillator(), lg = actx.createGain(); lfo.frequency.value = 0.35; lg.gain.value = 0.12;   // ゆっくり ふくらんだり しぼんだり
+  const amp = actx.createGain(); amp.gain.value = 0.88; lfo.connect(lg); lg.connect(amp.gain); lfo.start();
+  mix.gain.value = 1; mix.connect(amp); amp.connect(f); f.connect(g); g.connect(actx.destination);
+  return evN = { g, f, os };
 }
-function evSet(sp) {   // sp：m/秒。音の高さ 時速3km≒250Hz → 時速36km 以上≒750Hz
+function evSet(sp) {   // sp：m/秒。音の高さ 止まりぎわ≒190Hz → 時速36km 以上≒520Hz（和音ごと上がる）
   if (!evOn) return;
   audioUnlock(); const n = evNodes(); if (!n) return;
-  const t = actx.currentTime, run = sp > 0.8, fq = 230 + Math.min(sp, 10) * 52;
-  n.o1.frequency.setTargetAtTime(fq, t, 0.4); n.o2.frequency.setTargetAtTime(fq * 1.01, t, 0.4); n.f.frequency.setTargetAtTime(900 + fq * 1.5, t, 0.4);
-  n.g.gain.setTargetAtTime(run ? evVol * 0.35 : 0, t, run ? 0.3 : 0.5);   // 止まったら スッと消える
+  const t = actx.currentTime, run = sp > 0.8, fq = 190 + Math.min(sp, 10) * 33;
+  for (const [o, k] of n.os) o.frequency.setTargetAtTime(fq * k, t, 0.5);
+  n.f.frequency.setTargetAtTime(1600 + fq * 3, t, 0.5);
+  n.g.gain.setTargetAtTime(run ? evVol * 0.3 : 0, t, run ? 0.4 : 0.6);   // 止まったら スッと消える
 }
 function evPos(ll, gsp) {   // GPS（ためしもふくむ）が来るたび
   if (!evOn) return;
@@ -3885,7 +3887,7 @@ async function footTab() {
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
     <div style="font-size:11px;color:#888;line-height:1.6">今まで走った所（🗓過去＋今日）を道にあてはめて、塗れた道をメインの地図に<b style="color:#ff1744">赤</b>で出すよ。道の6割（短い道は少しでも）を通ったら塗れるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
   $("footOn").onchange = e => footSet(e.target.checked);
-  $("footPiVol").onchange = e => { footPiVol = +e.target.value; lsSet("hosomichi_footPiVol", footPiVol); audioUnlock(); pi(); };   // はなしたら 1回鳴らして聞かせる
+  $("footPiVol").onchange = e => { footPiVol = +e.target.value; lsSet("hosomichi_footPiVol2", footPiVol); audioUnlock(); pi(); };   // はなしたら 1回鳴らして聞かせる
   $("footPi").onchange = e => { footPi = e.target.checked; lsSet("hosomichi_footPi", footPi); if (footPi) { audioUnlock(); pi(); } };
   $("footFit").onclick = async () => {
     const all = Object.values(await footSegsAll(() => {})).filter(v => v.length >= 7);
