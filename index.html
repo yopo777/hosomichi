@@ -183,10 +183,10 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1050</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1056</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
-    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
+    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="pts"><span class="ti">📌</span><span class="tl">スポット</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
     <div id="tabQuest" style="display:none">
       <h4 style="margin:8px 0 2px">🎯 ミッション <span style="font-size:11px;color:#666;font-weight:normal">1か所に寄って、ぐるっと1周してもどる</span></h4>
       <div class="row"><label style="width:auto">行き先</label><select id="msnType" style="flex:1;min-width:0;width:100%;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px">
@@ -275,15 +275,10 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div class="spane" data-s="road">
       <div id="cfgBox"></div>
       <div class="btns" style="margin-top:8px"><button class="ib" id="cfgReset">はじめの設定にもどす</button></div>
-    <div id="blkBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-      <b>🚫 通りたくない地点 <span id="blkN">0</span></b>
-      <div style="font-size:11px;color:#666;margin-top:2px">地図を長おし（パソコンは右クリック）→「🚫 通れない」か「⚠ 通りたくない」でつけるよ。🚫はいちばん近い道を通らない、⚠はその道まるごとを、上の「通りたくない地点」の倍率で避けるよ（車が多い・坂が急など）。この端末の中だけに保存</div>
-      <div id="blkList" style="max-height:30vh;overflow-y:auto;margin-top:6px;border:1px solid #eee;border-radius:8px"></div>
-      <div class="btns" style="margin-top:4px"><button class="ib" id="blkShow" style="font-size:12px">🗺 印を全部見る</button><button class="ib" id="blkDel" style="font-size:12px">🗑 全部消す</button></div>
-    </div>
       </div>
     </div>
     <div id="tabTrk" style="display:none"></div>
+    <div id="tabPts" style="display:none"></div>
     <div id="tabLog" style="display:none">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
       <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -3383,7 +3378,7 @@ async function snsData() {
   const riding = useRide && !ride.done && wid !== null;
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
   // 🔒 消す所：家と、その日の出発地（親せきの家などから出ても、かならず消す）
-  const anchors = home ? [home] : [];
+  const anchors = [...(home ? [home] : []), ...secrets.map(q => q.p)];   // 家と 🔒秘密の場所
   if (useRide) { pts = snsPassBy(ride.pts); anchors.push(pts[0]); }
   let { runs, hideP } = snsHide(pts, R, anchors);   // runs の cutS/cutE：消した所で切れているはし（フェードアウトする）
   // 📍 いまここ：走っている途中で、今いる所が消す所でなければ、今いる所と「来た道」（さいごの5km）だけを見せる
@@ -3834,6 +3829,8 @@ function showTab(t) {
   $("tabLog").style.display = t === "log" ? "" : "none";
   $("tabQuest").style.display = t === "quest" ? "" : "none";
   $("tabTrk").style.display = t === "trk" ? "" : "none";
+  $("tabPts").style.display = t === "pts" ? "" : "none";
+  if (t === "pts") spotsTabDraw();
   if (t === "trk") trkOpen(); else { snsTest = false; trkLayer.clearLayers(); }   // ほかのタブにうつったら、地図の軌跡を消す・SNSのテストは終わり
   if (t === "quest") qRender();
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
@@ -3985,7 +3982,7 @@ function openStreetView(ll) {
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
-    + "<button data-home='1'>🏠 ここを家にする</button><br>"
+    + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br>"
     + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button>"
     + "<br><button data-fake='1' style='color:#888'>🧪 ここを現在地にする（debug用）</button>"   // いちばん下：ふだんは使わない
     + (fakePos ? "<br><button data-fake='0' style='color:#1a73e8'>🧪 本当の現在地にもどす（debug用）</button>" : "");
@@ -3995,6 +3992,7 @@ function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着に�
     if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
     if (ev.target.dataset.fake) { L.DomEvent.stopPropagation(ev); setFake(ev.target.dataset.fake === "1" ? [+ll.lat.toFixed(6), +ll.lng.toFixed(6)] : null); map.closePopup(pop); return; }
     if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); return; }
+    if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 }
@@ -4489,7 +4487,7 @@ function drawBlocks() {
     div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog("🚫 通れない印を1つ消したよ"); };
     m.bindPopup(div);
   });
-  const na = blocks.filter(b => b.r === "a").length; $("blkN").textContent = `（🚫 通れない ${blocks.length - na}・⚠ 通りたくない ${na}）`;
+  const na = blocks.filter(b => b.r === "a").length; if ($("blkN")) $("blkN").textContent = `（🚫 通れない ${blocks.length - na}・⚠ 通りたくない ${na}）`;
   // 一覧：タップでその場所を地図で見る・🗑で消す
   const L0 = $("blkList");
   if (L0) {
@@ -4501,7 +4499,32 @@ function drawBlocks() {
     for (const e of L0.querySelectorAll("[data-del]")) e.onclick = () => { if (!confirm("この印を消す？")) return; blocks.splice(+e.dataset.del, 1); saveBlocks(); addLog("🚫 印を1つ消したよ"); };
   }
 }
-function saveBlocks() { lsSet(BKEY, blocks); drawBlocks(); }
+// 📌 スポットタブ：登録した地点をぜんぶ一覧に（🏠家・🔒秘密の場所・🚫通れない・⚠通りたくない）
+function spotsTabDraw() {
+  const T = $("tabPts"); if (!T || T.style.display === "none") return;
+  const row = (ic, name, sub, key) => `<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid #f3f3f3;font-size:12px">
+      <span style="font-size:15px">${ic}</span><span style="flex:1;cursor:pointer" data-go="${key}">${esc(name)} <span style="color:#888;font-size:11px">${sub || ""}</span> <span style="color:#1a73e8;font-size:11px">地図で見る</span></span>
+      <button data-del="${key}" style="font-size:11px;padding:2px 6px;border:1px solid #ddd;border-radius:6px;background:#fff">🗑</button></div>`;
+  const sec = (title, note, rows) => `<div style="margin:8px 0 2px;font-weight:bold;font-size:13px">${title}</div><div style="font-size:11px;color:#666;margin-bottom:3px">${note}</div>
+      <div style="border:1px solid #eee;border-radius:8px;max-height:28vh;overflow-y:auto">${rows || '<div style="padding:6px 8px;color:#aaa;font-size:12px">まだないよ</div>'}</div>`;
+  const bo = blocks.map((b, i) => [b, i]).filter(([b]) => b.r !== "a"), ba = blocks.map((b, i) => [b, i]).filter(([b]) => b.r === "a");
+  T.innerHTML = `<div style="font-size:12px;color:#666;margin:2px 0 4px">📌 登録した地点の一覧だよ。つけるのは 地図を長おし（パソコンは右クリック）から。ぜんぶ この端末の中だけに保存して、どこにも送らないよ</div>`
+    + sec("🏠 家", "SNSでは まわりを消すよ。「家まで約○km」にも使うよ", home ? row("🏠", "家", "", "h") : "")
+    + sec(`🔒 秘密の場所 ${secrets.length}`, "親せきの家・職場など。SNSでは家と同じように まわりを消すよ", secrets.map((q, i) => row("🔒", q.name || "秘密の場所", q.t, "s" + i)).join(""))
+    + sec(`🚫 通れない ${bo.length}`, "いちばん近い道（12m以内）を ルートに使わないよ", bo.map(([b, i]) => row("🚫", "通れない", b.t, "b" + i)).join(""))
+    + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", "通りたくない", b.t, "b" + i)).join(""));
+  const pos = k => k === "h" ? home : k[0] === "s" ? secrets[+k.slice(1)].p : blocks[+k.slice(1)].p;
+  for (const e of T.querySelectorAll("[data-go]")) e.onclick = () => { if (follow) setFollow(false); map.setView(pos(e.dataset.go), 18); $("panel").classList.add("min"); $("tog").textContent = "ひらく"; };
+  for (const e of T.querySelectorAll("[data-del]")) e.onclick = () => {
+    const k = e.dataset.del;
+    if (!confirm(k === "h" ? "家の登録を消す？（SNSで家のまわりが消えなくなるよ）" : "この地点を消す？")) return;
+    if (k === "h") { home = null; lsSet("hosomichi_home", null); drawHome(); homeDist(); }
+    else if (k[0] === "s") { secrets.splice(+k.slice(1), 1); lsSet("hosomichi_secret", secrets); drawSecrets(); }
+    else { blocks.splice(+k.slice(1), 1); saveBlocks(); }
+    spotsTabDraw();
+  };
+}
+function saveBlocks() { lsSet(BKEY, blocks); drawBlocks(); try { spotsTabDraw(); } catch {} }
 function addBlock(ll, r) {
   const d = new Date();
   blocks.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], r, t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
@@ -4514,12 +4537,6 @@ function blkDecode(t) {
     .filter(b => b && Math.abs(b.p[0]) <= 90 && Math.abs(b.p[1]) <= 180);
 }
 function blkUrl() { return location.origin + location.pathname + "#blk=" + blkEncode(); }
-$("blkShow").onclick = () => {
-  if (!blocks.length) return alert("まだ印がないよ");
-  map.fitBounds(L.latLngBounds(blocks.map(b => b.p)), { padding: [40, 40], maxZoom: 17 });
-  $("panel").classList.add("min"); $("tog").textContent = "ひらく";
-};
-$("blkDel").onclick = () => { if (blocks.length && confirm(`通れない印 ${blocks.length}個を全部消す？`)) { blocks = []; saveBlocks(); } };
 drawBlocks();
 // QR・URLで来たとき：今の印に足す（同じ所＝5m以内はかさねない）
 if (location.hash.startsWith("#blk=")) {
@@ -5071,9 +5088,25 @@ function drawHome() {
   homeLayer.clearLayers();
   if (home) L.marker(home, { interactive: false, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:20px;text-shadow:0 0 3px #fff,0 0 3px #fff">🏠</div>' }) }).addTo(homeLayer);
 }
+// 🔒 秘密の場所（親せきの家・職場など）：SNSでは家と同じように まわりを消す。この端末の中だけ
+let secrets = lsGet("hosomichi_secret", []).filter(q => q && Array.isArray(q.p));
+const secLayer = L.layerGroup().addTo(map);
+function drawSecrets() {
+  secLayer.clearLayers();
+  for (const q of secrets) L.marker(q.p, { interactive: false, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">🔒</div>' }) }).addTo(secLayer);
+  try { spotsTabDraw(); } catch {}
+}
+function addSecret(ll) {
+  const name = prompt("🔒 秘密の場所の名前（自分だけが見るよ。空でもいいよ）", "") ;
+  if (name === null) return;
+  const d = new Date();
+  secrets.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], name: name.trim(), t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
+  lsSet("hosomichi_secret", secrets); drawSecrets(); setMsg("🔒 秘密の場所にしたよ（SNSでは家と同じように、まわりを消すよ）");
+}
+drawSecrets();
 function setHome(ll) {
   if (home && hav(home, [ll.lat, ll.lng]) > 30 && !confirm("家の場所を、ここに変える？")) return;
-  home = [+ll.lat.toFixed(6), +ll.lng.toFixed(6)]; lsSet("hosomichi_home", home); drawHome(); homeDist();
+  home = [+ll.lat.toFixed(6), +ll.lng.toFixed(6)]; lsSet("hosomichi_home", home); drawHome(); homeDist(); try { spotsTabDraw(); } catch {}
   setMsg("🏠 ここを家にしたよ（この端末の中だけに保存するよ）");
 }
 function homeDist() {   // まっすぐの距離 ×1.3 で見つもる（計算はほぼ0なので、GPSが来るたびでOK）
