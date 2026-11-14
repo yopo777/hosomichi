@@ -183,7 +183,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2314</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2319</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -293,6 +293,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">🚲ルートタブで作ったルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。一時停止して、つづきから走れるよ。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div>
         <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="footDbg">🎨 ためし走行も足あとに入れる（今日の分だけ・保存しない・過去には入らないよ）</label>
       </div>
       <div style="font-size:11px;color:#666;margin-bottom:6px">🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）→「ここを現在地にする」で決めるよ。もどすときも長おし →「本当の現在地にもどす」</div>
@@ -3860,6 +3861,11 @@ async function footCityShow() {
   finally { footBusy = false; }
 }
 if (footOn) setTimeout(footDraw, 1500);   // 起動したとき（ONなら）
+$("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす（デバッグ用。ナビはそのまま動く）
+  const h = e.target.checked;
+  if (h) map.removeLayer(layer); else layer.addTo(map);
+  map.getPane("flowPane").style.display = h ? "none" : "";
+};
 $("footDbg").checked = footDbg;   // 🛠デバッグ → ツール の 🧪ためし走行 の中
 $("footDbg").onchange = e => { footDbg = e.target.checked; lsSet("hosomichi_footDbg", footDbg); footTodayN = -1; footDraw(); if ($("footCity")) footCityShow(); };
 let trkYM = null;
@@ -5477,7 +5483,7 @@ drawHome();
 // ---------- ルートの上を白いボールが流れる（進む向きがわかるように。見えている所だけ・ナビで現在地に固定中は止める） ----------
 const flowLayer = L.layerGroup().addTo(map);
 map.createPane("flowPane", map._rotatePane || map.getPane("mapPane")).style.zIndex = 450;   // ルートの線（400）より上・マーク（600）より下（地図といっしょに回る層に入れる）
-let flowBalls = [], flowRaf = 0, flowT0 = 0, flowSpeed = 0, flowLast = 0;
+let flowBalls = [], flowRaf = 0, flowT0 = 0, flowSpeed = 0, flowLast = 0, flowSize = 10;
 // 右はしの ⚪ ボタン1つで：進む向き → 逆向き → 消す → 進む向き …
 let flowMode = lsGet("hosomichi_flowmode", "fwd");
 let flowOn = flowMode !== "off", flowRev = flowMode === "rev";
@@ -5493,6 +5499,14 @@ $("fl").onclick = () => {
   flowOn = flowMode !== "off"; flowRev = flowMode === "rev"; flowPrep();
 };
 function flowStop() { clearInterval(flowRaf); flowRaf = 0; flowLayer.clearLayers(); flowBalls = []; }
+// 進む向きの矢印（三角）：点 p で、a→c の向き（flowRev なら逆）。大きさ s は m
+function flowTri(p, a, c, s) {
+  const k = Math.cos(p[0] * RAD); let x = (c[1] - a[1]) * k, y = c[0] - a[0]; const n = Math.hypot(x, y) || 1; x /= n; y /= n;
+  if (flowRev) { x = -x; y = -y; }
+  const d = s / 111320, at = (f, g) => [p[0] + (y * f - x * g) * d, p[1] + (x * f + y * g) * d / k];   // f：前へ・g：横へ
+  return [at(1.1, 0), at(-0.7, 0.8), at(-0.35, 0), at(-0.7, -0.8)];
+}
+const FLOW_TRI = { pane: "flowPane", stroke: false, className: "flowb", fillOpacity: 1, interactive: false };
 // 現在地に固定中（走っているとき）は、たくさんのボールのかわりに、今いる所から少し先へ 1個だけボールが走る（案内のボール）
 let navAlong = null, guide = null, guideRaf = 0, guideLast = 0;
 const FLOW_MS = 100;   // ボールを動かす間かく（どのボールも同じ）。1秒に10回で、電池にやさしく
@@ -5502,7 +5516,7 @@ function guideStart() {
   const ok = follow && me && flowOn && cur && cur.nav && cum.length > 1 && !document.hidden && !saving;
   if (!ok) return guideStop();
   if (guide) return;   // もう走っている
-  guide = L.circleMarker(me.getLatLng(), { pane: "flowPane", radius: 7, stroke: false, className: "flowb", fillColor: "#d93025", fillOpacity: 1, interactive: false }).addTo(guideLayer);
+  const g0 = me.getLatLng(); guide = L.polygon([[g0.lat, g0.lng], [g0.lat, g0.lng], [g0.lat, g0.lng]], { ...FLOW_TRI, fillColor: "#d93025" }).addTo(guideLayer);
   const tick = () => {   // requestAnimationFrame だと1秒に60回起きてしまうので、10回だけ起きるタイマーにした（電池にやさしく）
     const now = performance.now();
     if (navAlong == null) return;
@@ -5512,7 +5526,7 @@ function guideStart() {
     const d = Math.max(0, Math.min(tot, flowRev ? navAlong - sOff : navAlong + sOff));
     let lo = 0, hi = cum.length - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= d) lo = mid; else hi = mid; }
     const a = R[lo], c = R[hi], u = (d - cum[lo]) / ((cum[hi] - cum[lo]) || 1);
-    guide.setLatLng([a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u]);
+    guide.setLatLngs(flowTri([a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u], a, c, 10 * mpp));
   };
   guideRaf = setInterval(tick, FLOW_MS);
 }
@@ -5542,13 +5556,13 @@ function flowBuild() {
   }
   if (run) runs.push(run);
   const mpp = 40075016 * Math.cos(map.getCenter().lat * RAD) / 2 ** (map.getZoom() + 8), gap = 170 * mpp;   // 170px おき
-  flowSpeed = 70 * mpp;   // 1秒に 70px くらい
+  flowSpeed = 70 * mpp; flowSize = 9 * mpp;   // 1秒に 70px くらい・矢印の大きさ 9px
   for (const r of runs) {
     const cs = [0]; for (let i = 1; i < r.length; i++) cs.push(cs[i - 1] + hav(r[i - 1], r[i]));
     const len = cs[cs.length - 1]; if (len < gap * 0.6) continue;
     const n = Math.max(1, Math.floor(len / gap));
     for (let k = 0; k < n && flowBalls.length < 150; k++)
-      flowBalls.push({ r, cs, len, base: k * len / n, m: L.circleMarker(r[0], { pane: "flowPane", radius: 6, stroke: false, className: "flowb", fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025", fillOpacity: 1, interactive: false }).addTo(flowLayer) });   // 赤と白をこうごに
+      flowBalls.push({ r, cs, len, base: k * len / n, m: L.polygon([r[0], r[0], r[0]], { ...FLOW_TRI, fillColor: (flowBalls.length % 2) ? "#fff" : "#d93025" }).addTo(flowLayer) });   // 赤と白をこうごに
   }
   if (flowBalls.length) { flowT0 = performance.now(); flowRaf = setInterval(flowTick, FLOW_MS); }
 }
@@ -5560,7 +5574,7 @@ function flowTick() {
     const cs = f.cs;
     let lo = 0, hi = cs.length - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cs[mid] <= d) lo = mid; else hi = mid; }
     const a = f.r[lo], c = f.r[hi], u = (d - cs[lo]) / ((cs[hi] - cs[lo]) || 1);
-    f.m.setLatLng([a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u]);
+    f.m.setLatLngs(flowTri([a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u], a, c, flowSize));
   }
 }
 map.on("movestart zoomstart", () => { if (!(follow && me && performance.now() < flowBurstEnd)) flowStop(); });
