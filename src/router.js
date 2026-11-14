@@ -415,7 +415,7 @@ function buildGraph(osm, cfg, onProg) {
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
 let blockPts = [], avoidPts = [];   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）
-const AVOID_PEN = 5;
+let AVOID_PEN = 5;   // ⚠ 通りたくない道の重み（設定 avoidPen：2・5・10・30）
 const BLOCK_R = 12;
 let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
 const USED_PEN = 2;
@@ -1648,6 +1648,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       stopReq = false; cancelFetch = false; routing = true; if (pfAc) pfAc.abort();   // 自動でためてる途中なら中断
       blockPts = Array.isArray(d.blocks) ? d.blocks : [];
       avoidPts = Array.isArray(d.avoids) ? d.avoids : [];
+      AVOID_PEN = Math.max(1, +(d.cfg && d.cfg.avoidPen) || 5);
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
       const r = d.tour ? await tourRoute(d, pr) : d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
