@@ -410,11 +410,12 @@ function buildGraph(osm, cfg, onProg) {
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
   return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen,
-    hk: Math.min(1, +cfg.kodo || 1) };   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
+    hk: Math.min(1, +cfg.kodo || 1) * (preferPts.length ? PREFER_K : 1) };   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
-let blockPts = [], avoidPts = [];   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）
+let blockPts = [], avoidPts = [], preferPts = [];   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）／ 👍 通りたい（その道を ×PREFER_K）
+let PREFER_K = 0.5;   // 👍 通りたい道の重み（設定 preferK：0.7・0.5・0.3）
 let AVOID_PEN = 5;   // ⚠ 通りたくない道の重み（設定 avoidPen：2・5・10・30）
 const BLOCK_R = 12;
 let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
@@ -433,8 +434,8 @@ function applyBlocks(lat, lon, adj, N) {
     for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && usedNodes.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
     for (let u = 0; u < N; u++) if (u8[u]) for (const e of adj[u]) if (u8[e.v]) e.c *= USED_PEN;
   }
-  if (!blockPts.length && !avoidPts.length) return 0;
-  const allPts = [...blockPts.map(p => [p[0], p[1], 0]), ...avoidPts.map(p => [p[0], p[1], 1])];
+  if (!blockPts.length && !avoidPts.length && !preferPts.length) return 0;
+  const allPts = [...blockPts.map(p => [p[0], p[1], 0]), ...avoidPts.map(p => [p[0], p[1], 1]), ...preferPts.map(p => [p[0], p[1], 2])];
   const C = 0.002, g = new Map();   // 印を約200mのマスに入れる
   for (const [la, lo, kind] of allPts) { const k = Math.floor(la / C) + "," + Math.floor(lo / C); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo, kind]); }
   const nearBlocks = i => {
@@ -460,15 +461,16 @@ function applyBlocks(lat, lon, adj, N) {
       hits.push([u, e.v, p, d]); if (!(dmin.get(p) <= d)) dmin.set(p, d);
     }
   }
-  let n = 0; const avoidW = new Set();
+  let n = 0; const avoidW = new Set(), preferW = new Set();
   for (const [u, v, p, d] of hits) {
     if (d > dmin.get(p) + 4) continue;
-    if (p[2]) { const e = adj[u].find(x => x.v === v); if (e) avoidW.add(e.w); continue; }   // ⚠ 通りたくない：その道（OSMの1本）をまるごと
+    if (p[2]) { const e = adj[u].find(x => x.v === v); if (e) (p[2] === 2 ? preferW : avoidW).add(e.w); continue; }   // ⚠ 通りたくない／👍 通りたい：その道（OSMの1本）をまるごと
     const before = adj[u].length;
     adj[u] = adj[u].filter(x => x.v !== v); adj[v] = adj[v].filter(x => x.v !== u);
     if (adj[u].length < before) n++;
   }
   if (avoidW.size) { for (let u = 0; u < N; u++) if (adj[u]) for (const e of adj[u]) if (avoidW.has(e.w)) e.c *= AVOID_PEN; n += avoidW.size; }
+  if (preferW.size) { for (let u = 0; u < N; u++) if (adj[u]) for (const e of adj[u]) if (preferW.has(e.w)) e.c *= PREFER_K; n += preferW.size; }
   return n;
 }
 // ゲージ用：処理ぜんたいのどこまで来たか（0〜1）。1=道路データ 2=つながり 3=探索 4=ほかのルート
@@ -1649,6 +1651,8 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       blockPts = Array.isArray(d.blocks) ? d.blocks : [];
       avoidPts = Array.isArray(d.avoids) ? d.avoids : [];
       AVOID_PEN = Math.max(1, +(d.cfg && d.cfg.avoidPen) || 10);
+      preferPts = Array.isArray(d.prefers) ? d.prefers : [];
+      PREFER_K = Math.min(1, Math.max(0.2, +(d.cfg && d.cfg.preferK) || 0.5));
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
       const r = d.tour ? await tourRoute(d, pr) : d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });

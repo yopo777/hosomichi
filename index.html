@@ -183,7 +183,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1443</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1505</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ ✏ 新しく作る -->
@@ -764,11 +764,12 @@ function buildGraph(osm, cfg, onProg) {
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
   return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen,
-    hk: Math.min(1, +cfg.kodo || 1) };   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
+    hk: Math.min(1, +cfg.kodo || 1) * (preferPts.length ? PREFER_K : 1) };   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
-let blockPts = [], avoidPts = [];   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）
+let blockPts = [], avoidPts = [], preferPts = [];   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）／ 👍 通りたい（その道を ×PREFER_K）
+let PREFER_K = 0.5;   // 👍 通りたい道の重み（設定 preferK：0.7・0.5・0.3）
 let AVOID_PEN = 5;   // ⚠ 通りたくない道の重み（設定 avoidPen：2・5・10・30）
 const BLOCK_R = 12;
 let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
@@ -787,8 +788,8 @@ function applyBlocks(lat, lon, adj, N) {
     for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && usedNodes.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
     for (let u = 0; u < N; u++) if (u8[u]) for (const e of adj[u]) if (u8[e.v]) e.c *= USED_PEN;
   }
-  if (!blockPts.length && !avoidPts.length) return 0;
-  const allPts = [...blockPts.map(p => [p[0], p[1], 0]), ...avoidPts.map(p => [p[0], p[1], 1])];
+  if (!blockPts.length && !avoidPts.length && !preferPts.length) return 0;
+  const allPts = [...blockPts.map(p => [p[0], p[1], 0]), ...avoidPts.map(p => [p[0], p[1], 1]), ...preferPts.map(p => [p[0], p[1], 2])];
   const C = 0.002, g = new Map();   // 印を約200mのマスに入れる
   for (const [la, lo, kind] of allPts) { const k = Math.floor(la / C) + "," + Math.floor(lo / C); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo, kind]); }
   const nearBlocks = i => {
@@ -814,15 +815,16 @@ function applyBlocks(lat, lon, adj, N) {
       hits.push([u, e.v, p, d]); if (!(dmin.get(p) <= d)) dmin.set(p, d);
     }
   }
-  let n = 0; const avoidW = new Set();
+  let n = 0; const avoidW = new Set(), preferW = new Set();
   for (const [u, v, p, d] of hits) {
     if (d > dmin.get(p) + 4) continue;
-    if (p[2]) { const e = adj[u].find(x => x.v === v); if (e) avoidW.add(e.w); continue; }   // ⚠ 通りたくない：その道（OSMの1本）をまるごと
+    if (p[2]) { const e = adj[u].find(x => x.v === v); if (e) (p[2] === 2 ? preferW : avoidW).add(e.w); continue; }   // ⚠ 通りたくない／👍 通りたい：その道（OSMの1本）をまるごと
     const before = adj[u].length;
     adj[u] = adj[u].filter(x => x.v !== v); adj[v] = adj[v].filter(x => x.v !== u);
     if (adj[u].length < before) n++;
   }
   if (avoidW.size) { for (let u = 0; u < N; u++) if (adj[u]) for (const e of adj[u]) if (avoidW.has(e.w)) e.c *= AVOID_PEN; n += avoidW.size; }
+  if (preferW.size) { for (let u = 0; u < N; u++) if (adj[u]) for (const e of adj[u]) if (preferW.has(e.w)) e.c *= PREFER_K; n += preferW.size; }
   return n;
 }
 // ゲージ用：処理ぜんたいのどこまで来たか（0〜1）。1=道路データ 2=つながり 3=探索 4=ほかのルート
@@ -2003,6 +2005,8 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       blockPts = Array.isArray(d.blocks) ? d.blocks : [];
       avoidPts = Array.isArray(d.avoids) ? d.avoids : [];
       AVOID_PEN = Math.max(1, +(d.cfg && d.cfg.avoidPen) || 10);
+      preferPts = Array.isArray(d.prefers) ? d.prefers : [];
+      PREFER_K = Math.min(1, Math.max(0.2, +(d.cfg && d.cfg.preferK) || 0.5));
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
       const r = d.tour ? await tourRoute(d, pr) : d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
       self.postMessage({ type: "done", ...r });
@@ -2633,7 +2637,7 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   }
   $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a" && b.r !== "w").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done", "trip"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
@@ -3905,10 +3909,11 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, station: 5, cemetery: 5, park: 5 };
+  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, station: 5, cemetery: 5, park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（×2）"], [5, "避ける（×5）"], [10, "かなり避ける（×10・はじめ）"], [30, "ほぼ通らない（×30）"]]],
+  ["preferK", "👍 通りたい道", [[0.7, "少し通る（×0.7）"], [0.5, "通る（×0.5・はじめ）"], [0.3, "かなり通る（×0.3）"]]],
   ["alts", "第2・第3のルート", [["yes", "作る（えらべる・少し時間がかかる）"], ["no", "作らない（早い）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["auto", "おまかせ（データが手元にあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（まわり道 2〜4km）"]]],
@@ -3950,7 +3955,7 @@ function renderCfg() {
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div>';
   h += "<h4>旧街道</h4>" + get(["kodo"]) + '<div class="note">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div>';
   h += "<h4>階段・歩道橋・砂利</h4>" + get(["steps", "bridge", "unpaved"]);
-  h += "<h4>通りたくない地点</h4>" + get(["avoidPen"]) + '<div class="note">地図を長おし →「⚠ 通りたくない」でつけた印の、いちばん近い道（12m以内）を、その道まるごと 何倍の長さと数えるか（×5 なら 100m の道を 500m 分）。「🚫 通れない」の印は、いつも通らないよ</div>';
+  h += "<h4>通りたくない・通りたい地点</h4>" + get(["avoidPen", "preferK"]) + '<div class="note">地図を長おし →「⚠ 通りたくない」「👍 通りたい」でつけた印の、いちばん近い道（12m以内）を、その道まるごと 何倍の長さと数えるか（×5 なら 100m の道を 500m 分、×0.5 なら 50m 分）。「🚫 通れない」の印は、いつも通らないよ</div>';
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
   h += '<div class="note" style="margin-top:6px">設定はこの端末におぼえておくよ。変えたらもう一度「ルートを作る」を押してね</div>';
@@ -3993,7 +3998,7 @@ function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着に�
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
     + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br><button data-fav='1'>⭐ お気に入り</button>"
-    + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button>"
+    + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-b='w' style='color:#188038'>👍 通りたい</button><button data-sv='1'>📷 ストビュー</button>"
     + "<br><button data-fake='1' style='color:#888'>🧪 ここを現在地にする（debug用）</button>"   // いちばん下：ふだんは使わない
     + (fakePos ? "<br><button data-fake='0' style='color:#1a73e8'>🧪 本当の現在地にもどす（debug用）</button>" : "");
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
@@ -4318,7 +4323,7 @@ $("rjBtn").onclick = () => {
   $("rjBtn").style.display = "none"; setMsg("↩ ルートにもどる道をさがしているよ…"); addLog("↩ ルートにもどる道をさがすよ（400m先で合流）", "h");
   $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: "↩ ルートにもどる道" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250);
-  worker.postMessage({ s: h, g: R[ti], cfg: job.cfg, blocks: blocks.filter(b => b.r !== "a").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), loop: 0, poi: null, via: null });
+  worker.postMessage({ s: h, g: R[ti], cfg: job.cfg, blocks: blocks.filter(b => b.r !== "a" && b.r !== "w").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: 0, poi: null, via: null });
 };
 function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルート
   const { old, ti } = job.rejoin; job = null;
@@ -4485,25 +4490,26 @@ const BKEY = "hosomichi_blocks";
 const BLK_R = { s: "階段", p: "人の家・敷地", x: "柵・工事・行き止まり", o: "その他" };
 let blocks = lsGet(BKEY, []).filter(b => b && Array.isArray(b.p));
 const blkLayer = L.layerGroup().addTo(map);
-function blkIcon(a) { return L.divIcon({ className: "", html: `<div style="font-size:${a ? 17 : 20}px;line-height:22px;text-align:center;text-shadow:0 0 3px #fff">${a ? "⚠️" : "🚫"}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }); }
+const BLK_IC = r => r === "a" ? "⚠️" : r === "w" ? "👍" : "🚫", BLK_NM = r => r === "a" ? "通りたくない" : r === "w" ? "通りたい" : "通れない";
+function blkIcon(r) { return L.divIcon({ className: "", html: `<div style="font-size:${r === "a" || r === "w" ? 17 : 20}px;line-height:22px;text-align:center;text-shadow:0 0 3px #fff">${BLK_IC(r)}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }); }
 function drawBlocks() {
   blkLayer.clearLayers();
   blocks.forEach((b, i) => {
-    const av = b.r === "a";
-    L.circle(b.p, { radius: 4, stroke: false, fillColor: av ? "#f90" : "#f00", fillOpacity: 0.08, interactive: false }).addTo(blkLayer);   // 印の場所（うすく）
-    const m = L.marker(b.p, { icon: blkIcon(av), zIndexOffset: 500 }).addTo(blkLayer);
+    const av = b.r === "a", wa = b.r === "w";
+    L.circle(b.p, { radius: 4, stroke: false, fillColor: av ? "#f90" : wa ? "#0a0" : "#f00", fillOpacity: 0.08, interactive: false }).addTo(blkLayer);   // 印の場所（うすく）
+    const m = L.marker(b.p, { icon: blkIcon(b.r), zIndexOffset: 500 }).addTo(blkLayer);
     const div = document.createElement("div"); div.className = "pin";
-    div.innerHTML = (av ? `<b>⚠ 通りたくない</b>` : `<b>🚫 通れない</b>`) + (b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : "")
-      + `<br><span style="font-size:11px;color:#666">${av ? "印からいちばん近い道（12m以内）を、その道まるごと 避けるよ（どれくらい避けるかは、🚲道の好みの「通りたくない地点」で決めるよ）" : "印からいちばん近い道（12m以内）だけ通らないよ"}</span><br><button>この印を消す</button>`;
-    div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog("🚫 通れない印を1つ消したよ"); };
+    div.innerHTML = `<b>${BLK_IC(b.r)} ${BLK_NM(b.r)}</b>` + (b.name ? `<br>${esc(b.name)}` : "") + (b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : "")
+      + `<br><span style="font-size:11px;color:#666">${av ? "印からいちばん近い道（12m以内）を、その道まるごと 避けるよ（どれくらい避けるかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）" : wa ? "印からいちばん近い道（12m以内）を、その道まるごと 通りやすくするよ（どれくらいかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）" : "印からいちばん近い道（12m以内）だけ通らないよ"}</span><br><button>この印を消す</button>`;
+    div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog(`${BLK_IC(b.r)} ${BLK_NM(b.r)}の印を1つ消したよ`); };
     m.bindPopup(div);
   });
-  const na = blocks.filter(b => b.r === "a").length; if ($("blkN")) $("blkN").textContent = `（🚫 通れない ${blocks.length - na}・⚠ 通りたくない ${na}）`;
+  const na = blocks.filter(b => b.r === "a").length, nw = blocks.filter(b => b.r === "w").length; if ($("blkN")) $("blkN").textContent = `（🚫 通れない ${blocks.length - na - nw}・⚠ 通りたくない ${na}・👍 通りたい ${nw}）`;
   // 一覧：タップでその場所を地図で見る・🗑で消す
   const L0 = $("blkList");
   if (L0) {
     L0.innerHTML = blocks.length ? blocks.map((b, i) => `<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-bottom:1px solid #f3f3f3;font-size:12px">
-        <span>${b.r === "a" ? "⚠️" : "🚫"}</span><span style="flex:1;cursor:pointer" data-go="${i}">${b.r === "a" ? "通りたくない" : "通れない"} <span style="color:#888;font-size:11px">${b.t || ""}</span> <span style="color:#1a73e8;font-size:11px">地図で見る</span></span>
+        <span>${BLK_IC(b.r)}</span><span style="flex:1;cursor:pointer" data-go="${i}">${BLK_NM(b.r)} <span style="color:#888;font-size:11px">${b.t || ""}</span> <span style="color:#1a73e8;font-size:11px">地図で見る</span></span>
         <button data-del="${i}" style="font-size:11px;padding:2px 6px;border:1px solid #ddd;border-radius:6px;background:#fff">🗑</button></div>`).join("")
       : '<div style="padding:8px;color:#888;font-size:12px">まだないよ。地図を長おし →「🚫 通れない」か「⚠ 通りたくない」でつけてね</div>';
     for (const e of L0.querySelectorAll("[data-go]")) e.onclick = () => { const b = blocks[+e.dataset.go]; if (follow) setFollow(false); map.setView(b.p, 18); $("panel").classList.add("min"); $("tog").textContent = "ひらく"; };
@@ -4521,13 +4527,14 @@ function spotsTabDraw() {
   const sec = (title, note, rows) => `<div style="margin:8px 0 2px;font-weight:bold;font-size:13px">${title}</div><div style="font-size:11px;color:#666;margin-bottom:3px">${note}</div>
       <div style="border:1px solid #eee;border-radius:8px;max-height:28vh;overflow-y:auto">${rows || '<div style="padding:6px 8px;color:#aaa;font-size:12px">まだないよ</div>'}</div>`;
   const newest = a => a.map((q, i) => [q, i]).reverse();   // 新しく登録したものが上
-  const bo = newest(blocks).filter(([b]) => b.r !== "a"), ba = newest(blocks).filter(([b]) => b.r === "a");
+  const bo = newest(blocks).filter(([b]) => b.r !== "a" && b.r !== "w"), ba = newest(blocks).filter(([b]) => b.r === "a"), bw = newest(blocks).filter(([b]) => b.r === "w");
   T.innerHTML = `<div style="font-size:12px;color:#666;margin:2px 0 4px">📌 登録した地点の一覧だよ。名前をタップでその場所へ、長おし（パソコンは右クリック）で名前をかえられるよ。つけるのは 地図を長おしから。ぜんぶ この端末の中だけ</div>`
     + sec(`⭐ お気に入り ${favs.length}`, "よく行く所。SNSでは消さないよ", newest(favs).map(([q, i]) => row("⭐", q.name || "お気に入り", "f" + i)).join(""))
     + sec("🏠 家", "SNSでは まわりを消すよ。「家まで約○km」にも使うよ", home ? row("🏠", homeName || "家", "h") : "")
     + sec(`🔒 秘密の場所 ${secrets.length}`, "親せきの家・職場など。SNSでは家と同じように まわりを消すよ", newest(secrets).map(([q, i]) => row("🔒", q.name || "秘密の場所", "s" + i)).join(""))
     + sec(`🚫 通れない ${bo.length}`, "いちばん近い道（12m以内）を ルートに使わないよ", bo.map(([b, i]) => row("🚫", b.name || "通れない", "b" + i)).join(""))
-    + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", b.name || "通りたくない", "b" + i)).join(""));
+    + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", b.name || "通りたくない", "b" + i)).join(""))
+    + sec(`👍 通りたい ${bw.length}`, "いちばん近い道を まるごと通りやすくするよ（広い歩道・気持ちいい道など。どれくらいかは ⚙設定 → 🚲道の好み）", bw.map(([b, i]) => row("👍", b.name || "通りたい", "b" + i)).join(""));
   const obj = k => k === "h" ? null : k[0] === "s" ? secrets[+k.slice(1)] : k[0] === "f" ? favs[+k.slice(1)] : blocks[+k.slice(1)];
   const pos = k => k === "h" ? home : obj(k).p;
   const rename = k => {
@@ -4576,12 +4583,13 @@ function addBlock(ll, r) {
   const d = new Date();
   const b = { p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], r, t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` };
   blocks.push(b); saveBlocks();
-  addrName(b.p).then(n => { if (n) { b.name = n; lsSet(BKEY, blocks); try { spotsTabDraw(); } catch {} } }).catch(() => {});   // 名前は住所 addLog(r === "a" ? `⚠ 通りたくない印をつけたよ。次のルート計算から、その道を避けるよ` : `🚫 通れない印をつけたよ。次のルート計算から通らないよ`, "ok");
+  addrName(b.p).then(n => { if (n) { b.name = n; lsSet(BKEY, blocks); try { spotsTabDraw(); } catch {} } }).catch(() => {});   /* 名前は住所 */
+  addLog(r === "a" ? `⚠ 通りたくない印をつけたよ。次のルート計算から、その道を避けるよ` : r === "w" ? `👍 通りたい印をつけたよ。次のルート計算から、その道を通りやすくするよ` : `🚫 通れない印をつけたよ。次のルート計算から通らないよ`, "ok");
 }
 // URL・QR用にみじかくする：理由1文字＋緯度経度（10万倍の36進数）
 function blkEncode() { return blocks.map(b => b.r + Math.round(b.p[0] * 1e5).toString(36) + "." + Math.round(b.p[1] * 1e5).toString(36)).join("_"); }
 function blkDecode(t) {
-  return t.split("_").map(x => { const m = /^([spxoa])([0-9a-z]+)\.([0-9a-z]+)$/.exec(x); return m && { p: [parseInt(m[2], 36) / 1e5, parseInt(m[3], 36) / 1e5], r: m[1] }; })
+  return t.split("_").map(x => { const m = /^([spxoaw])([0-9a-z]+)\.([0-9a-z]+)$/.exec(x); return m && { p: [parseInt(m[2], 36) / 1e5, parseInt(m[3], 36) / 1e5], r: m[1] }; })
     .filter(b => b && Math.abs(b.p[0]) <= 90 && Math.abs(b.p[1]) <= 180);
 }
 function blkUrl() { return location.origin + location.pathname + "#blk=" + blkEncode(); }
