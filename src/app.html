@@ -1987,7 +1987,7 @@ const FOOT_ROAD = { color: "#ff1744", weight: 16, opacity: 0.45, lineCap: "round
 // ルートと同じ層（overlayPane の SVG）に入れて、いちばん下へ。べつの層だと 地図が動いているあいだ ルートとずれて見えた
 const footLine = (pts, g) => L.polyline(pts, { ...FOOT_ROAD, weight: footW() }).addTo(g).bringToBack();   // 線は1本にまとめて描く（重なっても こくならない・軽い）
 map.on("zoomend", () => { const w = footW(); for (const g of [footLayer, footTodayLayer]) g.eachLayer(l => l.setStyle && l.setStyle({ weight: w })); });
-let footPi = lsGet("hosomichi_footPi", true) !== false;   // 🔔 新しく塗れたら「ピッ」
+let footPi = lsGet("hosomichi_footPi", true) !== false, footPiVol = +lsGet("hosomichi_footPiVol", 0.3);   // 🔔 新しく塗れたら「ピッ」
 const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
 // 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
 // 🧪ためし（4つ目が1）と、時速60kmより速い所（前のためし走行・GPSが飛んだ所）は入れない
@@ -2042,7 +2042,8 @@ function pi() {
   try {
     audioUnlock(); if (!actx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
     o.type = "sine"; o.frequency.value = 2093; o.connect(g); g.connect(actx.destination);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    const v = Math.max(0.0002, footPiVol);   // 🔊 音の大きさ（👣足あと の画面で決める）
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
     o.start(t); o.stop(t + 0.14);
   } catch {}
 }
@@ -2091,11 +2092,13 @@ async function footTab() {
       ${footStat.first ? `<div class="trkN"><small>記録のはじめ</small><b>${footStat.first.replace(/-/g, "/")}</b></div>` : ""}
     </div>
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:4px 0"><input type="checkbox" id="footPi" ${footPi ? "checked" : ""}>🔔 走っていて 新しく塗れたら「ピッ」</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:2px 0 6px 26px">🔈<input type="range" id="footPiVol" min="0.02" max="1" step="0.02" value="${footPiVol}" style="flex:1">🔊</label>
     ${footDbg ? '<div style="font-size:11px;color:#c5221f;margin:2px 0">🧪 いまは ためし走行も入れているよ（🛠デバッグ → ツール で切りかえ）</div>' : ""}
     <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
     <div style="font-size:11px;color:#888;line-height:1.6">今まで走った所（🗓過去＋今日）を道にあてはめて、塗れた道をメインの地図に<b style="color:#ff1744">赤</b>で出すよ。道の6割（短い道は少しでも）を通ったら塗れるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
   $("footOn").onchange = e => footSet(e.target.checked);
+  $("footPiVol").onchange = e => { footPiVol = +e.target.value; lsSet("hosomichi_footPiVol", footPiVol); audioUnlock(); pi(); };   // はなしたら 1回鳴らして聞かせる
   $("footPi").onchange = e => { footPi = e.target.checked; lsSet("hosomichi_footPi", footPi); if (footPi) { audioUnlock(); pi(); } };
   $("footFit").onclick = async () => {
     const all = Object.values(await footSegsAll(() => {})).filter(v => v.length >= 7);
