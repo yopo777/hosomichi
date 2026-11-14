@@ -183,7 +183,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1509</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1511</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ ✏ 新しく作る -->
@@ -4496,6 +4496,8 @@ const ISSUES = [
     "見つけたら、地図を長おし →「🚫 通れない」をつけてね。OpenStreetMap に階段（highway=steps）と書きたせば、みんなのルートからも消えるよ"],
   ["🔄 データの共有ができない", "お気に入り・家・秘密の場所・印・設定・軌跡は、ぜんぶ この端末の中だけ。スマホを変えたり、パソコンで同じデータを使ったりできないよ。",
     "いまはスマホだけで使う。あとで「軌跡いがいを まるごと書き出し・読みこみ」を作るかも"],
+  ["↩ リルートがいまいち", "ルートから外れたときのリルートは、ルートの「400m先」にもどる道を探すよ。だから、近くにもどれる所があっても遠回りになったり、もどり先がへんな所になったりするの。",
+    "いまは地図を見て自分でもどる。直すなら「いちばん近いルート上の点＋100m先」にもどるようにする案があるよ"],
 ];
 function dbgIssueDraw() {
   $("dbgIssue").innerHTML = '<div style="font-size:12px;color:#666;margin:2px 0 6px">わかっている問題だよ。直せたら ここから消すね</div>'
