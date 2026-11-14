@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0029</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0037</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -220,7 +220,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="qList"></div>
     </div>
     <div id="tabCfg" style="display:none">
-      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 ナビ</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="data">📦 データ・その他</button></div>
+      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 音声</button><button data-s="power">🔋 節電</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="data">📦 データ・その他</button></div>
     <div id="tabSpot" class="spane" data-s="spot">
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
@@ -253,9 +253,10 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div style="font-size:11px;color:#666;margin:2px 0 4px">右の印：<span class="pw u">⚡大・中・小</span>＝電池を使う量　<span class="pw s">🔋節電 大・中・小</span>＝電池の節約になる量（いちばん効くのは画面の明るさ・GPS・地図の描きなおし）</div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>〰 接近音（ウィーン）</b><span class="pw u">⚡小</span>
+        <div style="margin-top:4px">音：<select id="evKind" style="padding:4px;border:1px solid #ccc;border-radius:8px"></select></div>
         <div style="font-size:11px;color:#666;margin-top:2px">EVみたいに、走っているあいだ「ウィーン」と小さく鳴らして、歩いている人に気づいてもらうよ。速さに合わせて音が高くなるよ。止まると消えるよ。オン・オフは右はしの〰ボタン。<b>ベルのかわりにはならないから、ベルははずさないでね</b>。画面を消すと止まることがあるよ（⬛暗くするなら鳴りつづけるよ）</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:4px">🔈<input type="range" id="evVol" min="0.02" max="1" step="0.02" style="flex:1">🔊</label>
-        <div class="btns" style="margin-top:4px"><button class="ib" id="evTest" style="font-size:12px">🔊 ためしに聞く（時速5→25km）</button></div>
+        <div class="btns" style="margin-top:4px"><button class="ib" id="evTest" style="font-size:12px">🔊 ためしに聞く（時速5→30km→止まる）</button></div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="vcOn">🗣 音声で案内（ナビ中）<span class="pw u">⚡小</span></label>
@@ -274,6 +275,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">道なりで、曲がる所が近くないときだけ。「現在地は、〇〇市〇〇三丁目です」と言うよ</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="jihoOn">🕐 30分ごとに時刻を言う（時報）<span class="pw u">⚡小</span></label>
       </div>
+      </div>
+      <div class="spane" data-s="power">
+      <div style="font-size:11px;color:#666;margin:2px 0 4px">右の印：<span class="pw u">⚡大・中・小</span>＝電池を使う量　<span class="pw s">🔋節電 大・中・小</span>＝電池の節約になる量（いちばん効くのは画面の明るさ・GPS・地図の描きなおし）</div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <div style="font-weight:bold">⭕ ナビ中は自分のまわりだけ表示する<span class="pw s">🔋節電中</span></div>
         <div id="ringLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="ringLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="ringLv" value="1"> 小さい丸</label><label><input type="radio" name="ringLv" value="2"> もっと小さい丸</label></div>
@@ -3802,24 +3806,48 @@ function pi() {
 let footPiT = 0;
 // ---- 〰 接近音（EV みたいな「ウィーン」）：走っているあいだ ずっと小さく鳴らす。速さで音が高くなる・止まると消える ----
 let evOn = !!lsGet("hosomichi_ev", false), evVol = +lsGet("hosomichi_evVol", 0.25), evN = null, evLast = null, evSp = 0, evT = 0;
-function evNodes() {   // 近未来っぽい和音：三角波（もと）＋サイン5度上＋サイン1オクターブ上（少しずらしてコーラス）→ やわらかく → 音量
+// 音の種類（10こ）。w：[波の形, 何倍の高さ, 大きさ]…・f：止まりぎわ〜時速36km の高さ(Hz)・lp：こもらせ具合（基本Hz, 高さに対する倍）
+// vib：ゆらぎ [速さHz, 深さ（高さに対する割合）]・trem：音量のゆれ [速さ, 深さ]・nz：風の音 [大きさ, 帯域の基本Hz, 高さに対する倍, Q]・v：全体の大きさ
+const EV_KINDS = {
+  hybrid: { n: "ハイブリッド（静かなフィーン）", w: [["sine", 1, 0.7], ["sine", 2.005, 0.12], ["triangle", 0.5, 0.08]], f: [520, 1150], lp: [1200, 1.6], vib: [4, 0.003], trem: [0.3, 0.06], nz: [0.05, 600, 2, 6], v: 0.8 },
+  future: { n: "近未来（キラキラ和音）", w: [["triangle", 1, 0.55], ["sine", 1.5, 0.3], ["sine", 2.004, 0.22], ["sine", 1.996, 0.22], ["sine", 3, 0.06]], f: [190, 520], lp: [1600, 3], vib: [0, 0], trem: [0.35, 0.12], v: 1 },
+  ev: { n: "EV（やわらかいウーン）", w: [["sine", 1, 0.6], ["sine", 1.5, 0.18], ["sine", 2, 0.12]], f: [260, 620], lp: [900, 2], vib: [0.5, 0.004], trem: [0.25, 0.08], nz: [0.03, 400, 1.5, 3], v: 1 },
+  inverter: { n: "インバーター（電車っぽい）", w: [["square", 1, 0.25], ["sawtooth", 2, 0.1]], f: [300, 900], lp: [700, 1.2], vib: [0, 0], trem: [0, 0], v: 1.8 },
+  turbine: { n: "タービン（シュイーン）", w: [["sine", 1, 0.4], ["sine", 3.01, 0.12]], f: [700, 1600], lp: [2500, 1.5], vib: [7, 0.002], trem: [0, 0], nz: [0.35, 900, 1.6, 4], v: 1.3 },
+  ufo: { n: "UFO（ゆらゆら）", w: [["sine", 1, 0.5], ["sine", 1.01, 0.5]], f: [300, 700], lp: [1500, 2], vib: [5, 0.04], trem: [0, 0], v: 0.8 },
+  hum: { n: "ハミング（低いブーン）", w: [["triangle", 1, 0.7], ["sine", 2, 0.2]], f: [110, 230], lp: [500, 2], vib: [0, 0], trem: [3, 0.15], v: 1.3 },
+  wind: { n: "風（サーッ）", w: [], f: [400, 1400], lp: [6000, 0], vib: [0, 0], trem: [0.2, 0.15], nz: [1, 500, 1.2, 1.2], v: 2.4 },
+  chord: { n: "やさしい和音（ドミソ）", w: [["sine", 1, 0.4], ["sine", 1.26, 0.3], ["sine", 1.5, 0.3], ["sine", 2, 0.1]], f: [330, 660], lp: [2000, 1.5], vib: [0, 0], trem: [0.5, 0.1], v: 0.9 },
+  glass: { n: "ガラス（キーン）", w: [["sine", 1, 0.5], ["sine", 2.76, 0.15], ["sine", 5.4, 0.05]], f: [900, 1800], lp: [5000, 1], vib: [6, 0.002], trem: [0, 0], v: 0.9 },
+};
+let evKind = EV_KINDS[lsGet("hosomichi_evKind", "hybrid")] ? lsGet("hosomichi_evKind", "hybrid") : "hybrid";
+function evNodes() {
   if (evN || !actx) return evN;
-  const g = actx.createGain(), f = actx.createBiquadFilter(), mix = actx.createGain();
-  g.gain.value = 0; f.type = "lowpass"; f.frequency.value = 2400; f.Q.value = 0.8;
-  const osc = (type, k, v) => { const o = actx.createOscillator(), og = actx.createGain(); o.type = type; o.frequency.value = 220 * k; og.gain.value = v; o.connect(og); og.connect(mix); o.start(); return [o, k]; };
-  const os = [osc("triangle", 1, 0.55), osc("sine", 1.5, 0.3), osc("sine", 2.004, 0.22), osc("sine", 1.996, 0.22), osc("sine", 3, 0.06)];
-  const lfo = actx.createOscillator(), lg = actx.createGain(); lfo.frequency.value = 0.35; lg.gain.value = 0.12;   // ゆっくり ふくらんだり しぼんだり
-  const amp = actx.createGain(); amp.gain.value = 0.88; lfo.connect(lg); lg.connect(amp.gain); lfo.start();
-  mix.gain.value = 1; mix.connect(amp); amp.connect(f); f.connect(g); g.connect(actx.destination);
-  return evN = { g, f, os };
+  const K = EV_KINDS[evKind], g = actx.createGain(), f = actx.createBiquadFilter(), mix = actx.createGain(), amp = actx.createGain(), stops = [];
+  g.gain.value = 0; f.type = "lowpass"; f.frequency.value = K.lp[0]; f.Q.value = 0.8;
+  const vib = actx.createOscillator(), vg = actx.createGain(); vib.frequency.value = K.vib[0] || 1; vg.gain.value = 0; vib.connect(vg); vib.start(); stops.push(vib);
+  const os = K.w.map(([type, k, v]) => { const o = actx.createOscillator(), og = actx.createGain(); o.type = type; o.frequency.value = K.f[0] * k; og.gain.value = v; o.connect(og); og.connect(mix); vg.connect(o.frequency); o.start(); stops.push(o); return [o, k]; });
+  let nzf = null;
+  if (K.nz) {   // 風の音（白いノイズを帯域で しぼる）
+    const b = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = actx.createBufferSource(), ng = actx.createGain(); src.buffer = b; src.loop = true; nzf = actx.createBiquadFilter(); nzf.type = "bandpass"; nzf.Q.value = K.nz[3]; ng.gain.value = K.nz[0];
+    src.connect(nzf); nzf.connect(ng); ng.connect(mix); src.start(); stops.push(src);
+  }
+  amp.gain.value = 1 - K.trem[1];
+  if (K.trem[1]) { const l = actx.createOscillator(), lg = actx.createGain(); l.frequency.value = K.trem[0]; lg.gain.value = K.trem[1]; l.connect(lg); lg.connect(amp.gain); l.start(); stops.push(l); }
+  mix.connect(amp); amp.connect(f); f.connect(g); g.connect(actx.destination);
+  return evN = { g, f, os, vg, nzf, K, stops };
 }
-function evSet(sp) {   // sp：m/秒。音の高さ 止まりぎわ≒190Hz → 時速36km 以上≒520Hz（和音ごと上がる）
+function evKill() { if (!evN) return; const n = evN; evN = null; try { n.g.gain.setTargetAtTime(0, actx.currentTime, 0.05); } catch {} setTimeout(() => { for (const o of n.stops) try { o.stop(); } catch {} try { n.g.disconnect(); } catch {} }, 300); }
+function evSet(sp) {   // sp：m/秒。止まりぎわ → 時速36km 以上で、音の高さが f[0] → f[1]
   if (!evOn) return;
   audioUnlock(); const n = evNodes(); if (!n) return;
-  const t = actx.currentTime, run = sp > 0.8, fq = 190 + Math.min(sp, 10) * 33;
+  const K = n.K, t = actx.currentTime, run = sp > 0.8, fq = K.f[0] + (K.f[1] - K.f[0]) * Math.min(sp, 10) / 10;
   for (const [o, k] of n.os) o.frequency.setTargetAtTime(fq * k, t, 0.5);
-  n.f.frequency.setTargetAtTime(1600 + fq * 3, t, 0.5);
-  n.g.gain.setTargetAtTime(run ? evVol * 0.3 : 0, t, run ? 0.4 : 0.6);   // 止まったら スッと消える
+  n.vg.gain.setTargetAtTime(fq * K.vib[1], t, 0.5);
+  n.f.frequency.setTargetAtTime(K.lp[0] + fq * K.lp[1], t, 0.5);
+  if (n.nzf) n.nzf.frequency.setTargetAtTime(K.nz[1] + fq * K.nz[2], t, 0.5);
+  n.g.gain.setTargetAtTime(run ? evVol * 0.3 * K.v : 0, t, run ? 0.4 : 0.6);   // 止まったら スッと消える
 }
 function evPos(ll, gsp) {   // GPS（ためしもふくむ）が来るたび
   if (!evOn) return;
@@ -3967,10 +3995,12 @@ function ftBtn() { $("ft").classList.toggle("off", !footOn); $("ftL").textConten
 ftBtn(); evBtn();
 $("ev").onclick = () => evToggle(!evOn);
 $("evVol").value = evVol;
+$("evKind").innerHTML = Object.entries(EV_KINDS).map(([k, K]) => `<option value="${k}"${k === evKind ? " selected" : ""}>${K.n}</option>`).join("");
+$("evKind").onchange = e => { evKind = e.target.value; lsSet("hosomichi_evKind", evKind); evKill(); if (evOn) evSet(Date.now() - evT < 4000 ? evSp : 0); $("evTest").onclick(); };
 $("evVol").oninput = e => { evVol = +e.target.value; lsSet("hosomichi_evVol", evVol); if (evOn) evSet(evSp); };
 $("evTest").onclick = () => {   // 時速5km → 25km → 止まる を3秒で
-  audioUnlock(); const was = evOn; evOn = true; evNodes(); let k = 0;
-  const T = setInterval(() => { k++; evSet(k < 12 ? 1.4 + k * 0.5 : 0); if (k > 16) { clearInterval(T); evOn = was; if (!was && evN) evN.g.gain.setTargetAtTime(0, actx.currentTime, 0.2); } }, 250);
+  audioUnlock(); const was = evOn; evOn = true; evNodes(); let k = 0; clearInterval(window.evTestT);
+  const T = window.evTestT = setInterval(() => { k++; evSet(k < 18 ? 1.4 + k * 0.4 : 0); if (k > 24) { clearInterval(T); evOn = was; if (!was && evN) evN.g.gain.setTargetAtTime(0, actx.currentTime, 0.2); } }, 250);
 };
 $("ft").onclick = () => { footSet(!footOn); if ($("footOn")) $("footOn").checked = footOn; };
 $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす（デバッグ用。ナビはそのまま動く）
