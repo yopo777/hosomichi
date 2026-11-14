@@ -2131,9 +2131,9 @@ async function trkPast() {
   $("histDel").onclick = async () => {   // うっかり消さないように、何日分か見せて2回きく（今日の分は消さない）
     const n = await histCount();
     if (!n) return alert("過去の記録はまだないよ");
-    if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
+    if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？（🎨足あと・市ごとの塗りも消えるよ）\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
     if (!confirm("ほんとうに ぜんぶ消していい？")) return;
-    try { await histClear(); addLog(`🗑 過去の記録 ${n}日分を消したよ`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
+    try { await histClear(); await footKv("segs2", {}); await footKv("done2", {}); footRuns = null; footStat = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（🎨足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
     trkPast();
   };
   $("calPrev").onclick = () => { trkYM = m ? [y, m - 1] : [y - 1, 11]; trkPast(); };
