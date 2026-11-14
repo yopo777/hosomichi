@@ -1770,9 +1770,10 @@ async function snsData() {
     .filter((q, i, A) => !A.slice(0, i).some(o => o.name.includes(q.name) || q.name.includes(o.name)));   // 地図の印も、同じ所は1つ
   const sub = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${wd})`;
   return { runs, stops: here && snsTrail ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: (snsCm.trim() ? snsCm.trim() + "\n\n" : "") + L.join("\n"), sub, none: !useRide, link, here, dir,
-    big: "", test: snsTest };   // 地図の大きい文字（サイクリング完了など）は出さない：どこがスタートでどこが終わりかは決めないアプリなので   // 走り終わったら地図に大きく
+    big: "", test: snsTest,
+    km: useRide ? (k => k < 10 ? "10km未満" : `約${Math.round(k / 10) * 10}km`)(trkStats(ride.pts).dist / 1000) : "" };   // 走った距離は ざっくり（10km単位）：ちょうどだと、消した長さから家までの距離がわかるので   // 地図の大きい文字（サイクリング完了など）は出さない：どこがスタートでどこが終わりかは決めないアプリなので   // 走り終わったら地図に大きく
 }
-async function snsImage({ runs, stops, sub, here, dir, big, pins, test }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所＋写真
+async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所＋写真
   pins = pins || [];
   const W = 1200, H = 1200, PAD = 140, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p));
   // 画像は2倍（2400×2400）で作る：描くのは 1200 のつもりで、地図は1つ細かいズームのタイルを半分の大きさで並べる（くっきり・写真も大きく見られる）
@@ -1860,7 +1861,8 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test }) {   //
     g.fillText("🧪 テスト（家のまわりも出ています）", W / 2, 56); g.restore();
   }
   g.fillStyle = "#ffffffe8"; g.fillRect(0, H - 120, W, 120);
-  g.fillStyle = "#222"; g.font = "bold 40px sans-serif"; g.textBaseline = "middle"; g.fillText("🚲 " + sub, 30, H - 66);
+  g.fillStyle = "#222"; g.font = "bold 38px sans-serif"; g.textBaseline = "middle"; g.fillText("🚲 " + sub, 30, km ? H - 84 : H - 66);
+  if (km) { g.font = "bold 30px sans-serif"; g.fillStyle = "#d93025"; g.fillText("走った距離 " + km, 34, H - 38); }   // 2行目
   g.font = "26px sans-serif"; g.fillStyle = "#666"; g.textAlign = "right"; g.fillText("ほそみちナビ", W - 30, H - 84); g.font = "20px sans-serif"; g.fillText(snsImage.attr || "", W - 30, H - 44); g.textAlign = "left";
   return new Promise(ok => { try { cv.toBlob(b => ok(b), "image/jpeg", 0.92); } catch { ok(null); } });
 }
