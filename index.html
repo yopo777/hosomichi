@@ -182,7 +182,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.0949</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1000</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
@@ -278,8 +278,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div id="blkBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
       <b>🚫 通りたくない地点 <span id="blkN">0</span></b>
       <div style="font-size:11px;color:#666;margin-top:2px">地図を長おし（パソコンは右クリック）→「🚫 通れない」か「⚠ 通りたくない」でつけるよ。🚫はいちばん近い道を通らない、⚠はその道まるごとを、上の「通りたくない地点」の倍率で避けるよ（車が多い・坂が急など）。この端末の中だけに保存</div>
-      <div class="btns" style="margin-top:6px"><button class="ib" id="blkQr" style="font-size:12px">📷 QRでほかの端末にうつす</button><button class="ib" id="blkCopy" style="font-size:12px">🔗 URLをコピー</button><button class="ib" id="blkShare" style="font-size:12px">📤 共有…</button></div>
-      <div style="font-size:11px;color:#666;margin-top:2px">スマホ→パソコンは「📤 共有…」→「デバイスに送信」（Chrome）や自分あてのLINE・メールで。読みこむと今の印に足すよ（消した印は消えないよ）</div>
       <div id="blkList" style="max-height:30vh;overflow-y:auto;margin-top:6px;border:1px solid #eee;border-radius:8px"></div>
       <div class="btns" style="margin-top:4px"><button class="ib" id="blkShow" style="font-size:12px">🗺 印を全部見る</button><button class="ib" id="blkDel" style="font-size:12px">🗑 全部消す</button></div>
     </div>
@@ -4501,30 +4499,6 @@ function blkDecode(t) {
     .filter(b => b && Math.abs(b.p[0]) <= 90 && Math.abs(b.p[1]) <= 180);
 }
 function blkUrl() { return location.origin + location.pathname + "#blk=" + blkEncode(); }
-$("blkCopy").onclick = async () => {
-  if (!blocks.length) return alert("まだ印がないよ");
-  if (!confirm("このURLには印の場所が全部入ってるよ。家のまわりの印もあるかもしれないから、自分の端末にうつすときだけ使ってね。コピーする？")) return;
-  try { await navigator.clipboard.writeText(blkUrl()); alert("コピーしたよ。ほかの端末で開いてね"); } catch { prompt("このURLをコピーしてね", blkUrl()); }
-};
-$("blkShare").onclick = async () => {   // スマホの共有メニュー（Chromeの「デバイスに送信」・LINE・メールなど）でほかの端末へ
-  if (!blocks.length) return alert("まだ印がないよ");
-  if (!navigator.share) return $("blkCopy").click();
-  if (!confirm("このURLには印の場所が全部入ってるよ。家のまわりの印もあるかもしれないから、自分の端末にうつすときだけ使ってね。共有する？")) return;
-  navigator.share({ title: `🚫 通れない印 ${blocks.length}個`, url: blkUrl() }).catch(() => {});
-};
-$("blkQr").onclick = async () => {
-  if (!blocks.length) return alert("まだ印がないよ");
-  const box = $("qr"); box.style.display = "block"; box.innerHTML = "QRを作っています…";
-  try {
-    await loadQrLib();
-    const url = blkUrl();
-    if (url.length > 2900) { box.innerHTML = '<span style="color:#c00">印が多すぎてQRに入らないよ。URLをコピーして送ってね</span><br><button class="ib" data-q="x">✕ とじる</button>'; return; }
-    const qr = qrcode(0, "L"); qr.addData(url, "Byte"); qr.make();
-    const size = Math.floor(Math.min(window.innerWidth - 24, window.innerHeight - 130));
-    box.innerHTML = `<div class="btns" style="margin:0 auto 8px;max-width:420px;display:flex;gap:6px"><button class="ib" data-q="x" style="flex:1">✕ とじる</button></div>` + qrSvg(qr, size)
-      + `<div style="font-size:13px;color:#666;margin-top:6px">🚫 通れない印 ${blocks.length}個。うつしたい端末のカメラで読みとってね<br>（家のまわりの印も入ってるから、人には見せないでね）</div>`;
-  } catch (e) { box.innerHTML = `<span style="color:#c00">${e.message}</span>`; }
-};
 $("blkShow").onclick = () => {
   if (!blocks.length) return alert("まだ印がないよ");
   map.fitBounds(L.latLngBounds(blocks.map(b => b.p)), { padding: [40, 40], maxZoom: 17 });
