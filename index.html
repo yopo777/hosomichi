@@ -69,7 +69,10 @@ html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-a
 #cfgBox .note{font-size:11px;color:#888}
 #prog{margin-top:8px;display:none}
 #geoAsk{position:fixed;inset:0;z-index:6000;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px}#geoAsk .box{background:#fff;border-radius:14px;padding:16px;max-width:420px;font-size:13px;box-shadow:0 6px 24px #0005}#geoAsk button{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#geoAsk button.big{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold;font-size:15px}
-#snsBox{padding:2px 0}.trkN{flex:1;min-width:90px;border:1px solid #eee;border-radius:10px;padding:6px 8px}.trkN small{display:block;color:#888;font-size:11px}.trkN b{font-size:16px}#snsBox .box{background:#fff;max-width:520px;margin:0 auto;font-size:13px}   /* 📣 SNSタブの中 */
+#snsBox{padding:2px 0}.ttabs{display:flex;gap:4px;margin:2px 0 8px}.ttabs button{flex:1;padding:6px 0;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:13px}.ttabs button.on{background:#e8f0fe;border-color:#1a73e8;color:#1a73e8;font-weight:bold}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.calW{text-align:center;font-size:11px}.calD{border:1px solid #eee;border-radius:6px;min-height:42px;padding:2px;text-align:center;font-size:12px;color:#aaa}.calD b{display:block;font-weight:normal}
+.calD.has{color:#222;background:#fff3f4;border-color:#f3b4bd;cursor:pointer}.calD.has small{display:block;color:#d93025;font-weight:bold;font-size:10px}.calD.today{outline:2px solid #1a73e8}
+.trkN{flex:1;min-width:90px;border:1px solid #eee;border-radius:10px;padding:6px 8px}.trkN small{display:block;color:#888;font-size:11px}.trkN b{font-size:16px}#snsBox .box{background:#fff;max-width:520px;margin:0 auto;font-size:13px}   /* 📣 SNSタブの中 */
 #snsBox img{width:100%;border-radius:8px;border:1px solid #ddd;display:block}#snsBox textarea{width:100%;box-sizing:border-box;height:150px;font-size:14px;margin-top:8px;border:1px solid #ccc;border-radius:8px;padding:8px}
 #snsBox .ph{display:flex;gap:6px;margin-top:6px}#snsBox .ph img{width:80px;height:80px;object-fit:cover}
 #snsBox button{padding:9px 12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#snsBox .go{background:#1d9bf0;border-color:#1d9bf0;color:#fff;font-weight:bold}
@@ -179,7 +182,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.0919</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.0931</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="quest"><span class="ti">🏁</span><span class="tl">クエスト</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
@@ -3572,17 +3575,85 @@ const trkLayer = L.layerGroup().addTo(map);
 // 軌跡タブを開いているあいだ、X分ごとに作りなおす（記録がふえていたときだけ・SNSの画面やたたんでいるときはしない）
 let trkInt = +lsGet("hosomichi_trkint", 1), trkAt = 0, trkN = -1;
 setInterval(() => {
-  if (!trkInt || $("tabTrk").style.display === "none" || $("snsBox") || $("panel").classList.contains("min") || document.hidden) return;
+  if (!trkInt || $("tabTrk").style.display === "none" || trkV !== "today" || $("panel").classList.contains("min") || document.hidden) return;
   if (Date.now() - trkAt < trkInt * 60e3 || !ride || ride.pts.length === trkN) return;
-  trkOpen();
+  trkDay(ride, true);
 }, 15000);
-async function trkOpen() {
-  const T = $("tabTrk"); trkLayer.clearLayers();
+// 🛤 軌跡タブ：中に 📅今日・📣SNS・🗓過去 の小さいタブ
+let trkV = "today";
+function trkOpen(v) {
+  if (v) trkV = v;
+  const T = $("tabTrk");
+  if (!$("trkBody")) T.innerHTML = `<div class="ttabs" id="ttabs"><button data-v="today">📅 今日</button><button data-v="sns">📣 SNS</button><button data-v="past">🗓 過去</button></div><div id="trkBody"></div>`;
+  for (const b of T.querySelectorAll("#ttabs button")) { b.classList.toggle("on", b.dataset.v === trkV); b.onclick = () => { snsTest = false; trkOpen(b.dataset.v); }; }
+  if (ride && ride.pts.length > 1 && dayOf(ride.t0) !== dayOf(Date.now())) histPut(ride);   // 0時をすぎて まだ新しくなっていない前の日の分も、過去に入れておく
+  if (trkV === "sns") return snsOpen();
+  if (trkV === "past") return trkPast();
+  return trkDay(ride && dayOf(ride.t0) === dayOf(Date.now()) ? ride : null, true);
+}
+// 走ったきょり・走っていた時間（止まっていた・記録がない時間はのぞく）
+function trkStats(P) {
+  let dist = 0, move = 0;
+  for (let i = 1; i < P.length; i++) { const d = hav(P[i - 1], P[i]), dt = P[i][2] - P[i - 1][2]; if (dt < 5 * 60e3) { dist += d; move += dt; } }
+  return { dist, move };
+}
+// 🗓 過去の記録：1日1件、この端末の IndexedDB に入れておく（日付 "2026-11-13" がかぎ）
+const dkey = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+let histDB = null;
+function histOpen() {
+  if (!histDB) histDB = new Promise((ok, ng) => { const r = indexedDB.open("hosomichi_hist", 1); r.onupgradeneeded = () => r.result.createObjectStore("days", { keyPath: "d" }); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); });
+  return histDB;
+}
+async function histPut(R) {
+  try {
+    if (!R || R.pts.length < 2) return;
+    const { dist, move } = trkStats(R.pts), db = await histOpen();
+    await new Promise((ok, ng) => { const tx = db.transaction("days", "readwrite"); tx.objectStore("days").put({ d: dkey(R.t0), t0: R.t0, pts: R.pts, ev: R.ev || [], dist, move }); tx.oncomplete = ok; tx.onerror = () => ng(tx.error); });
+  } catch (e) { addLog("過去の記録を保存できなかったよ: " + e, "warn"); }
+}
+async function histGet(d) { try { const db = await histOpen(); return await new Promise(ok => { const r = db.transaction("days").objectStore("days").get(d); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); }); } catch { return null; } }
+async function histMonth(ym) {   // その月の日ごとの きょり（中身の点は読まない）
+  try {
+    const db = await histOpen();
+    return await new Promise(ok => { const out = {}, r = db.transaction("days").objectStore("days").openCursor(IDBKeyRange.bound(ym + "-01", ym + "-31")); r.onsuccess = () => { const c = r.result; if (!c) return ok(out); out[c.value.d] = c.value.dist; c.continue(); }; r.onerror = () => ok(out); });
+  } catch { return {}; }
+}
+let trkYM = null;
+async function trkPast() {
+  const T = $("trkBody"); if (!T) return; trkLayer.clearLayers();
+  const now = new Date(); if (!trkYM) trkYM = [now.getFullYear(), now.getMonth()];
+  const [y, m] = trkYM, ym = `${y}-${String(m + 1).padStart(2, "0")}`, days = await histMonth(ym);
+  if (ride && ride.pts.length > 1 && dkey(ride.t0).startsWith(ym)) days[dkey(ride.t0)] = trkStats(ride.pts).dist;   // 今日の分も
+  const first = new Date(y, m, 1).getDay(), n = new Date(y, m + 1, 0).getDate(), today = dkey(Date.now());
+  let total = 0, cnt = 0; for (const k in days) { total += days[k]; cnt++; }
+  let cells = "日月火水木金土".split("").map((w, i) => `<div class="calW" style="color:${i === 0 ? "#d93025" : i === 6 ? "#1a73e8" : "#666"}">${w}</div>`).join("");
+  for (let i = 0; i < first; i++) cells += "<div></div>";
+  for (let d = 1; d <= n; d++) {
+    const k = `${ym}-${String(d).padStart(2, "0")}`, km = days[k];
+    cells += `<div class="calD${km != null ? " has" : ""}${k === today ? " today" : ""}" data-k="${km != null ? k : ""}"><b>${d}</b>${km != null ? `<small>${(km / 1000).toFixed(1)}km</small>` : ""}</div>`;
+  }
+  T.innerHTML = `<div style="font-size:13px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 6px"><button class="ib" id="calPrev">‹ 前の月</button><b style="font-size:15px">${y}年${m + 1}月</b><button class="ib" id="calNext">次の月 ›</button></div>
+    <div class="cal">${cells}</div>
+    <div style="margin-top:8px;font-size:12px">この月：<b>${cnt}日</b>・<b>${fmtKm(total)}</b></div>
+    <div style="font-size:11px;color:#888;margin-top:4px">走った日をタップすると、その日の軌跡が見られるよ。記録は夜0時に今日の分から ここに入るよ（この端末の中だけ）</div></div>`;
+  $("calPrev").onclick = () => { trkYM = m ? [y, m - 1] : [y - 1, 11]; trkPast(); };
+  $("calNext").onclick = () => { trkYM = m < 11 ? [y, m + 1] : [y + 1, 0]; trkPast(); };
+  for (const c of T.querySelectorAll(".calD[data-k]")) if (c.dataset.k) c.onclick = async () => {
+    const k = c.dataset.k;
+    if (ride && dkey(ride.t0) === k && k === today) return trkDay(ride, false);
+    const R = await histGet(k); if (R) trkDay(R, false);
+  };
+}
+// 1日分の軌跡を見る（今日＝ride、過去＝保存した記録）。地図の画像・数字・通った所
+async function trkDay(R, today) {
+  const T = $("trkBody"); if (!T) return; trkLayer.clearLayers();
   const sc = $("trkList") ? $("trkList").scrollTop : 0, oldImg = $("trkImg") && $("trkImg").src;   // 前の地図は、新しいのができるまで出しておく   // 作りなおしても、一覧のスクロールの位置はそのまま
-  trkAt = Date.now(); trkN = ride ? ride.pts.length : -1;
-  const P = ride && dayOf(ride.t0) === dayOf(Date.now()) ? ride.pts : [];
+  if (today) { trkAt = Date.now(); trkN = ride ? ride.pts.length : -1; }
+  const P = R ? R.pts : [];
   if (P.length < 2) {
-    T.innerHTML = `<div style="padding:10px;font-size:13px;color:#666">🛤 今日はまだ走った記録がないよ。◎で現在地を追いかけはじめると、走ったところが記録されるよ（この端末の中だけ・夜0時に新しくなるよ）</div>`;
+    T.innerHTML = `<div class="btns" style="margin:4px 0"><button class="ib" id="trkRe">🔃 更新</button></div><div style="padding:10px;font-size:13px;color:#666">🛤 今日はまだ走った記録がないよ。◎で現在地を追いかけはじめると、走ったところが記録されるよ（この端末の中だけ・夜0時に新しくなって、🗓過去に入るよ）</div>`;
+    $("trkRe").onclick = () => trkDay(ride && dayOf(ride.t0) === dayOf(Date.now()) ? ride : null, true);
     return;
   }
   // 地図の画像（SNSと同じ作りかた。この端末の中だけなので、家のまわりも消さない）。記録が切れている所（アプリを閉じていた所）で線を分ける
@@ -3593,40 +3664,39 @@ async function trkOpen() {
   }
   if (seg.length > 1) runs.push(seg);
   // 数字：走ったきょり・走っていた時間（止まっていた・記録がない時間はのぞく）
-  let dist = 0, move = 0;
-  for (let i = 1; i < P.length; i++) { const d = hav(P[i - 1], P[i]), dt = P[i][2] - P[i - 1][2]; if (dt < 5 * 60e3) { dist += d; move += dt; } }
+  const { dist, move } = trkStats(P), d0 = new Date(R.t0), md = `${d0.getMonth() + 1}/${d0.getDate()}(${"日月火水木金土"[d0.getDay()]})`;
   T.innerHTML = `<div style="font-size:13px;padding:2px 2px 6px">
-    <b style="font-size:15px">🛤 今日の軌跡（${new Date(ride.t0).getMonth() + 1}/${new Date(ride.t0).getDate()}）</b>
+    ${today ? `<div class="btns" style="margin:2px 0 6px"><button class="ib" id="trkRe">🔃 いま更新</button></div>` : `<div class="btns" style="margin:2px 0 6px"><button class="ib" id="trkBack">← カレンダーにもどる</button></div>`}
+    <b style="font-size:15px">🛤 ${today ? "今日" : md}の軌跡${today ? `（${md}）` : ""}</b>
     <div style="display:flex;gap:8px;margin:6px 0;flex-wrap:wrap">
       <div class="trkN"><small>走ったきょり</small><b>${fmtKm(dist)}</b></div>
       <div class="trkN"><small>走っていた時間</small><b>${(m => (m >= 60 ? Math.floor(m / 60) + "時間" : "") + (m % 60) + "分")(Math.round(move / 60e3))}</b></div>
       <div class="trkN"><small>はじめ〜さいご</small><b>${hhmm(P[0][2])}〜${hhmm(P[P.length - 1][2])}</b></div>
     </div>
     ${oldImg ? `<img id="trkImg" src="${oldImg}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="text-align:center;color:#888;padding:30px 0;border:1px solid #eee;border-radius:8px">地図を作っているよ…</div>'}
-    <div class="btns" style="margin-top:6px"><button class="ib" id="trkSns" style="border-color:#1d9bf0;color:#1d9bf0;font-weight:bold">📣 SNSに出す</button><button class="ib" id="trkRe">🔃 いま更新</button></div>
-    <div style="font-size:11px;color:#666;margin-top:4px">自動で更新：<select id="trkInt" style="font-size:11px;padding:2px">${[[0, "しない"], [1, "1分ごと"], [2, "2分ごと"], [5, "5分ごと"], [10, "10分ごと"], [15, "15分ごと"], [30, "30分ごと"]].map(([v, t]) => `<option value="${v}"${v === trkInt ? " selected" : ""}>${t}</option>`).join("")}</select>（このタブを開いているあいだ・走って記録がふえたときだけ）</div>
+    ${today ? `<div style="font-size:11px;color:#666;margin-top:4px">自動で更新：<select id="trkInt" style="font-size:11px;padding:2px">${[[0, "しない"], [1, "1分ごと"], [2, "2分ごと"], [5, "5分ごと"], [10, "10分ごと"], [15, "15分ごと"], [30, "30分ごと"]].map(([v, t]) => `<option value="${v}"${v === trkInt ? " selected" : ""}>${t}</option>`).join("")}</select>（このタブを開いているあいだ・走って記録がふえたときだけ）</div>` : ""}
     <div style="font-weight:bold;margin:10px 0 4px">📍 通った所</div><div id="trkList" style="color:#888;max-height:42vh;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:2px 6px">さがしているよ…</div>
-    <div style="font-size:11px;color:#888;margin-top:8px"><div style="text-align:right;margin-top:6px"><button id="trkReset" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 今日の軌跡をリセット</button></div>
-    この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ。過去の記録の合計は、あとで入れるよ</div></div>`;
-  $("trkSns").onclick = () => snsOpen();
-  $("trkInt").onchange = () => { trkInt = +$("trkInt").value; lsSet("hosomichi_trkint", trkInt); };
-  const d0 = new Date(ride.t0);
-  snsImage({ runs, stops: [], sub: `${d0.getMonth() + 1}/${d0.getDate()}(${"日月火水木金土"[d0.getDay()]})`, here: null, dir: null, big: "", pins: [] })
+    <div style="font-size:11px;color:#888;margin-top:8px">${today ? `<div style="text-align:right;margin-top:6px"><button id="trkReset" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 今日の軌跡をリセット</button></div>` : ""}
+    この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ</div></div>`;
+  if (today) $("trkInt").onchange = () => { trkInt = +$("trkInt").value; lsSet("hosomichi_trkint", trkInt); };
+  snsImage({ runs, stops: [], sub: md, here: null, dir: null, big: "", pins: [] })
     .then(b => { if ($("trkImg")) $("trkImg").outerHTML = b ? `<img id="trkImg" src="${URL.createObjectURL(b)}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; })
     .catch(() => {});
-  $("trkRe").onclick = () => trkOpen();
-  $("trkReset").onclick = () => {   // うっかり消さないように、何を消すか見せて2回きく
-    if (!confirm(`今日の軌跡（${fmtKm(dist)}・記録 ${P.length}点）を消して、ここから新しく記録する？\n消したら元にもどせないよ`)) return;
-    if (!confirm("ほんとうに消していい？")) return;
-    rideNew(); trkOpen();
-  };
+  if (today) {
+    $("trkRe").onclick = () => trkDay(ride, true);
+    $("trkReset").onclick = () => {   // うっかり消さないように、何を消すか見せて2回きく
+      if (!confirm(`今日の軌跡（${fmtKm(dist)}・記録 ${P.length}点）を消して、ここから新しく記録する？\n消したら元にもどせないよ（🗓過去にも入らないよ）`)) return;
+      if (!confirm("ほんとうに消していい？")) return;
+      rideNew(true); trkDay(ride, true);
+    };
+  } else $("trkBack").onclick = () => trkPast();
   // 通った所（経由地・スタンプ・となりを通った名所や施設・駅）と時刻
-  const items = ride.ev.filter(e => e.k === "stop" || e.k === "stamp").map(e => ({ t: e.t, name: e.name }));
+  const items = R.ev.filter(e => e.k === "stop" || e.k === "stamp").map(e => ({ t: e.t, name: e.name }));
   for (const c of await passList(P, () => false).catch(() => [])) items.push({ t: c.t, name: (c.ic ? c.ic + " " : "") + c.name });
   const clean = n => n.replace(/^[^\p{L}\p{N}]+/u, "").trim(), seen = [];
   const list = items.sort((a, b) => a.t - b.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); return true; });
   // 縦にならべる：いちばん上が新しい（さいご）→ 下へいくほど古い（はじめ）
-  const rows = [{ t: P[P.length - 1][2], name: "さいご（いまの記録）", ic: "🏁" }, ...list.slice().reverse(), { t: P[0][2], name: "記録のはじめ", ic: "🚩" }];
+  const rows = [{ t: P[P.length - 1][2], name: today ? "さいご（いまの記録）" : "さいご", ic: "🏁" }, ...list.slice().reverse(), { t: P[0][2], name: "記録のはじめ", ic: "🚩" }];
   if ($("trkList")) $("trkList").innerHTML = rows.map((x, i) => `<div style="display:flex;align-items:stretch;color:#222;min-height:22px;font-size:11px">
       <span style="width:34px;color:#888;font-size:10px;padding-top:4px">${hhmm(x.t)}</span>
       <span style="width:18px;position:relative;flex:none"><i style="position:absolute;left:8px;top:${i ? 0 : 9}px;bottom:${i === rows.length - 1 ? "calc(100% - 9px)" : 0};width:2px;background:#e8384f"></i><i style="position:absolute;left:5px;top:6px;width:8px;height:8px;border-radius:50%;background:${x.ic ? "#e8384f" : "#fff"};border:2px solid #e8384f;box-sizing:border-box"></i></span>
@@ -3635,24 +3705,25 @@ async function trkOpen() {
 }
 async function snsOpen() {
   snsCm = ""; snsTest = false;
-  $("tabTrk").innerHTML = '<div style="color:#888;padding:20px;text-align:center">📣 投稿を作っているよ…</div>';
-  const data = await snsData();
   const box = document.createElement("div"); box.id = "snsBox";
-  box.innerHTML = `<div class="box"><b style="font-size:16px">📣 SNSに出す</b>
+  box.innerHTML = `<div class="box"><b style="font-size:15px">📣 SNSに出す</b> <span style="font-size:11px;color:#666">消しかた・写真を決めてから「🖼 作る」を押してね</span>
     <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地もかならず消すよ。とちゅうで長くいた所は、ただ通りすぎたように見せるよ）。投稿はXなどで自分でしてね</span></div>
     <div id="snsWarn" style="display:none;background:#fde7e9;color:#c5221f;font-weight:bold;font-size:13px;padding:6px 8px;border-radius:8px;margin-bottom:6px">🧪 テスト中：家のまわりも出発地も消していないよ。共有・文やURLのコピーはできないよ（画像の保存だけできるよ。画像にも「テスト」と入るよ。画面をとじるともどるよ）</div>
-    <div id="snsImg" style="text-align:center;color:#888;padding:40px 0">地図を作っているよ…</div>
-    <textarea id="snsCm" placeholder="ひとこと（ここに書くと、入りきらない分は 通った所 を古いほうからけずるよ）" style="width:100%;box-sizing:border-box;height:56px;margin-bottom:4px"></textarea>
-    <textarea id="snsTxt"></textarea><div id="snsLeft" style="font-size:11px;color:#888;text-align:right"></div>
-    <div style="margin-top:6px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
-      <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ</span></div>
+    <div style="margin-top:2px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
+      <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ。撮った所に小さく置くよ</span></div>
     <div class="ph" id="snsPhs"></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button><button id="snsClose">← 軌跡にもどる</button></div>
+    <textarea id="snsCm" placeholder="ひとこと（ここに書くと、入りきらない分は 通った所 を古いほうからけずるよ）" style="width:100%;box-sizing:border-box;height:56px;margin:6px 0 4px"></textarea>
+    <button class="go" id="snsMake" style="width:100%;margin:4px 0 8px">🖼 作る</button>
+    <div id="snsImg" style="text-align:center;color:#888;padding:20px 0;border:1px dashed #ddd;border-radius:8px">ここに画像ができるよ</div>
+    <textarea id="snsTxt" style="margin-top:6px"></textarea><div id="snsLeft" style="font-size:11px;color:#888;text-align:right"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="go" id="snsShare">📤 共有（Xなど）</button><button id="snsSave">⬇ 画像を保存</button><button id="snsCopy">📋 文をコピー</button><button id="snsUrl">🔗 URLだけコピー</button></div>
 </div>`;
-  $("tabTrk").innerHTML = ""; $("tabTrk").appendChild(box);
-  let map0 = null, photos = [], link = data.link;
+  $("trkBody").innerHTML = ""; $("trkBody").appendChild(box);
+  let map0 = null, photos = [], link = "", made = false;
+  const lock = () => { for (const id of ["snsShare", "snsCopy", "snsUrl", "snsSave"]) { const off = !made || (snsTest && id !== "snsSave"); $(id).disabled = off; $(id).style.opacity = off ? .35 : 1; } };   // 作るまでは共有・保存できない。テスト中は保存だけ
+  const stale = () => { if (made) { made = false; $("snsMake").textContent = "🖼 作りなおす"; lock(); } };   // 設定を変えたら作りなおし
   let cmT = null;
-  $("snsCm").oninput = () => { clearTimeout(cmT); cmT = setTimeout(async () => { snsCm = $("snsCm").value; const d = await snsData(); $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); }, 400); };
+  $("snsCm").oninput = () => { clearTimeout(cmT); cmT = setTimeout(async () => { snsCm = $("snsCm").value; if (!made) return; const d = await snsData(); $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); }, 400); };
   $("snsTxt").oninput = () => { $("snsLeft").textContent = xLeft($("snsTxt").value); };
   let lastD = null, pinSrc = [];   // pinSrc：えらんだ写真の { ex, f }
   const pinsFor = async d => (await Promise.all(pinSrc.map(async ({ ex, f }) => {
@@ -3662,7 +3733,7 @@ async function snsOpen() {
   const draw = async d0 => {
     const d = { ...d0, pins: d0.none ? [] : await pinsFor(d0) }; lastD = d0;
     link = d.link;
-    $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); $("snsImg").textContent = "地図を作っているよ…"; map0 = null;
+    $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); $("snsImg").textContent = "地図を作っているよ…"; map0 = null; made = true; $("snsMake").textContent = "🖼 作りなおす"; lock();
     const blob = d.none ? null : await snsImage(d);
     if (blob) { map0 = new File([blob], "hosomichi_" + Date.now() + ".jpg", { type: "image/jpeg" }); $("snsImg").innerHTML = `<img src="${URL.createObjectURL(blob)}">`; }
     else $("snsImg").textContent = d.none ? "まだ走った記録がないよ。◎で走りはじめると、走ったところまでの地図を作れるよ（これから行く所は出さないよ）" : "地図の画像を作れなかったよ（文だけ使えるよ）";
@@ -3673,25 +3744,24 @@ async function snsOpen() {
     const v = +$("snsR2").value; snsTest = v === 0;
     if (!snsTest) snsRSet(v);   // テスト用は保存しない（ほかの画面の長さも変えない）
     r2Opts(); $("snsWarn").style.display = snsTest ? "block" : "none";
-    for (const id of ["snsShare", "snsCopy", "snsUrl"]) { $(id).disabled = snsTest; $(id).style.opacity = snsTest ? .35 : 1; }   // テスト中は共有・コピーできない（画像の保存だけOK）
-    await draw(await snsData());
+    stale(); lock();
   };
-  $("snsTr").value = snsTrail; $("snsTr").onchange = async () => { snsTrail = +$("snsTr").value; lsSet("hosomichi_trail", snsTrail); await draw(await snsData()); };
-  await draw(data);
+  $("snsTr").value = snsTrail; $("snsTr").onchange = () => { snsTrail = +$("snsTr").value; lsSet("hosomichi_trail", snsTrail); stale(); };
+  lock();
+  $("snsMake").onclick = async () => { $("snsMake").disabled = true; try { snsCm = $("snsCm").value; await draw(await snsData()); } finally { $("snsMake").disabled = false; } };
   $("snsPh").onchange = async e => {
     const fs = [...e.target.files].slice(0, 3);
     pinSrc = await Promise.all(fs.map(async f => ({ f, ex: await exifOf(f) })));
     photos = (await Promise.all(fs.map(snsPhoto))).filter(Boolean);
     $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
-    if (lastD) await draw(lastD);   // 地図の画像に写真を置きなおす
+    stale();   // 写真をかえたら作りなおし
   };
-  $("snsClose").onclick = () => { snsTest = false; trkOpen(); };
   $("snsUrl").onclick = async () => { if (snsTest) return; try { await navigator.clipboard.writeText(link); $("snsUrl").textContent = "✅ コピーしたよ"; setTimeout(() => $("snsUrl") && ($("snsUrl").textContent = "🔗 URLだけコピー"), 2000); } catch { prompt("URL", link); } };
   $("snsCopy").onclick = async () => { if (snsTest) return; try { await navigator.clipboard.writeText($("snsTxt").value); $("snsCopy").textContent = "✅ コピーしたよ"; } catch { $("snsTxt").select(); } };
   const save = f => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); };
-  $("snsSave").onclick = () => { if (map0) save(map0); photos.forEach(save); };
+  $("snsSave").onclick = () => { if (!made) return; if (map0) save(map0); photos.forEach(save); };
   $("snsShare").onclick = async () => {
-    if (snsTest) return;   // テスト中は共有できない
+    if (snsTest || !made) return;   // テスト中・作る前は共有できない
     const files = [map0, ...photos].filter(Boolean), text = $("snsTxt").value;
     try {
       if (navigator.canShare && navigator.canShare({ files, text })) { await navigator.share({ files, text }); return; }
@@ -3989,7 +4059,8 @@ let ride = lsGet("hosomichi_ride", null), rideSaveT = 0;
 const RIDE_GAP = 3 * 3600e3;
 // 🚲 走った記録は「その日の分」：夜の0時か、🔄リセットで新しくなる（ルートを作りなおしても、ゴールに着いても切れない）
 const dayOf = t => new Date(t).toDateString();
-function rideNew() {
+function rideNew(discard) {
+  if (!discard && ride && ride.pts.length > 1 && dayOf(ride.t0) !== dayOf(Date.now())) histPut(ride);   // 前の日の分は 🗓過去 へ（🗑リセットのときは入れない）
   ride = { t0: Date.now(), rn: cur ? cur.name || "" : "", pts: [], ev: [], stops: [] }; rideStops(); rideSave(true);
 }
 function rideStops() {   // いまのルートの経由地をたす（同じものは1回）
