@@ -206,7 +206,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="qList"></div>
     </div>
     <div id="tabCfg" style="display:none">
-      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 ナビ</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="data">🗺 データ</button><button data-s="etc">🔒 その他</button></div>
+      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 ナビ</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="data">📦 データ・その他</button></div>
     <div id="tabSpot" class="spane" data-s="spot">
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
@@ -224,15 +224,16 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <input type="file" id="pfFile" style="display:none">
 
     </div>
-    <div id="blkBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-      <b>🚫 通れない <span id="blkN">0</span>個</b>
-      <div style="font-size:11px;color:#666;margin-top:2px">地図を長おし（パソコンは右クリック）→「🚫 通れない」か「⚠ 通りたくない」でつけるよ。🚫はいちばん近い道を通らない、⚠はその道まるごとを ×5 で避けるよ（車が多い・坂が急など）。この端末の中だけに保存</div>
-      <div class="btns" style="margin-top:6px"><button class="ib" id="blkQr" style="font-size:12px">📷 QRでほかの端末にうつす</button><button class="ib" id="blkCopy" style="font-size:12px">🔗 URLをコピー</button><button class="ib" id="blkShare" style="font-size:12px">📤 共有…</button></div>
-      <div style="font-size:11px;color:#666;margin-top:2px">スマホ→パソコンは「📤 共有…」→「デバイスに送信」（Chrome）や自分あてのLINE・メールで。読みこむと今の印に足すよ（消した印は消えないよ）</div>
-      <div class="btns" style="margin-top:4px"><button class="ib" id="blkShow" style="font-size:12px">🗺 印を全部見る</button><button class="ib" id="blkDel" style="font-size:12px">🗑 全部消す</button></div>
-    </div>
     <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
+      <div style="margin-top:10px;padding:8px;border-radius:8px;background:#e8f0fe;font-size:12px;line-height:1.6">
+        <b>🔒 データについて</b><br>
+        🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、<b>この端末の中だけ</b>に保存していて、どこにも送らないよ。<br>
+        ただし、地図の画像・道路データ・住所や地名をさがすときは、見ている場所や入れた地名を、それぞれの地図サービス（OpenStreetMap・国土地理院など）に問い合わせるよ。
+        アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>
+        共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。
+      </div>
+      <div class="note" style="margin-top:8px">🏠 家・🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）して決めるよ</div>
     </div>
       <div class="spane" data-s="navi">
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -274,21 +275,19 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div class="spane" data-s="road">
       <div id="cfgBox"></div>
       <div class="btns" style="margin-top:8px"><button class="ib" id="cfgReset">はじめの設定にもどす</button></div>
-      </div>
-      <div class="spane" data-s="etc">
-      <div style="margin-top:10px;padding:8px;border-radius:8px;background:#e8f0fe;font-size:12px;line-height:1.6">
-        <b>🔒 データについて</b><br>
-        🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、<b>この端末の中だけ</b>に保存していて、どこにも送らないよ。<br>
-        ただし、地図の画像・道路データ・住所や地名をさがすときは、見ている場所や入れた地名を、それぞれの地図サービス（OpenStreetMap・国土地理院など）に問い合わせるよ。
-        アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>
-        共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。
-      </div>
-      <div class="btns" style="margin-top:8px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
-      <div class="note" style="margin-top:8px">🏠 家・🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）して決めるよ</div>
+    <div id="blkBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+      <b>🚫 通りたくない地点 <span id="blkN">0</span></b>
+      <div style="font-size:11px;color:#666;margin-top:2px">地図を長おし（パソコンは右クリック）→「🚫 通れない」か「⚠ 通りたくない」でつけるよ。🚫はいちばん近い道を通らない、⚠はその道まるごとを ×5 で避けるよ（車が多い・坂が急など）。この端末の中だけに保存</div>
+      <div class="btns" style="margin-top:6px"><button class="ib" id="blkQr" style="font-size:12px">📷 QRでほかの端末にうつす</button><button class="ib" id="blkCopy" style="font-size:12px">🔗 URLをコピー</button><button class="ib" id="blkShare" style="font-size:12px">📤 共有…</button></div>
+      <div style="font-size:11px;color:#666;margin-top:2px">スマホ→パソコンは「📤 共有…」→「デバイスに送信」（Chrome）や自分あてのLINE・メールで。読みこむと今の印に足すよ（消した印は消えないよ）</div>
+      <div id="blkList" style="max-height:30vh;overflow-y:auto;margin-top:6px;border:1px solid #eee;border-radius:8px"></div>
+      <div class="btns" style="margin-top:4px"><button class="ib" id="blkShow" style="font-size:12px">🗺 印を全部見る</button><button class="ib" id="blkDel" style="font-size:12px">🗑 全部消す</button></div>
+    </div>
       </div>
     </div>
     <div id="tabTrk" style="display:none"></div>
     <div id="tabLog" style="display:none">
+      <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
       <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>🧪 ためし走行</b>
         <div style="font-size:11px;color:#666;margin-top:2px">🚲ルートタブで作ったルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。一時停止して、つづきから走れるよ。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div>
@@ -2809,7 +2808,17 @@ function drawBlocks() {
     div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog("🚫 通れない印を1つ消したよ"); };
     m.bindPopup(div);
   });
-  const na = blocks.filter(b => b.r === "a").length; $("blkN").textContent = `${blocks.length - na}個・⚠ 通りたくない ${na}`;
+  const na = blocks.filter(b => b.r === "a").length; $("blkN").textContent = `（🚫 通れない ${blocks.length - na}・⚠ 通りたくない ${na}）`;
+  // 一覧：タップでその場所を地図で見る・🗑で消す
+  const L0 = $("blkList");
+  if (L0) {
+    L0.innerHTML = blocks.length ? blocks.map((b, i) => `<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-bottom:1px solid #f3f3f3;font-size:12px">
+        <span>${b.r === "a" ? "⚠️" : "🚫"}</span><span style="flex:1;cursor:pointer" data-go="${i}">${b.r === "a" ? "通りたくない" : "通れない"} <span style="color:#888;font-size:11px">${b.t || ""}</span> <span style="color:#1a73e8;font-size:11px">地図で見る</span></span>
+        <button data-del="${i}" style="font-size:11px;padding:2px 6px;border:1px solid #ddd;border-radius:6px;background:#fff">🗑</button></div>`).join("")
+      : '<div style="padding:8px;color:#888;font-size:12px">まだないよ。地図を長おし →「🚫 通れない」か「⚠ 通りたくない」でつけてね</div>';
+    for (const e of L0.querySelectorAll("[data-go]")) e.onclick = () => { const b = blocks[+e.dataset.go]; if (follow) setFollow(false); map.setView(b.p, 18); $("panel").classList.add("min"); $("tog").textContent = "ひらく"; };
+    for (const e of L0.querySelectorAll("[data-del]")) e.onclick = () => { if (!confirm("この印を消す？")) return; blocks.splice(+e.dataset.del, 1); saveBlocks(); addLog("🚫 印を1つ消したよ"); };
+  }
 }
 function saveBlocks() { lsSet(BKEY, blocks); drawBlocks(); }
 function addBlock(ll, r) {
