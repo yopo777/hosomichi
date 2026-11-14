@@ -941,8 +941,8 @@ function segDist(la, lo, s) {   // 点と区間のきょり（m・せまい所�
   const u = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
   return Math.hypot(ax + u * dx, ay + u * dy);
 }
-async function footMatch(runs) {
-  const acc = new Map(), STEP = 8;
+async function footAccum(acc, runs) {   // 走った線を 8m おきに見て、いちばん近い区間（15m 以内）に きょりを足す
+  const STEP = 8;
   for (const r of runs) for (let i = 1; i < r.length; i++) {
     const a = r[i - 1], b = r[i], d = hav(a[0], a[1], b[0], b[1]);
     if (d > 300) continue;   // GPS が飛んだ所
@@ -960,11 +960,23 @@ async function footMatch(runs) {
       if (o) o.m += d / n; else acc.set(k, { m: d / n, sg: best });
     }
   }
+}
+// 区間の6割（短い区間は少しでも）通ったら「塗れた」
+const footOk = (m, L) => m + 8 >= Math.min(L * 0.6, L - 20);
+const footRec = (k, sg) => [k, Math.round(sg[6] * 10) / 10, +((sg[2] + sg[4]) / 2).toFixed(5), +((sg[3] + sg[5]) / 2).toFixed(5), sg[2], sg[3], sg[4], sg[5]];   // 長さ・まん中（市を見る）・両はし（🛣塗れた道を描く）
+async function footMatch(runs) {
+  const acc = new Map(); await footAccum(acc, runs);
   const out = [];
-  for (const [k, { m, sg }] of acc) {
-    const L = sg[6];
-    if (m + STEP >= Math.min(L * 0.6, L - 20)) out.push([k, Math.round(L * 10) / 10, +((sg[2] + sg[4]) / 2).toFixed(5), +((sg[3] + sg[5]) / 2).toFixed(5), sg[2], sg[3], sg[4], sg[5]]);   // 長さ・まん中（市を見る）・両はし（🛣塗れた道を描く）
-  }
+  for (const [k, { m, sg }] of acc) if (footOk(m, sg[6])) out.push(footRec(k, sg));
+  return out;
+}
+// 走っているとき：新しい点が来るたびに足して、いま塗れた区間だけ返す（ピッ！用）
+let footLiveT0 = null, footLiveAcc = new Map(), footLiveDone = new Set();
+async function footLive(t0, pair) {
+  if (t0 !== footLiveT0) { footLiveT0 = t0; footLiveAcc = new Map(); footLiveDone = new Set(); }
+  await footAccum(footLiveAcc, [pair]);
+  const out = [];
+  for (const [k, { m, sg }] of footLiveAcc) if (!footLiveDone.has(k) && footOk(m, sg[6])) { footLiveDone.add(k); out.push(footRec(k, sg)); }
   return out;
 }
 // 配布データをまとめて入れる（パソコン向け）
@@ -1685,6 +1697,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       }
       if (d.cmd === "packAll") { pkStop = false; await packAll(p => self.postMessage({ type: "pk", ...p })); return self.postMessage({ type: "stats", ...(await stats()) }); }
       if (d.cmd === "packStop") { pkStop = true; return; }
+      if (d.cmd === "footLive") { const segs = await footLive(d.t0, d.pair); return self.postMessage({ type: "footLive", segs }); }
       if (d.cmd === "footMatch") { const segs = await footMatch(d.runs); return self.postMessage({ type: "footMatch", id: d.id, segs }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {

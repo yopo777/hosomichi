@@ -877,6 +877,7 @@ worker.onmessage = ev => {
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
   if (m.type === "pf") { onPf(m); return; }
   if (m.type === "oneway") { owDraw(m); return; }
+  if (m.type === "footLive") { footLiveGot(m.segs || []); return; }
   if (m.type === "footMatch") { const f = footCb.get(m.id); footCb.delete(m.id); if (f) f(m.segs || []); return; }
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
   if (m.type === "pk") { onPk(m); return; }
@@ -1975,7 +1976,9 @@ map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPa
 const footRend = L.canvas({ pane: "footPane" }), footLayer = L.layerGroup().addTo(map), footTodayLayer = L.layerGroup().addTo(map);
 let footOn = !!lsGet("hosomichi_foot", false), footRuns = null, footStat = null, footTodayN = -1;
 let footMode = lsGet("hosomichi_footMode", "line"), footDbg = !!lsGet("hosomichi_footDbg", false);   // footMode：line＝走った線 / road＝塗れた道（道にあてはめた結果）。footDbg：🧪ためし走行も入れる（デバッグ用・今日の分だけ・保存しない）
-const FOOT_ROAD = { renderer: footRend, color: "#e8384f", weight: 6, opacity: 0.75, lineCap: "round", interactive: false };
+const FOOT_ROAD = { renderer: footRend, color: "#ff1744", weight: 6, opacity: 1, lineCap: "round", interactive: false },
+  FOOT_ROAD_BG = { renderer: footRend, color: "#fff", weight: 10, opacity: 0.9, lineCap: "round", interactive: false };   // 白いふちどり＋こい赤（目立つように。線は1本にまとめて描くので軽い）
+let footPi = lsGet("hosomichi_footPi", true) !== false;   // 🔔 新しく塗れたら「ピッ」
 const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
 // 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
 // 🧪ためし（4つ目が1）と、時速60kmより速い所（前のためし走行・GPSが飛んだ所）は入れない
@@ -2020,14 +2023,43 @@ async function footRoad() {   // 🛣 塗れた道：道にあてはめた区間
     footLayer.clearLayers(); footTodayLayer.clearLayers();
     if (!footOn || footMode !== "road") return;
     const lines = []; for (const k in all) { const v = all[k]; if (v.length >= 7) lines.push([[v[3], v[4]], [v[5], v[6]]]); }
-    if (lines.length) L.polyline(lines, FOOT_ROAD).addTo(footLayer);
+    if (lines.length) { L.polyline(lines, FOOT_ROAD_BG).addTo(footLayer); L.polyline(lines, FOOT_ROAD).addTo(footLayer); }
+    footKnown = new Set(Object.keys(all)); footLiveLines = [];
   } finally { footRoadBusy = false; }
+}
+// ---- 走っているとき：新しく塗れた区間を すぐ描いて「ピッ」（声にかさねてOK）----
+let footKnown = null, footKnownP = null;
+function pi() {
+  try {
+    audioUnlock(); if (!actx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+    o.type = "sine"; o.frequency.value = 2093; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    o.start(t); o.stop(t + 0.14);
+  } catch {}
+}
+let footPiT = 0;
+function footLiveAdd(a, b) {   // rideAdd から：前の点 a → 新しい点 b
+  if (!footOn || !ride) return;
+  if (!footKnownP && !footKnown) footKnownP = footSegsAll(() => {}).then(all => { footKnown = new Set(Object.keys(all)); footKnownP = null; const p = footPend; footPend = []; footLiveGot(p); }).catch(() => { footKnownP = null; });
+  worker.postMessage({ cmd: "footLive", t0: ride.t0, pair: [[a[0], a[1]], [b[0], b[1]]] });
+}
+let footPend = [], footLiveLines = [];   // 塗った所の一覧を読みこむ前に来た分（読みこんだらまとめて見る）
+function footLiveGot(segs) {
+  if (!footKnown) { footPend.push(...segs); return; }
+  if (!segs.length) return;
+  const fresh = segs.filter(v => !footKnown.has(v[0]));
+  if (!fresh.length) return;
+  for (const v of fresh) { footKnown.add(v[0]); footLiveLines.push([[v[4], v[5]], [v[6], v[7]]]); }
+  if (footOn && footMode === "road") {   // 白いふちを ぜんぶ先に描いてから赤（つなぎめが白く切れないように）
+    footTodayLayer.clearLayers(); L.polyline(footLiveLines, FOOT_ROAD_BG).addTo(footTodayLayer); L.polyline(footLiveLines, FOOT_ROAD).addTo(footTodayLayer);
+  }
+  if (footPi && Date.now() - footPiT > 400) { footPiT = Date.now(); pi(); }   // つづけて塗れても、0.4秒に1回まで
 }
 function footToday() {   // 今日の分だけ描きなおす（点がふえたときだけ）
   if (!footOn || !ride) return;
   const n = ride.pts.length; if (n === footTodayN) return;
   footTodayN = n;
-  if (footMode === "road") return footRoad();
+  if (footMode === "road") return;   // 塗れた道は 走りながら1本ずつ足していく（footLiveGot）
   footTodayLayer.clearLayers();
   for (const r of footSplit(ride.pts, footDbg)) L.polyline(r, FOOT_STYLE).addTo(footTodayLayer);
 }
@@ -2052,11 +2084,13 @@ async function footTab() {
     <div style="display:flex;gap:12px;align-items:center;margin:4px 0;font-size:13px">出しかた：
       <label><input type="radio" name="footMode" value="line" ${footMode === "line" ? "checked" : ""}> 走った線</label>
       <label><input type="radio" name="footMode" value="road" ${footMode === "road" ? "checked" : ""}> <span style="color:#e8384f">塗れた道</span></label></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:4px 0"><input type="checkbox" id="footPi" ${footPi ? "checked" : ""}>🔔 走っていて 新しく塗れたら「ピッ」</label>
     ${footDbg ? '<div style="font-size:11px;color:#c5221f;margin:2px 0">🧪 いまは ためし走行も入れているよ（🛠デバッグ → ツール で切りかえ）</div>' : ""}
     <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
     <div style="font-size:11px;color:#888;line-height:1.6">今まで走った線（🗓過去＋今日）をぜんぶ重ねて、メインの地図に<b style="color:#ff6d00">オレンジ</b>で出すよ。何回も通った道ほど こくなるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
   $("footOn").onchange = e => footSet(e.target.checked);
+  $("footPi").onchange = e => { footPi = e.target.checked; lsSet("hosomichi_footPi", footPi); if (footPi) { audioUnlock(); pi(); } };
   for (const r of document.querySelectorAll("[name=footMode]")) r.onchange = () => { footMode = r.value; lsSet("hosomichi_footMode", footMode); if (!footOn) { footOn = true; lsSet("hosomichi_foot", true); $("footOn").checked = true; } footDraw(); };
   $("footFit").onclick = async () => {
     if (!footRuns) await footLoad();
@@ -2165,7 +2199,7 @@ async function trkPast() {
     if (!n) return alert("過去の記録はまだないよ");
     if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？（🎨足あと・市ごとの塗りも消えるよ）\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
     if (!confirm("ほんとうに ぜんぶ消していい？")) return;
-    try { await histClear(); await footKv("segs3", {}); await footKv("done3", {}); footRuns = null; footStat = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（🎨足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
+    try { await histClear(); await footKv("segs3", {}); await footKv("done3", {}); footRuns = null; footStat = null; footKnown = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（🎨足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
     trkPast();
   };
   $("calPrev").onclick = () => { trkYM = m ? [y, m - 1] : [y - 1, 11]; trkPast(); };
@@ -2637,6 +2671,7 @@ function rideAdd(ll, accu) {
   if (!L) { ride.pts.push(q); rideEv("start", "", ll); return; }
   if (hav(L, ll) < 20) return;
   ride.pts.push(q);
+  if ((!L[3] && !q[3]) || footDbg) try { footLiveAdd(L, q); } catch {}   // 🎨 新しく塗れたら ピッ
   if (ride.pts.length > 6000) ride.pts.splice(1, 1);
   rideSave(false);
 }
