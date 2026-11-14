@@ -2883,7 +2883,7 @@ function spotsTabDraw() {
   }
   for (const e of T.querySelectorAll("[data-del]")) e.onclick = () => {
     const k = e.dataset.del;
-    if (!confirm(k === "h" ? "家の登録を消す？（SNSで家のまわりが消えなくなるよ）" : "この地点を消す？")) return;
+    if (k === "h" && !confirm("家の登録を消す？（SNSで家のまわりが消えなくなるよ）")) return;   // 家だけ確認する。ほかは すぐ消す
     if (k === "h") { home = null; lsSet("hosomichi_home", null); drawHome(); homeDist(); }
     else if (k[0] === "s") { secrets.splice(+k.slice(1), 1); lsSet("hosomichi_secret", secrets); drawSecrets(); }
     else if (k[0] === "f") { favs.splice(+k.slice(1), 1); lsSet("hosomichi_fav", favs); drawFavs(); }

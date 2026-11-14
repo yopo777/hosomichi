@@ -183,7 +183,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1428</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1430</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ ✏ 新しく作る -->
@@ -4549,7 +4549,7 @@ function spotsTabDraw() {
   }
   for (const e of T.querySelectorAll("[data-del]")) e.onclick = () => {
     const k = e.dataset.del;
-    if (!confirm(k === "h" ? "家の登録を消す？（SNSで家のまわりが消えなくなるよ）" : "この地点を消す？")) return;
+    if (k === "h" && !confirm("家の登録を消す？（SNSで家のまわりが消えなくなるよ）")) return;   // 家だけ確認する。ほかは すぐ消す
     if (k === "h") { home = null; lsSet("hosomichi_home", null); drawHome(); homeDist(); }
     else if (k[0] === "s") { secrets.splice(+k.slice(1), 1); lsSet("hosomichi_secret", secrets); drawSecrets(); }
     else if (k[0] === "f") { favs.splice(+k.slice(1), 1); lsSet("hosomichi_fav", favs); drawFavs(); }
