@@ -963,7 +963,7 @@ async function footMatch(runs) {
   const out = [];
   for (const [k, { m, sg }] of acc) {
     const L = sg[6];
-    if (m + STEP >= Math.min(L * 0.6, L - 20)) out.push([k, Math.round(L * 10) / 10, +((sg[2] + sg[4]) / 2).toFixed(5), +((sg[3] + sg[5]) / 2).toFixed(5)]);
+    if (m + STEP >= Math.min(L * 0.6, L - 20)) out.push([k, Math.round(L * 10) / 10, +((sg[2] + sg[4]) / 2).toFixed(5), +((sg[3] + sg[5]) / 2).toFixed(5), sg[2], sg[3], sg[4], sg[5]]);   // 長さ・まん中（市を見る）・両はし（🛣塗れた道を描く）
   }
   return out;
 }

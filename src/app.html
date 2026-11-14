@@ -1972,14 +1972,16 @@ async function histMonth(ym) {   // その月の日ごとの きょり（中身�
 map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 360; map.getPane("footPane").style.pointerEvents = "none";
 const footRend = L.canvas({ pane: "footPane" }), footLayer = L.layerGroup().addTo(map), footTodayLayer = L.layerGroup().addTo(map);
 let footOn = !!lsGet("hosomichi_foot", false), footRuns = null, footStat = null, footTodayN = -1;
+let footMode = lsGet("hosomichi_footMode", "line"), footDbg = !!lsGet("hosomichi_footDbg", false);   // footMode：line＝走った線 / road＝塗れた道（道にあてはめた結果）。footDbg：🧪ためし走行も入れる（デバッグ用・今日の分だけ・保存しない）
+const FOOT_ROAD = { renderer: footRend, color: "#e8384f", weight: 6, opacity: 0.75, lineCap: "round", interactive: false };
 const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
 // 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
 // 🧪ためし（4つ目が1）と、時速60kmより速い所（前のためし走行・GPSが飛んだ所）は入れない
-function footSplit(P) {
+function footSplit(P, dbg) {
   const runs = []; let seg = [];
   for (let i = 0; i < P.length; i++) {
-    const fast = i && hav(P[i - 1], P[i]) > 16.7 * Math.max(1, (P[i][2] - P[i - 1][2]) / 1000);
-    if (P[i][3] || fast) { if (seg.length > 1) runs.push(seg); seg = P[i][3] ? [] : [[P[i][0], P[i][1]]]; continue; }
+    const fast = !dbg && i && hav(P[i - 1], P[i]) > 16.7 * Math.max(1, (P[i][2] - P[i - 1][2]) / 1000);
+    if ((P[i][3] && !dbg) || fast) { if (seg.length > 1) runs.push(seg); seg = P[i][3] ? [] : [[P[i][0], P[i][1]]]; continue; }
     if (i && P[i][2] - P[i - 1][2] > 5 * 60e3 && hav(P[i - 1], P[i]) > 300) { if (seg.length > 1) runs.push(seg); seg = []; }
     const q = [P[i][0], P[i][1]];
     if (!seg.length || hav(seg[seg.length - 1], q) >= 15 || i === P.length - 1) seg.push(q);
@@ -2002,16 +2004,30 @@ async function footLoad() {   // 過去の分（今日はべつ。今日の分�
 async function footDraw() {
   footLayer.clearLayers(); footTodayLayer.clearLayers(); footTodayN = -1;
   if (!footOn) return;
+  if (footMode === "road") return footRoad();
   if (!footRuns) await footLoad();
   if (!footOn) return;
   for (const r of footRuns) L.polyline(r, FOOT_STYLE).addTo(footLayer);
   footToday();
 }
+let footRoadBusy = false;
+async function footRoad() {   // 🛣 塗れた道：道にあてはめた区間をそのまま描く（％の計算に入っている所＝この線）
+  if (footRoadBusy) return; footRoadBusy = true;
+  try {
+    const all = await footSegsAll(() => {});
+    footLayer.clearLayers(); footTodayLayer.clearLayers();
+    if (!footOn || footMode !== "road") return;
+    const lines = []; for (const k in all) { const v = all[k]; if (v.length >= 7) lines.push([[v[3], v[4]], [v[5], v[6]]]); }
+    if (lines.length) L.polyline(lines, FOOT_ROAD).addTo(footLayer);
+  } finally { footRoadBusy = false; }
+}
 function footToday() {   // 今日の分だけ描きなおす（点がふえたときだけ）
   if (!footOn || !ride) return;
   const n = ride.pts.length; if (n === footTodayN) return;
-  footTodayN = n; footTodayLayer.clearLayers();
-  for (const r of footSplit(ride.pts)) L.polyline(r, FOOT_STYLE).addTo(footTodayLayer);
+  footTodayN = n;
+  if (footMode === "road") return footRoad();
+  footTodayLayer.clearLayers();
+  for (const r of footSplit(ride.pts, footDbg)) L.polyline(r, FOOT_STYLE).addTo(footTodayLayer);
 }
 setInterval(footToday, 30000);
 function footSet(on) {
@@ -2031,13 +2047,19 @@ async function footTab() {
       <div class="trkN"><small>走ったきょり（合計）</small><b>${fmtKm(dist)}</b></div>
       ${footStat.first ? `<div class="trkN"><small>記録のはじめ</small><b>${footStat.first.replace(/-/g, "/")}</b></div>` : ""}
     </div>
+    <div style="display:flex;gap:12px;align-items:center;margin:4px 0;font-size:13px">出しかた：
+      <label><input type="radio" name="footMode" value="line" ${footMode === "line" ? "checked" : ""}> 走った線</label>
+      <label><input type="radio" name="footMode" value="road" ${footMode === "road" ? "checked" : ""}> <span style="color:#e8384f">塗れた道</span></label></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:4px 0"><input type="checkbox" id="footDbg" ${footDbg ? "checked" : ""}>🧪 ためし走行も入れる（デバッグ用・今日の分だけ・過去には入らないよ）</label>
     <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
     <div style="font-size:11px;color:#888;line-height:1.6">今まで走った線（🗓過去＋今日）をぜんぶ重ねて、メインの地図に<b style="color:#ff6d00">オレンジ</b>で出すよ。何回も通った道ほど こくなるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
   $("footOn").onchange = e => footSet(e.target.checked);
+  for (const r of document.querySelectorAll("[name=footMode]")) r.onchange = () => { footMode = r.value; lsSet("hosomichi_footMode", footMode); if (!footOn) { footOn = true; lsSet("hosomichi_foot", true); $("footOn").checked = true; } footDraw(); };
+  $("footDbg").onchange = e => { footDbg = e.target.checked; lsSet("hosomichi_footDbg", footDbg); footDraw(); footCityShow(); };
   $("footFit").onclick = async () => {
     if (!footRuns) await footLoad();
-    const all = footRuns.concat(ride ? footSplit(ride.pts) : []);
+    const all = footRuns.concat(ride ? footSplit(ride.pts, footDbg) : []);
     if (!all.length) return alert("まだ足あとがないよ。◎で走ると たまっていくよ");
     if (!footOn) { footSet(true); $("footOn").checked = true; }
     map.fitBounds(L.latLngBounds(all.flat()), { padding: [20, 20] });
@@ -2070,18 +2092,20 @@ function footCityOf(C, la, lo) {
   if (row) for (let n = 0; n < row.length; n += 3) if (j >= row[n] && j < row[n + 1]) return row[n + 2];
   return -1;
 }
-async function footSegsAll(prog) {   // 過去の分（まだのものだけ あてはめて保存）＋今日の分
-  const segs = (await footKv("segs2")) || {}, done = (await footKv("done2")) || {};   // 2：ためし走行をのぞくようにしたので、あてはめなおし
+let footSegsP = null;   // あてはめ中に もう一回よばれたら、同じ結果を待つ（2回やらない）
+function footSegsAll(prog) { if (!footSegsP) footSegsP = footSegsRun(prog).finally(() => { footSegsP = null; }); return footSegsP; }
+async function footSegsRun(prog) {   // 過去の分（まだのものだけ あてはめて保存）＋今日の分
+  const segs = (await footKv("segs3")) || {}, done = (await footKv("done3")) || {};   // 3：区間の両はしも入れたので、あてはめなおし
   const today = ride && ride.pts.length > 1 ? dkey(ride.t0) : null;
   const days = (await histAll()).filter(R => R.d !== today && done[R.d] !== (R.pts || []).length);
   for (let n = 0; n < days.length; n++) {
     prog(`道にあてはめてるよ… ${n + 1}/${days.length}日`);
-    for (const [k, L, la, lo] of await footMatchReq(footSplit(days[n].pts || []))) segs[k] = [L, la, lo];
+    for (const [k, ...v] of await footMatchReq(footSplit(days[n].pts || []))) segs[k] = v;
     done[days[n].d] = days[n].pts.length;
-    await footKv("segs2", segs); await footKv("done2", done);
+    await footKv("segs3", segs); await footKv("done3", done);
   }
   const all = Object.assign({}, segs);
-  if (today) { prog("今日の分をあてはめてるよ…"); for (const [k, L, la, lo] of await footMatchReq(footSplit(ride.pts))) all[k] = [L, la, lo]; }
+  if (today) { prog("今日の分をあてはめてるよ…"); for (const [k, ...v] of await footMatchReq(footSplit(ride.pts, footDbg))) all[k] = v; }
   return all;
 }
 async function footCityShow() {
@@ -2101,7 +2125,7 @@ async function footCityShow() {
         <span style="width:6.5em;flex:none">${esc(x.n)}</span>
         <span style="flex:1;height:8px;background:#f1f1f1;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.min(100, Math.max(1, x.p)).toFixed(1)}%;background:#ff6d00"></i></span>
         <b style="width:4.2em;text-align:right">${x.p < 1 ? x.p.toFixed(2) : x.p.toFixed(1)}%</b>
-        <small style="width:7.5em;text-align:right;color:#888">${(x.m / 1000).toFixed(1)}/${Math.round(x.all / 1000)}km</small></div>`).join("") : "まだ どの市も塗れてないよ";
+        <small style="width:7.5em;text-align:right;color:#888">${(x.m / 1000).toFixed(1)}/${x.all < 10000 ? (x.all / 1000).toFixed(1) : Math.round(x.all / 1000)}km</small></div>`).join("") : "まだ どの市も塗れてないよ";
     }
     box().innerHTML = h;
   } catch (e) { if (box()) box().textContent = "しらべられなかったよ: " + e.message; }
@@ -2133,7 +2157,7 @@ async function trkPast() {
     if (!n) return alert("過去の記録はまだないよ");
     if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？（🎨足あと・市ごとの塗りも消えるよ）\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
     if (!confirm("ほんとうに ぜんぶ消していい？")) return;
-    try { await histClear(); await footKv("segs2", {}); await footKv("done2", {}); footRuns = null; footStat = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（🎨足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
+    try { await histClear(); await footKv("segs3", {}); await footKv("done3", {}); footRuns = null; footStat = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（🎨足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
     trkPast();
   };
   $("calPrev").onclick = () => { trkYM = m ? [y, m - 1] : [y - 1, 11]; trkPast(); };
