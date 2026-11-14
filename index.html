@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0047</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0048</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -4030,7 +4030,7 @@ $("evKind").onchange = e => { evKind = e.target.value; lsSet("hosomichi_evKind",
 $("evVol").oninput = e => { evVol = +e.target.value; lsSet("hosomichi_evVol", evVol); if (evOn) evSet(evSp); };
 $("evTest").onclick = () => {   // 時速5km → 25km → 止まる を3秒で
   audioUnlock(); const was = evOn; evOn = true; evNodes(); let k = 0; clearInterval(window.evTestT);
-  const T = window.evTestT = setInterval(() => { k++; evSet(k < 18 ? 1.4 + k * 0.4 : 0); if (k > 24) { clearInterval(T); evOn = was; if (!was && evN) evN.g.gain.setTargetAtTime(0, actx.currentTime, 0.2); } }, 250);
+  const T = window.evTestT = setInterval(() => { k++; evT = Date.now(); evSet(k < 18 ? 1.4 + k * 0.4 : 0); if (k > 24) { clearInterval(T); evOn = was; if (!was && evN) evN.g.gain.setTargetAtTime(0, actx.currentTime, 0.2); } }, 250);
 };
 $("ft").onclick = () => { footSet(!footOn); if ($("footOn")) $("footOn").checked = footOn; };
 $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす（デバッグ用。ナビはそのまま動く）
