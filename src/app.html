@@ -255,7 +255,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <b>〰 接近音（ウィーン）</b><span class="pw u">⚡小</span>
         <div style="margin-top:4px">音：<select id="evKind" style="padding:4px;border:1px solid #ccc;border-radius:8px"></select></div>
         <div style="font-size:11px;color:#666;margin-top:2px">EVみたいに、走っているあいだ「ウィーン」と小さく鳴らして、歩いている人に気づいてもらうよ。速さに合わせて音が高くなるよ。止まると消えるよ。オン・オフは右はしの〰ボタン。<b>ベルのかわりにはならないから、ベルははずさないでね</b>。画面を消すと止まることがあるよ（⬛暗くするなら鳴りつづけるよ）</div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:4px">🔈<input type="range" id="evVol" min="0.02" max="1" step="0.02" style="flex:1">🔊</label>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:4px">🔈<input type="range" id="evVol" min="0.02" max="3" step="0.02" style="flex:1">🔊</label>
         <div class="btns" style="margin-top:4px"><button class="ib" id="evTest" style="font-size:12px">🔊 ためしに聞く（時速5→30km→止まる）</button></div>
       </div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -2098,7 +2098,8 @@ function evNodes() {
   }
   amp.gain.value = 1 - K.trem[1];
   if (K.trem[1]) { const l = actx.createOscillator(), lg = actx.createGain(); l.frequency.value = K.trem[0]; lg.gain.value = K.trem[1]; l.connect(lg); lg.connect(amp.gain); l.start(); stops.push(l); }
-  mix.connect(amp); amp.connect(f); f.connect(g); g.connect(actx.destination);
+  const cp = actx.createDynamicsCompressor(); cp.threshold.value = -14; cp.knee.value = 8; cp.ratio.value = 6; cp.attack.value = 0.01; cp.release.value = 0.3;   // 大きくしても音がわれないように
+  mix.connect(amp); amp.connect(f); f.connect(g); g.connect(cp); cp.connect(actx.destination);
   return evN = { g, f, os, vg, nzf, K, stops };
 }
 function evKill() { if (!evN) return; const n = evN; evN = null; try { n.g.gain.setTargetAtTime(0, actx.currentTime, 0.05); } catch {} setTimeout(() => { for (const o of n.stops) try { o.stop(); } catch {} try { n.g.disconnect(); } catch {} }, 300); }
