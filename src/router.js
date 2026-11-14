@@ -910,6 +910,63 @@ async function onewayIn(bb) {
   }
   return { ways };
 }
+// 🎨 足あと：走った線を道にあてはめて「通った道（way の何番目の区間か）」を出す（端末にある道路データか配布データだけ）
+// 道の区間を 8m おきの点で見て、いちばん近い区間（15m 以内）に入れる。区間の6割（短い区間は少しでも）通ったら「通った」
+const FOOT_CELL = 0.0005, footTiles = new Map();   // マス → { seg: [[way id, 何番目, 緯度1, 経度1, 緯度2, 経度2, 長さ]…], grid }
+async function footTile(k) {
+  if (footTiles.has(k)) return footTiles.get(k);
+  let el = mem.get(k);
+  if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+  if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+  const t = { seg: [], grid: new Map() };
+  if (el) {
+    const nd = new Map();
+    for (const e of el) if (e.type === "node") nd.set(e.id, [e.lat, e.lon]);
+    for (const e of el) if (e.type === "way" && e.nodes) for (let i = 0; i + 1 < e.nodes.length; i++) {
+      const a = nd.get(e.nodes[i]), b = nd.get(e.nodes[i + 1]); if (!a || !b) continue;
+      const n = t.seg.length; t.seg.push([e.id, i, a[0], a[1], b[0], b[1], hav(a[0], a[1], b[0], b[1])]);
+      const i0 = Math.floor(Math.min(a[0], b[0]) / FOOT_CELL), i1 = Math.floor(Math.max(a[0], b[0]) / FOOT_CELL);
+      const j0 = Math.floor(Math.min(a[1], b[1]) / FOOT_CELL), j1 = Math.floor(Math.max(a[1], b[1]) / FOOT_CELL);
+      for (let ii = i0; ii <= i1; ii++) for (let jj = j0; jj <= j1; jj++) { const g = ii + "," + jj; if (!t.grid.has(g)) t.grid.set(g, []); t.grid.get(g).push(n); }
+    }
+  }
+  if (footTiles.size > 60) footTiles.delete(footTiles.keys().next().value);
+  footTiles.set(k, t);
+  return t;
+}
+function segDist(la, lo, s) {   // 点と区間のきょり（m・せまい所なので平らとみなす）
+  const kx = 111320 * Math.cos(la * Math.PI / 180), ky = 110540;
+  const ax = (s[3] - lo) * kx, ay = (s[2] - la) * ky, bx = (s[5] - lo) * kx, by = (s[4] - la) * ky;
+  const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+  const u = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+  return Math.hypot(ax + u * dx, ay + u * dy);
+}
+async function footMatch(runs) {
+  const acc = new Map(), STEP = 8;
+  for (const r of runs) for (let i = 1; i < r.length; i++) {
+    const a = r[i - 1], b = r[i], d = hav(a[0], a[1], b[0], b[1]);
+    if (d > 300) continue;   // GPS が飛んだ所
+    const n = Math.max(1, Math.round(d / STEP));
+    for (let s = 0; s < n; s++) {
+      const la = a[0] + (b[0] - a[0]) * s / n, lo = a[1] + (b[1] - a[1]) * s / n;
+      const t = await footTile(`0.01:${Math.floor(la / 0.01)},${Math.floor(lo / 0.01)}`);
+      const gi = Math.floor(la / FOOT_CELL), gj = Math.floor(lo / FOOT_CELL);
+      let best = null, bd = 15;
+      for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (const n2 of t.grid.get((gi + x) + "," + (gj + y)) || []) {
+        const sg = t.seg[n2], dd = segDist(la, lo, sg); if (dd < bd) { bd = dd; best = sg; }
+      }
+      if (!best) continue;
+      const k = best[0] + ":" + best[1], o = acc.get(k);
+      if (o) o.m += d / n; else acc.set(k, { m: d / n, sg: best });
+    }
+  }
+  const out = [];
+  for (const [k, { m, sg }] of acc) {
+    const L = sg[6];
+    if (m + STEP >= Math.min(L * 0.6, L - 20)) out.push([k, Math.round(L * 10) / 10, +((sg[2] + sg[4]) / 2).toFixed(5), +((sg[3] + sg[5]) / 2).toFixed(5)]);
+  }
+  return out;
+}
 // 配布データをまとめて入れる（パソコン向け）
 let pkStop = false;
 async function packAll(post) {
@@ -1628,6 +1685,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       }
       if (d.cmd === "packAll") { pkStop = false; await packAll(p => self.postMessage({ type: "pk", ...p })); return self.postMessage({ type: "stats", ...(await stats()) }); }
       if (d.cmd === "packStop") { pkStop = true; return; }
+      if (d.cmd === "footMatch") { const segs = await footMatch(d.runs); return self.postMessage({ type: "footMatch", id: d.id, segs }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;

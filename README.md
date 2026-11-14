@@ -24,6 +24,6 @@
 - 地図：CyclOSM / 国土地理院。標高・住所：国土地理院
 
 ## 開発
-`src/app.html`（画面）＋`src/router.js`（ルート計算）を `python src/build.py` で1枚の `index.html` にします。データは `tools/make_pack.py`・`tools/make_quests.py`（Windowsで止められたら `pip install "osmium<4.3"`）。
+`src/app.html`（画面）＋`src/router.js`（ルート計算）を `python src/build.py` で1枚の `index.html` にします。データは `tools/make_pack.py`・`tools/make_quests.py`・`tools/make_cities.py`（🎨足あとの市ごとの％。make_pack のあとに）（Windowsで止められたら `pip install "osmium<4.3"`）。
 
 自動で作ったルートです。実際の標識・交通ルールを守って、安全に走ってください。

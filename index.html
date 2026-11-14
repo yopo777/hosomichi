@@ -183,7 +183,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2209</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2215</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -1269,6 +1269,63 @@ async function onewayIn(bb) {
   }
   return { ways };
 }
+// 🎨 足あと：走った線を道にあてはめて「通った道（way の何番目の区間か）」を出す（端末にある道路データか配布データだけ）
+// 道の区間を 8m おきの点で見て、いちばん近い区間（15m 以内）に入れる。区間の6割（短い区間は少しでも）通ったら「通った」
+const FOOT_CELL = 0.0005, footTiles = new Map();   // マス → { seg: [[way id, 何番目, 緯度1, 経度1, 緯度2, 経度2, 長さ]…], grid }
+async function footTile(k) {
+  if (footTiles.has(k)) return footTiles.get(k);
+  let el = mem.get(k);
+  if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+  if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+  const t = { seg: [], grid: new Map() };
+  if (el) {
+    const nd = new Map();
+    for (const e of el) if (e.type === "node") nd.set(e.id, [e.lat, e.lon]);
+    for (const e of el) if (e.type === "way" && e.nodes) for (let i = 0; i + 1 < e.nodes.length; i++) {
+      const a = nd.get(e.nodes[i]), b = nd.get(e.nodes[i + 1]); if (!a || !b) continue;
+      const n = t.seg.length; t.seg.push([e.id, i, a[0], a[1], b[0], b[1], hav(a[0], a[1], b[0], b[1])]);
+      const i0 = Math.floor(Math.min(a[0], b[0]) / FOOT_CELL), i1 = Math.floor(Math.max(a[0], b[0]) / FOOT_CELL);
+      const j0 = Math.floor(Math.min(a[1], b[1]) / FOOT_CELL), j1 = Math.floor(Math.max(a[1], b[1]) / FOOT_CELL);
+      for (let ii = i0; ii <= i1; ii++) for (let jj = j0; jj <= j1; jj++) { const g = ii + "," + jj; if (!t.grid.has(g)) t.grid.set(g, []); t.grid.get(g).push(n); }
+    }
+  }
+  if (footTiles.size > 60) footTiles.delete(footTiles.keys().next().value);
+  footTiles.set(k, t);
+  return t;
+}
+function segDist(la, lo, s) {   // 点と区間のきょり（m・せまい所なので平らとみなす）
+  const kx = 111320 * Math.cos(la * Math.PI / 180), ky = 110540;
+  const ax = (s[3] - lo) * kx, ay = (s[2] - la) * ky, bx = (s[5] - lo) * kx, by = (s[4] - la) * ky;
+  const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+  const u = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+  return Math.hypot(ax + u * dx, ay + u * dy);
+}
+async function footMatch(runs) {
+  const acc = new Map(), STEP = 8;
+  for (const r of runs) for (let i = 1; i < r.length; i++) {
+    const a = r[i - 1], b = r[i], d = hav(a[0], a[1], b[0], b[1]);
+    if (d > 300) continue;   // GPS が飛んだ所
+    const n = Math.max(1, Math.round(d / STEP));
+    for (let s = 0; s < n; s++) {
+      const la = a[0] + (b[0] - a[0]) * s / n, lo = a[1] + (b[1] - a[1]) * s / n;
+      const t = await footTile(`0.01:${Math.floor(la / 0.01)},${Math.floor(lo / 0.01)}`);
+      const gi = Math.floor(la / FOOT_CELL), gj = Math.floor(lo / FOOT_CELL);
+      let best = null, bd = 15;
+      for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (const n2 of t.grid.get((gi + x) + "," + (gj + y)) || []) {
+        const sg = t.seg[n2], dd = segDist(la, lo, sg); if (dd < bd) { bd = dd; best = sg; }
+      }
+      if (!best) continue;
+      const k = best[0] + ":" + best[1], o = acc.get(k);
+      if (o) o.m += d / n; else acc.set(k, { m: d / n, sg: best });
+    }
+  }
+  const out = [];
+  for (const [k, { m, sg }] of acc) {
+    const L = sg[6];
+    if (m + STEP >= Math.min(L * 0.6, L - 20)) out.push([k, Math.round(L * 10) / 10, +((sg[2] + sg[4]) / 2).toFixed(5), +((sg[3] + sg[5]) / 2).toFixed(5)]);
+  }
+  return out;
+}
 // 配布データをまとめて入れる（パソコン向け）
 let pkStop = false;
 async function packAll(post) {
@@ -1987,6 +2044,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       }
       if (d.cmd === "packAll") { pkStop = false; await packAll(p => self.postMessage({ type: "pk", ...p })); return self.postMessage({ type: "stats", ...(await stats()) }); }
       if (d.cmd === "packStop") { pkStop = true; return; }
+      if (d.cmd === "footMatch") { const segs = await footMatch(d.runs); return self.postMessage({ type: "footMatch", id: d.id, segs }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
@@ -2545,6 +2603,7 @@ worker.onmessage = ev => {
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
   if (m.type === "pf") { onPf(m); return; }
   if (m.type === "oneway") { owDraw(m); return; }
+  if (m.type === "footMatch") { const f = footCb.get(m.id); footCb.delete(m.id); if (f) f(m.segs || []); return; }
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
   if (m.type === "pk") { onPk(m); return; }
   if (m.type === "export") { onExport(m); return; }
@@ -3698,6 +3757,7 @@ async function footTab() {
       ${footStat.first ? `<div class="trkN"><small>記録のはじめ</small><b>${footStat.first.replace(/-/g, "/")}</b></div>` : ""}
     </div>
     <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
+    <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
     <div style="font-size:11px;color:#888;line-height:1.6">今まで走った線（🗓過去＋今日）をぜんぶ重ねて、メインの地図に<b style="color:#ff6d00">オレンジ</b>で出すよ。何回も通った道ほど こくなるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
   $("footOn").onchange = e => footSet(e.target.checked);
   $("footFit").onclick = async () => {
@@ -3706,7 +3766,71 @@ async function footTab() {
     if (!all.length) return alert("まだ足あとがないよ。◎で走ると たまっていくよ");
     if (!footOn) { footSet(true); $("footOn").checked = true; }
     map.fitBounds(L.latLngBounds(all.flat()), { padding: [20, 20] });
-  };
+  };  footCityShow();
+}
+// ---- 🏙 市ごとの塗り％：通った道の区間（way の何番目の区間）をためて、市ごとに「通った長さ ÷ 市の道の長さ」----
+// 市の道の長さとさかい目（約100mのマス目）は配布データの cities.json（tools/make_cities.py で作る）
+const footCb = new Map(); let footCbN = 0, footCities, footBusy = false;
+function footMatchReq(runs) { return new Promise(ok => { const id = ++footCbN; footCb.set(id, ok); worker.postMessage({ cmd: "footMatch", id, runs }); }); }
+let footDBp = null;
+function footDB() {
+  if (!footDBp) footDBp = new Promise((ok, ng) => { const r = indexedDB.open("hosomichi_foot", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv", { keyPath: "k" }); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); });
+  return footDBp;
+}
+async function footKv(k, v) {
+  const db = await footDB();
+  return new Promise(ok => {
+    const st = db.transaction("kv", v === undefined ? "readonly" : "readwrite").objectStore("kv");
+    const r = v === undefined ? st.get(k) : st.put({ k, v });
+    r.onsuccess = () => ok(v === undefined ? (r.result ? r.result.v : null) : true); r.onerror = () => ok(null);
+  });
+}
+async function footCityData() {   // cities.json（なければ null。作るまでは出さない）
+  if (footCities !== undefined) return footCities;
+  try { const r = await fetch(new URL("../hosomichi-data/cities.json", location.href).href); footCities = r.ok ? await r.json() : null; } catch { footCities = null; }
+  return footCities;
+}
+function footCityOf(C, la, lo) {
+  const row = C.rows[Math.floor(la / C.G) - C.i0], j = Math.floor(lo / C.G);
+  if (row) for (let n = 0; n < row.length; n += 3) if (j >= row[n] && j < row[n + 1]) return row[n + 2];
+  return -1;
+}
+async function footSegsAll(prog) {   // 過去の分（まだのものだけ あてはめて保存）＋今日の分
+  const segs = (await footKv("segs")) || {}, done = (await footKv("done")) || {};
+  const today = ride && ride.pts.length > 1 ? dkey(ride.t0) : null;
+  const days = (await histAll()).filter(R => R.d !== today && done[R.d] !== (R.pts || []).length);
+  for (let n = 0; n < days.length; n++) {
+    prog(`道にあてはめてるよ… ${n + 1}/${days.length}日`);
+    for (const [k, L, la, lo] of await footMatchReq(footSplit(days[n].pts || []))) segs[k] = [L, la, lo];
+    done[days[n].d] = days[n].pts.length;
+    await footKv("segs", segs); await footKv("done", done);
+  }
+  const all = Object.assign({}, segs);
+  if (today) { prog("今日の分をあてはめてるよ…"); for (const [k, L, la, lo] of await footMatchReq(footSplit(ride.pts))) all[k] = [L, la, lo]; }
+  return all;
+}
+async function footCityShow() {
+  const box = () => $("footCity"); if (!box() || footBusy) return;
+  footBusy = true;
+  try {
+    const all = await footSegsAll(t => { if (box()) box().textContent = t; });
+    const C = await footCityData();
+    let tot = 0; const by = {};
+    for (const k in all) { const [L, la, lo] = all[k]; tot += L; if (C) { const c = footCityOf(C, la, lo); if (c >= 0) by[c] = (by[c] || 0) + L; } }
+    if (!box()) return;
+    let h = `<div style="color:#222;margin-bottom:4px">通った道（ぜんぶ）：<b>${fmtKm(tot)}</b></div>`;
+    if (!C) h += "市ごとの％は、配布データに cities.json ができたら出るよ";
+    else {
+      const list = Object.keys(by).map(c => ({ n: C.names[c], m: by[c], all: C.total[c] })).map(x => ({ ...x, p: x.all ? 100 * x.m / x.all : 0 })).sort((a, b) => b.p - a.p);
+      h += list.length ? list.map(x => `<div style="display:flex;align-items:center;gap:6px;color:#222;padding:3px 0;border-top:1px solid #f3f3f3">
+        <span style="width:6.5em;flex:none">${esc(x.n)}</span>
+        <span style="flex:1;height:8px;background:#f1f1f1;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.min(100, Math.max(1, x.p)).toFixed(1)}%;background:#ff6d00"></i></span>
+        <b style="width:4.2em;text-align:right">${x.p < 1 ? x.p.toFixed(2) : x.p.toFixed(1)}%</b>
+        <small style="width:7.5em;text-align:right;color:#888">${(x.m / 1000).toFixed(1)}/${Math.round(x.all / 1000)}km</small></div>`).join("") : "まだ どの市も塗れてないよ";
+    }
+    box().innerHTML = h;
+  } catch (e) { if (box()) box().textContent = "しらべられなかったよ: " + e.message; }
+  finally { footBusy = false; }
 }
 if (footOn) setTimeout(footDraw, 1500);   // 起動したとき（ONなら）
 let trkYM = null;
