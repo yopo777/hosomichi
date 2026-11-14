@@ -1974,9 +1974,12 @@ const footRend = L.canvas({ pane: "footPane" }), footLayer = L.layerGroup().addT
 let footOn = !!lsGet("hosomichi_foot", false), footRuns = null, footStat = null, footTodayN = -1;
 const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
 // 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
+// 🧪ためし（4つ目が1）と、時速60kmより速い所（前のためし走行・GPSが飛んだ所）は入れない
 function footSplit(P) {
   const runs = []; let seg = [];
   for (let i = 0; i < P.length; i++) {
+    const fast = i && hav(P[i - 1], P[i]) > 16.7 * Math.max(1, (P[i][2] - P[i - 1][2]) / 1000);
+    if (P[i][3] || fast) { if (seg.length > 1) runs.push(seg); seg = P[i][3] ? [] : [[P[i][0], P[i][1]]]; continue; }
     if (i && P[i][2] - P[i - 1][2] > 5 * 60e3 && hav(P[i - 1], P[i]) > 300) { if (seg.length > 1) runs.push(seg); seg = []; }
     const q = [P[i][0], P[i][1]];
     if (!seg.length || hav(seg[seg.length - 1], q) >= 15 || i === P.length - 1) seg.push(q);
@@ -2068,14 +2071,14 @@ function footCityOf(C, la, lo) {
   return -1;
 }
 async function footSegsAll(prog) {   // 過去の分（まだのものだけ あてはめて保存）＋今日の分
-  const segs = (await footKv("segs")) || {}, done = (await footKv("done")) || {};
+  const segs = (await footKv("segs2")) || {}, done = (await footKv("done2")) || {};   // 2：ためし走行をのぞくようにしたので、あてはめなおし
   const today = ride && ride.pts.length > 1 ? dkey(ride.t0) : null;
   const days = (await histAll()).filter(R => R.d !== today && done[R.d] !== (R.pts || []).length);
   for (let n = 0; n < days.length; n++) {
     prog(`道にあてはめてるよ… ${n + 1}/${days.length}日`);
     for (const [k, L, la, lo] of await footMatchReq(footSplit(days[n].pts || []))) segs[k] = [L, la, lo];
     done[days[n].d] = days[n].pts.length;
-    await footKv("segs", segs); await footKv("done", done);
+    await footKv("segs2", segs); await footKv("done2", done);
   }
   const all = Object.assign({}, segs);
   if (today) { prog("今日の分をあてはめてるよ…"); for (const [k, L, la, lo] of await footMatchReq(footSplit(ride.pts))) all[k] = [L, la, lo]; }
@@ -2597,9 +2600,11 @@ function rideAdd(ll, accu) {
   if (!ride || wid === null || accu > 60) return;
   if (dayOf(ride.t0) !== dayOf(Date.now())) rideNew();   // 走っているとちゅうに0時をこえた
   const L = ride.pts[ride.pts.length - 1];
-  if (!L) { ride.pts.push([+ll[0].toFixed(6), +ll[1].toFixed(6), Date.now()]); rideEv("start", "", ll); return; }
+  const q = [+ll[0].toFixed(6), +ll[1].toFixed(6), Date.now()];
+  if (wid < 0) q.push(1);   // 4つ目の 1＝🧪ためしの現在地・ためし走行（🎨足あとには入れない）
+  if (!L) { ride.pts.push(q); rideEv("start", "", ll); return; }
   if (hav(L, ll) < 20) return;
-  ride.pts.push([+ll[0].toFixed(6), +ll[1].toFixed(6), Date.now()]);
+  ride.pts.push(q);
   if (ride.pts.length > 6000) ride.pts.splice(1, 1);
   rideSave(false);
 }
