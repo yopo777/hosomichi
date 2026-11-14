@@ -284,6 +284,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
     <div id="tabTrk" style="display:none"></div>
     <div id="tabLog" style="display:none">
+      <div id="dtabs" class="ttabs"><button data-d="tool" class="on">🛠 ツール</button><button data-d="issue">📝 課題</button></div>
+      <div id="dbgIssue" style="display:none"></div>
+      <div id="dbgTool">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
       <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>🧪 ためし走行</b>
@@ -296,6 +299,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div class="btns" style="margin:6px 0"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
         <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="lgAuto" checked>自動スクロール</label></div>
       <div id="log"></div>
+      </div>
     </div>
     <div id="tabRoute">
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
@@ -2816,6 +2820,23 @@ function setFollow(on) {
 document.addEventListener("visibilitychange", () => { if (wid !== null && document.visibilityState === "visible") wake(); });
 
 // ---------- 🚫 通れない印（自分だけ・この端末に保存） ----------
+// 📝 デバッグ → 課題：わかっている問題のメモ（ここに足していく）
+const ISSUES = [
+  ["🪜 階段に案内されることがある", "地図データに「階段」と書いてない階段に、ルートが通っちゃうことがあるよ（例：県道に降りる石段）。いまは「階段・石段」の名前や、坂がすごく急なことから見分けてるけど、ぜんぶはわからないの。",
+    "見つけたら、地図を長おし →「🚫 通れない」をつけてね。OpenStreetMap に階段（highway=steps）と書きたせば、みんなのルートからも消えるよ"],
+  ["🔄 データの共有ができない", "お気に入り・家・秘密の場所・印・設定・軌跡は、ぜんぶ この端末の中だけ。スマホを変えたり、パソコンで同じデータを使ったりできないよ。",
+    "いまはスマホだけで使う。あとで「軌跡いがいを まるごと書き出し・読みこみ」を作るかも"],
+];
+function dbgIssueDraw() {
+  $("dbgIssue").innerHTML = '<div style="font-size:12px;color:#666;margin:2px 0 6px">わかっている問題だよ。直せたら ここから消すね</div>'
+    + ISSUES.map(([t, d, w]) => `<div style="font-size:12px;margin:0 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px"><b>${t}</b>
+      <div style="margin-top:3px">${d}</div><div style="margin-top:3px;color:#188038">👉 ${w}</div></div>`).join("");
+}
+for (const b of document.querySelectorAll("#dtabs button")) b.onclick = () => {
+  for (const x of document.querySelectorAll("#dtabs button")) x.classList.toggle("on", x === b);
+  const is = b.dataset.d === "issue"; $("dbgIssue").style.display = is ? "" : "none"; $("dbgTool").style.display = is ? "none" : "";
+  if (is) dbgIssueDraw();
+};
 const BKEY = "hosomichi_blocks";
 const BLK_R = { s: "階段", p: "人の家・敷地", x: "柵・工事・行き止まり", o: "その他" };
 let blocks = lsGet(BKEY, []).filter(b => b && Array.isArray(b.p));
