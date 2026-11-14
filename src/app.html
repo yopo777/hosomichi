@@ -124,6 +124,10 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
 #fl{top:calc(50% - 146px)}
 #fl.off{opacity:.45;filter:grayscale(1)}
 #fl small,#flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+#ft{position:absolute;top:calc(50% - 266px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
+#ft.off{opacity:.45;filter:grayscale(1)}
+#ft small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 #mk{position:absolute;top:calc(50% - 206px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0;display:none}
 #mk.off{opacity:.45;filter:grayscale(1)}
@@ -345,8 +349,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <div id="inappGo" style="display:none;margin-top:6px"><a style="display:inline-block;background:#1a73e8;color:#fff;border-radius:8px;padding:6px 12px;text-decoration:none;font-weight:bold">🌐 Chrome で開く</a></div></div>
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
+<button id="ft" title="🎨足あと（塗れた道）を出す／かくす">🎨<small id="ftL">足あと</small></button>
 <button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
-<button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">⚪</span><small id="flL">進行方向</small></button>
+<button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">➤</span><small id="flL">進行方向</small></button>
 <button id="col" title="地図の種類">🗺<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qToast"></div>
@@ -1276,9 +1281,8 @@ function altBtn(r) {
 $("alt").onclick = () => { if (cur && cur.opts && cur.opts.length > 1) selectOpt(((cur.sel || 0) + 1) % cur.opts.length); };
 function drawRoute(r) {
   const R = r.route;
-  const thin = footOn;   // 🎨足あとを出しているときは細く（下の塗れた道がはみ出して見えるように）
-  L.polyline(R, { color: "#fff", weight: thin ? 7 : 11, opacity: .85, interactive: false }).addTo(layer);   // ふちどり
-  const seg = (pts, color) => L.polyline(pts, { color, weight: thin ? 4 : 7, opacity: .95 }).addTo(layer);
+  L.polyline(R, { color: "#fff", weight: 11, opacity: .85, interactive: false }).addTo(layer);   // ふちどり
+  const seg = (pts, color) => L.polyline(pts, { color, weight: 7, opacity: .95 }).addTo(layer);
   if (colorMode === "kind" && r.kc && r.kc.length === R.length - 1) {
     for (let i = 0; i < r.kc.length;) {
       let j = i; while (j < r.kc.length && r.kc[j] === r.kc[i]) j++;
@@ -1973,12 +1977,12 @@ async function histMonth(ym) {   // その月の日ごとの きょり（中身�
 }
 // ==== 🎨 足あと：今までの軌跡（🗓過去＋今日）をぜんぶ重ねて、メインの地図に出す ====
 // 何回も通った道ほど色がこくなる（うすい線を重ねるだけ）。まだ色がない道＝まだ行ってない所。ON/OFFは 🛤軌跡 → 🎨足あと（ほかのタブでも出たまま）
-map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 360;   // ルートの線（400）より下。足あとを出しているときはルートを細くして、赤がはみ出して見えるようにする map.getPane("footPane").style.pointerEvents = "none";
+map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 420;   // ルートの線（400）より上：ルートの まん中に赤い細い線が見える map.getPane("footPane").style.pointerEvents = "none";
 const footRend = L.canvas({ pane: "footPane" }), footLayer = L.layerGroup().addTo(map), footTodayLayer = L.layerGroup().addTo(map);
 let footOn = !!lsGet("hosomichi_foot", false), footRuns = null, footStat = null, footTodayN = -1;
 let footMode = "road", footDbg = !!lsGet("hosomichi_footDbg", false);   // footMode：line＝走った線 / road＝塗れた道（道にあてはめた結果）。footDbg：🧪ためし走行も入れる（デバッグ用・今日の分だけ・保存しない）
-const FOOT_ROAD = { renderer: footRend, color: "#ff1744", weight: 12, opacity: 1, lineCap: "round", interactive: false },
-  FOOT_ROAD_BG = { renderer: footRend, color: "#fff", weight: 16, opacity: 0.9, lineCap: "round", interactive: false };   // ルート（細くしたとき7px）より太く   // 白いふちどり＋こい赤（目立つように。線は1本にまとめて描くので軽い）
+const FOOT_ROAD = { renderer: footRend, color: "#ff1744", weight: 3, opacity: 1, lineCap: "round", interactive: false },
+  FOOT_ROAD_BG = { renderer: footRend, color: "#fff", weight: 5, opacity: 0.8, lineCap: "round", interactive: false };   // 細い赤＋白い細いふち（ルート7pxの まん中に入る）   // 白いふちどり＋こい赤（目立つように。線は1本にまとめて描くので軽い）
 let footPi = lsGet("hosomichi_footPi", true) !== false;   // 🔔 新しく塗れたら「ピッ」
 const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
 // 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
@@ -2068,8 +2072,7 @@ setInterval(footToday, 30000);
 function footSet(on) {
   footOn = on; lsSet("hosomichi_foot", on);
   if (on) footRuns = null;   // ONにするたびに読みなおす（0時に過去へ入った分も入る）
-  footDraw();
-  if (cur) try { showRoute(cur, false); } catch {}   // ルートの太さを切りかえ
+  footDraw(); ftBtn();
 }
 async function footTab() {
   const T = $("trkBody"); if (!T) return; trkLayer.clearLayers();
@@ -2164,6 +2167,9 @@ async function footCityShow() {
   finally { footBusy = false; }
 }
 if (footOn) setTimeout(footDraw, 1500);   // 起動したとき（ONなら）
+function ftBtn() { $("ft").classList.toggle("off", !footOn); $("ftL").textContent = footOn ? "足あと" : "かくし中"; }
+ftBtn();
+$("ft").onclick = () => { footSet(!footOn); if ($("footOn")) $("footOn").checked = footOn; };
 $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす（デバッグ用。ナビはそのまま動く）
   const h = e.target.checked;
   if (h) map.removeLayer(layer); else layer.addTo(map);
@@ -3795,7 +3801,7 @@ function flowBtns() {
   const has = !!(cur && cur.route && cur.route.length > 1);
   $("fl").style.display = has ? "block" : "none";
   $("fl").classList.toggle("off", flowMode === "off");
-  $("flI").textContent = flowMode === "rev" ? "⇄" : "⚪";
+  $("flI").textContent = flowMode === "rev" ? "⇄" : "➤";
   $("flL").textContent = { fwd: "進行方向", rev: "逆向き", off: "消し中" }[flowMode];
 }
 $("fl").onclick = () => {
