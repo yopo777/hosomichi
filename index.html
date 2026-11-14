@@ -183,7 +183,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1511</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1513</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ ✏ 新しく作る -->
@@ -284,7 +284,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
     <div id="tabTrk" style="display:none"></div>
     <div id="tabLog" style="display:none">
-      <div id="dtabs" class="ttabs"><button data-d="tool" class="on">🛠 ツール</button><button data-d="issue">📝 課題</button></div>
+      <div id="dtabs" class="ttabs"><button data-d="tool" class="on">🛠 ツール</button><button data-d="log">📜 ログ</button><button data-d="issue">📝 課題</button></div>
       <div id="dbgIssue" style="display:none"></div>
       <div id="dbgTool">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
@@ -295,8 +295,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
       </div>
       <div style="font-size:11px;color:#666;margin-bottom:6px">🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）→「ここを現在地にする」で決めるよ。もどすときも長おし →「本当の現在地にもどす」</div>
-      <b style="font-size:12px">📜 ログ</b>
-      <div class="btns" style="margin:6px 0"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
+      </div>
+      <div id="dbgLog" style="display:none">
+      <div class="btns" style="margin:4px 0 6px"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
         <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="lgAuto" checked>自動スクロール</label></div>
       <div id="log"></div>
       </div>
@@ -4506,8 +4507,9 @@ function dbgIssueDraw() {
 }
 for (const b of document.querySelectorAll("#dtabs button")) b.onclick = () => {
   for (const x of document.querySelectorAll("#dtabs button")) x.classList.toggle("on", x === b);
-  const is = b.dataset.d === "issue"; $("dbgIssue").style.display = is ? "" : "none"; $("dbgTool").style.display = is ? "none" : "";
-  if (is) dbgIssueDraw();
+  const d = b.dataset.d; for (const [k, id] of [["tool", "dbgTool"], ["log", "dbgLog"], ["issue", "dbgIssue"]]) $(id).style.display = d === k ? "" : "none";
+  if (d === "issue") dbgIssueDraw();
+  if (d === "log" && $("lgAuto").checked) $("log").scrollTop = $("log").scrollHeight;
 };
 const BKEY = "hosomichi_blocks";
 const BLK_R = { s: "階段", p: "人の家・敷地", x: "柵・工事・行き止まり", o: "その他" };
