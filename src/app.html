@@ -2401,7 +2401,8 @@ function nearestOnRoute(p) {
     segs.push([d, cum[i - 1] + t * (cum[i] - cum[i - 1])]); if (d < bd) bd = d;
   }
   let along = 0, bg = Infinity;
-  for (const [d, a] of segs) if (d <= bd + 15 && Math.abs(a - navPrev) < bg) { bg = Math.abs(a - navPrev); along = a; }
+  const TOT = cum[cum.length - 1], prev = navPrev > TOT - 80 ? 0 : navPrev;   // ゴールまで来たら、つぎはスタートから（同じルートを2周・3周するとき）
+  for (const [d, a] of segs) if (d <= bd + 15 && Math.abs(a - prev) < bg) { bg = Math.abs(a - prev); along = a; }
   navPrev = along;
   navAlong = along;   // 案内のボール用：ルートのどこまで来たか（m）
   return [bd, cum[cum.length - 1] - along + (cur.partial ? cur.restAir || 0 : 0)];
@@ -2483,7 +2484,7 @@ function onPos(p) {
   }
 }
 // ---------- 🗣 音声ナビ（ルートの線の曲がりぐあいから「曲がる所」を見つけて、近づいたらしゃべる） ----------
-let vcOn = lsGet("hosomichi_voice", true), vcTurns = null, vcFor = null, vcOff = false, vcEnd = false, vcJoined = false, vcJoinAt = 0, joinFor = null;
+let vcLast = 0, vcOn = lsGet("hosomichi_voice", true), vcTurns = null, vcFor = null, vcOff = false, vcEnd = false, vcJoined = false, vcJoinAt = 0, joinFor = null;
 const rodeToEnd = rest => vcJoined && rest + 300 < (cum[cum.length - 1] || 0) - vcJoinAt;   // ゴールの300mより手前で乗って、走ってきた
 $("vcOn").checked = vcOn;
 $("vcOn").onchange = () => { vcOn = $("vcOn").checked; lsSet("hosomichi_voice", vcOn); if (vcOn) say("音声案内をオンにしたよ"); else try { speechSynthesis.cancel(); } catch {} };
@@ -2663,7 +2664,14 @@ function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
   const say = t => { if (vcOn) window.say(t); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
-  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; }
+  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; vcLast = navAlong; }
+  // 2周目・3周目：ルートの位置が大きくもどったら（ゴール→スタート）、案内を言ったしるしを消して、もう一回言うようにする
+  if (navAlong < vcLast - 300) {
+    for (const t of vcTurns) t.a1 = t.a2 = false;
+    for (const q of cur.stops || []) q.said = false;
+    vcEnd = false; vsDone.clear(); addLog("🔁 同じルートをもう1周：案内をはじめから言うよ", "m");
+  }
+  vcLast = navAlong;
   // まだ一度もルートに乗っていない（共有ルートを遠くで開いた・車で出発地へ行く とちゅう など）ときは、「外れています」は言わない
   if (!vcJoined) return;
   if (off > 60) { if (!vcOff) { vcOff = true; if (vcOn) { boo(); const w = backWord(off); setTimeout(() => say("ルートから外れています。" + w), 700); } } blkShowMap(5000); return; }
