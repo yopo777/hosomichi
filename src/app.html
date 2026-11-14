@@ -339,8 +339,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="upd" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:2000;background:#188038;color:#fff;
   border-radius:10px;padding:8px 12px;font-size:14px;box-shadow:0 2px 8px #0005;white-space:nowrap"></div>
 <div id="inapp" style="display:none;position:absolute;left:8px;right:8px;top:calc(var(--ptop) + 8px);z-index:1001;background:#333;color:#fff;
-  border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">📱 X などのアプリの中で開いてるよ。現在地ナビを使うときは「︙」→「ブラウザで開く」で Chrome や Safari で開いてね
-  <button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button></div>
+  border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5"><button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button>📱 <b>X などのアプリの中で開いてるよ</b><br>ここは いつものブラウザと<b style="color:#ffd54f">データが べつ</b>だから、家・スポット・軌跡が 空っぽに見えるよ（消えてはいないよ）。ここで走ると 軌跡もこっちにたまって、📣SNSも作れないの。サイクリングは「︙」→「ブラウザで開く」で Chrome や Safari で開いてね
+  <div id="inappGo" style="display:none;margin-top:6px"><a style="display:inline-block;background:#1a73e8;color:#fff;border-radius:8px;padding:6px 12px;text-decoration:none;font-weight:bold">🌐 Chrome で開く</a></div></div>
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
@@ -587,6 +587,7 @@ async function geocode(text) {
 }
 // ---------- 位置情報のエラーと、アプリ内ブラウザ（X など）の案内 ----------
 const UA = navigator.userAgent;
+{ const q = new URLSearchParams(location.search); if (q.get("h")) history.replaceState(null, "", location.pathname + "#" + q.get("h")); }   // 🌐Chromeで開く から来たとき：?h=… を #… にもどす（intent:// には # を入れられないので）
 const IN_APP = /Twitter|TwitterAndroid|\bX\/|FBAN|FBAV|Instagram|Line\/|; wv\)/i.test(UA);
 function geoErrText(e) {
   if (e && e.code === 1) {
@@ -2057,6 +2058,7 @@ async function trkDay(R, today) {
 }
 async function snsOpen() {
   snsCm = ""; snsTest = false;
+  if (IN_APP) { $("trkBody").innerHTML = '<div style="font-size:13px;padding:12px;border:1px solid #f3c2c2;background:#fde7e9;color:#c5221f;border-radius:10px;line-height:1.6"><b>📱 アプリの中では 📣SNS は作れないよ</b><br>ここは いつものブラウザとデータがべつで、🏠家 や 🔒秘密の場所 が入っていないの。このまま作ると 家のまわりが消えないから、「︙」→「ブラウザで開く」で開いてから作ってね</div>'; return; }
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:15px">📣 SNSに出す</b> <span style="font-size:11px;color:#666">消しかた・写真を決めてから「🖼 作る」を押してね</span>
     <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地もかならず消すよ。とちゅうで長くいた所は、ただ通りすぎたように見せるよ）。投稿はXなどで自分でしてね</span></div>
@@ -3081,7 +3083,15 @@ function askSave(what) {
   });
 }
 
-if (IN_APP) $("inapp").style.display = "block";
+if (IN_APP) {
+  $("inapp").style.display = "block";
+  if (/Android/i.test(UA)) {   // Android は Chrome を直接ひらける（共有ルートの #… もそのまま）
+    const a = $("inappGo").querySelector("a");
+    const u = location.pathname + (location.hash.length > 1 ? "?h=" + encodeURIComponent(location.hash.slice(1)) : "");
+    a.href = `intent://${location.host}${u}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(location.origin + u)};end`;
+    $("inappGo").style.display = "";
+  }
+}
 
 // ---------- 🏁 駅踏破クエスト ----------
 // 路線（OpenStreetMap の route_master / route）の駅をぜんぶ回る。◎ で走っていて駅の 80m 以内に入るとスタンプ
