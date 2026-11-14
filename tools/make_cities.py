@@ -11,7 +11,7 @@
 中身:
   {"v": 日付, "G": 0.001, "i0": 緯度番号のはじめ,
    "names": [市区町村名, …],
-   "total": [その市の道の長さ(m), …],       … 配布データの道ぜんぶ（行き止まり・階段も入る。私有地・高速道路は配布データに入っていない）
+   "total": [その市の道の長さ(m), …],       … 政令市は区ごと（「千葉市花見川区」。区にわかれた市そのものは 0 になる）       … 配布データの道ぜんぶ（行き止まり・階段も入る。私有地・高速道路は配布データに入っていない）
    "rows":  [[経度番号のはじめ, 経度番号のおわり(含まない), 市の番号, …], …]}   … 約100mのマス目で、どのマスがどの市か（緯度の行ごと）
   アプリは 道の区間（way の何番目の区間）のまん中の点がどの市かを、このマス目で見る
 
@@ -19,7 +19,7 @@
 """
 import sys, os, json, gzip, math, time, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from make_quests import osmium, RelH, rings, thin, beep
+from make_quests import osmium, rings, thin, beep
 
 G = 0.001   # マス目の大きさ（約100m）
 R = 6371000
@@ -28,6 +28,24 @@ def hav(la1, lo1, la2, lo2):   # アプリ（router.js）と同じ計算
     RAD = math.pi / 180
     a = math.sin((la2 - la1) * RAD / 2) ** 2 + math.cos(la1 * RAD) * math.cos(la2 * RAD) * math.sin((lo2 - lo1) * RAD / 2) ** 2
     return 2 * R * math.asin(math.sqrt(a))
+
+class RelH(osmium.SimpleHandler):   # 市区町村（admin_level=7）と 政令市の区（admin_level=8 で「区」で終わるもの）
+    def __init__(self):
+        super().__init__(); self.city = {}; self.ward = {}
+    def relation(self, r):
+        t = r.tags
+        if t.get("boundary") != "administrative" or not t.get("name"): return
+        lv, nm = t.get("admin_level"), t["name"]
+        if lv == "7": self.city[r.id] = (nm, [(m.ref, m.role) for m in r.members if m.type == "w"])
+        elif lv == "8" and nm.endswith("区"): self.ward[r.id] = (nm, [(m.ref, m.role) for m in r.members if m.type == "w"])
+
+def paint(row, j0, j1, ci):   # 行のぬり分け [(j0, j1, 市の番号)…] に、あとから区をぬる（重なった所は区になる）
+    out = []
+    for a, b, c in row:
+        if b <= j0 or a >= j1: out.append((a, b, c)); continue
+        if a < j0: out.append((a, j0, c))
+        if b > j1: out.append((j1, b, c))
+    out.append((j0, j1, ci)); out.sort(); return out
 
 class WayH(osmium.SimpleHandler):   # 境界の線だけ
     def __init__(self, need):
@@ -67,23 +85,40 @@ def main():
     if not os.path.isdir(tdir): print(f"{tdir} がないよ（make_pack.py で作った配布データのフォルダを指定してね）"); sys.exit(1)
     print("1/4 市区町村の境界（relation）を読んでるよ…", flush=True)
     rh = RelH(); rh.apply_file(src)
-    need_w = {w for _, ms in rh.city.values() for w, _ in ms}
-    print(f"  市区町村 {len(rh.city)}", flush=True)
+    need_w = {w for _, ms in list(rh.city.values()) + list(rh.ward.values()) for w, _ in ms}
+    print(f"  市区町村 {len(rh.city)}・政令市の区 {len(rh.ward)}", flush=True)
     print("2/4 境界の線（way）を読んでるよ…", flush=True)
     wh = WayH(need_w); wh.apply_file(src)
     need_n = {n for ns in wh.ways.values() for n in ns}
     print(f"3/4 境界の点 {len(need_n):,}個を読んでるよ…", flush=True)
     nh = NodeH(need_n); nh.apply_file(src)
     L = nh.loc
-    # 市ごとの形 → マス目
+    # 市ごとの形 → マス目。政令市は、そのあと区でぬりなおす（名前は「千葉市花見川区」）
     names, rowmap = [], {}
-    for cid, (nm, ms) in sorted(rh.city.items(), key=lambda x: x[1][0]):
+    def shape(ms):
         polys = [thin([L[n] for n in r if n in L], 0.0002) for r in rings([w for w, _ in ms], wh.ways)]
-        polys = [p for p in polys if len(p) > 3]
-        if not polys: continue
+        return city_spans([p for p in polys if len(p) > 3])
+    def at(i, j):
+        for a, b, c in rowmap.get(i, []):
+            if a <= j < b: return c
+        return -1
+    for cid, (nm, ms) in sorted(rh.city.items(), key=lambda x: x[1][0]):
+        sp = shape(ms)
+        if not sp: continue
         ci = len(names); names.append(nm)
-        for i, sp in city_spans(polys).items():
-            for j0, j1 in sp: rowmap.setdefault(i, []).append((j0, j1, ci))
+        for i, v in sp.items():
+            for j0, j1 in v: rowmap.setdefault(i, []).append((j0, j1, ci))
+    for i in rowmap: rowmap[i].sort()
+    nward = 0
+    for cid, (nm, ms) in sorted(rh.ward.items(), key=lambda x: x[1][0]):
+        sp = shape(ms)
+        if not sp: continue
+        i = sorted(sp)[len(sp) // 2]; j0, j1 = sp[i][0]; pc = at(i, (j0 + j1) // 2)   # まん中あたりのマスで、どの市の区か見る
+        if pc < 0: continue
+        pn = names[pc]
+        ci = len(names); names.append(nm if nm.startswith(pn) else pn + nm); nward += 1
+        for i, v in sp.items():
+            for j0, j1 in v: rowmap[i] = paint(rowmap.get(i, []), j0, j1, ci)
     i0, i1 = min(rowmap), max(rowmap)
     rows = [[v for sp in sorted(rowmap.get(i, [])) for v in sp] for i in range(i0, i1 + 1)]
     def city_of(la, lo):
@@ -114,7 +149,7 @@ def main():
     with open(path, "w", encoding="utf-8") as f: json.dump(o, f, ensure_ascii=False, separators=(",", ":"))
     top = sorted(zip(names, total), key=lambda x: -x[1])[:5]
     print("  道が長い市: " + "・".join(f"{a} {b / 1000:,.0f}km" for a, b in top))
-    print(f"できた！ 市区町村 {len(names)}・区間 {nseg:,} → cities.json {os.path.getsize(path) / 1048576:.1f}MB（{time.time() - T0:.0f}秒）")
+    print(f"できた！ 市区町村 {len(names) - nward}＋政令市の区 {nward}・区間 {nseg:,} → cities.json {os.path.getsize(path) / 1048576:.1f}MB（{time.time() - T0:.0f}秒）")
 
 if __name__ == "__main__":
     try: main()
