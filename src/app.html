@@ -364,7 +364,7 @@ const attr = '地理院タイル | 経路 &copy; OpenStreetMap contributors';
 // 背景の地図（⚙ 設定でえらぶ）
 const BASES = {
   cyclosm: ["CyclOSM（自転車用）", () => L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
-    { subdomains: "abc", maxZoom: 20, maxNativeZoom: 20, attribution: "CyclOSM | 地図データ &copy; OpenStreetMap contributors" })],
+    { subdomains: "abc", maxZoom: 20, maxNativeZoom: 20, crossOrigin: "anonymous", attribution: "CyclOSM | 地図データ &copy; OpenStreetMap contributors" })],   // crossOrigin：見ていた地図のタイルを、SNS・軌跡の画像づくりでそのまま使えるように（もう一回読まなくていい）
   pale: ["国土地理院 淡色", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
   std: ["国土地理院 標準", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
 };
@@ -1791,12 +1791,16 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km }) { 
     for (const [url, at, zmax] of TILES.map((t, i) => [...t, i ? 18 : 20])) {
       const zt = Math.min(z + K - 1, zmax), f = 2 ** (zt - z), T = 256 / f, ox2 = ox * f, oy2 = oy * f;   // T：タイル1枚の大きさ（1200のつもりの座標で）
       const xs = [], ys = []; for (let tx = Math.floor(ox2 / 256); tx <= Math.floor((ox2 + W * f) / 256); tx++) xs.push(tx); for (let ty = Math.floor(oy2 / 256); ty <= Math.floor((oy2 + H * f) / 256); ty++) ys.push(ty);
-      const ims = await Promise.all(xs.flatMap(tx => ys.map(async ty => {
-        const u = url.replace("{s}", "abc"[(tx + ty) % 3]).replace("{z}", zt).replace("{x}", tx).replace("{y}", ty);
-        const r = await fetch(u, { mode: "cors" }); if (!r.ok) throw new Error(r.status);
-        return [tx, ty, await createImageBitmap(await r.blob())];
-      }))).catch(() => null);
-      if (!ims) continue;
+      // 1枚ずつ 6秒まで待つ。おそいタイルは あきらめて（そこは地の色のまま）、8割読めたらこの地図を使う
+      const all = xs.flatMap(tx => ys.map(ty => [tx, ty])); let done = 0;
+      const prog = () => { try { snsImage.prog && snsImage.prog(`地図を読んでいるよ… ${done}/${all.length}`); } catch {} };
+      prog();
+      const ims = (await Promise.all(all.map(async ([tx, ty]) => {
+        const u = url.replace("{s}", "abc"[(tx + ty) % 3]).replace("{z}", zt).replace("{x}", tx).replace("{y}", ty), ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
+        try { const r = await fetch(u, { mode: "cors", signal: ac.signal }); if (!r.ok) return null; return [tx, ty, await createImageBitmap(await r.blob())]; }
+        catch { return null; } finally { clearTimeout(tm); done++; prog(); }
+      }))).filter(Boolean);
+      if (ims.length < all.length * 0.8) continue;   // 読めないタイルが多い → つぎの地図（国土地理院）
       for (const [tx, ty, im] of ims) g.drawImage(im, tx * T - ox, ty * T - oy, T, T);
       snsImage.attr = at; break;
     }
@@ -1917,7 +1921,7 @@ setInterval(() => {
   trkDay(ride, true);
 }, 15000);
 // 🛤 軌跡タブ：中に 📅今日・📣SNS・🗓過去 の小さいタブ
-let trkV = "today";
+let trkV = "today", trkImgC = {};   // trkImgC：作った軌跡の画像（日付:点の数 → URL）
 function trkOpen(v) {
   if (v) trkV = v;
   const T = $("tabTrk");
@@ -2027,9 +2031,15 @@ async function trkDay(R, today) {
     <div style="font-size:11px;color:#888;margin-top:8px">${today ? `<div style="text-align:right;margin-top:6px"><button id="trkReset" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 今日の軌跡をリセット</button></div>` : ""}
     この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ</div></div>`;
   if (today) $("trkInt").onchange = () => { trkInt = +$("trkInt").value; lsSet("hosomichi_trkint", trkInt); };
-  snsImage({ runs, stops: [], sub: md, here: null, dir: null, big: "", pins: [] })
-    .then(b => { if ($("trkImg")) $("trkImg").outerHTML = b ? `<img id="trkImg" src="${URL.createObjectURL(b)}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; })
-    .catch(() => {});
+  // 同じ日・同じ記録なら、前に作った画像をそのまま使う（作りなおさない）
+  const ik = dkey(R.t0) + ":" + P.length, put = u => { if ($("trkImg")) $("trkImg").outerHTML = u ? `<img id="trkImg" src="${u}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; };
+  if (trkImgC[ik]) put(trkImgC[ik]);
+  else {
+    snsImage.prog = t => { const e = $("trkImg"); if (e && e.tagName !== "IMG") e.textContent = t; };
+    snsImage({ runs, stops: [], sub: md, here: null, dir: null, big: "", pins: [] })
+      .then(b => { const u = b && URL.createObjectURL(b); if (u) { for (const k in trkImgC) if (k.startsWith(dkey(R.t0) + ":")) delete trkImgC[k]; trkImgC[ik] = u; } put(u); })
+      .catch(() => {});
+  }
   if (today) {
     $("trkRe").onclick = () => trkDay(ride, true);
     $("trkReset").onclick = () => {   // うっかり消さないように、何を消すか見せて2回きく
@@ -2081,7 +2091,8 @@ async function snsOpen() {
   const draw = async d0 => {
     const d = { ...d0, pins: d0.none ? [] : await pinsFor(d0) }; lastD = d0;
     link = d.link;
-    $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); $("snsImg").textContent = "地図を作っているよ…"; map0 = null; made = true; $("snsMake").textContent = "🖼 作りなおす"; lock();
+    $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); $("snsImg").textContent = "地図を作っているよ…"; map0 = null;
+    snsImage.prog = t => { if ($("snsImg") && !$("snsImg").querySelector("img")) $("snsImg").textContent = t; }; made = true; $("snsMake").textContent = "🖼 作りなおす"; lock();
     const blob = d.none ? null : await snsImage(d);
     if (blob) { map0 = new File([blob], "hosomichi_" + Date.now() + ".jpg", { type: "image/jpeg" }); $("snsImg").innerHTML = `<img src="${URL.createObjectURL(blob)}">`; }
     else $("snsImg").textContent = d.none ? "まだ走った記録がないよ。◎で走りはじめると、走ったところまでの地図を作れるよ（これから行く所は出さないよ）" : "地図の画像を作れなかったよ（文だけ使えるよ）";
