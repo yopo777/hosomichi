@@ -1929,11 +1929,12 @@ let trkV = "today", trkImgC = {};   // trkImgC：作った軌跡の画像（日�
 function trkOpen(v) {
   if (v) trkV = v;
   const T = $("tabTrk");
-  if (!$("trkBody")) T.innerHTML = `<div class="ttabs" id="ttabs"><button data-v="today">📅 今日</button><button data-v="sns">📣 SNS</button><button data-v="past">🗓 過去</button></div><div id="trkBody"></div>`;
+  if (!$("trkBody")) T.innerHTML = `<div class="ttabs" id="ttabs"><button data-v="today">📅 今日</button><button data-v="sns">📣 SNS</button><button data-v="past">🗓 過去</button><button data-v="foot">🎨 足あと</button></div><div id="trkBody"></div>`;
   for (const b of T.querySelectorAll("#ttabs button")) { b.classList.toggle("on", b.dataset.v === trkV); b.onclick = () => { snsTest = false; trkOpen(b.dataset.v); }; }
   if (ride && ride.pts.length > 1 && dayOf(ride.t0) !== dayOf(Date.now())) histPut(ride);   // 0時をすぎて まだ新しくなっていない前の日の分も、過去に入れておく
   if (trkV === "sns") return snsOpen();
   if (trkV === "past") return trkPast();
+  if (trkV === "foot") return footTab();
   return trkDay(ride && dayOf(ride.t0) === dayOf(Date.now()) ? ride : null, true);
 }
 // 走ったきょり・走っていた時間（止まっていた・記録がない時間はのぞく）
@@ -1965,6 +1966,79 @@ async function histMonth(ym) {   // その月の日ごとの きょり（中身�
     return await new Promise(ok => { const out = {}, r = db.transaction("days").objectStore("days").openCursor(IDBKeyRange.bound(ym + "-01", ym + "-31")); r.onsuccess = () => { const c = r.result; if (!c) return ok(out); out[c.value.d] = c.value.dist; c.continue(); }; r.onerror = () => ok(out); });
   } catch { return {}; }
 }
+// ==== 🎨 足あと：今までの軌跡（🗓過去＋今日）をぜんぶ重ねて、メインの地図に出す ====
+// 何回も通った道ほど色がこくなる（うすい線を重ねるだけ）。まだ色がない道＝まだ行ってない所。ON/OFFは 🛤軌跡 → 🎨足あと（ほかのタブでも出たまま）
+map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 360; map.getPane("footPane").style.pointerEvents = "none";
+const footRend = L.canvas({ pane: "footPane" }), footLayer = L.layerGroup().addTo(map), footTodayLayer = L.layerGroup().addTo(map);
+let footOn = !!lsGet("hosomichi_foot", false), footRuns = null, footStat = null, footTodayN = -1;
+const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
+// 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
+function footSplit(P) {
+  const runs = []; let seg = [];
+  for (let i = 0; i < P.length; i++) {
+    if (i && P[i][2] - P[i - 1][2] > 5 * 60e3 && hav(P[i - 1], P[i]) > 300) { if (seg.length > 1) runs.push(seg); seg = []; }
+    const q = [P[i][0], P[i][1]];
+    if (!seg.length || hav(seg[seg.length - 1], q) >= 15 || i === P.length - 1) seg.push(q);
+  }
+  if (seg.length > 1) runs.push(seg);
+  return runs;
+}
+async function histAll() {   // 過去の記録ぜんぶ（日付の順）
+  try {
+    const db = await histOpen();
+    return await new Promise(ok => { const out = [], r = db.transaction("days").objectStore("days").openCursor(); r.onsuccess = () => { const c = r.result; if (!c) return ok(out); out.push(c.value); c.continue(); }; r.onerror = () => ok(out); });
+  } catch { return []; }
+}
+async function footLoad() {   // 過去の分（今日はべつ。今日の分は走るたびにふえるので）
+  const today = ride && ride.pts.length > 1 ? dkey(ride.t0) : null, days = (await histAll()).filter(R => R.d !== today);
+  footRuns = []; let dist = 0;
+  for (const R of days) { footRuns.push(...footSplit(R.pts || [])); dist += R.dist || 0; }
+  footStat = { days: days.length, dist, first: days.length ? days[0].d : null };
+}
+async function footDraw() {
+  footLayer.clearLayers(); footTodayLayer.clearLayers(); footTodayN = -1;
+  if (!footOn) return;
+  if (!footRuns) await footLoad();
+  if (!footOn) return;
+  for (const r of footRuns) L.polyline(r, FOOT_STYLE).addTo(footLayer);
+  footToday();
+}
+function footToday() {   // 今日の分だけ描きなおす（点がふえたときだけ）
+  if (!footOn || !ride) return;
+  const n = ride.pts.length; if (n === footTodayN) return;
+  footTodayN = n; footTodayLayer.clearLayers();
+  for (const r of footSplit(ride.pts)) L.polyline(r, FOOT_STYLE).addTo(footTodayLayer);
+}
+setInterval(footToday, 30000);
+function footSet(on) {
+  footOn = on; lsSet("hosomichi_foot", on);
+  if (on) footRuns = null;   // ONにするたびに読みなおす（0時に過去へ入った分も入る）
+  footDraw();
+}
+async function footTab() {
+  const T = $("trkBody"); if (!T) return; trkLayer.clearLayers();
+  if (!footStat) await footLoad();
+  const td = ride && ride.pts.length > 1 && dkey(ride.t0) === dkey(Date.now()) ? trkStats(ride.pts).dist : 0;
+  const days = footStat.days + (td ? 1 : 0), dist = footStat.dist + td;
+  T.innerHTML = `<div style="font-size:13px;padding:2px">
+    <label style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:bold;padding:6px 0"><input type="checkbox" id="footOn" ${footOn ? "checked" : ""} style="width:20px;height:20px">🎨 地図に足あとを出す</label>
+    <div style="display:flex;gap:8px;margin:6px 0;flex-wrap:wrap">
+      <div class="trkN"><small>走った日</small><b>${days}日</b></div>
+      <div class="trkN"><small>走ったきょり（合計）</small><b>${fmtKm(dist)}</b></div>
+      ${footStat.first ? `<div class="trkN"><small>記録のはじめ</small><b>${footStat.first.replace(/-/g, "/")}</b></div>` : ""}
+    </div>
+    <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
+    <div style="font-size:11px;color:#888;line-height:1.6">今まで走った線（🗓過去＋今日）をぜんぶ重ねて、メインの地図に<b style="color:#ff6d00">オレンジ</b>で出すよ。何回も通った道ほど こくなるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
+  $("footOn").onchange = e => footSet(e.target.checked);
+  $("footFit").onclick = async () => {
+    if (!footRuns) await footLoad();
+    const all = footRuns.concat(ride ? footSplit(ride.pts) : []);
+    if (!all.length) return alert("まだ足あとがないよ。◎で走ると たまっていくよ");
+    if (!footOn) { footSet(true); $("footOn").checked = true; }
+    map.fitBounds(L.latLngBounds(all.flat()), { padding: [20, 20] });
+  };
+}
+if (footOn) setTimeout(footDraw, 1500);   // 起動したとき（ONなら）
 let trkYM = null;
 async function trkPast() {
   const T = $("trkBody"); if (!T) return; trkLayer.clearLayers();
