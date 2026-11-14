@@ -260,7 +260,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">さわらないと暗くなるよ（50%でも、光の量は2割くらいになるよ）。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
         <div style="font-weight:bold;margin-top:6px">⏱ さわらないで何秒たったら節電する？</div>
         <div id="idleLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="idleLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="idleLv" value="10"> 10秒</label><label><input type="radio" name="idleLv" value="15"> 15秒</label></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">⬛で暗くしているあいだは、ボールも止めるよ（⭕丸のときは動くよ）</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">⬛で暗くしているあいだは、進行方向の丸も止めるよ（⭕丸のときは動くよ）</div>
         <div style="font-weight:bold;margin-top:6px">📡 地図を動かす間かく</div>
         <div id="gpsLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="gpsLv" value="1"> 1秒（ふつう）</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="2"> 2秒</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="3"> 3秒</label><label><input type="radio" name="gpsLv" value="5"> 5秒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">間かくを長くすると、地図の描きなおしがへって電池にやさしいよ。走った記録はいままでどおり取るよ。曲がる所の手前200mと、ルートから外れたときは1秒ごとにもどすよ</div>
@@ -341,7 +341,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
-<button id="fl" title="ルートのボール（進む向き → 逆向き → 消す）"><span id="flI">⚪</span><small id="flL">ボール</small></button>
+<button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">⚪</span><small id="flL">進行方向</small></button>
 <button id="col" title="地図の種類">🗺<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qToast"></div>
@@ -3360,7 +3360,7 @@ function flowBtns() {
   $("fl").style.display = has ? "block" : "none";
   $("fl").classList.toggle("off", flowMode === "off");
   $("flI").textContent = flowMode === "rev" ? "⇄" : "⚪";
-  $("flL").textContent = { fwd: "ボール", rev: "逆向き", off: "消し中" }[flowMode];
+  $("flL").textContent = { fwd: "進行方向", rev: "逆向き", off: "消し中" }[flowMode];
 }
 $("fl").onclick = () => {
   flowMode = { fwd: "rev", rev: "off", off: "fwd" }[flowMode]; lsSet("hosomichi_flowmode", flowMode);
