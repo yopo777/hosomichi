@@ -187,7 +187,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2348</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.2351</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3783,7 +3783,7 @@ function pi() {
     o.start(t); o.stop(t + 0.14);
   } catch {}
 }
-let footPiM = 0;   // 前の「ピッ」から 新しく塗れた長さ（m）
+let footPiT = 0;
 function footLiveAdd(a, b) {   // rideAdd から：前の点 a → 新しい点 b
   if (!footOn || !ride) return;
   if (!footKnownP && !footKnown) footKnownP = footSegsAll(() => {}).then(all => { footKnown = new Set(Object.keys(all)); footKnownP = null; const p = footPend; footPend = []; footLiveGot(p); }).catch(() => { footKnownP = null; });
@@ -3795,11 +3795,11 @@ function footLiveGot(segs) {
   if (!segs.length) return;
   const fresh = segs.filter(v => !footKnown.has(v[0]));
   if (!fresh.length) return;
-  for (const v of fresh) { footKnown.add(v[0]); footLiveLines.push([[v[4], v[5]], [v[6], v[7]]]); footPiM += v[1]; }
+  for (const v of fresh) { footKnown.add(v[0]); footLiveLines.push([[v[4], v[5]], [v[6], v[7]]]); }
   if (footOn && footMode === "road") {   // 白いふちを ぜんぶ先に描いてから赤（つなぎめが白く切れないように）
     footTodayLayer.clearLayers(); L.polyline(footLiveLines, FOOT_ROAD_BG).addTo(footTodayLayer); L.polyline(footLiveLines, FOOT_ROAD).addTo(footTodayLayer);
   }
-  if (footPi && footPiM >= 100) { footPiM = 0; pi(); }   // 新しく 100m 塗れるごとに1回（区間は短いので、1本ごとだと鳴りすぎる）
+  if (footPi && Date.now() - footPiT > 400) { footPiT = Date.now(); pi(); }   // つづけて塗れても、0.4秒に1回まで
 }
 function footToday() {   // 今日の分だけ描きなおす（点がふえたときだけ）
   if (!footOn || !ride) return;
@@ -3827,7 +3827,7 @@ async function footTab() {
       <div class="trkN"><small>走ったきょり（合計）</small><b>${fmtKm(dist)}</b></div>
       ${footStat.first ? `<div class="trkN"><small>記録のはじめ</small><b>${footStat.first.replace(/-/g, "/")}</b></div>` : ""}
     </div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:4px 0"><input type="checkbox" id="footPi" ${footPi ? "checked" : ""}>🔔 走っていて 新しく100m塗れるごとに「ピッ」</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:4px 0"><input type="checkbox" id="footPi" ${footPi ? "checked" : ""}>🔔 走っていて 新しく塗れたら「ピッ」</label>
     ${footDbg ? '<div style="font-size:11px;color:#c5221f;margin:2px 0">🧪 いまは ためし走行も入れているよ（🛠デバッグ → ツール で切りかえ）</div>' : ""}
     <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
