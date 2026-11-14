@@ -183,9 +183,12 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1131</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
+  <div id="head"><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1114.1425</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="fs" title="全画面">⛶</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
+    <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ ✏ 新しく作る -->
+      <input type="text" id="jump" enterkeyhint="search" placeholder="🔍 地名・駅名で地図を動かす" style="flex:1;min-width:0;padding:8px 10px;border:1px solid #ccc;border-radius:10px;font-size:14px">
+      <button class="ib" id="bNew" style="display:none;white-space:nowrap;font-size:12px;padding:6px 8px">✏ 新しく作る</button></div>
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="pts"><span class="ti">📌</span><span class="tl">スポット</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
     <div id="rtabs" class="ttabs"><button data-r="route">🚲 シンプル</button><button data-r="quest">🏁 クエスト</button></div>
     <div id="tabPts" style="display:none"></div>
@@ -295,7 +298,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="log"></div>
     </div>
     <div id="tabRoute">
-    <div class="row"><label>🔍</label><input type="text" id="jump" enterkeyhint="search" placeholder="地名・駅名で地図を動かす"></div>
     <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
     <div class="row" id="viaRow"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row" id="toRow"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
@@ -310,7 +312,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <button class="ib" id="bShare" style="display:none">🔗 共有URL</button>
         <button class="ib" id="bGpx">⬇ GPX</button>
 
-        <button class="ib" id="bNew" style="display:none">✏ 新しく作る</button>
+
         <button class="ib" id="bResume" style="display:none;flex-basis:100%;border-color:#188038;color:#188038;font-weight:bold">▶ 続きを計算</button>
       </div>
       <div id="share">
@@ -3799,6 +3801,7 @@ $("bNew").onclick = async () => {
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
   legend(null);
   $("from").value = ""; $("via").value = ""; $("to").value = ""; setMsg(""); $("prog").style.display = "none";
+  rtLast = "route"; showTab("route");   // どのタブから押しても、🚲シンプルを開く
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   $("to").focus();
 };
