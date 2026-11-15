@@ -1340,7 +1340,7 @@ function applySlope(G, k, noSteps) {
   const deg = i => nb[i] ? nb[i].size : 0;
   const edge = (a, b) => G.adj[a].find(e => e.v === b);
   let st = 0, sl = 0;
-  const seen = new Set();
+  const seen = new Set(), marks = [];   // 地図のマーク用：[緯度, 経度, 1=たぶん階段/0=急坂, 坂%, 高さの差, 長さ]
   for (let a = 0; a < n; a++) {
     if (!nb[a] || deg(a) === 2) continue;   // 交差点・行き止まりから歩きだす
     for (const first of nb[a]) {
@@ -1359,6 +1359,8 @@ function applySlope(G, k, noSteps) {
       const gr = dh / L, stair = dh >= 2.5 && gr >= (car ? 0.2 : 0.15), steep = !stair && gr >= 0.1;
       if (!stair && !steep) continue;
       if (stair) st++; else sl++;
+      { const m = path[path.length >> 1], m2 = path[(path.length - 1) >> 1];
+        marks.push([+((G.lat[m] + G.lat[m2]) / 2).toFixed(6), +((G.lon[m] + G.lon[m2]) / 2).toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L)]); }
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
         if (stair) { if (noSteps) e.c *= 30; e.k = "たぶん階段（標高で）"; }
@@ -1372,6 +1374,7 @@ function applySlope(G, k, noSteps) {
     dh = Math.min(dh, e.L * 0.15);
     e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1);
   }
+  if (marks.length && typeof self !== "undefined" && self.postMessage && typeof module === "undefined") self.postMessage({ type: "slope", marks });
   if (st || sl) log(`標高で：たぶん階段 ${st}か所${noSteps ? "（ほとんど通らない）" : ""}・急坂 ${sl}か所（ちょっとさける）`);
   return G;
 }

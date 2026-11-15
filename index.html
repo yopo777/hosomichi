@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.0041</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.0048</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -1722,7 +1722,7 @@ function applySlope(G, k, noSteps) {
   const deg = i => nb[i] ? nb[i].size : 0;
   const edge = (a, b) => G.adj[a].find(e => e.v === b);
   let st = 0, sl = 0;
-  const seen = new Set();
+  const seen = new Set(), marks = [];   // 地図のマーク用：[緯度, 経度, 1=たぶん階段/0=急坂, 坂%, 高さの差, 長さ]
   for (let a = 0; a < n; a++) {
     if (!nb[a] || deg(a) === 2) continue;   // 交差点・行き止まりから歩きだす
     for (const first of nb[a]) {
@@ -1741,6 +1741,8 @@ function applySlope(G, k, noSteps) {
       const gr = dh / L, stair = dh >= 2.5 && gr >= (car ? 0.2 : 0.15), steep = !stair && gr >= 0.1;
       if (!stair && !steep) continue;
       if (stair) st++; else sl++;
+      { const m = path[path.length >> 1], m2 = path[(path.length - 1) >> 1];
+        marks.push([+((G.lat[m] + G.lat[m2]) / 2).toFixed(6), +((G.lon[m] + G.lon[m2]) / 2).toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L)]); }
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
         if (stair) { if (noSteps) e.c *= 30; e.k = "たぶん階段（標高で）"; }
@@ -1754,6 +1756,7 @@ function applySlope(G, k, noSteps) {
     dh = Math.min(dh, e.L * 0.15);
     e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1);
   }
+  if (marks.length && typeof self !== "undefined" && self.postMessage && typeof module === "undefined") self.postMessage({ type: "slope", marks });
   if (st || sl) log(`標高で：たぶん階段 ${st}か所${noSteps ? "（ほとんど通らない）" : ""}・急坂 ${sl}か所（ちょっとさける）`);
   return G;
 }
@@ -2720,6 +2723,7 @@ worker.onmessage = ev => {
   if (m.type === "footMatch") { const f = footCb.get(m.id); footCb.delete(m.id); if (f) f(m.segs || []); return; }
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
   if (m.type === "pk") { onPk(m); return; }
+  if (m.type === "slope") { slopeAdd(m.marks); return; }
   if (m.type === "export") { onExport(m); return; }
   if (m.type === "imported") { onImported(m); return; }
   if (m.type === "stats") {
@@ -2827,7 +2831,8 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   }
   $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  rtDrop = false; worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a" && b.r !== "w").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  rtDrop = false; if (!prefix) slopeClear();   // 新しいルート：🪜⛰マークも出しなおす
+  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a" && b.r !== "w").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done", "trip"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
@@ -5851,11 +5856,25 @@ function owDraw(m) {
   }
 }
 map.on("moveend", () => owUpdate(false));
-// 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印）をまとめて かくす／出す。えらんだジャンルはそのまま
+// 🪜 たぶん階段・⛰ 急坂（ルートを計算したとき、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
+const slopeLayer = L.layerGroup().addTo(map), slopeSeen = new Set();
+function slopeAdd(list) {
+  for (const [la, lo, st, g, dh, len] of list) {
+    const k = la.toFixed(5) + "," + lo.toFixed(5); if (slopeSeen.has(k)) continue; slopeSeen.add(k);
+    const t = `${st ? "🪜 たぶん階段" : "⛰ 急坂"}（標高で・坂${g}%・高さの差${dh}m・長さ${len}m）`;
+    L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
+        html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
+      .bindTooltip(t, { direction: "top", offset: [0, -10] })
+      .on("click", () => pinPopup(L.latLng(la, lo), la.toFixed(6) + "," + lo.toFixed(6), t)).addTo(slopeLayer);
+  }
+  mkBtn();
+}
+function slopeClear() { slopeLayer.clearLayers(); slopeSeen.clear(); }
+// 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印・🪜たぶん階段・⛰急坂）をまとめて かくす／出す。えらんだジャンルはそのまま
 function mkBtn() {
-  $("mk").style.display = spotOn.size ? "block" : "none";
+  $("mk").style.display = spotOn.size || slopeSeen.size ? "block" : "none";
   $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
-  for (const ly of [spotLayer, owLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
+  for (const ly of [spotLayer, owLayer, slopeLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
 }
 $("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } };
 mkBtn();

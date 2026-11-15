@@ -902,6 +902,7 @@ worker.onmessage = ev => {
   if (m.type === "footMatch") { const f = footCb.get(m.id); footCb.delete(m.id); if (f) f(m.segs || []); return; }
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
   if (m.type === "pk") { onPk(m); return; }
+  if (m.type === "slope") { slopeAdd(m.marks); return; }
   if (m.type === "export") { onExport(m); return; }
   if (m.type === "imported") { onImported(m); return; }
   if (m.type === "stats") {
@@ -1009,7 +1010,8 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   }
   $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  rtDrop = false; worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a" && b.r !== "w").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  rtDrop = false; if (!prefix) slopeClear();   // 新しいルート：🪜⛰マークも出しなおす
+  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a" && b.r !== "w").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done", "trip"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
@@ -4033,11 +4035,25 @@ function owDraw(m) {
   }
 }
 map.on("moveend", () => owUpdate(false));
-// 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印）をまとめて かくす／出す。えらんだジャンルはそのまま
+// 🪜 たぶん階段・⛰ 急坂（ルートを計算したとき、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
+const slopeLayer = L.layerGroup().addTo(map), slopeSeen = new Set();
+function slopeAdd(list) {
+  for (const [la, lo, st, g, dh, len] of list) {
+    const k = la.toFixed(5) + "," + lo.toFixed(5); if (slopeSeen.has(k)) continue; slopeSeen.add(k);
+    const t = `${st ? "🪜 たぶん階段" : "⛰ 急坂"}（標高で・坂${g}%・高さの差${dh}m・長さ${len}m）`;
+    L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
+        html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
+      .bindTooltip(t, { direction: "top", offset: [0, -10] })
+      .on("click", () => pinPopup(L.latLng(la, lo), la.toFixed(6) + "," + lo.toFixed(6), t)).addTo(slopeLayer);
+  }
+  mkBtn();
+}
+function slopeClear() { slopeLayer.clearLayers(); slopeSeen.clear(); }
+// 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印・🪜たぶん階段・⛰急坂）をまとめて かくす／出す。えらんだジャンルはそのまま
 function mkBtn() {
-  $("mk").style.display = spotOn.size ? "block" : "none";
+  $("mk").style.display = spotOn.size || slopeSeen.size ? "block" : "none";
   $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
-  for (const ly of [spotLayer, owLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
+  for (const ly of [spotLayer, owLayer, slopeLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
 }
 $("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } };
 mkBtn();
