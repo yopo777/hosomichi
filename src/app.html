@@ -2406,6 +2406,7 @@ function albDB() {
 }
 async function albAll() { try { const db = await albDB(); return await new Promise(ok => { const r = db.transaction("ph").objectStore("ph").getAll(); r.onsuccess = () => ok(r.result || []); r.onerror = () => ok([]); }); } catch { return []; } }
 async function albPut(o) { const db = await albDB(); return new Promise(ok => { const tx = db.transaction("ph", "readwrite"); tx.objectStore("ph").put(o); tx.oncomplete = () => ok(true); tx.onerror = () => ok(false); }); }
+async function albClear(fn) { for (const o of await albAll()) if (fn(o)) await albDel(o.id); }   // 📷 えらんだ写真を まとめて消す
 async function albDel(id) { const db = await albDB(); return new Promise(ok => { const tx = db.transaction("ph", "readwrite"); tx.objectStore("ph").delete(id); tx.oncomplete = () => ok(true); tx.onerror = () => ok(false); }); }
 async function albSmall(f, max) {   // 長いほうを max px に。描きなおすので 位置情報（Exif）は消える
   const bm = await createImageBitmap(f, { imageOrientation: "from-image" }).catch(() => null); if (!bm) return null;
@@ -2461,9 +2462,9 @@ async function trkPast() {
   $("histDel").onclick = async () => {   // うっかり消さないように、何日分か見せて2回きく（今日の分は消さない）
     const n = await histCount();
     if (!n) return alert("過去の記録はまだないよ");
-    if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？（👣足あと・市ごとの塗りも消えるよ）\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
+    if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？（👣足あと・市ごとの塗り・📷アルバムの写真も消えるよ）\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
     if (!confirm("ほんとうに ぜんぶ消していい？")) return;
-    try { await histClear(); await footKv("segs3", {}); await footKv("done3", {}); footRuns = null; footStat = null; footKnown = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（👣足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
+    try { await histClear(); const td = ride ? dkey(ride.t0) : ""; await albClear(o => o.d !== td); await footKv("segs3", {}); await footKv("done3", {}); footRuns = null; footStat = null; footKnown = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（👣足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
     trkPast();
   };
   $("calPrev").onclick = () => { trkYM = m ? [y, m - 1] : [y - 1, 11]; trkPast(); };
@@ -2505,9 +2506,10 @@ async function trkDay(R, today) {
   const ik = trkDay.cur = dkey(R.t0) + ":" + P.length, put = u => { if ($("trkImg") && trkDay.cur === ik) $("trkImg").outerHTML = u ? `<img id="trkImg" src="${u}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; };
   if (today) {
     $("trkRe").onclick = () => trkDay(ride, true);
-    $("trkReset").onclick = () => {   // うっかり消さないように、何を消すか見せて2回きく
-      if (!confirm(`今日の軌跡（${fmtKm(dist)}・記録 ${P.length}点）を消して、ここから新しく記録する？\n消したら元にもどせないよ（🗓過去にも入らないよ）`)) return;
+    $("trkReset").onclick = async () => {   // うっかり消さないように、何を消すか見せて2回きく
+      if (!confirm(`今日の軌跡（${fmtKm(dist)}・記録 ${P.length}点）と 今日のアルバムの写真を消して、ここから新しく記録する？\n消したら元にもどせないよ（🗓過去にも入らないよ。スマホの元の写真は消えないよ）`)) return;
       if (!confirm("ほんとうに消していい？")) return;
+      const d = dkey(R.t0); await albClear(o => o.d === d);   // 📷 今日の写真も
       rideNew(true); trkDay(ride, true);
     };
   } else $("trkBack").onclick = () => trkPast();
