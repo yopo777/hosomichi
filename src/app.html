@@ -312,6 +312,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
         <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
+        <div class="btns" style="margin-top:6px"><button class="ib" id="footWipe" style="font-size:12px;color:#c5221f">👣 足あとだけ消す（軌跡はのこす）</button></div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="footDbg">👣 ためし走行も足あとに入れる（今日の分だけ・保存しない・過去には入らないよ）</label>
       </div>
@@ -2247,10 +2248,12 @@ function evToggle(on) {
   else { if (evN) evN.g.gain.setTargetAtTime(0, actx.currentTime, 0.2); if (evC) { evC.rate = 0; evC.g.gain.setTargetAtTime(0, actx.currentTime, 0.05); } }
 }
 function footLiveAdd(a, b) {   // rideAdd から：前の点 a → 新しい点 b
-  if (!footOn || !ride) return;
+  if (!footOn || !ride || a[2] < footFrom) return;
   if (!footKnownP && !footKnown) footKnownP = footSegsAll(() => {}).then(all => { footKnown = new Set(Object.keys(all)); footKnownP = null; const p = footPend; footPend = []; footLiveGot(p); }).catch(() => { footKnownP = null; });
-  worker.postMessage({ cmd: "footLive", t0: ride.t0, pair: [[a[0], a[1]], [b[0], b[1]]] });
+  worker.postMessage({ cmd: "footLive", t0: ride.t0 + ":" + footFrom, pair: [[a[0], a[1]], [b[0], b[1]]] });
 }
+let footFrom = +lsGet("hosomichi_footFrom", 0) || 0;   // 🛠「足あとだけ消す」をした時刻。これより前の点は 塗らない（軌跡はのこる）
+const footAfter = P => footFrom ? P.filter(q => q[2] >= footFrom) : P;
 let footPend = [], footLiveLines = [];   // 塗った所の一覧を読みこむ前に来た分（読みこんだらまとめて見る）
 function footLiveGot(segs) {
   if (!footKnown) { footPend.push(...segs); return; }
@@ -2340,12 +2343,12 @@ async function footSegsRun(prog) {   // 過去の分（まだのものだけ あ
   const days = (await histAll()).filter(R => R.d !== today && done[R.d] !== (R.pts || []).length);
   for (let n = 0; n < days.length; n++) {
     prog(`道にあてはめてるよ… ${n + 1}/${days.length}日`);
-    for (const [k, ...v] of await footMatchReq(footSplit(days[n].pts || []))) segs[k] = v;
+    for (const [k, ...v] of await footMatchReq(footSplit(footAfter(days[n].pts || [])))) segs[k] = v;
     done[days[n].d] = days[n].pts.length;
     await footKv("segs3", segs); await footKv("done3", done);
   }
   const all = Object.assign({}, segs);
-  if (today) { prog("今日の分をあてはめてるよ…"); for (const [k, ...v] of await footMatchReq(footSplit(ride.pts, footDbg))) all[k] = v; }
+  if (today) { prog("今日の分をあてはめてるよ…"); for (const [k, ...v] of await footMatchReq(footSplit(footAfter(ride.pts), footDbg))) all[k] = v; }
   return all;
 }
 async function footCityShow() {
@@ -2394,6 +2397,14 @@ $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす�
   const h = e.target.checked;
   if (h) map.removeLayer(layer); else layer.addTo(map);
   map.getPane("flowPane").style.display = h ? "none" : "";
+};
+$("footWipe").onclick = async () => {   // 👣 足あと（塗れた道・市ごとの塗り）をゼロに。軌跡・写真はそのまま。いまより前の点は もう塗らない
+  if (!confirm("👣 足あと（塗れた道・市ごとの塗り）だけ消す？\n🛤軌跡と写真はのこるよ。いまより前に走った所は もう塗らないよ")) return;
+  footFrom = Date.now(); lsSet("hosomichi_footFrom", footFrom);
+  const done = {}; for (const R of await histAll()) done[R.d] = (R.pts || []).length;   // 過去の日は あてはめずみにしておく
+  await footKv("segs3", {}); await footKv("done3", done);
+  footKnown = null; footLiveLines = []; footPend = []; footTodayN = -1; footRuns = null; footStat = null; footLayer.clearLayers(); footTodayLayer.clearLayers(); footDraw();
+  alert("👣 足あとを消したよ");
 };
 $("footDbg").checked = footDbg;   // 🛠デバッグ → ツール の 🧪ためし走行 の中
 $("footDbg").onchange = e => { footDbg = e.target.checked; lsSet("hosomichi_footDbg", footDbg); footTodayN = -1; footDraw(); if ($("footCity")) footCityShow(); };
