@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0933</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0937</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3758,7 +3758,7 @@ const FOOT_ROAD = { color: "#ff1744", weight: 16, opacity: 0.45, lineCap: "round
 // ルートと同じ層（overlayPane の SVG）に入れて、いちばん下へ。べつの層だと 地図が動いているあいだ ルートとずれて見えた
 const footLine = (pts, g) => L.polyline(pts, { ...FOOT_ROAD, weight: footW() }).addTo(g).bringToBack();   // 線は1本にまとめて描く（重なっても こくならない・軽い）
 map.on("zoomend", () => { const w = footW(); for (const g of [footLayer, footTodayLayer]) g.eachLayer(l => l.setStyle && l.setStyle({ weight: w })); });
-let footPi = lsGet("hosomichi_footPi", true) !== false, footPiVol = +lsGet("hosomichi_footPiVol2", 0.5);   // 🔔 新しく塗れたら「ピッ」
+let footPi = lsGet("hosomichi_footPi", false) === true,   /* はじめはOFF（うるさいので） */ footPiVol = +lsGet("hosomichi_footPiVol2", 0.5);   // 🔔 新しく塗れたら「ピッ」
 const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
 // 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
 // 🧪ためし（4つ目が1）と、時速60kmより速い所（前のためし走行・GPSが飛んだ所）は入れない

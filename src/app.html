@@ -2017,7 +2017,7 @@ const FOOT_ROAD = { color: "#ff1744", weight: 16, opacity: 0.45, lineCap: "round
 // ルートと同じ層（overlayPane の SVG）に入れて、いちばん下へ。べつの層だと 地図が動いているあいだ ルートとずれて見えた
 const footLine = (pts, g) => L.polyline(pts, { ...FOOT_ROAD, weight: footW() }).addTo(g).bringToBack();   // 線は1本にまとめて描く（重なっても こくならない・軽い）
 map.on("zoomend", () => { const w = footW(); for (const g of [footLayer, footTodayLayer]) g.eachLayer(l => l.setStyle && l.setStyle({ weight: w })); });
-let footPi = lsGet("hosomichi_footPi", true) !== false, footPiVol = +lsGet("hosomichi_footPiVol2", 0.5);   // 🔔 新しく塗れたら「ピッ」
+let footPi = lsGet("hosomichi_footPi", false) === true,   /* はじめはOFF（うるさいので） */ footPiVol = +lsGet("hosomichi_footPiVol2", 0.5);   // 🔔 新しく塗れたら「ピッ」
 const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0.35, lineCap: "round", lineJoin: "round", interactive: false };
 // 点の列 → 線のかたまり（記録が切れた所で分ける・15mより近い点はまびく＝何百日ぶんでも軽く）
 // 🧪ためし（4つ目が1）と、時速60kmより速い所（前のためし走行・GPSが飛んだ所）は入れない
