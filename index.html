@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.1131</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.1616</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -4147,6 +4147,7 @@ function albDB() {
 }
 async function albAll() { try { const db = await albDB(); return await new Promise(ok => { const r = db.transaction("ph").objectStore("ph").getAll(); r.onsuccess = () => ok(r.result || []); r.onerror = () => ok([]); }); } catch { return []; } }
 async function albPut(o) { const db = await albDB(); return new Promise(ok => { const tx = db.transaction("ph", "readwrite"); tx.objectStore("ph").put(o); tx.oncomplete = () => ok(true); tx.onerror = () => ok(false); }); }
+setTimeout(() => albClear(o => !o.p).catch(() => {}), 5000);   // 前の版で入った 場所なしの写真を そうじ
 async function albClear(fn) { for (const o of await albAll()) if (fn(o)) await albDel(o.id); }   // 📷 えらんだ写真を まとめて消す
 async function albDel(id) { const db = await albDB(); return new Promise(ok => { const tx = db.transaction("ph", "readwrite"); tx.objectStore("ph").delete(id); tx.oncomplete = () => ok(true); tx.onerror = () => ok(false); }); }
 async function albSmall(f, max) {   // 長いほうを max px に。描きなおすので 位置情報（Exif）は消える
@@ -4163,6 +4164,7 @@ async function albSave(src, R) {   // src：[{ f, ex }]（📣SNSで えらん�
     const t = ex.t || f.lastModified || Date.now();
     let p = ex.p || null;
     if (!p && R && R.pts.length) { let bi = -1, bd = 10 * 60e3; R.pts.forEach((q, i) => { const dt = Math.abs(q[2] - t); if (dt < bd) { bd = dt; bi = i; } }); if (bi >= 0) p = [R.pts[bi][0], R.pts[bi][1]]; }
+    if (!p) continue;   // 場所がわからない写真は 地図に出せない（見えないまま 場所をとる）ので 入れない
     const b = await albSmall(f, 800); if (!b) continue;
     await albPut({ id, d: R ? dkey(R.t0) : dkey(t), t, p, b });
   }
