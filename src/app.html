@@ -2891,7 +2891,7 @@ function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着に�
     if (ev.target.dataset.fake) { L.DomEvent.stopPropagation(ev); setFake(ev.target.dataset.fake === "1" ? [+ll.lat.toFixed(6), +ll.lng.toFixed(6)] : null); map.closePopup(pop); return; }
     if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); return; }
     if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); return; }
-    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll)); map.closePopup(pop); return; }
+    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 }
@@ -4113,13 +4113,15 @@ function drawFavs() {
   for (const q of favs) L.marker(q.p, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">⭐</div>' }) }).bindTooltip(esc(q.name || "お気に入り")).addTo(favLayer);
   try { spotsTabDraw(); } catch {}
 }
-async function addFav(ll) {
+async function addFav(ll, title) {   // title：マークの名前（「🪨 庚申塚」など）。あれば「庚申塚 松戸市○○町○丁目」にする
   setMsg("⭐ 住所をしらべているよ…");
   const a = await addrName([ll.lat, ll.lng]).catch(() => "");
-  const name = prompt("⭐ お気に入りの名前（はじめは住所だよ。かえてもいいよ）", a || "");
+  const t = (title || "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  const def = [t, a].filter(Boolean).join(" ");
+  const name = prompt(`⭐ お気に入りの名前（はじめは${t ? "名前と住所" : "住所"}だよ。かえてもいいよ）`, def);
   if (name === null) { setMsg(""); return; }
   const d = new Date();
-  favs.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], name: name.trim() || a || "お気に入り", t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
+  favs.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], name: name.trim() || def || "お気に入り", t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
   lsSet("hosomichi_fav", favs); drawFavs(); setMsg("⭐ お気に入りにしたよ（📌スポットから出発・到着にすぐ入れられるよ）");
 }
 drawFavs();
