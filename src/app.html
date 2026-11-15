@@ -2046,8 +2046,16 @@ function histOpen() {
   if (!histDB) histDB = new Promise((ok, ng) => { const r = indexedDB.open("hosomichi_hist", 1); r.onupgradeneeded = () => r.result.createObjectStore("days", { keyPath: "d" }); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); });
   return histDB;
 }
+function simStrip(R) {   // 🧪 ためしの点（4つ目が1）と、その間にできた 寄った所・スタンプを のぞいた記録
+  const rg = []; let a = null;
+  for (const q of R.pts) { if (q[3]) { if (!a) a = [q[2], q[2]]; a[1] = q[2]; } else if (a) { rg.push(a); a = null; } } if (a) rg.push(a);
+  if (!rg.length) return R;
+  const inR = t => rg.some(([x, y]) => t >= x - 5000 && t <= y + 5000);
+  return { ...R, pts: R.pts.filter(q => !q[3]), ev: (R.ev || []).filter(e => !(e.k !== "start" && inR(e.t))) };
+}
 async function histPut(R) {
   try {
+    R = R && simStrip(R);   // 🧪 0時に🗓過去へ入れるときは ためしの分を自動で消す
     if (!R || R.pts.length < 2) return;
     const { dist, move } = trkStats(R.pts), db = await histOpen();
     await new Promise((ok, ng) => { const tx = db.transaction("days", "readwrite"); tx.objectStore("days").put({ d: dkey(R.t0), t0: R.t0, pts: R.pts, ev: R.ev || [], dist, move }); tx.oncomplete = ok; tx.onerror = () => ng(tx.error); });
@@ -2404,10 +2412,7 @@ $("simWipe").onclick = () => {   // 🧪 今日の軌跡から ためしの点�
   if (!ride) return;
   const n = ride.pts.filter(q => q[3]).length; if (!n) return alert("ためしの軌跡はないよ");
   if (!confirm(`🧪 ためしの軌跡（${n}点）と ためしの足あとを消す？\n本物の記録はのこるよ`)) return;
-  const R = []; let a = null;   // ためしで走っていた時間（前後5秒）
-  for (const q of ride.pts) { if (q[3]) { if (!a) a = [q[2], q[2]]; a[1] = q[2]; } else if (a) { R.push(a); a = null; } } if (a) R.push(a);
-  const inR = t => R.some(([x, y]) => t >= x - 5000 && t <= y + 5000);
-  ride.pts = ride.pts.filter(q => !q[3]); ride.ev = ride.ev.filter(e => !(e.k !== "start" && inR(e.t))); rideSave(true);
+  const c = simStrip(ride); ride.pts = c.pts; ride.ev = c.ev; rideSave(true);
   footGen++; footKnown = null; footLiveLines = []; footPend = []; footTodayN = -1; footTodayLayer.clearLayers(); footDraw();
   if (trkV === "today" && $("trkBody")) trkDay(ride, true);
   alert(`🧪 ためしの軌跡 ${n}点を消したよ`);
