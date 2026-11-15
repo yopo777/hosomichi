@@ -312,6 +312,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
         <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
+        <div class="btns" style="margin-top:6px"><button class="ib" id="simWipe" style="font-size:12px;color:#c5221f">🧪 ためしの軌跡と足あとを消す（本物はのこす）</button></div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="footWipe" style="font-size:12px;color:#c5221f">👣 足あとだけ消す（軌跡はのこす）</button></div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="footDbg">👣 ためし走行も足あとに入れる（今日の分だけ・保存しない・過去には入らないよ）</label>
@@ -2250,9 +2251,10 @@ function evToggle(on) {
 function footLiveAdd(a, b) {   // rideAdd から：前の点 a → 新しい点 b
   if (!footOn || !ride || a[2] < footFrom) return;
   if (!footKnownP && !footKnown) footKnownP = footSegsAll(() => {}).then(all => { footKnown = new Set(Object.keys(all)); footKnownP = null; const p = footPend; footPend = []; footLiveGot(p); }).catch(() => { footKnownP = null; });
-  worker.postMessage({ cmd: "footLive", t0: ride.t0 + ":" + footFrom, pair: [[a[0], a[1]], [b[0], b[1]]] });
+  worker.postMessage({ cmd: "footLive", t0: ride.t0 + ":" + footFrom + ":" + footGen, pair: [[a[0], a[1]], [b[0], b[1]]] });
 }
 let footFrom = +lsGet("hosomichi_footFrom", 0) || 0;   // 🛠「足あとだけ消す」をした時刻。これより前の点は 塗らない（軌跡はのこる）
+let footGen = 0;   // かわったら 走りながらの あてはめを はじめから
 const footAfter = P => footFrom ? P.filter(q => q[2] >= footFrom) : P;
 let footPend = [], footLiveLines = [];   // 塗った所の一覧を読みこむ前に来た分（読みこんだらまとめて見る）
 function footLiveGot(segs) {
@@ -2397,6 +2399,18 @@ $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす�
   const h = e.target.checked;
   if (h) map.removeLayer(layer); else layer.addTo(map);
   map.getPane("flowPane").style.display = h ? "none" : "";
+};
+$("simWipe").onclick = () => {   // 🧪 今日の軌跡から ためしの点（と その間にできた 寄った所・スタンプ）を消す。足あとも 本物の分だけで 作りなおす
+  if (!ride) return;
+  const n = ride.pts.filter(q => q[3]).length; if (!n) return alert("ためしの軌跡はないよ");
+  if (!confirm(`🧪 ためしの軌跡（${n}点）と ためしの足あとを消す？\n本物の記録はのこるよ`)) return;
+  const R = []; let a = null;   // ためしで走っていた時間（前後5秒）
+  for (const q of ride.pts) { if (q[3]) { if (!a) a = [q[2], q[2]]; a[1] = q[2]; } else if (a) { R.push(a); a = null; } } if (a) R.push(a);
+  const inR = t => R.some(([x, y]) => t >= x - 5000 && t <= y + 5000);
+  ride.pts = ride.pts.filter(q => !q[3]); ride.ev = ride.ev.filter(e => !(e.k !== "start" && inR(e.t))); rideSave(true);
+  footGen++; footKnown = null; footLiveLines = []; footPend = []; footTodayN = -1; footTodayLayer.clearLayers(); footDraw();
+  if (trkV === "today" && $("trkBody")) trkDay(ride, true);
+  alert(`🧪 ためしの軌跡 ${n}点を消したよ`);
 };
 $("footWipe").onclick = async () => {   // 👣 足あと（塗れた道・市ごとの塗り）をゼロに。軌跡・写真はそのまま。いまより前の点は もう塗らない
   if (!confirm("👣 足あと（塗れた道・市ごとの塗り）だけ消す？\n🛤軌跡と写真はのこるよ。いまより前に走った所は もう塗らないよ")) return;
