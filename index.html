@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0955</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0958</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -4178,14 +4178,8 @@ async function trkDay(R, today) {
     <div style="font-size:11px;color:#888;margin-top:8px">${today ? `<div style="text-align:right;margin-top:6px"><button id="trkReset" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 今日の軌跡をリセット</button></div>` : ""}
     この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ</div></div>`;
   // 同じ日・同じ記録なら、前に作った画像をそのまま使う（作りなおさない）
-  const ik = dkey(R.t0) + ":" + P.length, put = u => { if ($("trkImg")) $("trkImg").outerHTML = u ? `<img id="trkImg" src="${u}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; };
+  const ik = trkDay.cur = dkey(R.t0) + ":" + P.length, put = u => { if ($("trkImg") && trkDay.cur === ik) $("trkImg").outerHTML = u ? `<img id="trkImg" src="${u}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; };
   if (trkImgC[ik]) put(trkImgC[ik]);
-  else {
-    snsImage.prog = t => { const e = $("trkImg"); if (e && e.tagName !== "IMG") e.textContent = t; };
-    snsImage({ runs, stops: [], sub: md, here: null, dir: null, big: "", pins: [] })
-      .then(b => { const u = b && URL.createObjectURL(b); if (u) { for (const k in trkImgC) if (k.startsWith(dkey(R.t0) + ":")) delete trkImgC[k]; trkImgC[ik] = u; } put(u); })
-      .catch(() => {});
-  }
   if (today) {
     $("trkRe").onclick = () => trkDay(ride, true);
     $("trkReset").onclick = () => {   // うっかり消さないように、何を消すか見せて2回きく
@@ -4195,8 +4189,8 @@ async function trkDay(R, today) {
     };
   } else $("trkBack").onclick = () => trkPast();
   // 通った所（経由地・スタンプ・となりを通った名所や施設・駅）と時刻
-  const items = R.ev.filter(e => e.k === "stop" || e.k === "stamp").map(e => ({ t: e.t, name: e.name }));
-  for (const c of await passList(P, () => false).catch(() => [])) items.push({ t: c.t, name: (c.ic ? c.ic + " " : "") + c.name });
+  const items = R.ev.filter(e => e.k === "stop" || e.k === "stamp").map(e => ({ t: e.t, name: e.name, p: e.p, k: e.k }));
+  for (const c of await passList(P, () => false).catch(() => [])) items.push({ t: c.t, name: (c.ic ? c.ic + " " : "") + c.name, p: c.p, nm: c.name });
   const clean = n => n.replace(/^[^\p{L}\p{N}]+/u, "").trim(), seen = [];
   const list = items.sort((a, b) => a.t - b.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); return true; });
   // 縦にならべる：いちばん上が新しい（さいご）→ 下へいくほど古い（はじめ）
@@ -4206,6 +4200,15 @@ async function trkDay(R, today) {
       <span style="width:18px;position:relative;flex:none"><i style="position:absolute;left:8px;top:${i ? 0 : 9}px;bottom:${i === rows.length - 1 ? "calc(100% - 9px)" : 0};width:2px;background:#e8384f"></i><i style="position:absolute;left:5px;top:6px;width:8px;height:8px;border-radius:50%;background:${x.ic ? "#e8384f" : "#fff"};border:2px solid #e8384f;box-sizing:border-box"></i></span>
       <span style="padding:3px 0 3px 4px;flex:1">${x.ic ? x.ic + " " : ""}${esc(x.name)}</span></div>`).join("");
   if ($("trkList")) $("trkList").scrollTop = sc;
+  // 🗺 地図の画像（📣SNSと同じ：寄った所は大きく・通った所の名前は小さく）。通った所を調べたあとで作る（調べるのは上の一覧といっしょなので 手間はふえない）
+  if (!trkImgC[ik] && trkDay.cur === ik) {   // とちゅうで ほかの日にうつっていたら 作らない
+    const stops = list.filter(x => x.k === "stop" && x.p).map(x => ({ p: x.p, name: clean(x.name) }));
+    const marks = list.filter(x => x.p && x.k !== "stop").map(x => ({ p: x.p, name: x.nm || clean(x.name) }));
+    snsImage.prog = t => { const e = $("trkImg"); if (e && e.tagName !== "IMG") e.textContent = t; };
+    snsImage({ runs, stops, marks, sub: md, here: null, dir: null, big: "", pins: [] })
+      .then(b => { const u = b && URL.createObjectURL(b); if (u) { for (const k in trkImgC) if (k.startsWith(dkey(R.t0) + ":")) delete trkImgC[k]; trkImgC[ik] = u; } put(u); })
+      .catch(() => {});
+  }
 }
 async function snsOpen() {
   snsCm = ""; snsTest = false;
