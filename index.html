@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0937</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0940</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3547,7 +3547,8 @@ async function snsData() {
   const stops = (useRide ? ride.ev.filter(e => e.k === "stop") : []).map(e => ({ p: e.p, name: e.name.replace(/^[^\p{L}\p{N}]+/u, "").trim() })).filter(q => q.p && !hideP(q.p))
     .filter((q, i, A) => !A.slice(0, i).some(o => o.name.includes(q.name) || q.name.includes(o.name)));   // 地図の印も、同じ所は1つ
   const sub = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${wd})`;
-  const onLine = q => runs.some(r => r.some(x => hav(x, q.p) < 150));   // 地図に出している線のそばだけ（来た道だけのときなど）
+  const segD = (p, a, b) => { const k = Math.cos(p[0] * RAD) * 111320, ax = (a[1] - p[1]) * k, ay = (a[0] - p[0]) * 110540, bx = (b[1] - p[1]) * k, by = (b[0] - p[0]) * 110540, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, u = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0; return Math.hypot(ax + u * dx, ay + u * dy); };
+  const onLine = q => runs.some(r => r.some((x, i) => i && segD(q.p, r[i - 1], x) < 150));   // 地図に出している線のそばだけ（来た道だけのときなど。点の間が長くても見られるように 線分で見る）
   marks = marks.filter(q => onLine(q) && !stops.some(o => o.name.includes(q.name) || q.name.includes(o.name)));   // 寄った所（大きい字）と同じものは出さない
   return { runs, marks, stops: here && snsTrail ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: (snsCm.trim() ? snsCm.trim() + "\n\n" : "") + L.join("\n"), sub, none: !useRide, link, here, dir,
     big: "", test: snsTest,
@@ -3607,12 +3608,17 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
     const used = [];
     for (const q of [...stops.map(o => ({ p: o.p, name: o.name, big: 1 })), ...(marks || [])]) {   // 寄った所（大きい字）の場所も よけるために先に入れる
       const [x, y] = X(q.p);
-      g.font = q.big ? "bold 34px sans-serif" : "bold 22px sans-serif";
-      const w = g.measureText(q.name).width, bx = [x - 8, y - (q.big ? 22 : 15), x + (q.big ? 26 : 14) + w + 6, y + (q.big ? 22 : 15)];
-      if (!q.big && (bx[2] > W - 4 || bx[3] > H - 124 || used.some(u => bx[0] < u[2] && bx[2] > u[0] && bx[1] < u[3] && bx[3] > u[1]))) continue;
-      used.push(bx); if (q.big) continue;
+      g.font = q.big ? "bold 34px sans-serif" : "bold 20px sans-serif";
+      const w = g.measureText(q.name).width, hit = b => b[0] < 4 || b[2] > W - 4 || b[1] < 4 || b[3] > H - 124 || used.some(u => b[0] < u[2] && b[2] > u[0] && b[1] < u[3] && b[3] > u[1]);
+      if (q.big) { used.push([x - 18, y - 22, x + 26 + w + 6, y + 22]); continue; }
+      // 右 → 左 → 上 → 下 の順に、ほかの名前とかさならない所に置く（どこもだめなら出さない）
+      const tries = [[x + 12, y, "left"], [x - 12, y, "right"], [x, y - 22, "center"], [x, y + 22, "center"]];
+      let pl = null;
+      for (const [tx, ty, al] of tries) { const x0 = al === "left" ? tx : al === "right" ? tx - w : tx - w / 2, b = [x0 - 3, ty - 14, x0 + w + 3, ty + 14]; if (!hit(b)) { pl = [tx, ty, al, b]; break; } }
+      if (!pl) continue;
+      used.push(pl[3], [x - 7, y - 7, x + 7, y + 7]);
       g.fillStyle = "#5f6368"; g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill(); g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke();
-      g.textBaseline = "middle"; g.lineJoin = "round"; g.lineWidth = 6; g.strokeStyle = "#fff"; g.strokeText(q.name, x + 14, y); g.fillStyle = "#333"; g.fillText(q.name, x + 14, y);
+      g.textAlign = pl[2]; g.textBaseline = "middle"; g.lineJoin = "round"; g.lineWidth = 6; g.strokeStyle = "#fff"; g.strokeText(q.name, pl[0], pl[1]); g.fillStyle = "#333"; g.fillText(q.name, pl[0], pl[1]); g.textAlign = "left";
     }
     g.font = "bold 34px sans-serif"; g.textBaseline = "middle";
     for (const q of stops) {
