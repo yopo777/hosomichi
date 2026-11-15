@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.1051</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.1052</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -4166,11 +4166,19 @@ async function albSave(src, R) {   // src：[{ f, ex }]（📣SNSで えらん�
     await albPut({ id, d: R ? dkey(R.t0) : dkey(t), t, p, b });
   }
 }
-function albBig(o) {   // 📷 写真を大きく（どこかをタップしたら 地図にもどる）
+function albBig(o, after) {   // 📷 写真を大きく（どこかをタップしたら 地図にもどる・🗑で アルバムから消す）
   const d = document.createElement("div"); d.id = "geoAsk"; d.style.cursor = "pointer";
   d.innerHTML = `<div style="text-align:center"><img src="${URL.createObjectURL(o.b)}" style="max-width:96vw;max-height:84vh;border-radius:8px;box-shadow:0 4px 20px #0008;display:block;margin:0 auto">
-    <div style="color:#fff;font-size:13px;margin-top:6px;text-shadow:0 0 4px #000">${new Date(o.t).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div></div>`;
-  d.onclick = () => d.remove(); document.body.appendChild(d);
+    <div style="color:#fff;font-size:13px;margin-top:6px;text-shadow:0 0 4px #000;display:flex;align-items:center;justify-content:center;gap:12px">${new Date(o.t).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+      <button data-a="del" style="font-size:12px;padding:2px 8px;border:1px solid #fff8;border-radius:8px;background:#0006;color:#fff">🗑</button></div></div>`;
+  d.onclick = async e => {
+    if (e.target.dataset.a === "del") {
+      if (!confirm("この写真を アルバムから消す？（スマホの元の写真は消えないよ）")) return;
+      await albDel(o.id); d.remove(); after && after(); return;
+    }
+    d.remove();
+  };
+  document.body.appendChild(d);
 }
 async function trkPast() {
   const T = $("trkBody"); if (!T) return; trkLayer.clearLayers();
@@ -4261,7 +4269,7 @@ async function trkDay(R, today) {
   const alb = (await albAll()).filter(o => o.d === dkey(R.t0) && o.p).sort((a, b) => a.t - b.t);
   const ik2 = ik + ":" + alb.map(o => o.id).join("|");   // 写真がかわったら 作りなおす
   const tap = rects => { const im = $("trkImg"); if (!im || im.tagName !== "IMG") return; im.style.cursor = rects.length ? "pointer" : "";
-    im.onclick = e => { const k = 1200 / im.clientWidth, x = e.offsetX * k, y = e.offsetY * k, r = rects.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h); if (r) albBig(alb[r.i]); }; };
+    im.onclick = e => { const k = 1200 / im.clientWidth, x = e.offsetX * k, y = e.offsetY * k, r = rects.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h); if (r) albBig(alb[r.i], () => trkDay(R, today)); }; };
   if (trkImgC[ik2]) { put(trkImgC[ik2].u); tap(trkImgC[ik2].rects); }
   else if (trkDay.cur === ik) {   // とちゅうで ほかの日にうつっていたら 作らない
     const stops = list.filter(x => x.k === "stop" && x.p).map(x => ({ p: x.p, name: clean(x.name) }));
