@@ -1825,7 +1825,7 @@ async function snsData() {
 }
 async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, marks, thumbs }) {   // 1200×1600（3:4 の縦長。Xのスマホで切られずに いちばん大きく見える）の地図＋線＋寄った所＋写真
   pins = pins || []; thumbs = thumbs || []; const rects = [];   // rects：小さい写真を置いた所（タップ用。できた画像の .rects に入れて返す）
-  const W = 1200, H = 1600, PAD = (thumbs || []).length ? 150 : 70, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p), thumbs.map(q => q.p));
+  const W = 1200, H = 1600, PAD = 70, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p), thumbs.map(q => q.p));
   // 画像は2倍（2400×2400）で作る：描くのは 1200 のつもりで、地図は1つ細かいズームのタイルを半分の大きさで並べる（くっきり・写真も大きく見られる）
   const K = 1, cv = document.createElement("canvas"); cv.width = W * K; cv.height = H * K; const g = cv.getContext("2d"); g.scale(K, K);   // K：スマホで見る大きさ（1200×1600）
   g.fillStyle = "#f2efe9"; g.fillRect(0, 0, W, H);
@@ -1937,8 +1937,8 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
         if (bi < 0) break; used.add(bi); put.push({ q, s: slots[bi], px, py });
       }
       g.lineCap = "round";
-      for (const { s, px, py } of put) { g.strokeStyle = "#fff"; g.lineWidth = 6; g.beginPath(); g.moveTo(px, py); g.lineTo(s[0] + T / 2, s[1] + T / 2); g.stroke(); g.strokeStyle = "#e8710a"; g.lineWidth = 2.5; g.stroke(); }
-      for (const { px, py } of put) { g.fillStyle = "#e8710a"; g.beginPath(); g.arc(px, py, 8, 0, 7); g.fill(); g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke(); }   // 撮った所
+      for (const { s, px, py } of put) { if (px > s[0] - 30 && px < s[0] + T + 30 && py > s[1] - 30 && py < s[1] + T + 30) continue;   /* 写真のすぐそば（かぶっている）なら 線はいらない */ g.strokeStyle = "#fff"; g.lineWidth = 6; g.beginPath(); g.moveTo(px, py); g.lineTo(s[0] + T / 2, s[1] + T / 2); g.stroke(); g.strokeStyle = "#e8710a"; g.lineWidth = 2.5; g.stroke(); }
+      for (const { s, px, py } of put) { if (px > s[0] - 30 && px < s[0] + T + 30 && py > s[1] - 30 && py < s[1] + T + 30) continue; g.fillStyle = "#e8710a"; g.beginPath(); g.arc(px, py, 8, 0, 7); g.fill(); g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke(); }   // 撮った所
       for (const { q, s, px, py } of put) {
         const bm = q.bm, m = Math.min(bm.width, bm.height);   // まん中を正方形に切りとる
         g.save(); g.shadowColor = "#0006"; g.shadowBlur = 8; g.fillStyle = "#fff"; g.fillRect(s[0] - 4, s[1] - 4, T + 8, T + 8); g.restore();
