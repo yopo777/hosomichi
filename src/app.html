@@ -2128,11 +2128,31 @@ async function footRoad() {   // 🛣 塗れた道：道にあてはめた区間
     if (!footOn || footMode !== "road") return;
     const lines = []; for (const k in all) { const v = all[k]; if (v.length >= 7) lines.push([[v[3], v[4]], [v[5], v[6]]]); }
     if (lines.length) footLine(lines, footLayer);
-    footKnown = new Set(Object.keys(all)); footLiveLines = [];
+    footKnown = footKnownMake(all); footLiveLines = [];
   } finally { footRoadBusy = false; }
 }
 // ---- 走っているとき：新しく塗れた区間を すぐ描いて「ピッ」（声にかさねてOK）----
 let footKnown = null, footKnownP = null;
+// 塗った所の一覧：区間の名前（way の何番目）＋ 形（約20mのマス目）。道路データが新しくなって 名前がかわっても、
+// 同じ所（まん中が 6m 以内で 塗った区間の上）なら「もう塗った」とみなす → 2回目で ピッ と鳴ったり 色がこくなったりしない
+const FK_C = 0.0002;
+function footKnownMake(all) { const k = { keys: new Set(), grid: new Map() }; for (const id in all) footKnownAdd([id, ...all[id]], k); return k; }
+function footKnownAdd(v, k) {
+  k = k || footKnown; if (!k) return; k.keys.add(v[0]); if (v.length < 8) return;
+  const s = [v[4], v[5], v[6], v[7]];
+  for (let i = Math.floor(Math.min(s[0], s[2]) / FK_C); i <= Math.floor(Math.max(s[0], s[2]) / FK_C); i++)
+    for (let j = Math.floor(Math.min(s[1], s[3]) / FK_C); j <= Math.floor(Math.max(s[1], s[3]) / FK_C); j++) { const g = i + "," + j; if (!k.grid.has(g)) k.grid.set(g, []); k.grid.get(g).push(s); }
+}
+function footKnownHas(v) {
+  if (footKnown.keys.has(v[0])) return true;
+  const la = v[2], lo = v[3], kx = 111320 * Math.cos(la * RAD), i0 = Math.floor(la / FK_C), j0 = Math.floor(lo / FK_C);
+  for (let i = i0 - 1; i <= i0 + 1; i++) for (let j = j0 - 1; j <= j0 + 1; j++) for (const s of footKnown.grid.get(i + "," + j) || []) {
+    const ax = (s[1] - lo) * kx, ay = (s[0] - la) * 110540, bx = (s[3] - lo) * kx, by = (s[2] - la) * 110540, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    const u = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+    if (Math.hypot(ax + u * dx, ay + u * dy) < 6) return true;
+  }
+  return false;
+}
 function pi() {
   try {
     audioUnlock(); if (!actx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
@@ -2258,7 +2278,7 @@ function evToggle(on) {
 }
 function footLiveAdd(a, b) {   // rideAdd から：前の点 a → 新しい点 b
   if (!footOn || !ride || a[2] < footFrom) return;
-  if (!footKnownP && !footKnown) footKnownP = footSegsAll(() => {}).then(all => { footKnown = new Set(Object.keys(all)); footKnownP = null; const p = footPend; footPend = []; footLiveGot(p); }).catch(() => { footKnownP = null; });
+  if (!footKnownP && !footKnown) footKnownP = footSegsAll(() => {}).then(all => { footKnown = footKnownMake(all); footKnownP = null; const p = footPend; footPend = []; footLiveGot(p); }).catch(() => { footKnownP = null; });
   worker.postMessage({ cmd: "footLive", t0: ride.t0 + ":" + footFrom + ":" + footGen, pair: [[a[0], a[1]], [b[0], b[1]]] });
 }
 let footFrom = +lsGet("hosomichi_footFrom", 0) || 0;   // 🛠「足あとだけ消す」をした時刻。これより前の点は 塗らない（軌跡はのこる）
@@ -2268,9 +2288,9 @@ let footPend = [], footLiveLines = [];   // 塗った所の一覧を読みこむ
 function footLiveGot(segs) {
   if (!footKnown) { footPend.push(...segs); return; }
   if (!segs.length) return;
-  const fresh = segs.filter(v => !footKnown.has(v[0]));
+  const fresh = segs.filter(v => !footKnownHas(v));
   if (!fresh.length) return;
-  for (const v of fresh) { footKnown.add(v[0]); footLiveLines.push([[v[4], v[5]], [v[6], v[7]]]); }
+  for (const v of fresh) { footKnownAdd(v); footLiveLines.push([[v[4], v[5]], [v[6], v[7]]]); }
   if (footOn && footMode === "road") {   // 白いふちを ぜんぶ先に描いてから赤（つなぎめが白く切れないように）
     footTodayLayer.clearLayers(); footLine(footLiveLines, footTodayLayer);
   }
