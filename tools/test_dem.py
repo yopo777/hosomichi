@@ -60,10 +60,14 @@ def tile(x, y):
     k = (x, y)
     if k in tiles: return tiles[k]
     t = None
+    cp = os.path.join("dem_cache", f"{Z}_{x}_{y}.png")   # 2回目からはダウンロードしない
+    if os.path.exists(cp):
+        t = png_rgb(open(cp, "rb").read()); tiles[k] = t; return t
     for name in ("dem5a_png", "dem5b_png"):   # 5mメッシュ（航空レーザ → 写真測量）
         try:
             req = urllib.request.Request(f"https://cyberjapandata.gsi.go.jp/xyz/{name}/{Z}/{x}/{y}.png", headers={"User-Agent": "hosomichi-test_dem/1.0"})
-            with urllib.request.urlopen(req, timeout=20) as r: t = png_rgb(r.read()); break
+            with urllib.request.urlopen(req, timeout=20) as r: b = r.read()
+            t = png_rgb(b); os.makedirs("dem_cache", exist_ok=True); open(cp, "wb").write(b); break
         except Exception: pass
     tiles[k] = t
     return t
@@ -101,9 +105,9 @@ class WayH(osmium.SimpleHandler):
     def way(self, w):
         hw = w.tags.get("highway")
         if not hw or hw in EXCL: return
-        pts = [self.loc[n.ref] for n in w.nodes if n.ref in self.loc]
-        if len(pts) < 2 or len(pts) < len(w.nodes) * 0.8: return
-        self.ways.append((w.id, hw, w.tags.get("name", ""), pts))
+        ids = [n.ref for n in w.nodes if n.ref in self.loc]
+        if len(ids) < 2 or len(ids) < len(w.nodes) * 0.8: return
+        self.ways.append((w.id, hw, w.tags.get("name", ""), ids))
 
 def grade(pts):   # 道にそって STEP ごとに高さ → WIN の間の いちばん大きい坂（%）と 高さの差
     L = [0.0]
@@ -135,34 +139,58 @@ def main():
     if len(sys.argv) not in (2, 6): print(__doc__); sys.exit(1)
     src = sys.argv[1]; box = tuple(map(float, sys.argv[2:6])) if len(sys.argv) == 6 else BOX
     t0 = time.time()
-    print("1/3 点を読んでるよ（ちょっと時間がかかる）…", flush=True)
-    nh = NodeH(box); nh.apply_file(src)
-    print(f"  {len(nh.loc):,}点", flush=True)
-    print("2/3 道を読んでるよ…", flush=True)
-    wh = WayH(nh.loc); wh.apply_file(src)
-    print(f"  {len(wh.ways):,}本", flush=True)
-    print("3/3 標高をしらべてるよ（国土地理院のタイルをダウンロード）…", flush=True)
-    rows = []
-    for wid, hw, nm, pts in wh.ways:
-        g = grade(pts)
-        if g: rows.append((wid, hw, nm, pts, *g))
-    print(f"  標高タイル {sum(1 for t in tiles.values() if t)}枚（取れなかった {sum(1 for t in tiles.values() if t is None)}枚）", flush=True)
-    sus = sorted((r for r in rows if r[1] != "steps" and r[4] >= 10), key=lambda r: -r[4])
-    print("\nあやしい道（坂が10%より急）:")
-    for wid, hw, nm, pts, g, dh, rise, tot in sus[:40]:
-        print(f"  {g:5.1f}%  高さの差{rise:4.1f}m  長さ{tot:5.0f}m  {hw:12s} {nm}  https://www.openstreetmap.org/way/{wid}")
-    st = [r for r in rows if r[1] == "steps"]
-    if st:
-        gs = sorted(r[4] for r in st)
-        print(f"\nくらべる用：もう階段になっている道 {len(st)}本の坂 → まん中 {gs[len(gs) // 2]:.1f}%・10%より急なのは {sum(1 for g in gs if g >= 10)}本")
+    cache = "test_dem_ways.json"   # 2回目からは pbf を読まない（はんいが同じとき）
+    if os.path.exists(cache) and json.load(open(cache, encoding="utf-8"))["box"] == list(box):
+        c = json.load(open(cache, encoding="utf-8")); loc = {int(k): tuple(v) for k, v in c["loc"].items()}; ways = c["ways"]
+        print(f"前に読んだ道を使うよ（{len(ways):,}本）", flush=True)
+    else:
+        print("1/3 点を読んでるよ（ちょっと時間がかかる）…", flush=True)
+        nh = NodeH(box); nh.apply_file(src); loc = nh.loc
+        print(f"  {len(loc):,}点", flush=True)
+        print("2/3 道を読んでるよ…", flush=True)
+        wh = WayH(loc); wh.apply_file(src); ways = wh.ways
+        json.dump({"box": list(box), "loc": {str(n): loc[n] for w in ways for n in w[3]}, "ways": ways}, open(cache, "w", encoding="utf-8"))
+        print(f"  {len(ways):,}本", flush=True)
+    print("3/3 標高をしらべてるよ…", flush=True)
+    # 道を「交差点から交差点まで」に切る（つなぎの短い道＝☆の階段 を1本として見る）
+    use = {}
+    for w in ways:
+        for n in w[3]: use[n] = use.get(n, 0) + 1
+    for w in ways:
+        for n in (w[3][0], w[3][-1]): use[n] = use.get(n, 0) + 1   # 道のはしも区切り
+    links = []
+    for wid, hw, nm, ids in ways:
+        cut = [0] + [k for k in range(1, len(ids) - 1) if use[ids[k]] > 1] + [len(ids) - 1]
+        for a, b in zip(cut, cut[1:]):
+            pts = [loc[n] for n in ids[a:b + 1]]
+            L = sum(hav(p, q) for p, q in zip(pts, pts[1:]))
+            if L < 3: continue
+            h0, h1 = elev(*pts[0]), elev(*pts[-1])
+            if h0 is None or h1 is None: continue
+            links.append((wid, hw, nm, pts, L, abs(h1 - h0), abs(h1 - h0) / L * 100))
+    print(f"  交差点で切った道 {len(links):,}本・標高タイル {sum(1 for t in tiles.values() if t)}枚（取れなかった {sum(1 for t in tiles.values() if t is None)}枚）", flush=True)
+    def stat(name, rs):
+        if not rs: return
+        gs = sorted(r[6] for r in rs)
+        print(f"  {name} {len(rs)}本：坂（はし→はし）のまん中 {gs[len(gs) // 2]:.1f}%・9割は {gs[int(len(gs) * 0.9)]:.1f}%まで・12%より急 {sum(1 for g in gs if g >= 12)}本")
+    print("\nくらべる用（短い道 80mまで）:")
+    short = [r for r in links if r[4] <= 80]
+    stat("OSMで階段", [r for r in short if r[1] == "steps"])
+    stat("大きい道（県道など）", [r for r in short if r[1] in ("primary", "secondary", "tertiary", "primary_link", "secondary_link", "tertiary_link")])
+    stat("住宅街の道", [r for r in short if r[1] in ("residential", "unclassified", "living_street")])
+    stat("歩道・小道", [r for r in short if r[1] in ("footway", "path", "pedestrian")])
+    sus = sorted((r for r in short if r[1] != "steps" and r[6] >= 12 and r[5] >= 2.5), key=lambda r: -r[6])
+    print(f"\nあやしい道（80mまでの短い道で、はし→はしの坂が12%より急・高さの差2.5m以上）{len(sus)}本:")
+    for wid, hw, nm, pts, L, dh, g in sus[:40]:
+        print(f"  {g:5.1f}%  高さの差{dh:4.1f}m  長さ{L:4.0f}m  {hw:12s} {nm}  https://www.openstreetmap.org/way/{wid}")
     col = lambda g: "#d50000" if g >= 15 else "#ff6d00" if g >= 10 else "#fbc02d" if g >= 6 else "#9e9e9e"
     feats = [{"p": [[round(a, 6), round(b, 6)] for a, b in pts], "c": "#1a73e8" if hw == "steps" else col(g), "d": hw == "steps",
-              "w": 6 if g >= 10 or hw == "steps" else 3, "t": f"{hw} {nm}<br>坂 {g:.1f}%（16mで{dh:.1f}m）・高さの差 {rise:.1f}m・長さ {tot:.0f}m<br><a href='https://www.openstreetmap.org/way/{wid}' target=_blank>way/{wid}</a>"}
-             for wid, hw, nm, pts, g, dh, rise, tot in rows]
+              "w": 7 if (g >= 10 and L <= 80) or hw == "steps" else 3, "t": f"{hw} {nm}<br>はし→はしの坂 {g:.1f}%・高さの差 {dh:.1f}m・長さ {L:.0f}m<br><a href='https://www.openstreetmap.org/way/{wid}' target=_blank>way/{wid}</a>"}
+             for wid, hw, nm, pts, L, dh, g in links]
     html = """<!DOCTYPE html><meta charset=utf-8><title>標高ためし</title>
 <link rel=stylesheet href=https://unpkg.com/leaflet@1.9.4/dist/leaflet.css><script src=https://unpkg.com/leaflet@1.9.4/dist/leaflet.js></script>
 <style>html,body,#m{margin:0;height:100%}#k{position:absolute;z-index:999;left:8px;bottom:8px;background:#fff;padding:6px 10px;border-radius:8px;font:13px sans-serif;box-shadow:0 2px 6px #0004}</style>
-<div id=m></div><div id=k><b style=color:#d50000>━</b> 15%〜 <b style=color:#ff6d00>━</b> 10〜15% <b style=color:#fbc02d>━</b> 6〜10% <b style=color:#9e9e9e>━</b> ゆるい <b style=color:#1a73e8>┅</b> OSMで階段</div>
+<div id=m></div><div id=k>交差点〜交差点の はし→はし の坂：<b style=color:#d50000>━</b> 15%〜 <b style=color:#ff6d00>━</b> 10〜15% <b style=color:#fbc02d>━</b> 6〜10% <b style=color:#9e9e9e>━</b> ゆるい <b style=color:#1a73e8>┅</b> OSMで階段（太い線＝80mまでの短い道）</div>
 <script>const F=__F__;const m=L.map('m');L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap contributors / 標高：国土地理院'}).addTo(m);
 const g=L.featureGroup().addTo(m);F.sort((a,b)=>a.w-b.w).forEach(f=>L.polyline(f.p,{color:f.c,weight:f.w,opacity:.85,dashArray:f.d?'4 6':null}).bindPopup(f.t).addTo(g));m.fitBounds(g.getBounds());</script>"""
     out = os.path.join(os.path.dirname(os.path.abspath(src)), "test_dem.html")
