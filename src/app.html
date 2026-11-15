@@ -2389,24 +2389,33 @@ async function albSmall(f, max) {   // 長いほうを max px に。描きなお
   c.getContext("2d").drawImage(bm, 0, 0, c.width, c.height);
   return new Promise(ok => c.toBlob(b => ok(b), "image/jpeg", 0.75));
 }
-async function albSave(src) {   // src：[{ f, ex }]（📣SNSで えらんだ写真）
+async function albSave(src, R) {   // src：[{ f, ex }]（📣SNSで えらんだ写真）・R：どの日の記録か（なければ今日）
+  R = R || ride;
   const have = new Set((await albAll()).map(o => o.id));
   for (const { f, ex } of src) {
     const id = `${f.name}:${f.size}:${f.lastModified}`; if (have.has(id)) continue;
     const t = ex.t || f.lastModified || Date.now();
     let p = ex.p || null;
-    if (!p && ride && ride.pts.length) { let bi = -1, bd = 10 * 60e3; ride.pts.forEach((q, i) => { const dt = Math.abs(q[2] - t); if (dt < bd) { bd = dt; bi = i; } }); if (bi >= 0) p = [ride.pts[bi][0], ride.pts[bi][1]]; }
+    if (!p && R && R.pts.length) { let bi = -1, bd = 10 * 60e3; R.pts.forEach((q, i) => { const dt = Math.abs(q[2] - t); if (dt < bd) { bd = dt; bi = i; } }); if (bi >= 0) p = [R.pts[bi][0], R.pts[bi][1]]; }
     const b = await albSmall(f, 800); if (!b) continue;
-    await albPut({ id, d: dkey(ride && ride.pts.length && Math.abs(t - ride.t0) < 36 * 3600e3 ? ride.t0 : t), t, p, b });
+    await albPut({ id, d: R ? dkey(R.t0) : dkey(t), t, p, b });
   }
 }
 async function albumShow(d, ik) {   // その日の写真（小さい一覧 → おすと大きく）
-  const box = $("trkAlb"); if (!box) return;
+  let box = $("trkAlb"); if (!box) return;
   const L = (await albAll()).filter(o => o.d === d).sort((a, b) => a.t - b.t);
   if (!$("trkAlb") || trkDay.cur !== ik) return;
-  if (!L.length) { box.innerHTML = ""; return; }
-  box.innerHTML = `<div style="font-weight:bold;margin:10px 0 4px">📷 写真（${L.length}まい）</div><div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:4px">${L.map((o, i) => `<img data-i="${i}" src="${URL.createObjectURL(o.b)}" style="height:84px;border-radius:6px;border:1px solid #ddd;flex:none;cursor:pointer">`).join("")}</div>`;
+  box = $("trkAlb");   // 待っているあいだに 画面が作りなおされていることがあるので とりなおす
+  box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin:10px 0 4px"><b>📷 写真${L.length ? `（${L.length}まい）` : ""}</b>
+      <label style="font-size:12px;padding:3px 10px;border:1px solid #ddd;border-radius:999px;background:#fff;cursor:pointer">＋ 入れる<input type="file" id="albAdd" accept="image/*" multiple style="display:none"></label></div>
+    ${L.length ? `<div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:4px">${L.map((o, i) => `<img data-i="${i}" src="${URL.createObjectURL(o.b)}" style="height:84px;border-radius:6px;border:1px solid #ddd;flex:none;cursor:pointer">`).join("")}</div>` : '<div style="font-size:11px;color:#888">📣SNSで共有・保存した写真が、ここに小さくなってのこるよ。「＋ 入れる」で、この日に入れることもできるよ</div>'}`;
   box.onclick = e => { const i = e.target.dataset && e.target.dataset.i; if (i != null) albView(L[+i], () => albumShow(d, ik)); };
+  $("albAdd").onchange = async e => {   // この日に写真を入れる（撮った時刻から、走っていた所に置く）
+    const fs = [...e.target.files]; if (!fs.length) return;
+    box.querySelector("b").textContent = "📷 入れているよ…";
+    await albSave(await Promise.all(fs.map(async f => ({ f, ex: await exifOf(f) }))), albumShow.R).catch(() => {});
+    albumShow(d, ik);
+  };
 }
 function albView(o, after) {   // 大きく見る：🗺 その場所を地図で・🗑 消す
   const d = document.createElement("div"); d.id = "geoAsk";
@@ -2487,7 +2496,7 @@ async function trkDay(R, today) {
   // 同じ日・同じ記録なら、前に作った画像をそのまま使う（作りなおさない）
   const ik = trkDay.cur = dkey(R.t0) + ":" + P.length, put = u => { if ($("trkImg") && trkDay.cur === ik) $("trkImg").outerHTML = u ? `<img id="trkImg" src="${u}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; };
   if (trkImgC[ik]) put(trkImgC[ik]);
-  albumShow(dkey(R.t0), ik);
+  albumShow.R = R; albumShow(dkey(R.t0), ik);
   if (today) {
     $("trkRe").onclick = () => trkDay(ride, true);
     $("trkReset").onclick = () => {   // うっかり消さないように、何を消すか見せて2回きく
@@ -2578,7 +2587,7 @@ async function snsOpen() {
   $("snsUrl").onclick = async () => { if (snsTest) return; try { await navigator.clipboard.writeText(link); $("snsUrl").textContent = "✅ コピーしたよ"; setTimeout(() => $("snsUrl") && ($("snsUrl").textContent = "🔗 URLだけコピー"), 2000); } catch { prompt("URL", link); } };
   $("snsCopy").onclick = async () => { if (snsTest) return; try { await navigator.clipboard.writeText($("snsTxt").value); $("snsCopy").textContent = "✅ コピーしたよ"; } catch { $("snsTxt").select(); } };
   const save = f => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); };
-  $("snsSave").onclick = () => { if (!made) return; if (map0) save(map0); photos.forEach(save); if (!snsTest) albSave(pinSrc).catch(() => {}); };
+  $("snsSave").onclick = () => { if (!made) return; if (map0) save(map0); photos.forEach(save); albSave(pinSrc).catch(() => {}); };   // 📷 アルバムは この端末の中だけなので、🧪テスト中ものこす
   $("snsShare").onclick = async () => {
     if (snsTest || !made) return;   // テスト中・作る前は共有できない
     albSave(pinSrc).catch(() => {});   // 📷 写真を小さくして アルバムへ
