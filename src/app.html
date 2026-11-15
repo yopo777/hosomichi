@@ -2583,7 +2583,7 @@ async function snsOpen() {
   lock();
   $("snsMake").onclick = async () => { $("snsMake").disabled = true; try { snsCm = $("snsCm").value; await draw(await snsData()); } finally { $("snsMake").disabled = false; } };
   $("snsPh").onchange = async e => {
-    const fs = [...e.target.files].slice(0, 3);
+    const fs = [...e.target.files].filter((f, i, A) => A.findIndex(o => o.name === f.name && o.size === f.size && o.lastModified === f.lastModified) === i).slice(0, 3);   // 同じ写真を2回えらんでも 1まいに
     pinSrc = await Promise.all(fs.map(async f => ({ f, ex: await exifOf(f) })));
     photos = (await Promise.all(fs.map(snsPhoto))).filter(Boolean);
     $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
