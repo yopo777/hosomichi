@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.1023</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.1038</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3564,9 +3564,9 @@ async function snsData() {
     big: "", test: snsTest,
     km: useRide ? (k => k < 10 ? "10km未満" : `約${Math.round(k / 10) * 10}km`)(trkStats(ride.pts).dist / 1000) : "" };   // 走った距離は ざっくり（10km単位）：ちょうどだと、消した長さから家までの距離がわかるので   // 地図の大きい文字（サイクリング完了など）は出さない：どこがスタートでどこが終わりかは決めないアプリなので   // 走り終わったら地図に大きく
 }
-async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, marks }) {   // 1200×1600（3:4 の縦長。Xのスマホで切られずに いちばん大きく見える）の地図＋線＋寄った所＋写真
-  pins = pins || [];
-  const W = 1200, H = 1600, PAD = 70, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p));
+async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, marks, thumbs }) {   // 1200×1600（3:4 の縦長。Xのスマホで切られずに いちばん大きく見える）の地図＋線＋寄った所＋写真
+  pins = pins || []; thumbs = thumbs || []; const rects = [];   // rects：小さい写真を置いた所（タップ用。できた画像の .rects に入れて返す）
+  const W = 1200, H = 1600, PAD = (thumbs || []).length ? 150 : 70, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p), thumbs.map(q => q.p));
   // 画像は2倍（2400×2400）で作る：描くのは 1200 のつもりで、地図は1つ細かいズームのタイルを半分の大きさで並べる（くっきり・写真も大きく見られる）
   const K = 1, cv = document.createElement("canvas"); cv.width = W * K; cv.height = H * K; const g = cv.getContext("2d"); g.scale(K, K);   // K：スマホで見る大きさ（1200×1600）
   g.fillStyle = "#f2efe9"; g.fillRect(0, 0, W, H);
@@ -3663,6 +3663,30 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
       g.drawImage(q.bm, bx, by, w, h);
       if (!(here && hav(here, q.p) < 40)) { g.fillStyle = "#e8710a"; g.beginPath(); g.arc(x, y, 11, 0, 7); g.fill(); g.lineWidth = 4; g.strokeStyle = "#fff"; g.stroke(); }
     });
+    if (thumbs.length) {   // 📷 小さい写真を 4すみから はしにそって並べる（撮った所から いちばん近い あき場所へ。入らない分は出さない）
+      const T = 120, G = 10, y0 = (test ? 110 : 0) + G, y1 = H - 120 - T - G, slots = [];
+      slots.push([G, y0], [W - T - G, y0], [G, y1], [W - T - G, y1]);   // 4すみ
+      for (let k = 1; ; k++) { let add = 0;   // すみから 内がわへ じゅんに
+        const xs = [G + k * (T + G), W - T - G - k * (T + G)], ys = [y0 + k * (T + G), y1 - k * (T + G)];
+        for (const x of xs) if (x > G && x < W - T - G && !slots.some(s => Math.abs(s[0] - x) < T && Math.abs(s[1] - y0) < T)) { slots.push([x, y0], [x, y1]); add++; }
+        for (const y of ys) if (y > y0 && y < y1 && !slots.some(s => Math.abs(s[1] - y) < T && Math.abs(s[0] - G) < T)) { slots.push([G, y], [W - T - G, y]); add++; }
+        if (!add) break; }
+      const used = new Set(), put = [];
+      for (const q of thumbs) {
+        const [px, py] = X(q.p); let bi = -1, bd = Infinity;
+        slots.forEach((s, i) => { if (used.has(i)) return; const d = Math.hypot(s[0] + T / 2 - px, s[1] + T / 2 - py); if (d < bd) { bd = d; bi = i; } });
+        if (bi < 0) break; used.add(bi); put.push({ q, s: slots[bi], px, py });
+      }
+      g.lineCap = "round";
+      for (const { s, px, py } of put) { g.strokeStyle = "#fff"; g.lineWidth = 6; g.beginPath(); g.moveTo(px, py); g.lineTo(s[0] + T / 2, s[1] + T / 2); g.stroke(); g.strokeStyle = "#e8710a"; g.lineWidth = 2.5; g.stroke(); }
+      for (const { px, py } of put) { g.fillStyle = "#e8710a"; g.beginPath(); g.arc(px, py, 8, 0, 7); g.fill(); g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke(); }   // 撮った所
+      for (const { q, s, px, py } of put) {
+        const bm = q.bm, m = Math.min(bm.width, bm.height);   // まん中を正方形に切りとる
+        g.save(); g.shadowColor = "#0006"; g.shadowBlur = 8; g.fillStyle = "#fff"; g.fillRect(s[0] - 4, s[1] - 4, T + 8, T + 8); g.restore();
+        g.drawImage(bm, (bm.width - m) / 2, (bm.height - m) / 2, m, m, s[0], s[1], T, T);
+        rects.push({ x: s[0] - 4, y: s[1] - 4, w: T + 8, h: T + 8, i: q.i });
+      }
+    }
   }
   if (big) {   // 🏁 サイクリング完了
     g.save(); g.font = "bold 110px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
@@ -3677,7 +3701,7 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
   g.fillStyle = "#222"; g.font = "bold 38px sans-serif"; g.textBaseline = "middle"; g.fillText("🚲 " + sub, 30, km ? H - 84 : H - 66);
   if (km) { g.font = "bold 30px sans-serif"; g.fillStyle = "#d93025"; g.fillText("走った距離 " + km, 34, H - 38); }   // 2行目
   g.font = "26px sans-serif"; g.fillStyle = "#666"; g.textAlign = "right"; g.fillText("ほそみちナビ", W - 30, H - 84); g.font = "20px sans-serif"; g.fillText(snsImage.attr || "", W - 30, H - 44); g.textAlign = "left";
-  return new Promise(ok => { try { cv.toBlob(b => ok(b), "image/jpeg", 0.92); } catch { ok(null); } });
+  return new Promise(ok => { try { cv.toBlob(b => { if (b) b.rects = rects; ok(b); }, "image/jpeg", 0.92); } catch { ok(null); } });
 }
 // 📷 写真の撮った場所と時刻（Exif）を読む。位置情報は ここで読むだけで、わたす写真からは消す
 async function exifOf(f) {
@@ -4142,34 +4166,11 @@ async function albSave(src, R) {   // src：[{ f, ex }]（📣SNSで えらん�
     await albPut({ id, d: R ? dkey(R.t0) : dkey(t), t, p, b });
   }
 }
-async function albumShow(d, ik) {   // その日の写真（小さい一覧 → おすと大きく）
-  let box = $("trkAlb"); if (!box) return;
-  const L = (await albAll()).filter(o => o.d === d).sort((a, b) => a.t - b.t);
-  if (!$("trkAlb") || trkDay.cur !== ik) return;
-  box = $("trkAlb");   // 待っているあいだに 画面が作りなおされていることがあるので とりなおす
-  box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin:10px 0 4px"><b>📷 写真${L.length ? `（${L.length}まい）` : ""}</b>
-      <label style="font-size:12px;padding:3px 10px;border:1px solid #ddd;border-radius:999px;background:#fff;cursor:pointer">＋ 入れる<input type="file" id="albAdd" accept="image/*" multiple style="display:none"></label></div>
-    ${L.length ? `<div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:4px">${L.map((o, i) => `<img data-i="${i}" src="${URL.createObjectURL(o.b)}" style="height:84px;border-radius:6px;border:1px solid #ddd;flex:none;cursor:pointer">`).join("")}</div>` : '<div style="font-size:11px;color:#888">📣SNSで共有・保存した写真が、ここに小さくなってのこるよ。「＋ 入れる」で、この日に入れることもできるよ</div>'}`;
-  box.onclick = e => { const i = e.target.dataset && e.target.dataset.i; if (i != null) albView(L[+i], () => albumShow(d, ik)); };
-  $("albAdd").onchange = async e => {   // この日に写真を入れる（撮った時刻から、走っていた所に置く）
-    const fs = [...e.target.files]; if (!fs.length) return;
-    box.querySelector("b").textContent = "📷 入れているよ…";
-    await albSave(await Promise.all(fs.map(async f => ({ f, ex: await exifOf(f) }))), albumShow.R).catch(() => {});
-    albumShow(d, ik);
-  };
-}
-function albView(o, after) {   // 大きく見る：🗺 その場所を地図で・🗑 消す
-  const d = document.createElement("div"); d.id = "geoAsk";
-  d.innerHTML = `<div class="box" style="max-width:92vw;padding:8px"><img src="${URL.createObjectURL(o.b)}" style="max-width:100%;max-height:70vh;display:block;margin:0 auto;border-radius:8px">
-    <div style="font-size:12px;color:#666;margin:6px 2px">${new Date(o.t).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
-    <div class="btns" style="margin-top:4px">${o.p ? '<button class="ib" data-a="map">🗺 地図で見る</button>' : ""}<button class="ib" data-a="del" style="color:#c5221f">🗑 消す</button><button class="ib" data-a="x">とじる</button></div></div>`;
-  document.body.appendChild(d);
-  d.onclick = async e => {
-    const a = e.target.dataset.a; if (!a && e.target !== d) return;
-    if (a === "map") { d.remove(); map.setView(o.p, 17); L.marker(o.p).addTo(trkLayer); try { $("panel").classList.add("min"); $("tog").textContent = "ひらく"; } catch {} return; }
-    if (a === "del") { if (!confirm("この写真を アルバムから消す？（元の写真は消えないよ）")) return; await albDel(o.id); d.remove(); after && after(); return; }
-    d.remove();
-  };
+function albBig(o) {   // 📷 写真を大きく（どこかをタップしたら 地図にもどる）
+  const d = document.createElement("div"); d.id = "geoAsk"; d.style.cursor = "pointer";
+  d.innerHTML = `<div style="text-align:center"><img src="${URL.createObjectURL(o.b)}" style="max-width:96vw;max-height:84vh;border-radius:8px;box-shadow:0 4px 20px #0008;display:block;margin:0 auto">
+    <div style="color:#fff;font-size:13px;margin-top:6px;text-shadow:0 0 4px #000">${new Date(o.t).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div></div>`;
+  d.onclick = () => d.remove(); document.body.appendChild(d);
 }
 async function trkPast() {
   const T = $("trkBody"); if (!T) return; trkLayer.clearLayers();
@@ -4230,14 +4231,11 @@ async function trkDay(R, today) {
     </div>
     ${oldImg ? `<img id="trkImg" src="${oldImg}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="text-align:center;color:#888;padding:30px 0;border:1px solid #eee;border-radius:8px">地図を作っているよ…</div>'}
 
-    <div id="trkAlb"></div>
     <div style="font-weight:bold;margin:10px 0 4px">📍 通った所</div><div id="trkList" style="color:#888;max-height:42vh;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:2px 6px">さがしているよ…</div>
     <div style="font-size:11px;color:#888;margin-top:8px">${today ? `<div style="text-align:right;margin-top:6px"><button id="trkReset" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 今日の軌跡をリセット</button></div>` : ""}
     この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ</div></div>`;
   // 同じ日・同じ記録なら、前に作った画像をそのまま使う（作りなおさない）
   const ik = trkDay.cur = dkey(R.t0) + ":" + P.length, put = u => { if ($("trkImg") && trkDay.cur === ik) $("trkImg").outerHTML = u ? `<img id="trkImg" src="${u}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; };
-  if (trkImgC[ik]) put(trkImgC[ik]);
-  albumShow.R = R; albumShow(dkey(R.t0), ik);
   if (today) {
     $("trkRe").onclick = () => trkDay(ride, true);
     $("trkReset").onclick = () => {   // うっかり消さないように、何を消すか見せて2回きく
@@ -4259,12 +4257,19 @@ async function trkDay(R, today) {
       <span style="padding:3px 0 3px 4px;flex:1">${x.ic ? x.ic + " " : ""}${esc(x.name)}</span></div>`).join("");
   if ($("trkList")) $("trkList").scrollTop = sc;
   // 🗺 地図の画像（📣SNSと同じ：寄った所は大きく・通った所の名前は小さく）。通った所を調べたあとで作る（調べるのは上の一覧といっしょなので 手間はふえない）
-  if (!trkImgC[ik] && trkDay.cur === ik) {   // とちゅうで ほかの日にうつっていたら 作らない
+  // 📷 その日のアルバムの写真：地図の はしっこに 小さく並べて、撮った所から線をのばす（タップで大きく）
+  const alb = (await albAll()).filter(o => o.d === dkey(R.t0) && o.p).sort((a, b) => a.t - b.t);
+  const ik2 = ik + ":" + alb.map(o => o.id).join("|");   // 写真がかわったら 作りなおす
+  const tap = rects => { const im = $("trkImg"); if (!im || im.tagName !== "IMG") return; im.style.cursor = rects.length ? "pointer" : "";
+    im.onclick = e => { const k = 1200 / im.clientWidth, x = e.offsetX * k, y = e.offsetY * k, r = rects.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h); if (r) albBig(alb[r.i]); }; };
+  if (trkImgC[ik2]) { put(trkImgC[ik2].u); tap(trkImgC[ik2].rects); }
+  else if (trkDay.cur === ik) {   // とちゅうで ほかの日にうつっていたら 作らない
     const stops = list.filter(x => x.k === "stop" && x.p).map(x => ({ p: x.p, name: clean(x.name) }));
     const marks = list.filter(x => x.p && x.k !== "stop").map(x => ({ p: x.p, name: x.nm || clean(x.name) }));
+    const thumbs = (await Promise.all(alb.map(async (o, i) => { const bm = await createImageBitmap(o.b).catch(() => null); return bm && { p: o.p, bm, i }; }))).filter(Boolean);
     snsImage.prog = t => { const e = $("trkImg"); if (e && e.tagName !== "IMG") e.textContent = t; };
-    snsImage({ runs, stops, marks, sub: md, here: null, dir: null, big: "", pins: [] })
-      .then(b => { const u = b && URL.createObjectURL(b); if (u) { for (const k in trkImgC) if (k.startsWith(dkey(R.t0) + ":")) delete trkImgC[k]; trkImgC[ik] = u; } put(u); })
+    snsImage({ runs, stops, marks, thumbs, sub: md, here: null, dir: null, big: "", pins: [] })
+      .then(b => { const u = b && URL.createObjectURL(b), rects = (b && b.rects) || []; if (u) { for (const k in trkImgC) if (k.startsWith(dkey(R.t0) + ":")) delete trkImgC[k]; trkImgC[ik2] = { u, rects }; } if (trkDay.cur === ik) { put(u); tap(rects); } })
       .catch(() => {});
   }
 }
