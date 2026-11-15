@@ -5,8 +5,9 @@
 使い方:
   python test_dem.py kanto-latest.osm.pbf
   → 国土地理院の標高タイル（5mメッシュ）を取って、はんいの中の道の 坂のきつさ を色で地図にする
-    test_dem.html ができるので、ブラウザで開いて見てね
-  はんいをかえるとき: python test_dem.py kanto-latest.osm.pbf 南 西 北 東
+    test_dem_funabashi.html ができるので、ブラウザで開いて見てね
+  はんいをかえるとき: python test_dem.py kanto-latest.osm.pbf 南 西 北 東 名前
+    → test_dem_名前.html（名前を書かないときは 数字の名前）。はんいごとに べつのファイルなので ぶつからない
   （ふつうは 船橋の上山町・旭町あたり）
 
 地図の色:
@@ -140,10 +141,11 @@ def grade(pts):   # 道にそって STEP ごとに高さ → WIN の間の い�
     return best, bdh, rise, tot
 
 def main():
-    if len(sys.argv) not in (2, 6): print(__doc__); sys.exit(1)
-    src = sys.argv[1]; box = tuple(map(float, sys.argv[2:6])) if len(sys.argv) == 6 else BOX
+    if len(sys.argv) not in (2, 3, 6, 7): print(__doc__); sys.exit(1)
+    src = sys.argv[1]; box = tuple(map(float, sys.argv[2:6])) if len(sys.argv) >= 6 else BOX
+    tag = sys.argv[-1] if len(sys.argv) in (3, 7) else ("funabashi" if box == BOX else "_".join(f"{v:g}" for v in box))   # 結果ファイルの名前（はんいごとに べつ）
     t0 = time.time()
-    cache = "test_dem_ways3.json"   # 2回目からは pbf を読まない（はんいが同じとき）
+    cache = f"test_dem_ways_{tag}.json"   # 2回目からは pbf を読まない（はんいが同じとき）
     if os.path.exists(cache) and json.load(open(cache, encoding="utf-8"))["box"] == list(box):
         c = json.load(open(cache, encoding="utf-8")); loc = {int(k): tuple(v) for k, v in c["loc"].items()}; ways = c["ways"]
         print(f"前に読んだ道を使うよ（{len(ways):,}本）", flush=True)
@@ -219,7 +221,7 @@ def main():
 <div id=m></div><div id=k>交差点〜交差点の はし→はし の坂：<b style=color:#d50000>━</b> 15%〜 <b style=color:#ff6d00>━</b> 10〜15% <b style=color:#fbc02d>━</b> 6〜10% <b style=color:#9e9e9e>━</b> ゆるい <b style=color:#1a73e8>┅</b> OSMで階段（太い線＝80mまでの短い道）</div>
 <script>const F=__F__;const m=L.map('m');L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap contributors / 標高：国土地理院'}).addTo(m);
 const g=L.featureGroup().addTo(m);F.sort((a,b)=>a.w-b.w).forEach(f=>L.polyline(f.p,{color:f.c,weight:f.w,opacity:.85,dashArray:f.d?'4 6':null}).bindPopup(f.t).addTo(g));m.fitBounds(g.getBounds());</script>"""
-    out = os.path.join(os.path.dirname(os.path.abspath(src)), "test_dem.html")
+    out = os.path.join(os.path.dirname(os.path.abspath(src)), f"test_dem_{tag}.html")
     open(out, "w", encoding="utf-8").write(html.replace("__F__", json.dumps(feats, ensure_ascii=False)))
     print(f"\nできた！ {out} をブラウザで開いてね（{time.time() - t0:.0f}秒）")
 
