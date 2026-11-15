@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0947</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0948</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -311,7 +311,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">🚲ルートタブで作ったルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。一時停止して、つづきから走れるよ。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div>
         <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
-        <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>S</b>＝走る／一時停止　<b>X</b>＝はじめから（字を入れている所では きかないよ）</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="footDbg">👣 ためし走行も足あとに入れる（今日の分だけ・保存しない・過去には入らないよ）</label>
       </div>
@@ -5437,13 +5437,10 @@ function qRender() {
   }).join("") : '<div style="font-size:12px;color:#888;padding:6px">まだクエストがないよ。上で市の名前か路線名をさがしてね</div>';
 }
 $("qFind").onclick = qFind;
-// ⌨ 🧪ためし走行をキーボードで（デバッグ用）：S＝走る／一時停止・X＝はじめから。字を入れている所・Ctrlなどといっしょのときは きかない
+// ⌨ 🧪ためし走行をキーボードで（デバッグ用）：Ctrl＋Alt＋Space＝走る／一時停止
 document.addEventListener("keydown", e => {
-  if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.repeat) return;
-  const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-  const k = e.key.toLowerCase();
-  if (k === "s") { e.preventDefault(); $("simGo").click(); }
-  else if (k === "x") { e.preventDefault(); $("simStop").click(); }
+  if (!(e.ctrlKey && e.altKey) || e.metaKey || e.shiftKey || e.repeat || e.code !== "Space") return;
+  e.preventDefault(); $("simGo").click();
 });
 $("qLine").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) qFind(); });
 $("qCand").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) qAdd(+b.dataset.i); };
