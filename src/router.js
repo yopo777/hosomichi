@@ -1268,22 +1268,31 @@ function areaHas(kind, la, lo) {
   }
   return false;
 }
-// ==== 坂道：国土地理院の標高タイル（dem_png・ズーム14・10mメッシュ）で、のぼりをきらう ====
-const DEMZ = 14, demCache = new Map();
+// ==== 坂道：国土地理院の標高タイル（5mメッシュ dem5a・dem5b・ズーム15。ない所は 10mメッシュ dem_png・ズーム14）で、のぼりをきらう・印のない階段をさがす ====
+const DEMZ = 15, demCache = new Map();
+const demDecode = d => { const h = new Float32Array(65536);
+  for (let i = 0; i < 65536; i++) {
+    const R = d[i * 4], G = d[i * 4 + 1], B = d[i * 4 + 2], v = R * 65536 + G * 256 + B;
+    h[i] = (R === 128 && G === 0 && B === 0) ? NaN : (v < 8388608 ? v : v - 16777216) * 0.01;   // 128,0,0 は「データなし」
+  }
+  return h; };
+async function demPng(url) {
+  const res = await fetch(url); if (!res.ok) return null;
+  const bmp = await createImageBitmap(await res.blob()), cv = new OffscreenCanvas(256, 256), cx = cv.getContext("2d");
+  cx.drawImage(bmp, 0, 0); return demDecode(cx.getImageData(0, 0, 256, 256).data);
+}
 async function demTile(x, y) {
   const k = x + "/" + y;
   if (demCache.has(k)) return demCache.get(k);
   let h = null;
-  try {
-    const res = await fetch(`https://cyberjapandata.gsi.go.jp/xyz/dem_png/${DEMZ}/${x}/${y}.png`);
-    if (res.ok) {
-      const bmp = await createImageBitmap(await res.blob()), cv = new OffscreenCanvas(256, 256), cx = cv.getContext("2d");
-      cx.drawImage(bmp, 0, 0); const d = cx.getImageData(0, 0, 256, 256).data; h = new Float32Array(65536);
-      for (let i = 0; i < 65536; i++) {
-        const R = d[i * 4], G = d[i * 4 + 1], B = d[i * 4 + 2], v = R * 65536 + G * 256 + B;
-        h[i] = (R === 128 && G === 0 && B === 0) ? NaN : (v < 8388608 ? v : v - 16777216) * 0.01;   // 128,0,0 は「データなし」
-      }
-    }
+  for (const nm of ["dem5a_png", "dem5b_png"]) {   // 5m（航空レーザ → 写真測量）
+    try { h = await demPng(`https://cyberjapandata.gsi.go.jp/xyz/${nm}/${DEMZ}/${x}/${y}.png`); } catch {}
+    if (h && h.some(v => !isNaN(v))) break; h = null;
+  }
+  if (!h) try {   // 5m がない所：10m（ズーム14）の4分の1を 2倍にのばす
+    const q = await demPng(`https://cyberjapandata.gsi.go.jp/xyz/dem_png/${DEMZ - 1}/${x >> 1}/${y >> 1}.png`);
+    if (q) { h = new Float32Array(65536); const ox = (x & 1) * 128, oy = (y & 1) * 128;
+      for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) h[j * 256 + i] = q[(oy + (j >> 1)) * 256 + ox + (i >> 1)]; }
   } catch {}
   demCache.set(k, h);
   if (demCache.size > 3000) demCache.delete(demCache.keys().next().value);
@@ -1295,37 +1304,75 @@ async function loadDem(s, g, pad) {   // ルートの帯ぶんの標高タイル
   const la0 = Math.min(s[0], g[0]) - pad, la1 = Math.max(s[0], g[0]) + pad, lo0 = Math.min(s[1], g[1]) - pad * 1.25, lo1 = Math.max(s[1], g[1]) + pad * 1.25;
   const [x0, y0] = demXY(la1, lo0).map(v => Math.floor(v / 256)), [x1, y1] = demXY(la0, lo1).map(v => Math.floor(v / 256));
   const list = []; for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) if (!demCache.has(x + "/" + y)) list.push([x, y]);
-  if (list.length > 1500) { log(`坂道：範囲が広すぎるので、坂は見ないよ（標高タイル ${list.length}枚）`, "w"); return false; }
+  if (list.length > 2500) { log(`坂道：範囲が広すぎるので、坂は見ないよ（標高タイル ${list.length}枚）`, "w"); return false; }
   const t0 = Date.now(); let i = 0;
   await Promise.all(Array.from({ length: 8 }, async () => { while (i < list.length) { const [x, y] = list[i++]; await demTile(x, y); } }));
   if (list.length) log(`坂道：標高タイル ${list.length}枚（${((Date.now() - t0) / 1000).toFixed(1)}秒）`);
   return true;
 }
-function heightAt(la, lo) {
-  const [px, py] = demXY(la, lo), x = Math.floor(px / 256), y = Math.floor(py / 256), h = demCache.get(x + "/" + y);
-  if (!h) return NaN;
-  return h[Math.min(255, Math.floor(py - y * 256)) * 256 + Math.min(255, Math.floor(px - x * 256))];
+function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
+  let [px, py] = demXY(la, lo); px -= 0.5; py -= 0.5;
+  const x0 = Math.floor(px), y0 = Math.floor(py), u = px - x0, v = py - y0;
+  let s = 0, w = 0;
+  for (const [dx, dy, k] of [[0, 0, (1 - u) * (1 - v)], [1, 0, u * (1 - v)], [0, 1, (1 - u) * v], [1, 1, u * v]]) {
+    const X = x0 + dx, Y = y0 + dy, h = demCache.get((X >> 8) + "/" + (Y >> 8));
+    const z = h ? h[(Y & 255) * 256 + (X & 255)] : NaN;
+    if (isNaN(z)) return NaN;
+    s += z * k; w += k;
+  }
+  return s / w;
 }
 // のぼり 1m を k m 分と数える。8% をこえる急な所はその2倍。標高のゆれ（橋・切り通し）に強くするため 15% で頭打ち
-// 階段を通らない設定のとき：印のない階段かもしれない所は ほとんど通らない（30倍）
-//  ・歩道・小道で 20%より急 ／ 細い道（住宅街の道・私道など）で 25%より急（大きい道にぶつかる所の段差・階段など）
-//  橋・トンネルは標高のデータと高さが合わないので見ない。標高は10mごとなので、短すぎる所（8m未満）も見ない
-const FOOT_K = new Set(["歩道", "小道", "歩行者道", "公園の中", "霊園の中"]);
-const MINOR_HW = new Set(["residential", "service", "unclassified", "living_street", "track", "footway", "path", "pedestrian", "cycleway"]);
+// 印のない階段さがし（tools/test_dem.py で船橋・松戸でためした方法）：
+//  道を「交差点から交差点まで」に区切って、80mまでの短い道の「はし→はし」の高さの差で見る（とちゅうのでこぼこ・崖のそばのずれに強い）
+//  ・たぶん階段：車の通る道で 20%より急／歩道・小道で 15%より急（高さの差 2.5m以上）→ 階段を通らない設定なら ほとんど通らない（30倍）
+//  ・急坂：10%より急（高さの差 2m以上）→ ちょっとさける（1.5倍）
+//  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
+const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
 function applySlope(G, k, noSteps) {
-  if ((!k && !noSteps) || typeof OffscreenCanvas === "undefined") return G;
+  if (typeof OffscreenCanvas === "undefined") return G;
   const n = G.lat.length, h = new Float32Array(n);
   for (let i = 0; i < n; i++) h[i] = G.inGraph[i] ? heightAt(G.lat[i], G.lon[i]) : NaN;
-  let up = 0, st = 0;
-  for (let u = 0; u < n; u++) for (const e of G.adj[u]) {
-    let dh = h[e.v] - h[u];
-    if (noSteps && !e.b && e.L >= 8 && e.L <= 120 && (FOOT_K.has(e.k) ? Math.abs(dh) / e.L > 0.2 : MINOR_HW.has(e.hw) && Math.abs(dh) / e.L > 0.25)) { e.c *= 30; e.k = "急すぎる所（階段かも）"; st++; continue; }
-    if (!k) continue;
-    if (!(dh > 0) || e.L < 3) continue;
-    dh = Math.min(dh, e.L * 0.15);
-    e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1); up++;
+  // となり（向きは気にしない）
+  const nb = Array.from({ length: n }, () => null), brN = new Uint8Array(n);
+  const addNb = (a, b) => { (nb[a] || (nb[a] = new Set())).add(b); };
+  for (let u = 0; u < n; u++) for (const e of G.adj[u]) { addNb(u, e.v); addNb(e.v, u); if (e.b) { brN[u] = 1; brN[e.v] = 1; } }
+  const deg = i => nb[i] ? nb[i].size : 0;
+  const edge = (a, b) => G.adj[a].find(e => e.v === b);
+  let st = 0, sl = 0;
+  const seen = new Set();
+  for (let a = 0; a < n; a++) {
+    if (!nb[a] || deg(a) === 2) continue;   // 交差点・行き止まりから歩きだす
+    for (const first of nb[a]) {
+      const path = [a]; let prev = a, cur = first, L = 0, bad = false, car = false;
+      for (;;) {
+        path.push(cur);
+        const e = edge(prev, cur) || edge(cur, prev); if (e) { L += e.L; if (e.b) bad = true; if (CAR_HW.has(e.hw)) car = true; }
+        if (deg(cur) !== 2 || L > 80 || path.length > 200) break;
+        let nx = -1; for (const x of nb[cur]) if (x !== prev) nx = x;
+        if (nx < 0 || nx === a) break; prev = cur; cur = nx;
+      }
+      const z = path[path.length - 1], key = a < z ? a + "-" + z + "-" + path[1] : z + "-" + a + "-" + path[path.length - 2];
+      if (seen.has(key)) continue; seen.add(key);
+      if (bad || L > 80 || L < 5 || brN[a] || brN[z] || deg(z) === 2) continue;
+      const dh = Math.abs(h[z] - h[a]); if (!(dh >= 2)) continue;
+      const gr = dh / L, stair = dh >= 2.5 && gr >= (car ? 0.2 : 0.15), steep = !stair && gr >= 0.1;
+      if (!stair && !steep) continue;
+      if (stair) st++; else sl++;
+      for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
+        const e = edge(u, v); if (!e) continue;
+        if (stair) { if (noSteps) e.c *= 30; e.k = "たぶん階段（標高で）"; }
+        else e.c *= 1.5;
+      }
+    }
   }
-  if (st) log(`急すぎる歩道・細い道（印のない階段かも）${st}か所は、ほとんど通らないよ`);
+  if (k) for (let u = 0; u < n; u++) for (const e of G.adj[u]) {
+    let dh = h[e.v] - h[u];
+    if (!(dh > 0) || e.L < 3 || e.b) continue;
+    dh = Math.min(dh, e.L * 0.15);
+    e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1);
+  }
+  if (st || sl) log(`標高で：たぶん階段 ${st}か所${noSteps ? "（ほとんど通らない）" : ""}・急坂 ${sl}か所（ちょっとさける）`);
   return G;
 }
 // 道がつながらないとき（大きい川の橋が範囲の外にある、など）：データが手元にあれば範囲を広げてやりなおす
@@ -1373,7 +1420,7 @@ async function routeOnce(req, prog, partial) {
   const slopeK = +(cfg && cfg.slope) || 0;
   if (cfg && cfg.station !== 1) await loadStations();
   await loadAreas();   // 霊園・公園のほか、学校や工場の敷地（中の通路は通らない）にも使うので いつも読む
-  const demP = slopeK || (cfg && cfg.steps === "no") ? loadDem(s, g, pad + 0.005).catch(() => false) : Promise.resolve(false);   // 標高：坂道と、印のない階段さがしに使う
+  const demP = loadDem(s, g, pad + 0.005).catch(() => false);   // 標高：坂道・急坂と、印のない階段さがしに使う（いつも）
   const noLink = msg => Object.assign(new Error(msg), { noLink: true, usedPad: pad });
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
   { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
@@ -1768,4 +1815,4 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     }
   };
 }
-if (typeof module !== "undefined") module.exports = { tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
+if (typeof module !== "undefined") module.exports = { applySlope, demCache, heightAt, demXY, tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
