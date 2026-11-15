@@ -1136,10 +1136,12 @@ async function askMid(s, km, type, fromHere) {
         const d = document.createElement("div"); d.id = "msnAsk";
         d.innerHTML = `<div class="box"><div style="font-size:12px;color:#666">🎯 今日のミッション</div>
           <div style="font-size:22px;font-weight:bold;margin:4px 0">${m.ic} ${esc(m.name)}</div>
+          <div class="msnAddr" style="font-size:13px;color:#1a73e8;margin:-2px 0 2px;min-height:1.2em">📍 …</div>
           <div style="font-size:13px;color:#444">${esc(kind)}・${dir}へ まっすぐ約${fmtKm(hav(s, m.p))}（1周 約${km}km）</div>
           <div style="display:flex;gap:6px;margin-top:10px"><button data-a="go" class="big" style="flex:2">🎯 ここに行く</button><button data-a="again" style="flex:1">🎲 ほかの所</button></div>
           <button data-a="no" style="margin-top:6px;width:100%;color:#666">やめる</button></div>`;
         document.body.appendChild(d);
+        addrName(m.p).then(t => { const e = d.querySelector(".msnAddr"); if (e) e.textContent = t ? "📍 " + t : ""; });   // だいたいの住所（○○区○○町○丁目）
         d.onclick = e => { const x = e.target.dataset.a; if (!x) return; d.remove(); ok(x); };
       });
       if (a === "go") { $("stop").style.display = ""; $("bar").classList.remove("done"); $("bar").classList.add("run"); tickTimer = setInterval(showProg, 250); return m; }
