@@ -155,6 +155,78 @@ N0 = max(a[2] for a in AREAS.values()); E0 = max(a[3] for a in AREAS.values())
 WANT = {(i, j) for i in range(math.floor(S0 / T), math.floor(N0 / T) + 1)
         for j in range(math.floor(W0 / T), math.floor(E0 / T) + 1) if tile_ok(i, j)}
 
+# ---- 配布データの形（v2）：小さくするため ----
+# ・道はマスの中の部分だけ（マスの外は となりの1点まで）にきる
+# ・点の番号は マスの中だけの番号（0,1,2…）。マスのさかい目をまたぐ線の両はしの点だけ OSM の番号ものこす（となりのマスとつなぐため）
+# ・座標は 1e-7度の整数で、1つ前の点との差（マスの左下から）
+# ・タグは 同じものを1つにまとめて番号で
+# {"v":2,"t":[i,j],"tg":[タグ…],"n":[緯度の差,経度の差,…],"g":[点の番号の差,OSM番号の差,…],"nt":[点の番号の差,タグ番号,…],
+#  "w":[[道のOSM番号,タグ番号,点の数,1つめの点の番号,点の番号の差…],…]}
+# アプリ（router.js の tileEls）が もとの形（Overpass と同じ elements）にもどして使う。OSM番号がない点は -((i*20000+j)*100000+番号)
+def enc_v2(i, j, recs, ntags):
+    S, W, N, E = i * T, j * T, (i + 1) * T, (j + 1) * T
+    ins = lambda p: S <= p[1] < N and W <= p[2] < E
+    runs = []   # (道の番号, タグ, [(点のOSM番号, 緯度, 経度)…])
+    for (wid, pts, tags) in recs:
+        n = len(pts); keep = [False] * n
+        for k in range(n):
+            if ins(pts[k]): keep[k] = True; 
+            if k and ins(pts[k]) != ins(pts[k - 1]): keep[k] = keep[k - 1] = True
+        for k in range(n - 1):   # 点はマスの外でも、線がマスを横切る
+            a, b = pts[k], pts[k + 1]
+            if min(a[1], b[1]) < N and max(a[1], b[1]) >= S and min(a[2], b[2]) < E and max(a[2], b[2]) >= W: keep[k] = keep[k + 1] = True
+        run = []
+        for k in range(n):
+            if keep[k]: run.append(pts[k])
+            else:
+                if len(run) > 1: runs.append((wid, tags, run))
+                run = []
+        if len(run) > 1: runs.append((wid, tags, run))
+    order, pos, glob = [], {}, set()
+    for (_, _, run) in runs:
+        for p in run:
+            if p[0] not in pos: pos[p[0]] = len(order); order.append(p)
+        for a, b in zip(run, run[1:]):
+            if not (ins(a) and ins(b)): glob.add(a[0]); glob.add(b[0])   # さかい目をまたぐ線
+    tg, tix = [], {}
+    def ti(t):
+        key = json.dumps(t, sort_keys=True, ensure_ascii=False)
+        if key not in tix: tix[key] = len(tg); tg.append(t)
+        return tix[key]
+    nl, g, nt = [], [], []
+    pla, plo = round(S * 1e7), round(W * 1e7); pk = pg = 0; pid = 0; pt = 0
+    for k, (nid, la, lo) in enumerate(order):
+        a, b = round(la * 1e7), round(lo * 1e7); nl += [a - pla, b - plo]; pla, plo = a, b
+        if nid in glob: g += [k - pg, nid - pid]; pg, pid = k, nid
+        if nid in ntags: nt += [k - pt, ti(ntags[nid])]; pt = k
+    wl = []
+    for (wid, tags, run) in runs:
+        r = [pos[p[0]] for p in run]
+        wl.append([wid, ti(tags), len(r), r[0]] + [r[k] - r[k - 1] for k in range(1, len(r))])
+    return {"v": 2, "t": [i, j], "tg": tg, "n": nl, "g": g, "nt": nt, "w": wl}
+
+def dec_v2(o):   # v2 → もとの形（elements）。make_cities.py などで使う
+    i, j = o["t"]; base = (i * 20000 + j) * 100000
+    n = len(o["n"]) // 2; ids = [None] * n; k = 0; nid = 0
+    for q in range(0, len(o["g"]), 2): k += o["g"][q]; nid += o["g"][q + 1]; ids[k] = nid
+    for x in range(n):
+        if ids[x] is None: ids[x] = -(base + x)
+    el, la, lo = [], round(i * T * 1e7), round(j * T * 1e7); nt = {}; k = 0
+    for q in range(0, len(o["nt"]), 2): k += o["nt"][q]; nt[k] = o["tg"][o["nt"][q + 1]]
+    for x in range(n):
+        la += o["n"][2 * x]; lo += o["n"][2 * x + 1]
+        e = {"type": "node", "id": ids[x], "lat": la / 1e7, "lon": lo / 1e7}
+        if x in nt: e["tags"] = nt[x]
+        el.append(e)
+    for wi, w in enumerate(o["w"]):
+        r = [w[3]]
+        for d in w[4:]: r.append(r[-1] + d)
+        el.append({"type": "way", "id": w[0], "uid": f"{w[0]}~{i}_{j}~{wi}", "nodes": [ids[x] for x in r], "tags": o["tg"][w[1]]})
+    return el
+
+def tile_els(o):   # v1（elements）でも v2 でも elements にして返す
+    return dec_v2(o) if o.get("v") == 2 else o["elements"]
+
 class H(osmium.SimpleHandler):
     def __init__(self, i0, i1, kodo):   # 緯度の番号 i0〜i1 のマスだけ作る
         super().__init__()
@@ -254,7 +326,7 @@ def write_areas(src, out):
 
 def write_index(out, src_date, keys, total, built=None):
     empty = empty_tiles(keys)
-    idx = {"v": src_date, "built": built or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1,
+    idx = {"v": src_date, "built": built or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1, "fmt": 2,
            "areas": AREAS, "bytes": total, "keys": keys,
            "license": "© OpenStreetMap contributors / ODbL https://www.openstreetmap.org/copyright"}
     if empty is not None: idx["empty"] = empty; print(f"  関東の中で道がないマス: {len(empty)}マス")
@@ -295,17 +367,7 @@ def main():
         h.apply_file(src, locations=True, idx="flex_mem")
         print(f"  道 {h.nw:,} 本（旧街道・旧道 {h.nk:,} 本）・信号などの点 {len(h.ntags):,} 個（{time.time() - tb:.0f}秒）", flush=True)
         for n, ((i, j), recs) in enumerate(sorted(h.tiles.items())):
-            nodes = {}
-            for (_, pts, _) in recs:
-                for (nid, la, lo) in pts: nodes[nid] = (la, lo)
-            el = []
-            for nid, (la, lo) in nodes.items():
-                e = {"type": "node", "id": nid, "lat": la, "lon": lo}
-                if nid in h.ntags: e["tags"] = h.ntags[nid]
-                el.append(e)
-            for (wid, pts, tags) in recs:
-                el.append({"type": "way", "id": wid, "nodes": [p[0] for p in pts], "tags": tags})
-            data = json.dumps({"elements": el}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            data = json.dumps(enc_v2(i, j, recs, h.ntags), ensure_ascii=False, separators=(",", ":")).encode("utf-8")   # v2（小さい形）
             name = f"{i}_{j}.json.gz"
             gz = gzip.compress(data, compresslevel=9, mtime=0)   # mtime=0：中身が同じならファイルも同じ（gitの差分が小さい）
             with open(os.path.join(out, "t", name), "wb") as f: f.write(gz)

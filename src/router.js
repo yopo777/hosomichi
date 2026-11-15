@@ -817,6 +817,27 @@ async function pack(text) {
   }
   return { gz: false, blob: new Blob([text]) };
 }
+// 配布データ v2（小さい形・tools/make_pack.py の enc_v2）→ もとの形（Overpass と同じ elements）。v1 はそのまま
+// OSM番号がない点（マスの中だけの点）は -((i*20000+j)*100000+番号)。道は マスごとに きってあるので uid（道の番号~マス）で見分ける
+function tileEls(o) {
+  if (!o || o.v !== 2) return o ? o.elements : [];
+  const [ti, tj] = o.t, base = (ti * 20000 + tj) * 100000, n = o.n.length >> 1, ids = new Array(n), el = [];
+  for (let q = 0, k = 0, id = 0; q < o.g.length; q += 2) { k += o.g[q]; id += o.g[q + 1]; ids[k] = id; }
+  const nt = new Map(); for (let q = 0, k = 0; q < o.nt.length; q += 2) { k += o.nt[q]; nt.set(k, o.tg[o.nt[q + 1]]); }
+  let la = ti * 100000, lo = tj * 100000;   // 1e-7度（マスの左下）
+  for (let x = 0; x < n; x++) {
+    if (ids[x] === undefined) ids[x] = -(base + x);
+    la += o.n[2 * x]; lo += o.n[2 * x + 1];
+    const e = { type: "node", id: ids[x], lat: la / 1e7, lon: lo / 1e7 }; const t = nt.get(x); if (t) e.tags = t; el.push(e);
+  }
+  o.w.forEach((w, wi) => {   // 1本の道が マスの中で何切れかに分かれることもあるので、uid は 何番目かまで入れる
+    const nd = new Array(w[2]); let r = w[3]; nd[0] = ids[r];
+    for (let k = 4; k < w.length; k++) { r += w[k]; nd[k - 3] = ids[r]; }
+    el.push({ type: "way", id: w[0], uid: w[0] + "~" + ti + "_" + tj + "~" + wi, nodes: nd, tags: o.tg[w[1]] });
+  });
+  return el;
+}
+const elKey = e => e.type[0] + (e.uid || e.id);   // 同じもの（v2 の道は マスごとに べつ）
 async function unpack(rec) {
   let s = rec.blob.stream();
   if (rec.gz) s = s.pipeThrough(new DecompressionStream("gzip"));
@@ -827,7 +848,7 @@ async function getTile(key) {
     const st = await store("readonly"); if (!st) return null;
     const r = await req(st.get(key));
     if (!r) return null;
-    const el = (await unpack(r)).elements;
+    const el = tileEls(await unpack(r));
     return { el, stale: Date.now() - r.savedAt > MAX_AGE, pv: r.pv || null };   // 古くても、取れなかったときの予備に使う
   } catch { return null; }
 }
@@ -883,8 +904,9 @@ async function packTile(big) {   // 大きいマスを配布データから取�
   const json = JSON.parse(text);
   const st = await store("readwrite");
   if (st) await req(st.put({ key: big, savedAt: packV, pv: packId, gz: true, blob, size: blob.size }));
-  mem.set(big, json.elements);
-  return { el: json.elements, bytes: blob.size };
+  const el = tileEls(json);
+  mem.set(big, el);
+  return { el, bytes: blob.size };
 }
 // 📍 一方通行の矢印用：見えている範囲の一方通行の道（端末にある道路データか配布データだけ。サーバーには取りにいかない）
 async function onewayIn(bb) {
@@ -899,9 +921,9 @@ async function onewayIn(bb) {
     if (!el) continue;
     for (const e of el) if (e.type === "node") nodes.set(e.id, [e.lat, e.lon]);
     for (const e of el) {
-      const t = e.type === "way" && e.tags; if (!t || seen.has(e.id) || !t.highway) continue;
+      const t = e.type === "way" && e.tags; if (!t || seen.has(e.uid || e.id) || !t.highway) continue;
       const ow = t.oneway; if (!["yes", "1", "true", "-1"].includes(ow)) continue;
-      seen.add(e.id);
+      seen.add(e.uid || e.id);
       let pts = e.nodes.map(n => nodes.get(n)).filter(Boolean); if (pts.length < 2) continue;
       if (ow === "-1") pts = pts.reverse();
       if (!pts.some(p => p[0] > S && p[0] < N && p[1] > W && p[1] < E)) continue;
@@ -924,7 +946,8 @@ async function footTile(k) {
     for (const e of el) if (e.type === "node") nd.set(e.id, [e.lat, e.lon]);
     for (const e of el) if (e.type === "way" && e.nodes) for (let i = 0; i + 1 < e.nodes.length; i++) {
       const a = nd.get(e.nodes[i]), b = nd.get(e.nodes[i + 1]); if (!a || !b) continue;
-      const n = t.seg.length; t.seg.push([e.id, i, a[0], a[1], b[0], b[1], hav(a[0], a[1], b[0], b[1])]);
+      const u = e.nodes[i], v = e.nodes[i + 1], n = t.seg.length;   // 区間の名前＝両はしの点の番号（v2 で 道がマスごとに きれていても 同じになる）
+      t.seg.push([u < v ? u + "-" + v : v + "-" + u, 0, a[0], a[1], b[0], b[1], hav(a[0], a[1], b[0], b[1])]);
       const i0 = Math.floor(Math.min(a[0], b[0]) / FOOT_CELL), i1 = Math.floor(Math.max(a[0], b[0]) / FOOT_CELL);
       const j0 = Math.floor(Math.min(a[1], b[1]) / FOOT_CELL), j1 = Math.floor(Math.max(a[1], b[1]) / FOOT_CELL);
       for (let ii = i0; ii <= i1; ii++) for (let jj = j0; jj <= j1; jj++) { const g = ii + "," + jj; if (!t.grid.has(g)) t.grid.set(g, []); t.grid.get(g).push(n); }
@@ -956,7 +979,7 @@ async function footAccum(acc, runs) {   // 走った線を 8m おきに見て、
         const sg = t.seg[n2], dd = segDist(la, lo, sg); if (dd < bd) { bd = dd; best = sg; }
       }
       if (!best) continue;
-      const k = best[0] + ":" + best[1], o = acc.get(k);
+      const k = best[0], o = acc.get(k);
       if (o) o.m += d / n; else acc.set(k, { m: d / n, sg: best });
     }
   }
@@ -1449,7 +1472,7 @@ async function routeOnce(req, prog, partial) {
       if (tEdge < 300) return;
       const seen = new Set(), elements = [];
       for (const t of tiles) if (t.tc <= tEdge && got.has(t.key))
-        for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
+        for (const e of got.get(t.key)) { const k = elKey(e); if (!seen.has(k)) { seen.add(k); elements.push(e); } }
       const G = BG({ elements }, cfg), q = nearestGood(G, s[0], s[1]);
       if (q.n < 0 || q.d > 400) return;
       const r = search(G, q.n, -1, g, false);
@@ -1505,7 +1528,7 @@ async function routeOnce(req, prog, partial) {
       for (;;) {
         const lo = wide ? -Infinity : Math.max(0, tConf - BACK), seen = new Set(), elements = [];
         for (const t of tiles) if (t.tc >= lo - tileHalf && (final || t.tc <= bandEnd + tileHalf) && got.has(t.key))
-          for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
+          for (const e of got.get(t.key)) { const k = elKey(e); if (!seen.has(k)) { seen.add(k); elements.push(e); } }
         const tb = Date.now();
         G = BG({ elements }, cfg);
         tBuild += (Date.now() - tb) / 1000; nNodes = Math.max(nNodes, G.nNodes);
@@ -1628,7 +1651,7 @@ async function routeOnce(req, prog, partial) {
         if (ok) altTiles = wt;
       }
       const seen = new Set(), elements = [];
-      for (const t of altTiles) if (got.has(t.key)) for (const e of got.get(t.key)) { const k = e.type[0] + e.id; if (!seen.has(k)) { seen.add(k); elements.push(e); } }
+      for (const t of altTiles) if (got.has(t.key)) for (const e of got.get(t.key)) { const k = elKey(e); if (!seen.has(k)) { seen.add(k); elements.push(e); } }
       const G = BG({ elements }, cfg), qs = nearestGood(G, s[0], s[1]), qg = nearestGood(G, g[0], g[1], qs.n);
       if (qs.n >= 0 && qg.n >= 0) {
         const r0 = search(G, qs.n, qg.n, g, false), p0 = r0.goal >= 0 ? pathTo(r0.prev, r0.goal) : null;
@@ -1738,4 +1761,4 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     }
   };
 }
-if (typeof module !== "undefined") module.exports = { shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
+if (typeof module !== "undefined") module.exports = { tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };

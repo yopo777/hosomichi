@@ -20,6 +20,7 @@
 import sys, os, json, gzip, math, time, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from make_quests import osmium, rings, thin, beep
+from make_pack import tile_els   # 配布データ v1 でも v2 でも elements にする
 
 G = 0.001   # マス目の大きさ（約100m）
 R = 6371000
@@ -130,19 +131,27 @@ def main():
     # 配布データの道を数える（同じ道は1回だけ。区間のまん中の点がある市に足す）
     names_t = sorted(n for n in os.listdir(tdir) if n.endswith(".json.gz"))
     print(f"4/4 配布データの道 {len(names_t)}マスを数えてるよ…", flush=True)
-    total = [0.0] * len(names); seen = set(); nseg = 0
+    total = [0.0] * len(names); nseg = 0
+    TT = 0.01
     for n, fn in enumerate(names_t):
-        el = json.loads(gzip.decompress(open(os.path.join(tdir, fn), "rb").read()))["elements"]
+        ti, tj = (int(x) for x in fn[:-8].split("_"))
+        el = tile_els(json.loads(gzip.decompress(open(os.path.join(tdir, fn), "rb").read())))
         nd = {e["id"]: (e["lat"], e["lon"]) for e in el if e["type"] == "node"}
+        seen = set()
         for e in el:
-            if e["type"] != "way" or e["id"] in seen: continue
-            seen.add(e["id"]); ns = e["nodes"]
+            if e["type"] != "way": continue
+            ns = e["nodes"]
             for k in range(len(ns) - 1):
-                a, b = nd.get(ns[k]), nd.get(ns[k + 1])
+                u, v = ns[k], ns[k + 1]; key = (u, v) if u < v else (v, u)
+                if key in seen: continue
+                a, b = nd.get(u), nd.get(v)
                 if not a or not b: continue
-                c = city_of(round((a[0] + b[0]) / 2, 5), round((a[1] + b[1]) / 2, 5))
+                ml, mo = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+                if math.floor(ml / TT) != ti or math.floor(mo / TT) != tj: continue   # 区間は まん中の点があるマスで1回だけ数える
+                seen.add(key)
+                c = city_of(round(ml, 5), round(mo, 5))
                 if c >= 0: total[c] += hav(a[0], a[1], b[0], b[1]); nseg += 1
-        if (n + 1) % 2000 == 0: print(f"  {n + 1}/{len(names_t)}マス（道 {len(seen):,}本）…", flush=True)
+        if (n + 1) % 2000 == 0: print(f"  {n + 1}/{len(names_t)}マス（区間 {nseg:,}）…", flush=True)
     o = {"v": datetime.date.today().isoformat(), "G": G, "i0": i0, "names": names, "total": [round(t) for t in total], "rows": rows,
          "license": "© OpenStreetMap contributors / ODbL https://www.openstreetmap.org/copyright"}
     path = os.path.join(out, "cities.json")

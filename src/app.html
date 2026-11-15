@@ -2368,14 +2368,14 @@ function footCityOf(C, la, lo) {
 let footSegsP = null;   // あてはめ中に もう一回よばれたら、同じ結果を待つ（2回やらない）
 function footSegsAll(prog) { if (!footSegsP) footSegsP = footSegsRun(prog).finally(() => { footSegsP = null; }); return footSegsP; }
 async function footSegsRun(prog) {   // 過去の分（まだのものだけ あてはめて保存）＋今日の分
-  const segs = (await footKv("segs3")) || {}, done = (await footKv("done3")) || {};   // 3：区間の両はしも入れたので、あてはめなおし
+  const segs = (await footKv("segs4")) || {}, done = (await footKv("done4")) || {};   // 4：区間の名前を「両はしの点の番号」にしたので（配布データ v2）、あてはめなおし
   const today = ride && ride.pts.length > 1 ? dkey(ride.t0) : null;
   const days = (await histAll()).filter(R => R.d !== today && done[R.d] !== (R.pts || []).length);
   for (let n = 0; n < days.length; n++) {
     prog(`道にあてはめてるよ… ${n + 1}/${days.length}日`);
     for (const [k, ...v] of await footMatchReq(footSplit(footAfter(days[n].pts || [])))) segs[k] = v;
     done[days[n].d] = days[n].pts.length;
-    await footKv("segs3", segs); await footKv("done3", done);
+    await footKv("segs4", segs); await footKv("done4", done);
   }
   const all = Object.assign({}, segs);
   if (today) { prog("今日の分をあてはめてるよ…"); for (const [k, ...v] of await footMatchReq(footSplit(footAfter(ride.pts), footDbg))) all[k] = v; }
@@ -2441,7 +2441,7 @@ $("footWipe").onclick = async () => {   // 👣 足あと（塗れた道・市�
   if (!confirm("👣 足あと（塗れた道・市ごとの塗り）だけ消す？\n🛤軌跡と写真はのこるよ。いまより前に走った所は もう塗らないよ")) return;
   footFrom = Date.now(); lsSet("hosomichi_footFrom", footFrom);
   const done = {}; for (const R of await histAll()) done[R.d] = (R.pts || []).length;   // 過去の日は あてはめずみにしておく
-  await footKv("segs3", {}); await footKv("done3", done);
+  await footKv("segs4", {}); await footKv("done4", done);
   footKnown = null; footLiveLines = []; footPend = []; footTodayN = -1; footRuns = null; footStat = null; footLayer.clearLayers(); footTodayLayer.clearLayers(); footDraw();
   alert("👣 足あとを消したよ");
 };
@@ -2516,7 +2516,7 @@ async function trkPast() {
     if (!n) return alert("過去の記録はまだないよ");
     if (!confirm(`過去の記録 ${n}日分を ぜんぶ消す？（👣足あと・市ごとの塗り・📷アルバムの写真も消えるよ）\n消したら元にもどせないよ（今日の軌跡は消えないよ）`)) return;
     if (!confirm("ほんとうに ぜんぶ消していい？")) return;
-    try { await histClear(); const td = ride ? dkey(ride.t0) : ""; await albClear(o => o.d !== td); await footKv("segs3", {}); await footKv("done3", {}); footRuns = null; footStat = null; footKnown = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（👣足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
+    try { await histClear(); const td = ride ? dkey(ride.t0) : ""; await albClear(o => o.d !== td); await footKv("segs4", {}); await footKv("done4", {}); footRuns = null; footStat = null; footKnown = null; footDraw(); addLog(`🗑 過去の記録 ${n}日分を消したよ（👣足あとも）`, "m"); } catch (e) { alert("消せなかったよ: " + e); }
     trkPast();
   };
   $("calPrev").onclick = () => { trkYM = m ? [y, m - 1] : [y - 1, 11]; trkPast(); };
