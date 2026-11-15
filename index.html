@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0948</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0955</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3475,7 +3475,7 @@ function snsHide(pts, R, anchors) {
 // そのまわり200mの線をぬいて、入る前と出たあとの点をまっすぐつなぐ（よった家に入っていく線・行ったり来たりが見えないように）
 // その日の出発・いまいる所（さいご）は べつあつかい
 function snsPassBy(P) {
-  const out = P.map(q => [q[0], q[1]]), cut = new Array(P.length).fill(false);
+  const out = P.map(q => [q[0], q[1], q[2]]), cut = new Array(P.length).fill(false);
   for (let i = 1; i < P.length - 1;) {
     let j = i + 1; while (j < P.length && hav(P[j], P[i]) < 150) j++;
     if (j < P.length && P[j - 1][2] - P[i][2] >= 20 * 60e3) {
@@ -3497,6 +3497,15 @@ async function snsData() {
   const anchors = [...(home ? [home] : []), ...secrets.map(q => q.p)];   // 家と 🔒秘密の場所
   if (useRide) { pts = snsPassBy(ride.pts); anchors.push(pts[0]); }
   let { runs, hideP } = snsHide(pts, R, anchors);   // runs の cutS/cutE：消した所で切れているはし（フェードアウトする）
+  // 🌀 ワープした所（スリープ・電車など）で切る。長くいた所をつないだ線（snsPassBy）は 時間があいていても近いので切れない
+  runs = runs.flatMap(r => {
+    const out = []; let a = 0;
+    for (let i = 1; i <= r.length; i++) if (i === r.length || (r[i][2] != null && r[i - 1][2] != null && isWarp(r[i - 1], r[i]) && !(r[i][2] - r[i - 1][2] >= 20 * 60e3 && hav(r[i - 1], r[i]) < 450))) {
+      if (i - a > 1) out.push(Object.assign(r.slice(a, i), { cutS: a === 0 && r.cutS, cutE: i === r.length && r.cutE, i0: r.i0 + a, i1: r.i0 + i }));
+      a = i;
+    }
+    return out;
+  });
   // 📍 いまここ：走っている途中で、今いる所が消す所でなければ、今いる所と「来た道」（さいごの5km）だけを見せる
   let here = null, dir = null;
   if (riding && pts.length > 1 && !hideP(pts[pts.length - 1], pts.length - 1)) {
@@ -3727,9 +3736,22 @@ function trkOpen(v) {
   return trkDay(ride && dayOf(ride.t0) === dayOf(Date.now()) ? ride : null, true);
 }
 // 走ったきょり・走っていた時間（止まっていた・記録がない時間はのぞく）
+// 🌀 ワープ：となりの点のあいだを 自転車で走ったとは思えない所（スマホがスリープしていた・電車や車に乗った・GPSが飛んだ）
+// ・時速45kmより速い　・2分以上 記録がなくて 500m以上はなれている → 線をつながない・きょりに入れない・足あとにも入れない
+function isWarp(a, b) {
+  const d = hav(a, b), dt = (b[2] - a[2]) / 1000;
+  if (!(dt >= 0)) return d > 300;
+  return (d > 60 && d / Math.max(dt, 1) > 12.5) || (dt > 120 && d > 500);
+}
+function warpSplit(P) {   // 点の列 → ワープで切った かたまり（点は [緯度, 経度, 時刻…] のまま）
+  const runs = []; let seg = [];
+  for (let i = 0; i < P.length; i++) { if (i && isWarp(P[i - 1], P[i])) { if (seg.length > 1) runs.push(seg); seg = []; } seg.push(P[i]); }
+  if (seg.length > 1) runs.push(seg);
+  return runs;
+}
 function trkStats(P) {
   let dist = 0, move = 0;
-  for (let i = 1; i < P.length; i++) { const d = hav(P[i - 1], P[i]), dt = P[i][2] - P[i - 1][2]; if (dt < 5 * 60e3) { dist += d; move += dt; } }
+  for (let i = 1; i < P.length; i++) { const d = hav(P[i - 1], P[i]), dt = P[i][2] - P[i - 1][2]; if (dt < 5 * 60e3 && !isWarp(P[i - 1], P[i])) { dist += d; move += dt; } }
   return { dist, move };
 }
 // 🗓 過去の記録：1日1件、この端末の IndexedDB に入れておく（日付 "2026-11-13" がかぎ）
@@ -3774,7 +3796,7 @@ const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0
 function footSplit(P, dbg) {
   const runs = []; let seg = [];
   for (let i = 0; i < P.length; i++) {
-    const fast = !dbg && i && hav(P[i - 1], P[i]) > 16.7 * Math.max(1, (P[i][2] - P[i - 1][2]) / 1000);
+    const fast = !dbg && i && isWarp(P[i - 1], P[i]);   // 🌀 ワープ（速すぎる・長く記録がない）
     if ((P[i][3] && !dbg) || fast) { if (seg.length > 1) runs.push(seg); seg = P[i][3] ? [] : [[P[i][0], P[i][1]]]; continue; }
     if (i && P[i][2] - P[i - 1][2] > 5 * 60e3 && hav(P[i - 1], P[i]) > 300) { if (seg.length > 1) runs.push(seg); seg = []; }
     const q = [P[i][0], P[i][1]];
@@ -4139,12 +4161,7 @@ async function trkDay(R, today) {
     return;
   }
   // 地図の画像（SNSと同じ作りかた。この端末の中だけなので、家のまわりも消さない）。記録が切れている所（アプリを閉じていた所）で線を分ける
-  const runs = []; let seg = [[P[0][0], P[0][1]]];
-  for (let i = 1; i < P.length; i++) {
-    if (P[i][2] - P[i - 1][2] > 5 * 60e3 && hav(P[i - 1], P[i]) > 300) { if (seg.length > 1) runs.push(seg); seg = []; }
-    seg.push([P[i][0], P[i][1]]);
-  }
-  if (seg.length > 1) runs.push(seg);
+  const runs = warpSplit(P).map(r => r.map(q => [q[0], q[1]]));   // 🌀 ワープした所（スリープ・電車など）は つながない
   // 数字：走ったきょり・走っていた時間（止まっていた・記録がない時間はのぞく）
   const { dist, move } = trkStats(P), d0 = new Date(R.t0), md = `${d0.getMonth() + 1}/${d0.getDate()}(${"日月火水木金土"[d0.getDay()]})`;
   T.innerHTML = `<div style="font-size:13px;padding:2px 2px 6px">
