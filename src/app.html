@@ -3029,7 +3029,7 @@ function autoTick() {
     const slot = now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0), m = now.getMinutes() % 30;
     if (jihoLast === null) jihoLast = slot;
     else if (slot !== jihoLast && m >= 5) jihoLast = slot;
-    else if (slot !== jihoLast && quietNow()) { jihoLast = slot; say(`${now.getHours()}時${now.getMinutes() >= 30 ? "半" : ""}です`); return; }
+    else if (slot !== jihoLast && quietNow()) { jihoLast = slot; say(`現在の時刻は、${now.getHours()}時${now.getMinutes() >= 30 ? "半" : ""}です`); return; }
   }
   if (autoOvMin && !ovMode && Date.now() - autoOvLast > autoOvMin * 60000 && Date.now() - blkTouch > 15000 && quietNow()) {
     autoOvLast = Date.now(); autoOvBy = true; ovSet(true); blkShowMap(autoOvSec * 1000);
