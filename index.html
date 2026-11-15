@@ -124,6 +124,8 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
 #fl{top:calc(50% - 146px)}
 #fl.off{opacity:.45;filter:grayscale(1)}
 #fl small,#flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+.shLbl{white-space:nowrap;pointer-events:none}.shLbl i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#5f6368;border:2px solid #fff;box-sizing:border-box}
+.shLbl b{position:absolute;left:7px;top:-8px;font-size:11px;color:#333;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}   /* 🔗 共有ルートの 通った所の名前 */
 #ft{position:absolute;top:calc(50% - 266px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
 #ft.off{opacity:.45;filter:grayscale(1)}
@@ -187,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0926</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0930</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -5108,8 +5110,29 @@ function loadHash() {
     showRoute({ resume, route: hr, kc: hk && hk.length === hr.length - 1 ? hk : null, ok: h.get("ok") ? decPoly(h.get("ok")) : [], xw: h.get("xw") ? decPoly(h.get("xw")) : [], ng: h.get("ng") ? decPoly(h.get("ng")) : [], tp: decTp(h.get("tp"), h.get("ta")), cutS: (h.get("x") || "").includes("s"), cutE: (h.get("x") || "").includes("e"), here: (h.get("x") || "").includes("h"), shared: true, name: h.get("n") || (resume ? "共有されたルート（途中）" : "共有されたルート") }, true);
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
     if (!lsGet("hosomichi_welcome", false)) welcome(cur.name);
+    sharedLabels(hr);
   } catch (e) { setMsg("共有URLが読めませんでした", true); }
 }
+// 🏷 共有ルートの そばを通る 駅・お寺・神社などの名前を 小さく出す（配布データから。ルートの線しか使わない）
+async function sharedLabels(hr) {
+  const me = cur, list = await passList(hr.map((p, i) => [p[0], p[1], i]), () => false).catch(() => []);
+  if (cur !== me) return;   // そのあいだに消えた
+  const used = [];
+  for (const c of list) {
+    if (used.some(u => hav(u, c.p) < 60)) continue; used.push(c.p);
+    L.marker(c.p, { icon: L.divIcon({ className: "shLbl", html: `<i></i><b>${esc(c.name)}</b>`, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(layer);
+  }
+}
+// 🔗 共有ルートを見ているときは「見るだけ」：ズーム・スクロール（地図を動かす）以外の操作をしたら、すぐに消して まっさらにもどす
+function sharedGuard(e) {
+  if (!cur || !cur.shared) return;
+  const t = e.target;
+  if (t.closest && t.closest("#geoAsk")) return;   // はじめての人へのあいさつ
+  if (e.type === "click" && t.closest && t.closest("#map") && !t.closest(".leaflet-marker-icon,.leaflet-popup")) return;   // 地図やルートの線をタップしただけ（印をおしたら操作）
+  clearShared();
+}
+document.addEventListener("click", sharedGuard, true);
+document.addEventListener("contextmenu", sharedGuard, true);
 // 👋 共有リンク（Xなど）からはじめて開いた人へ
 function welcome(name) {
   const d = document.createElement("div"); d.id = "geoAsk";
