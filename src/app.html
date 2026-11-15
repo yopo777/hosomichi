@@ -1815,7 +1815,7 @@ async function snsData() {
 }
 async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, marks }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所＋写真
   pins = pins || [];
-  const W = 1200, H = 1200, PAD = 140, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p));
+  const W = 1200, H = 1200, PAD = 70, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p));
   // 画像は2倍（2400×2400）で作る：描くのは 1200 のつもりで、地図は1つ細かいズームのタイルを半分の大きさで並べる（くっきり・写真も大きく見られる）
   const K = 1, cv = document.createElement("canvas"); cv.width = W * K; cv.height = H * K; const g = cv.getContext("2d"); g.scale(K, K);   // K：スマホで見る大きさ（1200×1200）
   g.fillStyle = "#f2efe9"; g.fillRect(0, 0, W, H);
@@ -1823,13 +1823,15 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
     let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; for (const [a, o] of all) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, o); lo1 = Math.max(lo1, o); }
     const wx = (lo, z) => (lo + 180) / 360 * 256 * 2 ** z, wy = (la, z) => { const s = Math.sin(la * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256 * 2 ** z; };
     const TOP = (big ? 150 : 0) + (test ? 110 : 0);   // 上に大きい文字・テストの帯を入れるときは、そのぶん地図を下に
-    let z = 17; while (z > 5 && (wx(lo1, z) - wx(lo0, z) > W - 2 * PAD || wy(la0, z) - wy(la1, z) > H - 2 * PAD - 120 - TOP)) z--;
+    // ズームは はんぱ（17.3 など）もOK：走った線が 地図いっぱいに広がるように。タイルは1つ細かいズームのを ちぢめて並べる
+    const dx0 = Math.max(1e-9, wx(lo1, 0) - wx(lo0, 0)), dy0 = Math.max(1e-9, wy(la0, 0) - wy(la1, 0));
+    const z = Math.max(5, Math.min(17, Math.log2(Math.min((W - 2 * PAD) / dx0, (H - 2 * PAD - 120 - TOP) / dy0))));
     const cx = (wx(lo0, z) + wx(lo1, z)) / 2, cy = (wy(la0, z) + wy(la1, z)) / 2 + 50 - TOP / 2, ox = cx - W / 2, oy = cy - H / 2;
     const X = p => [wx(p[1], z) - ox, wy(p[0], z) - oy];
     // 地図：CyclOSM（自転車用）。読めない（CORSなど）ときは 国土地理院 淡色 にする
     const TILES = [["https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", "地図：© OpenStreetMap contributors / CyclOSM"], ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", "地図：国土地理院"]];
     for (const [url, at, zmax] of TILES.map((t, i) => [...t, i ? 18 : 20])) {
-      const zt = Math.min(z + K - 1, zmax), f = 2 ** (zt - z), T = 256 / f, ox2 = ox * f, oy2 = oy * f;   // T：タイル1枚の大きさ（1200のつもりの座標で）
+      const zt = Math.min(Math.ceil(z - 1e-6) + K - 1, zmax), f = 2 ** (zt - z), T = 256 / f, ox2 = ox * f, oy2 = oy * f;   // T：タイル1枚の大きさ（1200のつもりの座標で）
       const xs = [], ys = []; for (let tx = Math.floor(ox2 / 256); tx <= Math.floor((ox2 + W * f) / 256); tx++) xs.push(tx); for (let ty = Math.floor(oy2 / 256); ty <= Math.floor((oy2 + H * f) / 256); ty++) ys.push(ty);
       // 1枚ずつ 6秒まで待つ。おそいタイルは あきらめて（そこは地の色のまま）、8割読めたらこの地図を使う
       const all = xs.flatMap(tx => ys.map(ty => [tx, ty])); let done = 0;
