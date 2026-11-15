@@ -107,7 +107,8 @@ class WayH(osmium.SimpleHandler):
         if not hw or hw in EXCL: return
         ids = [n.ref for n in w.nodes if n.ref in self.loc]
         if len(ids) < 2 or len(ids) < len(w.nodes) * 0.8: return
-        self.ways.append((w.id, hw, w.tags.get("name", ""), ids))
+        t = w.tags; br = int(t.get("bridge", "no") not in ("no", "") or t.get("tunnel", "no") not in ("no", "") or t.get("layer", "0") not in ("0", "") or t.get("man_made") == "bridge")
+        self.ways.append((w.id, hw, w.tags.get("name", ""), ids, br))
 
 def grade(pts):   # 道にそって STEP ごとに高さ → WIN の間の いちばん大きい坂（%）と 高さの差
     L = [0.0]
@@ -139,7 +140,7 @@ def main():
     if len(sys.argv) not in (2, 6): print(__doc__); sys.exit(1)
     src = sys.argv[1]; box = tuple(map(float, sys.argv[2:6])) if len(sys.argv) == 6 else BOX
     t0 = time.time()
-    cache = "test_dem_ways.json"   # 2回目からは pbf を読まない（はんいが同じとき）
+    cache = "test_dem_ways2.json"   # 2回目からは pbf を読まない（はんいが同じとき）
     if os.path.exists(cache) and json.load(open(cache, encoding="utf-8"))["box"] == list(box):
         c = json.load(open(cache, encoding="utf-8")); loc = {int(k): tuple(v) for k, v in c["loc"].items()}; ways = c["ways"]
         print(f"前に読んだ道を使うよ（{len(ways):,}本）", flush=True)
@@ -154,20 +155,25 @@ def main():
     print("3/3 標高をしらべてるよ…", flush=True)
     # 道を「交差点から交差点まで」に切る（つなぎの短い道＝☆の階段 を1本として見る）
     use = {}
+    brn = {n for w in ways if w[4] for n in w[3]}   # 橋・トンネルの点
     for w in ways:
         for n in w[3]: use[n] = use.get(n, 0) + 1
     for w in ways:
         for n in (w[3][0], w[3][-1]): use[n] = use.get(n, 0) + 1   # 道のはしも区切り
     links = []
-    for wid, hw, nm, ids in ways:
+    nbr = 0
+    for wid, hw, nm, ids, br in ways:
         cut = [0] + [k for k in range(1, len(ids) - 1) if use[ids[k]] > 1] + [len(ids) - 1]
         for a, b in zip(cut, cut[1:]):
+            # 橋・トンネル（と その両はしにつながる道）は 地面の高さとちがうので見ない（線路をまたぐ橋など）
+            if br or ids[a] in brn or ids[b] in brn: nbr += 1; continue
             pts = [loc[n] for n in ids[a:b + 1]]
             L = sum(hav(p, q) for p, q in zip(pts, pts[1:]))
             if L < 3: continue
             h0, h1 = elev(*pts[0]), elev(*pts[-1])
             if h0 is None or h1 is None: continue
             links.append((wid, hw, nm, pts, L, abs(h1 - h0), abs(h1 - h0) / L * 100))
+    print(f"  橋・トンネルとそのつなぎ {nbr:,}本は見ないよ")
     print(f"  交差点で切った道 {len(links):,}本・標高タイル {sum(1 for t in tiles.values() if t)}枚（取れなかった {sum(1 for t in tiles.values() if t is None)}枚）", flush=True)
     def stat(name, rs):
         if not rs: return
