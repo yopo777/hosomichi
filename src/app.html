@@ -3154,7 +3154,7 @@ function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルー�
 function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a < 60 ? "ななめ" + lr : a < 150 ? lr : "大きく" + lr; }
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
-  const say = t => { if (vcOn) window.say(t); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
+  const say = (t, hi) => { if (vcOn) window.say(t, hi); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
   if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; vcLast = navAlong; }
   // 2周目・3周目：ルートの位置が大きくもどったら（ゴール→スタート）、案内を言ったしるしを消して、もう一回言うようにする
   if (navAlong < vcLast - 300) {

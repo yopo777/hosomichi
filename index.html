@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.1002</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.1008</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -4895,7 +4895,7 @@ function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルー�
 function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a < 60 ? "ななめ" + lr : a < 150 ? lr : "大きく" + lr; }
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
-  const say = t => { if (vcOn) window.say(t); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
+  const say = (t, hi) => { if (vcOn) window.say(t, hi); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
   if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; vcLast = navAlong; }
   // 2周目・3周目：ルートの位置が大きくもどったら（ゴール→スタート）、案内を言ったしるしを消して、もう一回言うようにする
   if (navAlong < vcLast - 300) {
