@@ -2677,9 +2677,15 @@ worker.postMessage({ cmd: "pack", base: new URL("../hosomichi-data/", location.h
 worker.postMessage({ cmd: "stats" });
 // 「ルート消去」：今のルートを画面から消して、入力欄を空にして、到着地を入れられるようにする
 $("bNew").onclick = async () => {
-  if ($("go").disabled) return;
+  if ($("go").disabled) {   // 計算中（↩ルートにもどる道 など）なら 止めてから消す
+    worker.postMessage({ cmd: "stop" }); job = null; clearInterval(tickTimer);
+    $("go").disabled = $("msnGo").disabled = false; $("stop").style.display = "none";
+  }
   history.replaceState(null, "", location.pathname);
   layer.clearLayers(); cur = null; cum = []; flowPrep();
+  // ↩ ミスコースのときの 点線・「ルートにもどる」ボタン・「外れています」の しるしも消す
+  try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; vcOff = false; vcFor = null; vcJoined = false; navAlong = null; } catch {}
+  lsSet(LKEY, null);   // 読みこみなおしても 消したルートが もどってこないように
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
   legend(null);
   $("from").value = ""; $("via").value = ""; $("to").value = ""; setMsg(""); $("prog").style.display = "none";
