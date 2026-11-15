@@ -16,7 +16,7 @@ const DEFAULT_CFG = {
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
   stepsGuess: 30,        // 🪜 たぶん階段（標高で見つけた、印のない階段かも）：倍率 or "no"（1＝気にしない）
-  steep: 1.5,            // ⛰ 急坂（標高で10%より急な短い道）：倍率（1＝気にしない）
+  steep: 3,              // ⛰ 急坂（標高で10%より急な短い道）：倍率（1＝気にしない）
   sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
@@ -1327,8 +1327,8 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 // のぼり 1m を k m 分と数える。8% をこえる急な所はその2倍。標高のゆれ（橋・切り通し）に強くするため 15% で頭打ち
 // 印のない階段さがし（tools/test_dem.py で船橋・松戸でためした方法）：
 //  道を「交差点から交差点まで」に区切って、80mまでの短い道の「はし→はし」の高さの差で見る（とちゅうのでこぼこ・崖のそばのずれに強い）
-//  ・たぶん階段：車の通る道で 20%より急／歩道・小道で 15%より急（高さの差 2.5m以上）→ 設定 stepsGuess の倍率（はじめ ×30。"no"＝通らない）
-//  ・急坂：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×1.5）
+//  ・たぶん階段：車の通る道で 20%より急／歩道・小道で 10%より急（高さの差 2.5m以上。歩道・小道の急な所は 階段のことが多い）→ 設定 stepsGuess の倍率（はじめ ×30。"no"＝通らない）
+//  ・急坂：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×3。じっさいは階段のことも多い）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
 function applySlope(G, k, stK, slK) {   // k：のぼり1mを何m分 / stK：🪜たぶん階段の倍率（"no"＝通らない） / slK：⛰急坂の倍率
@@ -1358,7 +1358,7 @@ function applySlope(G, k, stK, slK) {   // k：のぼり1mを何m分 / stK：�
       if (seen.has(key)) continue; seen.add(key);
       if (bad || L > 80 || L < 5 || brN[a] || brN[z] || deg(z) === 2) continue;
       const dh = Math.abs(h[z] - h[a]); if (!(dh >= 2)) continue;
-      const gr = dh / L, stair = dh >= 2.5 && gr >= (car ? 0.2 : 0.15), steep = !stair && gr >= 0.1;
+      const gr = dh / L, stair = dh >= 2.5 && gr >= (car ? 0.2 : 0.1), steep = !stair && gr >= 0.1;
       if (!stair && !steep) continue;
       if (stair) st++; else sl++;
       { const m = path[path.length >> 1], m2 = path[(path.length - 1) >> 1];
