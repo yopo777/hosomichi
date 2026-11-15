@@ -124,10 +124,6 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
 #fl{top:calc(50% - 146px)}
 #fl.off{opacity:.45;filter:grayscale(1)}
 #fl small,#flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
-#ev{position:absolute;top:calc(50% + 186px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
-  border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
-#ev.off{opacity:.45;filter:grayscale(1)}
-#ev small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 #ft{position:absolute;top:calc(50% - 266px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
 #ft.off{opacity:.45;filter:grayscale(1)}
@@ -191,7 +187,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0923</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0926</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -252,10 +248,10 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div class="spane" data-s="navi">
       <div style="font-size:11px;color:#666;margin:2px 0 4px">右の印：<span class="pw u">⚡大・中・小</span>＝電池を使う量　<span class="pw s">🔋節電 大・中・小</span>＝電池の節約になる量（いちばん効くのは画面の明るさ・GPS・地図の描きなおし）</div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <b>〰 接近音（ウィーン）</b><span class="pw u">⚡小</span>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="evOnCb">〰 接近音（ウィーン）を鳴らす<span class="pw u">⚡小</span></label>
         <div style="margin-top:4px">〰 こいでいる時：<select id="evKind" style="padding:4px;border:1px solid #ccc;border-radius:8px"></select></div>
         <div style="margin-top:4px">🚲 足を止めた時：<select id="evClick" style="padding:4px;border:1px solid #ccc;border-radius:8px"></select></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">EVみたいに、走っているあいだ「ウィーン」と小さく鳴らして、歩いている人に気づいてもらうよ。速さに合わせて音が高くなるよ。止まると消えるよ。オン・オフは右はしの〰ボタン。<b>ベルのかわりにはならないから、ベルははずさないでね</b>。画面を消すと止まることがあるよ（⬛暗くするなら鳴りつづけるよ）</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">EVみたいに、走っているあいだ「ウィーン」と小さく鳴らして、歩いている人に気づいてもらうよ。速さに合わせて音が高くなるよ。止まると消えるよ。<b>ベルのかわりにはならないから、ベルははずさないでね</b>。画面を消すと止まることがあるよ（⬛暗くするなら鳴りつづけるよ）</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="evCoast">🚲 ラチェット音は、速さがへっている時（こいでいない時）だけ鳴らす</label>
         <label style="display:flex;align-items:center;gap:6px;margin-top:4px">🔈<input type="range" id="evVol" min="0.02" max="3" step="0.02" style="flex:1">🔊</label>
         <div class="btns" style="margin-top:4px"><button class="ib" id="evTest" style="font-size:12px">🔊 ためしに聞く</button></div>
@@ -365,7 +361,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <div id="inappGo" style="display:none;margin-top:6px"><a style="display:inline-block;background:#1a73e8;color:#fff;border-radius:8px;padding:6px 12px;text-decoration:none;font-weight:bold">🌐 Chrome で開く</a></div></div>
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
-<button id="ev" title="〰 接近音（ウィーン）を鳴らす／止める">〰<small id="evL">接近音</small></button>
 <button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
 <button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
 <button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">➤</span><small id="flL">進行方向</small></button>
@@ -3929,7 +3924,7 @@ function evPos(ll, gsp) {   // GPS（ためしもふくむ）が来るたび
   evSet(evSp);
 }
 setInterval(() => { if (evOn && (evN || evC) && Date.now() - evT > 4000) { evSp = 0; evSet(0); } }, 1000);   // 位置が来なくなったら止める
-function evBtn() { $("ev").classList.toggle("off", !evOn); $("evL").textContent = evOn ? "接近音" : "接近音OFF"; }
+function evBtn() { if ($("evOnCb")) $("evOnCb").checked = evOn; }
 function evToggle(on) {
   evOn = on; lsSet("hosomichi_ev", on); evBtn();
   if (on) { audioUnlock(); evNodes(); evSet(Date.now() - evT < 4000 ? evSp : 0); }
@@ -4063,7 +4058,7 @@ async function footCityShow() {
 if (footOn) setTimeout(footDraw, 1500);   // 起動したとき（ONなら）
 function ftBtn() { $("ft").classList.toggle("off", !footOn); $("ftL").textContent = footOn ? "足あと" : "かくし中"; }
 ftBtn(); evBtn();
-$("ev").onclick = () => evToggle(!evOn);
+$("evOnCb").onchange = e => evToggle(e.target.checked);
 $("evVol").value = evVol;
 $("evCoast").checked = evCoast;
 $("evCoast").onchange = e => { evCoast = e.target.checked; lsSet("hosomichi_evCoast", evCoast); };
