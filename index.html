@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0930</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0933</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -5123,16 +5123,12 @@ async function sharedLabels(hr) {
     L.marker(c.p, { icon: L.divIcon({ className: "shLbl", html: `<i></i><b>${esc(c.name)}</b>`, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(layer);
   }
 }
-// 🔗 共有ルートを見ているときは「見るだけ」：ズーム・スクロール（地図を動かす）以外の操作をしたら、すぐに消して まっさらにもどす
+// 🔗 共有ルートを見ているときは「見るだけ」：左上のパネルを操作したら、すぐに消して まっさらにもどす（右はしのボタン・マーク・地図はそのまま）
 function sharedGuard(e) {
   if (!cur || !cur.shared) return;
-  const t = e.target;
-  if (t.closest && t.closest("#geoAsk")) return;   // はじめての人へのあいさつ
-  if (e.type === "click" && t.closest && t.closest("#map") && !t.closest(".leaflet-marker-icon,.leaflet-popup")) return;   // 地図やルートの線をタップしただけ（印をおしたら操作）
-  clearShared();
+  if (e.target.closest && e.target.closest("#panel")) clearShared();
 }
 document.addEventListener("click", sharedGuard, true);
-document.addEventListener("contextmenu", sharedGuard, true);
 // 👋 共有リンク（Xなど）からはじめて開いた人へ
 function welcome(name) {
   const d = document.createElement("div"); d.id = "geoAsk";
