@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.0048</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.0051</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -397,6 +397,8 @@ const DEFAULT_CFG = {
   cemetery: 5,           // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
+  stepsGuess: 30,        // 🪜 たぶん階段（標高で見つけた、印のない階段かも）：倍率 or "no"（1＝気にしない）
+  steep: 1.5,            // ⛰ 急坂（標高で10%より急な短い道）：倍率（1＝気にしない）
   sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
@@ -1707,11 +1709,11 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 // のぼり 1m を k m 分と数える。8% をこえる急な所はその2倍。標高のゆれ（橋・切り通し）に強くするため 15% で頭打ち
 // 印のない階段さがし（tools/test_dem.py で船橋・松戸でためした方法）：
 //  道を「交差点から交差点まで」に区切って、80mまでの短い道の「はし→はし」の高さの差で見る（とちゅうのでこぼこ・崖のそばのずれに強い）
-//  ・たぶん階段：車の通る道で 20%より急／歩道・小道で 15%より急（高さの差 2.5m以上）→ 階段を通らない設定なら ほとんど通らない（30倍）
-//  ・急坂：10%より急（高さの差 2m以上）→ ちょっとさける（1.5倍）
+//  ・たぶん階段：車の通る道で 20%より急／歩道・小道で 15%より急（高さの差 2.5m以上）→ 設定 stepsGuess の倍率（はじめ ×30。"no"＝通らない）
+//  ・急坂：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×1.5）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
-function applySlope(G, k, noSteps) {
+function applySlope(G, k, stK, slK) {   // k：のぼり1mを何m分 / stK：🪜たぶん階段の倍率（"no"＝通らない） / slK：⛰急坂の倍率
   if (typeof OffscreenCanvas === "undefined") return G;
   const n = G.lat.length, h = new Float32Array(n);
   for (let i = 0; i < n; i++) h[i] = G.inGraph[i] ? heightAt(G.lat[i], G.lon[i]) : NaN;
@@ -1745,8 +1747,8 @@ function applySlope(G, k, noSteps) {
         marks.push([+((G.lat[m] + G.lat[m2]) / 2).toFixed(6), +((G.lon[m] + G.lon[m2]) / 2).toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L)]); }
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
-        if (stair) { if (noSteps) e.c *= 30; e.k = "たぶん階段（標高で）"; }
-        else e.c *= 1.5;
+        if (stair) { e.c *= stK === "no" ? 1e4 : (+stK || 1); e.k = "たぶん階段（標高で）"; }
+        else e.c *= +slK || 1;
       }
     }
   }
@@ -1757,7 +1759,7 @@ function applySlope(G, k, noSteps) {
     e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1);
   }
   if (marks.length && typeof self !== "undefined" && self.postMessage && typeof module === "undefined") self.postMessage({ type: "slope", marks });
-  if (st || sl) log(`標高で：たぶん階段 ${st}か所${noSteps ? "（ほとんど通らない）" : ""}・急坂 ${sl}か所（ちょっとさける）`);
+  if (st || sl) log(`標高で：🪜たぶん階段 ${st}か所（${stK === "no" ? "通らない" : "×" + (+stK || 1)}）・⛰急坂 ${sl}か所（×${+slK || 1}）`);
   return G;
 }
 // 道がつながらないとき（大きい川の橋が範囲の外にある、など）：データが手元にあれば範囲を広げてやりなおす
@@ -1863,7 +1865,7 @@ async function routeOnce(req, prog, partial) {
     }
   }
   const demOK = await demP;   // 坂道のデータ（あとで道に坂の重みをつける）
-  const BG = (osm, c, p) => { const G0 = buildGraph(osm, c, p); return demOK ? applySlope(G0, slopeK, c && c.steps === "no") : G0; };
+  const BG = (osm, c, p) => { const G0 = buildGraph(osm, c, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   if (oldPack) log(`配布データが新しくなったので、${oldPack}マスを配布データから取りなおすよ`);
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
@@ -4615,7 +4617,7 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, station: 5, cemetery: 5, park: 5 };
+  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 1.5, station: 5, cemetery: 5, park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（×2）"], [5, "避ける（×5）"], [10, "かなり避ける（×10・はじめ）"], [30, "ほぼ通らない（×30）"]]],
@@ -4626,6 +4628,8 @@ const OTHER_ROWS = [
   ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
   ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
   ["slope", "坂道（のぼり）", [[0, "気にしない"], [5, "少し避ける（のぼり1m＝5m）"], [10, "避ける（のぼり1m＝10m）"], [20, "かなり避ける（のぼり1m＝20m）"]]],
+  ["stepsGuess", "🪜 たぶん階段（標高で）", [[1, "気にしない"], [3, "少し避ける（×3）"], [30, "ほとんど通らない（×30）"], ["no", "通らない"]]],
+  ["steep", "⛰ 急坂（標高で・10%より急）", [[1, "気にしない"], [1.5, "少し避ける（×1.5）"], [3, "避ける（×3）"], [10, "かなり避ける（×10）"]]],
   ["park", "公園の中の道", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
   ["cemetery", "霊園・墓地の中の道", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
   ["station", "駅の中の通路", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
@@ -4655,7 +4659,8 @@ function renderCfg() {
   h += "<h4>計算</h4>" + get(["mode", "alts", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
-  h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか。8%より急なのぼりはその2倍。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div>';
+  h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか。8%より急なのぼりはその2倍。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div>'
+    + get(["stepsGuess", "steep"]) + '<div class="note">標高で見つけた所（地図の🪜⛰マーク）。交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜たぶん階段＝車の道で20%・歩道や小道で15%より急（高さの差2.5m以上）。⛰急坂＝10%より急（高さの差2m以上）。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div>';
   h += "<h4>公園・霊園</h4>" + get(["park", "cemetery"]) + '<div class="note">公園や霊園・墓地の敷地の中を通る道のこと（人が歩いていて、自転車はひんしゅく）。川ぞいのサイクリングロードみたいな長い自転車道（400m以上）と、住宅街の道は、公園の中でも気にしないよ。配布データのはんいで見分けるよ</div>';
   h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ</div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div>';

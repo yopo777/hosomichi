@@ -15,6 +15,8 @@ const DEFAULT_CFG = {
   cemetery: 5,           // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
+  stepsGuess: 30,        // 🪜 たぶん階段（標高で見つけた、印のない階段かも）：倍率 or "no"（1＝気にしない）
+  steep: 1.5,            // ⛰ 急坂（標高で10%より急な短い道）：倍率（1＝気にしない）
   sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
@@ -1325,11 +1327,11 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 // のぼり 1m を k m 分と数える。8% をこえる急な所はその2倍。標高のゆれ（橋・切り通し）に強くするため 15% で頭打ち
 // 印のない階段さがし（tools/test_dem.py で船橋・松戸でためした方法）：
 //  道を「交差点から交差点まで」に区切って、80mまでの短い道の「はし→はし」の高さの差で見る（とちゅうのでこぼこ・崖のそばのずれに強い）
-//  ・たぶん階段：車の通る道で 20%より急／歩道・小道で 15%より急（高さの差 2.5m以上）→ 階段を通らない設定なら ほとんど通らない（30倍）
-//  ・急坂：10%より急（高さの差 2m以上）→ ちょっとさける（1.5倍）
+//  ・たぶん階段：車の通る道で 20%より急／歩道・小道で 15%より急（高さの差 2.5m以上）→ 設定 stepsGuess の倍率（はじめ ×30。"no"＝通らない）
+//  ・急坂：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×1.5）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
-function applySlope(G, k, noSteps) {
+function applySlope(G, k, stK, slK) {   // k：のぼり1mを何m分 / stK：🪜たぶん階段の倍率（"no"＝通らない） / slK：⛰急坂の倍率
   if (typeof OffscreenCanvas === "undefined") return G;
   const n = G.lat.length, h = new Float32Array(n);
   for (let i = 0; i < n; i++) h[i] = G.inGraph[i] ? heightAt(G.lat[i], G.lon[i]) : NaN;
@@ -1363,8 +1365,8 @@ function applySlope(G, k, noSteps) {
         marks.push([+((G.lat[m] + G.lat[m2]) / 2).toFixed(6), +((G.lon[m] + G.lon[m2]) / 2).toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L)]); }
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
-        if (stair) { if (noSteps) e.c *= 30; e.k = "たぶん階段（標高で）"; }
-        else e.c *= 1.5;
+        if (stair) { e.c *= stK === "no" ? 1e4 : (+stK || 1); e.k = "たぶん階段（標高で）"; }
+        else e.c *= +slK || 1;
       }
     }
   }
@@ -1375,7 +1377,7 @@ function applySlope(G, k, noSteps) {
     e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1);
   }
   if (marks.length && typeof self !== "undefined" && self.postMessage && typeof module === "undefined") self.postMessage({ type: "slope", marks });
-  if (st || sl) log(`標高で：たぶん階段 ${st}か所${noSteps ? "（ほとんど通らない）" : ""}・急坂 ${sl}か所（ちょっとさける）`);
+  if (st || sl) log(`標高で：🪜たぶん階段 ${st}か所（${stK === "no" ? "通らない" : "×" + (+stK || 1)}）・⛰急坂 ${sl}か所（×${+slK || 1}）`);
   return G;
 }
 // 道がつながらないとき（大きい川の橋が範囲の外にある、など）：データが手元にあれば範囲を広げてやりなおす
@@ -1481,7 +1483,7 @@ async function routeOnce(req, prog, partial) {
     }
   }
   const demOK = await demP;   // 坂道のデータ（あとで道に坂の重みをつける）
-  const BG = (osm, c, p) => { const G0 = buildGraph(osm, c, p); return demOK ? applySlope(G0, slopeK, c && c.steps === "no") : G0; };
+  const BG = (osm, c, p) => { const G0 = buildGraph(osm, c, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   if (oldPack) log(`配布データが新しくなったので、${oldPack}マスを配布データから取りなおすよ`);
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
