@@ -2821,6 +2821,7 @@ const dayOf = t => new Date(t).toDateString();
 function rideNew(discard) {
   if (!discard && ride && ride.pts.length > 1 && dayOf(ride.t0) !== dayOf(Date.now())) histPut(ride);   // 前の日の分は 🗓過去 へ（🗑リセットのときは入れない）
   ride = { t0: Date.now(), rn: cur ? cur.name || "" : "", pts: [], ev: [], stops: [] }; rideStops(); rideSave(true);
+  try { footLiveLines = []; footPend = []; footKnown = null; footTodayN = -1; footRuns = null; footStat = null; footTodayLayer.clearLayers(); if (footOn) footDraw(); } catch {}   // 👣 今日の分の足あとも消す（🗑リセット・日がかわった時）
 }
 function rideStops() {   // いまのルートの経由地をたす（同じものは1回）
   if (!ride || !cur || !cur.stops) return;

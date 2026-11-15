@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0906</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1115.0910</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -4562,6 +4562,7 @@ const dayOf = t => new Date(t).toDateString();
 function rideNew(discard) {
   if (!discard && ride && ride.pts.length > 1 && dayOf(ride.t0) !== dayOf(Date.now())) histPut(ride);   // 前の日の分は 🗓過去 へ（🗑リセットのときは入れない）
   ride = { t0: Date.now(), rn: cur ? cur.name || "" : "", pts: [], ev: [], stops: [] }; rideStops(); rideSave(true);
+  try { footLiveLines = []; footPend = []; footKnown = null; footTodayN = -1; footRuns = null; footStat = null; footTodayLayer.clearLayers(); if (footOn) footDraw(); } catch {}   // 👣 今日の分の足あとも消す（🗑リセット・日がかわった時）
 }
 function rideStops() {   // いまのルートの経由地をたす（同じものは1回）
   if (!ride || !cur || !cur.stops) return;
