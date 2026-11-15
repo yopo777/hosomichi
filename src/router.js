@@ -867,7 +867,7 @@ async function getTileAny(key) {
 }
 // ==== 配布データ（GitHub Pages に置いた道路データ。Overpass にアクセスしないですむ） ====
 // 形式: <base>index.json（{v:日付, keys:["緯度番号_経度番号", ...]}）と <base>t/緯度番号_経度番号.json.gz（大きいマス 0.01°）
-let packBase = null, packIdx = null, packV = 0, packAt = 0, packBytes = 0, packId = "", packEmpty = null, packAreas = [];
+let packBase = null, packIdx = null, packV = 0, packAt = 0, packBytes = 0, packId = "", packEmpty = null, packAreas = [], packAreaE = [];
 const bigOf = k => { const [T, ij] = k.split(":"), [i, j] = ij.split(",").map(Number); return T === "0.01" ? k : `0.01:${Math.floor(i / 2)},${Math.floor(j / 2)}`; };
 const packName = big => big.split(":")[1].replace(",", "_");
 async function packIndex() {
@@ -880,7 +880,7 @@ async function packIndex() {
     packIdx = new Set(j.keys); packV = Date.parse(j.v) || Date.now(); packBytes = j.bytes || 0;
     packId = j.built || `${j.v}:${j.bytes}`;   // 配布データの版。作りなおすと変わる
     packEmpty = j.empty ? new Set(j.empty) : null;   // 範囲の中だけど道がないマス（川・湖・田んぼなど）
-    packAreas = Object.values(j.areas || {});
+    packAreas = Object.values(j.areas || {}); packAreaE = Object.entries(j.areas || {});
     log(`配布データ: ${packIdx.size}マス（${j.v} の地図・${(packBytes / 1048576).toFixed(0)}MB）`, "ok");
   } catch (e) { packIdx = packIdx || new Set(); log(`配布データの一覧が読めなかった（${e.message}）。サーバーから取るよ`, "w"); }
   packAt = Date.now();
@@ -1004,11 +1004,18 @@ async function footLive(t0, pair) {
 }
 // 配布データをまとめて入れる（パソコン向け）
 let pkStop = false;
-async function packAll(post) {
+async function packAll(post, at) {   // at=[緯度,経度]：その場所の地方（関東一円・関西・中京）だけ入れる
   const p = await packIndex(); if (!p || !p.size) return post({ fin: true, msg: "配布データが見つからなかったよ" });
-  const { have } = await haveKeys(), list = [...p].map(n => "0.01:" + n.replace("_", ",")).filter(k => !have.has(k));
+  const ar = packAreaE;
+  let nm = "", box = null;
+  if (at && ar.length) {   // 地図のまん中が入っている地方。どこにも入っていなければ いちばん近い地方
+    const d = ([S, W, N, E]) => Math.hypot(Math.max(S - at[0], 0, at[0] - N), Math.max(W - at[1], 0, at[1] - E));
+    [nm, box] = ar.reduce((a, b) => d(b[1]) < d(a[1]) ? b : a);
+  }
+  const inBox = n => { if (!box) return true; const [i, j] = n.split("_").map(Number), la = (i + 0.5) * 0.01, lo = (j + 0.5) * 0.01; return la > box[0] && la < box[2] && lo > box[1] && lo < box[3]; };
+  const all = [...p].filter(inBox), { have } = await haveKeys(), list = all.map(n => "0.01:" + n.replace("_", ",")).filter(k => !have.has(k));
   let done = 0, bytes = 0, next = 0;
-  log(`==== 配布データをまとめて入れる：${list.length}マス（もう持ってる ${p.size - list.length}マス）====`, "h");
+  log(`==== 配布データをまとめて入れる${nm ? "（" + nm + "）" : ""}：${list.length}マス（もう持ってる ${all.length - list.length}マス）====`, "h");
   const run = async () => {
     while (next < list.length && !pkStop) {
       const k = list[next++];
@@ -1371,7 +1378,7 @@ async function routeOnce(req, prog, partial) {
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
   { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
     if (km > 30 && !(await allLocal(tilesFor(s, g, pad))))
-      throw new Error(`出発と到着が ${km.toFixed(1)}km はなれてるよ。道路データのダウンロードが必要な所（${missN}マス）があるので、30km以内にしてね（配布データのある関東の中なら150kmまでOK）`); }
+      throw new Error(`出発と到着が ${km.toFixed(1)}km はなれてるよ。道路データのダウンロードが必要な所（${missN}マス）があるので、30km以内にしてね（配布データのある所なら150kmまでOK）`); }
   const tiles = tilesFor(s, g, pad), N = tiles.length;
   log(`==== ルート計算スタート ====`, "h");
   log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 到着 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
@@ -1718,7 +1725,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
         if (p && p.size) self.postMessage({ type: "packinfo", keys: [...p], empty: packEmpty ? [...packEmpty] : [] });
         return;
       }
-      if (d.cmd === "packAll") { pkStop = false; await packAll(p => self.postMessage({ type: "pk", ...p })); return self.postMessage({ type: "stats", ...(await stats()) }); }
+      if (d.cmd === "packAll") { pkStop = false; await packAll(p => self.postMessage({ type: "pk", ...p }), d.at); return self.postMessage({ type: "stats", ...(await stats()) }); }
       if (d.cmd === "packStop") { pkStop = true; return; }
       if (d.cmd === "footLive") { const segs = await footLive(d.t0, d.pair); return self.postMessage({ type: "footLive", segs }); }
       if (d.cmd === "footMatch") { const segs = await footMatch(d.runs); return self.postMessage({ type: "footMatch", id: d.id, segs }); }

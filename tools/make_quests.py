@@ -3,7 +3,7 @@
 ほそみちナビ クエスト用のデータ quests.json を作るスクリプト（サーバーいらずにするため）
 
 使い方:
-  python make_quests.py kanto-latest.osm.pbf 出力フォルダ
+  python make_quests.py kanto-latest.osm.pbf,kansai-latest.osm.pbf,chubu-latest.osm.pbf 出力フォルダ
   → 出力フォルダ/quests.json を作る（make_pack.py と同じ pbf を使う・数分）
   できたら hosomichi-data リポジトリに入れて push
 
@@ -157,19 +157,23 @@ class RelH(osmium.SimpleHandler):
             self.master[r.id] = (t.get("name") or "", t.get("operator") or "", [m.ref for m in r.members if m.type == "r"])
 
 # ---- 2回目：way（境界の線・面になっている神社とお寺）----
+def apply_all(h, src):   # "a.pbf,b.pbf" みたいにカンマでつないだ pbf を、順番にぜんぶ読む
+    for f in src.split(","):
+        if f: h.apply_file(f)
+
 class WayH(osmium.SimpleHandler):
     def __init__(self, need):
-        super().__init__(); self.need = need; self.ways = {}; self.pow = []   # pow: (種類, 名前, [node id])（面のスポット・橋）
+        super().__init__(); self.need = need; self.ways = {}; self.pow = []; self.seen = set()   # pow: (種類, 名前, [node id])（面のスポット・橋）
     def way(self, w):
         if w.id in self.need: self.ways[w.id] = [n.ref for n in w.nodes]
         if not w.tags: return
         k = spot_kind(w.tags, True)
-        if k: self.pow.append((k, w.tags.get("name") or "", [n.ref for n in w.nodes], famous(w.tags)))
+        if k and w.id not in self.seen: self.seen.add(w.id); self.pow.append((k, w.tags.get("name") or "", [n.ref for n in w.nodes], famous(w.tags)))
 
 # ---- 3回目：node（座標・駅・点の神社とお寺）----
 class NodeH(osmium.SimpleHandler):
     def __init__(self, need):
-        super().__init__(); self.need = need; self.loc = {}; self.name = {}; self.sta = []; self.pow = []
+        super().__init__(); self.need = need; self.loc = {}; self.name = {}; self.sta = []; self.pow = []; self.seen = set()
     def node(self, n):
         if not n.location.valid(): return
         la, lo = n.location.lat, n.location.lon
@@ -177,8 +181,10 @@ class NodeH(osmium.SimpleHandler):
             self.loc[n.id] = (la, lo)
             if n.tags.get("name"): self.name[n.id] = n.tags["name"]
         if not n.tags: return
-        if is_station(n.tags) and n.tags.get("name"): self.sta.append((sta_name(n.tags["name"]), la, lo))
-        k = spot_kind(n.tags)
+        st = is_station(n.tags) and n.tags.get("name"); k = spot_kind(n.tags)
+        if not (st or k) or n.id in self.seen: return   # さかい目の点は2つの pbf にある（駅・スポットの点だけおぼえる）
+        self.seen.add(n.id)
+        if st: self.sta.append((sta_name(n.tags["name"]), la, lo))
         if k: self.pow.append((k, n.tags.get("name") or "", la, lo, famous(n.tags)))
 
 def rings(way_ids, ways):   # way をつないで輪にする（端と端が同じ node のものをつなぐ）
@@ -233,15 +239,15 @@ def main():
     if len(sys.argv) != 3: print(__doc__); sys.exit(1)
     src, out = sys.argv[1], sys.argv[2]; os.makedirs(out, exist_ok=True); T0 = time.time()
     print("1/3 relation（境界・路線）を読んでるよ…", flush=True)
-    rh = RelH(); rh.apply_file(src)
+    rh = RelH(); apply_all(rh, src)
     print(f"  市区町村 {len(rh.city)}・路線 {len(rh.route)}（まとめ {len(rh.master)}）", flush=True)
     need_w = {w for _, ms in rh.city.values() for w, _ in ms}
     print("2/3 way（境界の線・面になっているスポット・橋）を読んでるよ…", flush=True)
-    wh = WayH(need_w); wh.apply_file(src)
+    wh = WayH(need_w); apply_all(wh, src)
     need_n = {n for ns in wh.ways.values() for n in ns} | {n for _, _, ns, _ in wh.pow for n in ns}
     need_n |= {n for _, _, ms in rh.route.values() for n, _ in ms}
     print(f"3/3 node（座標 {len(need_n):,}点・駅・スポット）を読んでるよ…", flush=True)
-    nh = NodeH(need_n); nh.apply_file(src)
+    nh = NodeH(need_n); apply_all(nh, src)
     L = nh.loc
 
     # 路線

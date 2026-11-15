@@ -5,28 +5,35 @@
 使い方:
   1. python -m pip install osmium
   2. python make_pack.py 出力フォルダ
-     → Geofabrik から関東のデータ（kanto-latest.osm.pbf・数百MB）を自動でダウンロードして
+     → Geofabrik から 関東・関西・中部 のデータ（kanto/kansai/chubu-latest.osm.pbf・あわせて約1GB）を自動でダウンロードして
        出力フォルダ/index.json と 出力フォルダ/t/緯度番号_経度番号.json.gz を作る
-     （ダウンロードずみの pbf を使うときは: python make_pack.py kanto-latest.osm.pbf 出力フォルダ）
+     （ダウンロードずみの pbf を使うときは: python make_pack.py kanto-latest.osm.pbf,kansai-latest.osm.pbf,chubu-latest.osm.pbf 出力フォルダ
+       ← カンマでつなぐ。さかい目の .poly は pbf と同じ名前（kanto.poly など）をさがして、なければダウンロード）
      （index.json だけ作りなおすときは: python make_pack.py --index-only 出力フォルダ）
-     （駅の一覧 stations.json だけ作るときは: python make_pack.py --stations-only kanto-latest.osm.pbf 出力フォルダ）
-     （霊園・公園のはんい areas.json だけ作るときは: python make_pack.py --areas-only kanto-latest.osm.pbf 出力フォルダ）
+     （駅の一覧 stations.json だけ作るときは: python make_pack.py --stations-only 出力フォルダ）
+     （霊園・公園のはんい areas.json だけ作るときは: python make_pack.py --areas-only 出力フォルダ）
   3. 出力フォルダの中身を GitHub の hosomichi-data リポジトリに push して GitHub Pages で公開
 
 データ: © OpenStreetMap contributors（ODbL）
-メモリ: 関東ぜんぶ読むので 4〜8GB くらい使います
+メモリ: 緯度80マスずつ読むので 4〜8GB くらい使います
 """
 import sys, os, re, json, gzip, math, time, datetime
 from collections import defaultdict
 import urllib.request
 import osmium
 
-PBF_URL = "https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf"
-POLY_URL = "https://download.geofabrik.de/asia/japan/kanto.poly"   # 関東データのさかい目（どこまでが関東か）
+GEOFABRIK = "https://download.geofabrik.de/asia/japan/"
+REGIONS = ("kanto", "kansai", "chubu")   # 使う Geofabrik の地域（関東・関西・中部）。中部は 中京のはんい だけ使う
 
-def load_poly(path="kanto.poly"):   # Geofabrik の .poly（[[(経度,緯度)…], …] と 穴）を読む
+def srcs_of(arg):   # "a.pbf,b.pbf" → ["a.pbf", "b.pbf"]
+    return [x for x in arg.split(",") if x]
+
+def poly_path(src):   # kanto-latest.osm.pbf → kanto.poly
+    return os.path.join(os.path.dirname(src), os.path.basename(src).split("-latest")[0].split(".")[0] + ".poly")
+
+def load_poly(path):   # Geofabrik の .poly（[[(経度,緯度)…], …] と 穴）を読む。なければダウンロード
     if not os.path.exists(path):
-        req = urllib.request.Request(POLY_URL, headers={"User-Agent": "hosomichi-make_pack/1.0"})
+        req = urllib.request.Request(GEOFABRIK + os.path.basename(path), headers={"User-Agent": "hosomichi-make_pack/1.0"})
         with urllib.request.urlopen(req) as r, open(path, "wb") as f: f.write(r.read())
     rings, cur, hole = [], None, False
     for line in open(path, encoding="utf-8").read().splitlines()[1:]:
@@ -39,6 +46,10 @@ def load_poly(path="kanto.poly"):   # Geofabrik の .poly（[[(経度,緯度)…
         x, y = s.split()[:2]; cur.append((float(x), float(y)))
     return rings
 
+def poly_box(rings):   # (南, 西, 北, 東)
+    xs = [x for _, pts in rings for x, _ in pts]; ys = [y for _, pts in rings for _, y in pts]
+    return (min(ys), min(xs), max(ys), max(xs))
+
 def in_poly(rings, lo, la):
     inside = False
     for hole, pts in rings:
@@ -49,18 +60,17 @@ def in_poly(rings, lo, la):
         if c: inside = not hole   # 外がわの輪の中なら中、穴の輪の中なら外
     return inside
 
-def empty_tiles(keys):   # 関東の中なのに道がないマス（川・湖・山など）。アプリはダウンロードしなくていいとわかる
-    try: rings = load_poly()
-    except Exception as e: print(f"  さかい目（kanto.poly）が読めなかったので、道のないマスの一覧はなし（{e}）"); return None
+def empty_tiles(keys):   # はんいの中なのに道がないマス（川・湖・山など）。アプリはダウンロードしなくていいとわかる
     have = set(keys)
-    return [f"{i}_{j}" for (i, j) in sorted(WANT) if f"{i}_{j}" not in have and in_poly(rings, (j + 0.5) * T, (i + 0.5) * T)]
+    return [f"{i}_{j}" for (i, j) in sorted(WANT) if f"{i}_{j}" not in have]
 
 def download(path):   # 1日以内にダウンロードしたものがあれば、それを使う
     if os.path.exists(path) and time.time() - os.path.getmtime(path) < 86400:
         print(f"ダウンロードずみの {path} を使うよ"); return
-    print(f"ダウンロード中: {PBF_URL}")
+    url = GEOFABRIK + os.path.basename(path)
+    print(f"ダウンロード中: {url}")
     tmp = path + ".part"
-    req = urllib.request.Request(PBF_URL, headers={"User-Agent": "hosomichi-make_pack/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "hosomichi-make_pack/1.0"})
     with urllib.request.urlopen(req) as r, open(tmp, "wb") as f:
         total = int(r.headers.get("Content-Length") or 0); done = 0; t0 = time.time(); last = 0
         while True:
@@ -76,8 +86,11 @@ def download(path):   # 1日以内にダウンロードしたものがあれば�
 T = 0.01   # 1マス＝0.01度（約900m×1.1km）。アプリの大きいマスと同じ
 # 配るはんい（南, 西, 北, 東）。四角をいくつか組み合わせる
 AREAS = {
-    "関東一円": (34.88, 138.38, 37.17, 140.90),   # 1都6県（伊豆諸島・小笠原はのぞく）。データのない海などのマスは作らない
+    "関東一円": (34.88, 138.38, 37.17, 140.90),   # 1都6県（伊豆諸島・小笠原はのぞく）＋山梨・静岡の東のほう
+    "関西": (33.42, 134.25, 35.80, 136.99),       # 2府4県＋三重（淡路島も）
+    "中京": (34.55, 136.45, 35.75, 137.75),       # 愛知・岐阜の南・三重の北・静岡の西のはし
 }
+# マスのまん中が、どれかの pbf のさかい目（.poly）の中にあるマスだけ作る（となりの県の道が少しだけ入った 中途半端なマスを作らない）
 BAND_ROWS = 80   # 一度に作るのは緯度80マスぶん（約90km）まで。メモリを使いすぎないように、何回かに分けて読む
 # アプリの Overpass の取り方と同じ道をえらぶ
 EXCL = re.compile(r"^(motorway|motorway_link|construction|proposed|platform|corridor|elevator|raceway|bus_guideway|bus_stop)$")
@@ -130,10 +143,11 @@ class RelH(osmium.SimpleHandler):   # 最初に1回だけ：まとまり（relat
                 and any("旧" in v or "古" in v for v in t.values()): lv = 2   # 黒羽街道・塩原街道など（説明などに「旧」）
         if lv: self.lv[r.id] = lv
 
-def kodo_ways(src):
+def kodo_ways(srcs):
     t0 = time.time()
-    print(f"旧街道をさがし中: {src}（まとまりだけ読むよ）", flush=True)
-    h = RelH(); h.apply_file(src)
+    print(f"旧街道をさがし中: {'・'.join(srcs)}（まとまりだけ読むよ）", flush=True)
+    h = RelH()
+    for src in srcs: h.apply_file(src)   # 同じ relation が2つの pbf にあっても 番号で上書きされるだけ
     out = {}
     def put(rid, lv, seen):
         if rid in seen: return
@@ -152,8 +166,20 @@ def tile_ok(i, j):   # このマスが配るはんいにかかっているか
 
 S0 = min(a[0] for a in AREAS.values()); W0 = min(a[1] for a in AREAS.values())
 N0 = max(a[2] for a in AREAS.values()); E0 = max(a[3] for a in AREAS.values())
-WANT = {(i, j) for i in range(math.floor(S0 / T), math.floor(N0 / T) + 1)
-        for j in range(math.floor(W0 / T), math.floor(E0 / T) + 1) if tile_ok(i, j)}
+WANT = set()   # 作るマス（set_want で決める）
+
+def set_want(srcs):   # 四角の中で、まん中が どれかの .poly の中にあるマス
+    t0 = time.time(); polys = []
+    for src in srcs:
+        rg = load_poly(poly_path(src)); polys.append((poly_box(rg), rg))
+    WANT.clear()
+    for i in range(math.floor(S0 / T), math.floor(N0 / T) + 1):
+        for j in range(math.floor(W0 / T), math.floor(E0 / T) + 1):
+            if not tile_ok(i, j): continue
+            la, lo = (i + 0.5) * T, (j + 0.5) * T
+            if any(b[0] <= la <= b[2] and b[1] <= lo <= b[3] and in_poly(rg, lo, la) for b, rg in polys): WANT.add((i, j))
+    print(f"はんい {len(WANT):,}マス（{time.time() - t0:.0f}秒）", flush=True)
+    return polys
 
 # ---- 配布データの形（v2）：小さくするため ----
 # ・道はマスの中の部分だけ（マスの外は となりの1点まで）にきる
@@ -235,6 +261,7 @@ class H(osmium.SimpleHandler):
         self.la0, self.la1 = i0 * T - 0.05, (i1 + 1) * T + 0.05
         self.ntags = {}                     # 信号・横断歩道・踏切などのタグがある点だけ
         self.tiles = defaultdict(list)      # (i,j) -> 道のリスト
+        self.seen = set()                   # 2つの pbf のさかい目の道は両方に入っているので、1回だけ
         self.nw = 0
     def node(self, n):
         if not n.tags or not n.location.valid(): return
@@ -248,6 +275,7 @@ class H(osmium.SimpleHandler):
         if not hw or EXCL.match(hw): return
         if tg.get("access") in ("no", "private"): return
         if tg.get("service") in ("parking_aisle", "drive-through"): return
+        if w.id in self.seen: return
         pts = []
         for nd in w.nodes:
             if nd.location.valid(): pts.append((nd.ref, round(nd.location.lat, 7), round(nd.location.lon, 7)))
@@ -265,6 +293,7 @@ class H(osmium.SimpleHandler):
         if hw not in NO_KODO_HW:
             kd = max(kodo_level(tg), self.kodo.get(w.id, 0))
             if kd: keep["kodo"] = str(kd); self.nk += 1
+        self.seen.add(w.id)
         rec = (w.id, tuple(pts), keep)
         for c in cells: self.tiles[c].append(rec)
         self.nw += 1
@@ -286,8 +315,9 @@ class StaH(osmium.SimpleHandler):   # 駅（名前と場所）を集める：ア
             if pts: self.add(a.tags, sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
         except Exception: pass
 
-def write_stations(src, out):
-    t0 = time.time(); h = StaH(); h.apply_file(src)
+def write_stations(srcs, out):
+    t0 = time.time(); h = StaH()
+    for src in srcs: h.apply_file(src)
     rows = []
     for n, pts in h.st.items():   # 同じ名前の点が近くに何個もあるときは1つに（ホームごとの点など）
         keep = []
@@ -300,16 +330,22 @@ def write_stations(src, out):
 # ---- 霊園・墓地／公園のはんい（アプリの設定「霊園の中の道」「公園の中の道」用）----
 # areas.json = {"cemetery": [[[緯度, 経度], …], …], "park": […], "closed": […]}（外がわの輪だけ・5m より近い点は間引く）
 # closed：学校・病院・工場などの敷地（中の通路は ふつうは入れないので、ルートに使わない）
-def write_areas(src, out):
-    t0 = time.time()
+def write_areas(srcs, out):
+    t0 = time.time(); found = {"cemetery": [], "park": [], "closed": []}; seen = set()
+    for src in srcs: area_file(src, found, seen)
+    with open(os.path.join(out, "areas.json"), "w", encoding="utf-8") as f: json.dump(found, f, separators=(",", ":"))
+    print(f"  霊園・墓地 {len(found['cemetery']):,}か所・公園 {len(found['park']):,}か所・学校や工場の敷地 {len(found['closed']):,}か所 → areas.json（{os.path.getsize(os.path.join(out, 'areas.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
+
+def area_file(src, found, seen):
     print(f"霊園・墓地／公園のはんいをさがし中: {src}", flush=True)
     TF = (("landuse", "cemetery"), ("amenity", "grave_yard"), ("leisure", "park"),
           ("amenity", "school"), ("amenity", "university"), ("amenity", "college"), ("amenity", "kindergarten"), ("amenity", "hospital"),
           ("amenity", "prison"), ("man_made", "works"), ("landuse", "military"))
     fp = osmium.FileProcessor(src).with_areas(osmium.filter.TagFilter(*TF)) \
         .with_filter(osmium.filter.EntityFilter(osmium.osm.AREA)).with_filter(osmium.filter.TagFilter(*TF))
-    found = {"cemetery": [], "park": [], "closed": []}
     for o in fp:
+        if o.id in seen: continue   # さかい目の面は2つの pbf にある
+        seen.add(o.id)
         tg = o.tags
         kind = "park" if tg.get("leisure") == "park" else "cemetery" if tg.get("landuse") == "cemetery" or tg.get("amenity") == "grave_yard" else "closed"
         polys = found[kind]
@@ -321,50 +357,54 @@ def write_areas(src, out):
             if len(pts) < 4: continue
             if not any(S0 < la < N0 and W0 < lo < E0 for (la, lo) in pts): continue
             polys.append(pts)
-    with open(os.path.join(out, "areas.json"), "w", encoding="utf-8") as f: json.dump(found, f, separators=(",", ":"))
-    print(f"  霊園・墓地 {len(found['cemetery']):,}か所・公園 {len(found['park']):,}か所・学校や工場の敷地 {len(found['closed']):,}か所 → areas.json（{os.path.getsize(os.path.join(out, 'areas.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
 
 def write_index(out, src_date, keys, total, built=None):
-    empty = empty_tiles(keys)
+    empty = empty_tiles(keys) if WANT else None
     idx = {"v": src_date, "built": built or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1, "fmt": 2,
            "areas": AREAS, "bytes": total, "keys": keys,
            "license": "© OpenStreetMap contributors / ODbL https://www.openstreetmap.org/copyright"}
-    if empty is not None: idx["empty"] = empty; print(f"  関東の中で道がないマス: {len(empty)}マス")
+    if empty is not None: idx["empty"] = empty; print(f"  はんいの中で道がないマス: {len(empty)}マス")
     with open(os.path.join(out, "index.json"), "w", encoding="utf-8") as f: json.dump(idx, f, ensure_ascii=False, separators=(",", ":"))
 
 def main():
+    DEF = ",".join(f"{r}-latest.osm.pbf" for r in REGIONS)
     if len(sys.argv) in (3, 4) and sys.argv[1] == "--stations-only":   # 駅の一覧だけ作る
-        src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else ("kanto-latest.osm.pbf", sys.argv[2])
-        write_stations(src, out); return
+        src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else (DEF, sys.argv[2])
+        write_stations(srcs_of(src), out); return
     if len(sys.argv) in (3, 4) and sys.argv[1] == "--areas-only":   # 霊園のはんい areas.json だけ作る
-        src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else ("kanto-latest.osm.pbf", sys.argv[2])
-        write_areas(src, out); return
-    if len(sys.argv) == 3 and sys.argv[1] == "--index-only":   # マスはそのままで index.json だけ作りなおす
+        src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else (DEF, sys.argv[2])
+        write_areas(srcs_of(src), out); return
+    if len(sys.argv) in (3, 4) and sys.argv[1] == "--index-only":   # マスはそのままで index.json だけ作りなおす
         out = sys.argv[2]; tdir = os.path.join(out, "t")
         names = sorted(n for n in os.listdir(tdir) if n.endswith(".json.gz"))
         keys = [n[:-8] for n in names]; total = sum(os.path.getsize(os.path.join(tdir, n)) for n in names)
         old = json.load(open(os.path.join(out, "index.json"), encoding="utf-8"))
+        set_want(srcs_of(sys.argv[3] if len(sys.argv) == 4 else DEF))
         write_index(out, old.get("v"), keys, total, old.get("built") or f"{old.get('v')}:{old.get('bytes')}")   # マスは同じなので版はそのまま
         print(f"index.json を作りなおしたよ（{len(keys)}マス）"); return
     if len(sys.argv) == 2:
-        out = sys.argv[1]; src = "kanto-latest.osm.pbf"; download(src)
+        out = sys.argv[1]; srcs = srcs_of(DEF)
+        for src in srcs: download(src)
     elif len(sys.argv) == 3:
-        src, out = sys.argv[1], sys.argv[2]
+        srcs, out = srcs_of(sys.argv[1]), sys.argv[2]
     else:
         print(__doc__); sys.exit(1)
     os.makedirs(os.path.join(out, "t"), exist_ok=True)
     t0 = time.time()
+    polys = set_want(srcs)
     rows = sorted({i for (i, _) in WANT}); r0, r1 = rows[0], rows[-1]
     bands = [(a, min(a + BAND_ROWS - 1, r1)) for a in range(r0, r1 + 1, BAND_ROWS)]
     print(f"はんい {len(WANT)}マス（海などデータのない所は作らない）・{len(bands)}回に分けて読むよ")
-    kodo = kodo_ways(src)
+    kodo = kodo_ways(srcs)
     keys, total = [], 0
     old = set(os.listdir(os.path.join(out, "t")))
     for bn, (i0, i1) in enumerate(bands):
         tb = time.time()
-        print(f"[{bn + 1}/{len(bands)}] 読みこみ中: {src}（北緯 {i0 * T:.2f}〜{(i1 + 1) * T:.2f}）", flush=True)
         h = H(i0, i1, kodo)
-        h.apply_file(src, locations=True, idx="flex_mem")
+        for src, (box, _) in zip(srcs, polys):
+            if box[2] < i0 * T - 0.05 or box[0] > (i1 + 1) * T + 0.05: continue   # この帯にかからない地域は読まない
+            print(f"[{bn + 1}/{len(bands)}] 読みこみ中: {src}（北緯 {i0 * T:.2f}〜{(i1 + 1) * T:.2f}）", flush=True)
+            h.apply_file(src, locations=True, idx="flex_mem")
         print(f"  道 {h.nw:,} 本（旧街道・旧道 {h.nk:,} 本）・信号などの点 {len(h.ntags):,} 個（{time.time() - tb:.0f}秒）", flush=True)
         for n, ((i, j), recs) in enumerate(sorted(h.tiles.items())):
             data = json.dumps(enc_v2(i, j, recs, h.ntags), ensure_ascii=False, separators=(",", ":")).encode("utf-8")   # v2（小さい形）
@@ -377,10 +417,10 @@ def main():
         print(f"  {len(h.tiles)}マス書いたよ（ここまで {len(keys)}マス・{total / 1048576:.0f}MB・{(time.time() - t0) / 60:.0f}分）", flush=True)
         del h
     for name in old: os.remove(os.path.join(out, "t", name))   # はんい外になった古いマス
-    v = datetime.datetime.fromtimestamp(os.path.getmtime(src)).strftime("%Y-%m-%d")
+    v = min(datetime.datetime.fromtimestamp(os.path.getmtime(src)).strftime("%Y-%m-%d") for src in srcs)
     write_index(out, v, keys, total)
-    write_stations(src, out)
-    write_areas(src, out)
+    write_stations(srcs, out)
+    write_areas(srcs, out)
     open(os.path.join(out, ".nojekyll"), "w").close()   # GitHub Pages でそのまま配る（変換しない）
     with open(os.path.join(out, "README.md"), "w", encoding="utf-8") as f:
         f.write("# hosomichi-data\n\n[ほそみちナビ](https://yopo777.github.io/hosomichi/) 用の道路データ（約1km角のマスごと）です。\n\n"

@@ -3,7 +3,7 @@
 ほそみちナビ 🎨足あと「市ごとの塗り％」用のデータ cities.json を作るスクリプト
 
 使い方:
-  python make_cities.py kanto-latest.osm.pbf 配布データのフォルダ
+  python make_cities.py kanto-latest.osm.pbf,kansai-latest.osm.pbf,chubu-latest.osm.pbf 配布データのフォルダ
   → 配布データのフォルダ/cities.json を作る（make_pack.py で作った t/ の道を数える・数分〜十数分）
   make_pack.py で道路データを作りなおしたら、これも作りなおす（道の数え方をアプリとそろえるため）
   できたら hosomichi-data リポジトリに入れて push
@@ -19,7 +19,7 @@
 """
 import sys, os, json, gzip, math, time, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from make_quests import osmium, rings, thin, beep
+from make_quests import osmium, rings, thin, beep, apply_all
 from make_pack import tile_els   # 配布データ v1 でも v2 でも elements にする
 
 G = 0.001   # マス目の大きさ（約100m）
@@ -85,14 +85,14 @@ def main():
     tdir = os.path.join(out, "t")
     if not os.path.isdir(tdir): print(f"{tdir} がないよ（make_pack.py で作った配布データのフォルダを指定してね）"); sys.exit(1)
     print("1/4 市区町村の境界（relation）を読んでるよ…", flush=True)
-    rh = RelH(); rh.apply_file(src)
+    rh = RelH(); apply_all(rh, src)
     need_w = {w for _, ms in list(rh.city.values()) + list(rh.ward.values()) for w, _ in ms}
     print(f"  市区町村 {len(rh.city)}・政令市の区 {len(rh.ward)}", flush=True)
     print("2/4 境界の線（way）を読んでるよ…", flush=True)
-    wh = WayH(need_w); wh.apply_file(src)
+    wh = WayH(need_w); apply_all(wh, src)
     need_n = {n for ns in wh.ways.values() for n in ns}
     print(f"3/4 境界の点 {len(need_n):,}個を読んでるよ…", flush=True)
-    nh = NodeH(need_n); nh.apply_file(src)
+    nh = NodeH(need_n); apply_all(nh, src)
     L = nh.loc
     # 市ごとの形 → マス目。政令市は、そのあと区でぬりなおす（名前は「千葉市花見川区」）
     names, rowmap = [], {}

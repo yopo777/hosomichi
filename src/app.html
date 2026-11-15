@@ -5,7 +5,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="細道ナビ">
-<title>ほそみちナビ（関東版）hosomichi</title>
+<title>ほそみちナビ（関東・関西・中京版）hosomichi</title>
 <link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v__VER__</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v__VER__</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -226,7 +226,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div style="font-size:11px;color:#666;margin-top:6px">ルートを作るのに使う道路データのこと。地図がカラーの所は、もう端末に入っているよ</div>
     <div id="pfBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
 <div style="margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:6px">
-        <button class="ib" id="pkAll" style="font-size:12px;width:100%">📦 関東の配布データをまとめて入れる</button>
+        <button class="ib" id="pkAll" style="font-size:12px;width:100%">📦 この地方の配布データをまとめて入れる</button>
         <div id="pkMsg" style="font-size:11px;color:#666;margin-top:2px">配布データがある所は、ルートを作るときもサーバーにアクセスしないですぐ取れるよ。まとめて入れるのはパソコン（Wi-Fi）向け（数百MB）</div>
       </div>
       <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="pfAuto">🗺 地図のまわりの道路データを自動でためる<span class="pw u">⚡大</span></label>
@@ -544,7 +544,7 @@ let packStations = null;
 async function stationSearch(q) {
   const base = q.replace(/駅$/, ""), norm = v => String(v || "").normalize("NFKC").replace(/\s/g, "").replace(/駅$/, "");
   const c = map.getCenter();
-  // まずは配布データの駅の一覧（関東・名前がぴったり）
+  // まずは配布データの駅の一覧（名前がぴったり）
   try {
     if (!packStations) { const res = await tfetch(new URL("../hosomichi-data/stations.json", location.href), { cache: "no-cache" }); if (!res.ok) throw new Error("HTTP " + res.status); packStations = await res.json(); }
     const hit = packStations.filter(x => norm(x[0]) === base).sort((a, b) => hav([a[1], a[2]], [c.lat, c.lng]) - hav([b[1], b[2]], [c.lat, c.lng]));
@@ -815,13 +815,13 @@ $("pkAll").onclick = () => {
   if (pkOn) { worker.postMessage({ cmd: "packStop" }); $("pkAll").textContent = "止めてるよ…"; return; }
   if (isPhone() && !confirm("⚠ まとめて入れると、数百MBダウンロードするよ。スマホならWi-Fiのときだけにしてね。\n\n入れる？")) return;
   pkOn = true; $("pkAll").textContent = "■ 止める"; audioUnlock();
-  worker.postMessage({ cmd: "packAll" });
+  const c = map.getCenter(); worker.postMessage({ cmd: "packAll", at: [c.lat, c.lng] });   // 地図のまん中の地方（関東一円・関西・中京）
 };
 function onPk(m) {
   if (m.tile) { if (!cachedKeys.includes(m.tile)) cachedKeys.push(m.tile); if (Date.now() - pfDrawT > 2000) { pfDrawT = Date.now(); drawArea(); } return; }
   if (m.total != null) $("pkMsg").textContent = `${m.done}/${m.total}マス・${((m.bytes || 0) / 1048576).toFixed(1)}MB` + (m.fin ? (m.stopped ? "・止めたよ" : "・ぜんぶ入ったよ！") : "");
   else if (m.msg) $("pkMsg").textContent = m.msg;
-  if (m.fin) { pkOn = false; $("pkAll").textContent = "📦 関東の配布データをまとめて入れる"; drawArea(); if (!m.stopped && m.total) chime(); }
+  if (m.fin) { pkOn = false; $("pkAll").textContent = "📦 この地方の配布データをまとめて入れる"; drawArea(); if (!m.stopped && m.total) chime(); }
 }
 // 書き出し・読みこみ（ためた道路データをほかの端末や人にわたす）
 $("pfExp").onclick = () => { $("pfExp").textContent = "書き出し中…"; worker.postMessage({ cmd: "export" }); };
@@ -2834,8 +2834,8 @@ function renderCfg() {
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか。8%より急なのぼりはその2倍。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div>';
-  h += "<h4>公園・霊園</h4>" + get(["park", "cemetery"]) + '<div class="note">公園や霊園・墓地の敷地の中を通る道のこと（人が歩いていて、自転車はひんしゅく）。川ぞいのサイクリングロードみたいな長い自転車道（400m以上）と、住宅街の道は、公園の中でも気にしないよ。関東の配布データのはんいで見分けるよ</div>';
-  h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。関東の配布データの駅一覧で見分けるよ</div>';
+  h += "<h4>公園・霊園</h4>" + get(["park", "cemetery"]) + '<div class="note">公園や霊園・墓地の敷地の中を通る道のこと（人が歩いていて、自転車はひんしゅく）。川ぞいのサイクリングロードみたいな長い自転車道（400m以上）と、住宅街の道は、公園の中でも気にしないよ。配布データのはんいで見分けるよ</div>';
+  h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ</div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div>';
   h += "<h4>旧街道</h4>" + get(["kodo"]) + '<div class="note">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div>';
   h += "<h4>階段・歩道橋・砂利</h4>" + get(["steps", "bridge", "unpaved"]);
@@ -3706,7 +3706,7 @@ async function qFind() {
     $("qCand").innerHTML = qCands.length ? '<div style="font-size:11px;color:#666;margin-top:4px">どれにする？</div>' + qCands.map((c, i) =>
       `<div class="c"><div>${c.ic} <b>${esc(c.name)}</b><br><small style="color:#888">${esc(c.op ? c.op + "・" : "")}${c.st.length}${c.st.some(s => s[3]) ? "か所" : "駅"}</small></div>` +
       `<button class="ib" data-i="${i}" style="font-size:12px">＋ クエストにする</button></div>`).join("")
-      : '<div style="font-size:12px;color:#c00;padding:6px">見つからなかったよ。「さいたま市」「銀座線」みたいに入れてみてね（関東だけ）</div>';
+      : '<div style="font-size:12px;color:#c00;padding:6px">見つからなかったよ。「さいたま市」「銀座線」みたいに入れてみてね（配布データのある地方だけ）</div>';
   } catch (e) { $("qCand").innerHTML = `<div style="font-size:12px;color:#c00;padding:6px">${esc(e.message)}</div>`; }
 }
 function qAdd(i) {
@@ -3926,7 +3926,7 @@ $("tabSpot").addEventListener("change", e => {
   lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn();
 });
 let spotOv = null;
-function spotOverview() {   // 引いたとき用（関東まるごと・間引いたもの）
+function spotOverview() {   // 引いたとき用（配布データぜんぶ・間引いたもの）
   return spotOv || (spotOv = tfetch(new URL("../hosomichi-data/spots_overview.json", location.href), { cache: "no-cache" }, 30000)
     .then(r => r.ok ? r.json() : {}).catch(() => { spotOv = null; return {}; }));
 }
