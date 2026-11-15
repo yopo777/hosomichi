@@ -1823,11 +1823,11 @@ async function snsData() {
     big: "", test: snsTest,
     km: useRide ? (k => k < 10 ? "10km未満" : `約${Math.round(k / 10) * 10}km`)(trkStats(ride.pts).dist / 1000) : "" };   // 走った距離は ざっくり（10km単位）：ちょうどだと、消した長さから家までの距離がわかるので   // 地図の大きい文字（サイクリング完了など）は出さない：どこがスタートでどこが終わりかは決めないアプリなので   // 走り終わったら地図に大きく
 }
-async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, marks }) {   // 1200×1200 の地図（国土地理院 淡色）＋線＋寄った所＋写真
+async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, marks }) {   // 1200×1600（3:4 の縦長。Xのスマホで切られずに いちばん大きく見える）の地図＋線＋寄った所＋写真
   pins = pins || [];
-  const W = 1200, H = 1200, PAD = 70, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p));
+  const W = 1200, H = 1600, PAD = 70, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p));
   // 画像は2倍（2400×2400）で作る：描くのは 1200 のつもりで、地図は1つ細かいズームのタイルを半分の大きさで並べる（くっきり・写真も大きく見られる）
-  const K = 1, cv = document.createElement("canvas"); cv.width = W * K; cv.height = H * K; const g = cv.getContext("2d"); g.scale(K, K);   // K：スマホで見る大きさ（1200×1200）
+  const K = 1, cv = document.createElement("canvas"); cv.width = W * K; cv.height = H * K; const g = cv.getContext("2d"); g.scale(K, K);   // K：スマホで見る大きさ（1200×1600）
   g.fillStyle = "#f2efe9"; g.fillRect(0, 0, W, H);
   if (all.length) {
     let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; for (const [a, o] of all) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, o); lo1 = Math.max(lo1, o); }
