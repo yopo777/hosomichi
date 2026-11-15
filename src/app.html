@@ -2328,8 +2328,8 @@ $("evCoast").checked = evCoast;
 $("evCoast").onchange = e => { evCoast = e.target.checked; lsSet("hosomichi_evCoast", evCoast); };
 const evOpts = (cl, cur) => `<option value="none"${cur === "none" ? " selected" : ""}>なし</option>` + Object.entries(EV_KINDS).filter(([, K]) => !!K.click === cl).map(([k, K]) => `<option value="${k}"${k === cur ? " selected" : ""}>${K.n.replace("🚲 ", "")}</option>`).join("");
 $("evKind").innerHTML = evOpts(false, evKind); $("evClick").innerHTML = evOpts(true, evClick);
-$("evKind").onchange = e => { evKind = e.target.value; lsSet("hosomichi_evKind", evKind); evKill(); if (evOn) evSet(Date.now() - evT < 4000 ? evSp : 0); $("evTest").onclick(); };
-$("evClick").onchange = e => { evClick = e.target.value; lsSet("hosomichi_evClick", evClick); evKillC(); if (evOn) evSet(Date.now() - evT < 4000 ? evSp : 0); $("evTest").onclick(); };
+$("evKind").onchange = e => { evKind = e.target.value; lsSet("hosomichi_evKind", evKind); evKill(); if (evOn) evSet(Date.now() - evT < 4000 ? evSp : 0); };   // 選んだだけでは鳴らさない（🔊ためしに聞く で聞く）
+$("evClick").onchange = e => { evClick = e.target.value; lsSet("hosomichi_evClick", evClick); evKillC(); if (evOn) evSet(Date.now() - evT < 4000 ? evSp : 0); };   // 選んだだけでは鳴らさない（🔊ためしに聞く で聞く）
 $("evVol").oninput = e => { evVol = +e.target.value; lsSet("hosomichi_evVol", evVol); if (evOn) evSet(evSp); };
 $("evTest").onclick = () => {   // ためしに聞く（10秒）
   audioUnlock(); const was = evOn; evOn = true; let k = 0; clearInterval(window.evTestT);
