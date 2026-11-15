@@ -104,6 +104,9 @@ class WayH(osmium.SimpleHandler):
         super().__init__(); self.loc = loc; self.ways = []
     def way(self, w):
         hw = w.tags.get("highway")
+        rw = w.tags.get("railway")
+        if not hw and rw in ("rail", "subway", "light_rail", "narrow_gauge", "monorail") and w.tags.get("tunnel", "no") == "no":
+            hw = "__rail__"   # 線路（くらべる用。道ではない）
         if not hw or hw in EXCL: return
         ids = [n.ref for n in w.nodes if n.ref in self.loc]
         if len(ids) < 2 or len(ids) < len(w.nodes) * 0.8: return
@@ -140,7 +143,7 @@ def main():
     if len(sys.argv) not in (2, 6): print(__doc__); sys.exit(1)
     src = sys.argv[1]; box = tuple(map(float, sys.argv[2:6])) if len(sys.argv) == 6 else BOX
     t0 = time.time()
-    cache = "test_dem_ways2.json"   # 2回目からは pbf を読まない（はんいが同じとき）
+    cache = "test_dem_ways3.json"   # 2回目からは pbf を読まない（はんいが同じとき）
     if os.path.exists(cache) and json.load(open(cache, encoding="utf-8"))["box"] == list(box):
         c = json.load(open(cache, encoding="utf-8")); loc = {int(k): tuple(v) for k, v in c["loc"].items()}; ways = c["ways"]
         print(f"前に読んだ道を使うよ（{len(ways):,}本）", flush=True)
@@ -155,6 +158,22 @@ def main():
     print("3/3 標高をしらべてるよ…", flush=True)
     # 道を「交差点から交差点まで」に切る（つなぎの短い道＝☆の階段 を1本として見る）
     use = {}
+    rails = [[loc[n] for n in w[3]] for w in ways if w[1] == "__rail__"]
+    ways = [w for w in ways if w[1] != "__rail__"]
+    RG = 0.002; rgrid = {}   # 線路の線を 約200mのマスに
+    for r in rails:
+        for p, q in zip(r, r[1:]):
+            for i in range(math.floor(min(p[0], q[0]) / RG), math.floor(max(p[0], q[0]) / RG) + 1):
+                for j in range(math.floor(min(p[1], q[1]) / RG), math.floor(max(p[1], q[1]) / RG) + 1): rgrid.setdefault((i, j), []).append((p, q))
+    def cross(a, b, c, d):
+        o = lambda p, q, r: (q[1] - p[1]) * (r[0] - p[0]) - (q[0] - p[0]) * (r[1] - p[1])
+        return (o(a, b, c) > 0) != (o(a, b, d) > 0) and (o(c, d, a) > 0) != (o(c, d, b) > 0)
+    def over_rail(pts):   # 線路をまたいでいる（タグのない橋・地下道）
+        for p, q in zip(pts, pts[1:]):
+            for i in range(math.floor(min(p[0], q[0]) / RG), math.floor(max(p[0], q[0]) / RG) + 1):
+                for j in range(math.floor(min(p[1], q[1]) / RG), math.floor(max(p[1], q[1]) / RG) + 1):
+                    if any(cross(p, q, c, d) for c, d in rgrid.get((i, j), ())): return True
+        return False
     brn = {n for w in ways if w[4] for n in w[3]}   # 橋・トンネルの点
     for w in ways:
         for n in w[3]: use[n] = use.get(n, 0) + 1
@@ -168,12 +187,13 @@ def main():
             # 橋・トンネル（と その両はしにつながる道）は 地面の高さとちがうので見ない（線路をまたぐ橋など）
             if br or ids[a] in brn or ids[b] in brn: nbr += 1; continue
             pts = [loc[n] for n in ids[a:b + 1]]
+            if over_rail(pts): nbr += 1; continue
             L = sum(hav(p, q) for p, q in zip(pts, pts[1:]))
             if L < 3: continue
             h0, h1 = elev(*pts[0]), elev(*pts[-1])
             if h0 is None or h1 is None: continue
             links.append((wid, hw, nm, pts, L, abs(h1 - h0), abs(h1 - h0) / L * 100))
-    print(f"  橋・トンネルとそのつなぎ {nbr:,}本は見ないよ")
+    print(f"  線路 {len(rails):,}本・橋・トンネルとそのつなぎ・線路をまたぐ道 {nbr:,}本は見ないよ")
     print(f"  交差点で切った道 {len(links):,}本・標高タイル {sum(1 for t in tiles.values() if t)}枚（取れなかった {sum(1 for t in tiles.values() if t is None)}枚）", flush=True)
     def stat(name, rs):
         if not rs: return
