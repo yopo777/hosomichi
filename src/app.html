@@ -1941,13 +1941,10 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
       if (!(here && hav(here, q.p) < 40)) { g.fillStyle = "#e8710a"; g.beginPath(); g.arc(x, y, 11, 0, 7); g.fill(); g.lineWidth = 4; g.strokeStyle = "#fff"; g.stroke(); }
     });
     if (thumbs.length) {   // 📷 小さい写真を 4すみから はしにそって並べる（撮った所から いちばん近い あき場所へ。入らない分は出さない）
-      const T = 84, G = 8, y0 = (test ? 110 : 0) + G, y1 = H - 120 - T - G, slots = [];   // 小さめ
-      slots.push([G, y0], [W - T - G, y0], [G, y1], [W - T - G, y1]);   // 4すみ
-      for (let k = 1; ; k++) { let add = 0;   // すみから 内がわへ じゅんに
-        const xs = [G + k * (T + G), W - T - G - k * (T + G)], ys = [y0 + k * (T + G), y1 - k * (T + G)];
-        for (const x of xs) if (x > G && x < W - T - G && !slots.some(s => Math.abs(s[0] - x) < T && Math.abs(s[1] - y0) < T)) { slots.push([x, y0], [x, y1]); add++; }
-        for (const y of ys) if (y > y0 && y < y1 && !slots.some(s => Math.abs(s[1] - y) < T && Math.abs(s[0] - G) < T)) { slots.push([G, y], [W - T - G, y]); add++; }
-        if (!add) break; }
+      const T = 84, G = 8, y0 = (test ? 110 : 0) + G, y1 = H - 120 - T - G, slots = [], side = [];   // 小さめ
+      // 上と下の列をさきに（左はし〜右はし）。うまったら 左右の列
+      for (let x = G; x + T <= W - G; x += T + G) slots.push([x, y0], [x, y1]);
+      for (let y = y0 + T + G; y + T <= y1 - G; y += T + G) side.push([G, y], [W - T - G, y]);
       // 軌跡にかぶる場所には置かない（線の点を 約8pxおきに見る）
       const tp = [];
       for (const r of runs) for (let k = 1; k < r.length; k++) {
@@ -1956,10 +1953,12 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
       }
       if (here) tp.push(X(here));
       const used = new Set(), put = [], M = 14;
+      const nTB = slots.length; slots.push(...side);
       slots.forEach((sl, i) => { if (tp.some(([x, y]) => x > sl[0] - M && x < sl[0] + T + M && y > sl[1] - M && y < sl[1] + T + M)) used.add(i); });
       for (const q of thumbs) {
         const [px, py] = X(q.p); let bi = -1, bd = Infinity;
-        slots.forEach((s, i) => { if (used.has(i)) return; const d = Math.hypot(s[0] + T / 2 - px, s[1] + T / 2 - py); if (d < bd) { bd = d; bi = i; } });
+        const pick = (a, b) => { for (let i = a; i < b; i++) { if (used.has(i)) continue; const s = slots[i], d = Math.hypot(s[0] + T / 2 - px, s[1] + T / 2 - py); if (d < bd) { bd = d; bi = i; } } };
+        pick(0, nTB); if (bi < 0) pick(nTB, slots.length);   // 上下があいていれば 上下、なければ 左右
         if (bi < 0) break; used.add(bi); put.push({ q, s: slots[bi], px, py });
       }
       g.lineCap = "round";
