@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1950</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1955</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3673,7 +3673,10 @@ async function snsData() {
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
   const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];   // 地図の画像の小さい字で使う
   const SNS_MAX = 280 - 4 - (snsCm.trim() ? xLen(snsCm.trim()) + 2 : 0);
-  const L = ["ほそみちナビ(無料)🚴でサイクリング中"];
+  // 🚲 スタート直後（見せられる線がまだない＝家のまわりの丸の中）：地図のかわりに「スタート！」の絵
+  // 🏁 帰ってきた（今いる所が 消す丸の中＝家・秘密の場所のそば）：「サイクリングしてきたよ」
+  const visLen = runs.reduce((a, r) => a + lineLen(r), 0), start = !useRide || visLen < 200, fin = !start && riding && !here;
+  const L = [start ? "ほそみちナビ(無料)🚴でサイクリングスタート！" : fin || (useRide && !riding) ? "ほそみちナビ(無料)🚴でサイクリングしてきたよ" : "ほそみちナビ(無料)🚴でサイクリング中"];
   let marks = [];   // 🏷 地図に小さく出す 通った所の名前   // いつも同じ（どこがスタートでどこが終わりかは決めない）   // 日付は入れない
   if (useRide) {
     // 📍 行った所：経由地・寄り道スポット・スタンプ・通った駅/お寺/神社 を時間順に。
@@ -3715,9 +3718,21 @@ async function snsData() {
   const segD = (p, a, b) => { const k = Math.cos(p[0] * RAD) * 111320, ax = (a[1] - p[1]) * k, ay = (a[0] - p[0]) * 110540, bx = (b[1] - p[1]) * k, by = (b[0] - p[0]) * 110540, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, u = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0; return Math.hypot(ax + u * dx, ay + u * dy); };
   const onLine = q => runs.some(r => r.some((x, i) => i && segD(q.p, r[i - 1], x) < 150));   // 地図に出している線のそばだけ（来た道だけのときなど。点の間が長くても見られるように 線分で見る）
   marks = marks.filter(q => onLine(q) && !stops.some(o => o.name.includes(q.name) || q.name.includes(o.name)));   // 寄った所（大きい字）と同じものは出さない
-  return { runs, marks, stops: here && snsTrail ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: (snsCm.trim() ? snsCm.trim() + "\n\n" : "") + L.join("\n"), sub, none: !useRide, link, here, dir,
+  return { runs, marks, stops: here && snsTrail ? stops.filter(q => runs[0] && runs[0].some(r => hav(r, q.p) < 80)) : stops, text: (snsCm.trim() ? snsCm.trim() + "\n\n" : "") + L.join("\n"), sub, none: false, start, link, here, dir,
     big: "", test: snsTest,
     km: useRide ? (k => k < 10 ? "10km未満" : `約${Math.round(k / 10) * 10}km`)(trkStats(ride.pts).dist / 1000) : "" };   // 走った距離は ざっくり（10km単位）：ちょうどだと、消した長さから家までの距離がわかるので   // 地図の大きい文字（サイクリング完了など）は出さない：どこがスタートでどこが終わりかは決めないアプリなので   // 走り終わったら地図に大きく
+}
+// 🚲 スタート直後用の絵（地図は出さない：家のまわりなので）
+async function snsStartCard({ sub }) {
+  const W = 1200, H = 1600, cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#e8f0fe"); gr.addColorStop(1, "#fef7e0"); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.font = "260px sans-serif"; g.fillText("🚲", W / 2, H * 0.36);
+  g.font = "bold 120px sans-serif"; g.fillStyle = "#1a73e8"; g.fillText("スタート！", W / 2, H * 0.58);
+  g.font = "bold 48px sans-serif"; g.fillStyle = "#444"; g.fillText(sub, W / 2, H * 0.68);
+  g.font = "36px sans-serif"; g.fillStyle = "#666"; g.fillText("走った道は、あとで地図にするよ", W / 2, H * 0.75);
+  g.font = "bold 34px sans-serif"; g.fillStyle = "#666"; g.fillText("ほそみちナビ(無料)", W / 2, H - 70);
+  return new Promise(ok => cv.toBlob(b => { if (b) b.rects = []; ok(b); }, "image/jpeg", 0.9));
 }
 async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, marks, thumbs }) {   // 1200×1600（3:4 の縦長。Xのスマホで切られずに いちばん大きく見える）の地図＋線＋寄った所＋写真
   pins = pins || []; thumbs = thumbs || []; const rects = [];   // rects：小さい写真を置いた所（タップ用。できた画像の .rects に入れて返す）
@@ -4591,7 +4606,7 @@ async function snsOpen() {
     link = d.link;
     $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); $("snsImg").textContent = "地図を作っているよ…"; map0 = null;
     snsImage.prog = t => { if ($("snsImg") && !$("snsImg").querySelector("img")) $("snsImg").textContent = t; }; made = true; $("snsMake").textContent = "🖼 作りなおす"; lock();
-    const blob = d.none ? null : await snsImage(d);
+    const blob = d.none ? null : d.start ? await snsStartCard(d) : await snsImage(d);
     if (blob) { map0 = new File([blob], "hosomichi_" + Date.now() + ".jpg", { type: "image/jpeg" }); $("snsImg").innerHTML = `<img src="${URL.createObjectURL(blob)}">`; }
     else $("snsImg").textContent = d.none ? "まだ走った記録がないよ。◎で走りはじめると、走ったところまでの地図を作れるよ（これから行く所は出さないよ）" : "地図の画像を作れなかったよ（文だけ使えるよ）";
   };
