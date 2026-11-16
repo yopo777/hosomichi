@@ -5,7 +5,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="細道ナビ">
-<title>ほそみちナビ（関東・関西・中京版）hosomichi</title>
+<title>ほそみちナビ(無料)（関東・関西・中京版）hosomichi</title>
 <link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1831</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1833</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3640,7 +3640,7 @@ async function snsData() {
   // 📝 投稿文：行った所と時刻（消す丸の中の所は書かない・これから行く所も書かない）
   const d = new Date(useRide ? ride.t0 : Date.now()), wd = "日月火水木金土"[d.getDay()];   // 地図の画像の小さい字で使う
   const SNS_MAX = 280 - 4 - (snsCm.trim() ? xLen(snsCm.trim()) + 2 : 0);
-  const L = ["ほそみちナビ🚴でサイクリング中"];
+  const L = ["ほそみちナビ(無料)🚴でサイクリング中"];
   let marks = [];   // 🏷 地図に小さく出す 通った所の名前   // いつも同じ（どこがスタートでどこが終わりかは決めない）   // 日付は入れない
   if (useRide) {
     // 📍 行った所：経由地・寄り道スポット・スタンプ・通った駅/お寺/神社 を時間順に。
@@ -3832,7 +3832,7 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
   g.fillStyle = "#ffffffe8"; g.fillRect(0, H - 120, W, 120);
   g.fillStyle = "#222"; g.font = "bold 38px sans-serif"; g.textBaseline = "middle"; g.fillText("🚲 " + sub, 30, km ? H - 84 : H - 66);
   if (km) { g.font = "bold 30px sans-serif"; g.fillStyle = "#d93025"; g.fillText("走った距離 " + km, 34, H - 38); }   // 2行目
-  g.font = "26px sans-serif"; g.fillStyle = "#666"; g.textAlign = "right"; g.fillText("ほそみちナビ", W - 30, H - 84); g.font = "20px sans-serif"; g.fillText(snsImage.attr || "", W - 30, H - 44); g.textAlign = "left";
+  g.font = "26px sans-serif"; g.fillStyle = "#666"; g.textAlign = "right"; g.fillText("ほそみちナビ(無料)", W - 30, H - 84); g.font = "20px sans-serif"; g.fillText(snsImage.attr || "", W - 30, H - 44); g.textAlign = "left";
   return new Promise(ok => { try { cv.toBlob(b => { if (b) b.rects = rects; ok(b); }, "image/jpeg", 0.92); } catch { ok(null); } });
 }
 // 📷 写真の撮った場所と時刻（Exif）を読む。位置情報は ここで読むだけで、わたす写真からは消す
@@ -5505,7 +5505,7 @@ document.addEventListener("click", sharedGuard, true);
 // 👋 共有リンク（Xなど）からはじめて開いた人へ
 function welcome(name) {
   const d = document.createElement("div"); d.id = "geoAsk";
-  d.innerHTML = `<div class="box"><b style="font-size:16px">🚲 ほそみちナビ</b>
+  d.innerHTML = `<div class="box"><b style="font-size:16px">🚲 ほそみちナビ(無料)</b>
     <ul style="padding-left:18px;margin:8px 0;line-height:1.7">
       <li>細い道を走る、自転車用のナビだよ</li>
       <li><b>開いただけでは位置情報は使いません</b></li>
