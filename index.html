@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.2016</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.2021</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3677,7 +3677,9 @@ async function snsData() {
   // 🚲 スタート直後（見せられる線がまだない＝家のまわりの丸の中）：地図のかわりに「スタート！」の絵
   // 🏁 帰ってきた（今いる所が 消す丸の中＝家・秘密の場所のそば）：「サイクリングしてきたよ」
   const visLen = runs.reduce((a, r) => a + lineLen(r), 0), start = !useRide || visLen < 200, fin = !start && riding && !here;
-  const L = [start ? "ほそみちナビ(無料)🚴でサイクリングスタート！" : !here ? "ほそみちナビ(無料)🚴でサイクリングしてきたよ" : "ほそみちナビ(無料)🚴でサイクリング中"];
+  // 🏁 おわり：さいごの点が 🏠家のそば（消すきょりの中）のときだけ。出発地・秘密の場所のそばは「サイクリング中」（そこは消すので イマココは出ない）
+  const lastP = useRide ? ride.pts[ride.pts.length - 1] : null, atHome = !!(home && lastP && R && hav(lastP, home) < R) || (useRide && !riding);
+  const L = [start ? "ほそみちナビ(無料)🚴でサイクリングスタート！" : atHome ? "ほそみちナビ(無料)🚴でサイクリングしてきたよ" : "ほそみちナビ(無料)🚴でサイクリング中"];
   let marks = [];   // 🏷 地図に小さく出す 通った所の名前   // いつも同じ（どこがスタートでどこが終わりかは決めない）   // 日付は入れない
   if (useRide) {
     // 📍 行った所：経由地・寄り道スポット・スタンプ・通った駅/お寺/神社 を時間順に。
