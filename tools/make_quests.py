@@ -50,7 +50,8 @@ def is_station(t): return t.get("railway") in ("station", "halt") or (t.get("pub
 # スポットのジャンル（アプリの SPOT_KINDS と同じ名前）。名前がなくてもいいもの = NONAME
 NONAME = {"toilet", "water", "bikepark", "bike", "xing", "signal", "steps", "ramp", "elev", "cbar", "bollard", "gate",
           "railx", "footbr", "underpass", "stop", "bump", "constr", "bench", "shelter", "vending", "repair", "police", "aed", "jizo", "tree", "spring", "fall"}
-MACHI_KINDS = ("school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground", "park",
+DANCHI = re.compile(r"団地|公団|公社|都営|県営|府営|市営|町営|区営|UR|住宅|ハイツ|コーポ|レジデンス|マンション|ヒルズ|ニュータウン|パークハウス|パークシティ|シティ|コート|苑$|荘$")
+MACHI_KINDS = ("danchi", "school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground", "park",
                "shrine", "temple", "church", "castle", "kofun", "sight", "view", "michi")   # 面なら外形も入れる（アプリが「となりの道を通ったか」を見るため）
 MID_KINDS = ("bridge", "ramp", "steps", "cbar", "bollard", "gate", "footbr", "underpass", "constr")   # 線（way）のスポットは まん中の点
 def spot_kind(t, is_way=False):
@@ -95,6 +96,7 @@ def spot_kind(t, is_way=False):
         return "bikepark"
     if sh == "bicycle": return "bike"
     if not n: return None
+    if is_way and g("landuse") == "residential" and (g("residential") == "apartments" or DANCHI.search(n)): return "danchi"   # 🏢 団地（make_pack.py と同じ見分け方）
     if a == "school": return "school"   # 🏫 小学校・中学校・高校（名前のあるもの）
     if a in ("university", "college"): return "univ"   # 🎓 大学・専門学校
     mm = g("man_made")

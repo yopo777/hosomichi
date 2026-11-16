@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1941</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1950</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3580,7 +3580,7 @@ const lineLen = pts => { let d = 0; for (let i = 1; i < pts.length; i++) d += ha
 // 📍 通ったところ：走った道のそばの 駅・お寺・神社など を通った順に（家のまわりの丸の中はのぞく）
 // 📍 通った所＝ほんとうに となりの道を通ったもの：外形があれば外形から30m、点だけなら点から40m、橋はわたったとき（まん中から40m）、駅は120m
 const PASS_KINDS = ["shrine", "temple", "church", "castle", "kofun", "sight", "view", "michi", "spring", "fall", "tree", "ichiri",
-  "park", "bridge", "school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground"];
+  "park", "bridge", "school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground", "danchi"];
 async function passList(rpts, hid) {
   if (rpts.length < 2) return [];
   const keys = new Set(); for (const q of rpts) keys.add(Math.floor(q[0] / SPOT_T) + "_" + Math.floor(q[1] / SPOT_T));
@@ -5052,8 +5052,8 @@ let vcSpot = +lsGet("hosomichi_vcspot", 0) || 0, vcMachi = !!lsGet("hosomichi_vc
 if (lsGet("hosomichi_vcpark", false) || lsGet("hosomichi_vcbridge", false)) { vcMachi = true; lsSet("hosomichi_vcmachi", true); lsSet("hosomichi_vcpark", null); lsSet("hosomichi_vcbridge", null); }
 let vcPark = vcMachi, vcBridge = vcMachi;
 $("vcMachiOn").checked = vcMachi; $("vcMachiOn").onchange = () => { vcMachi = vcPark = vcBridge = $("vcMachiOn").checked; lsSet("hosomichi_vcmachi", vcMachi); };
-const VS_KINDS = ["park", "bridge", "school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground", "shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"];
-const VS_MACHI = new Set(["school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground"]);   // まちの建物は「これは〇〇です」
+const VS_KINDS = ["park", "bridge", "danchi", "school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground", "shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"];
+const VS_MACHI = new Set(["danchi", "school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground"]);   // まちの建物は「これは〇〇です」
 // 名所は いつも全部（有名な所だけ はやめた）。きょり：0＝しない / 100 / 300 / 500m（前の設定は近いほうに）
 let VS_R = (() => { if (!vcSpot) return 0; const r = +lsGet("hosomichi_vcspotr", 70) || 70; return r <= 100 ? 100 : r <= 300 ? 300 : 500; })();
 if (VS_R) vcSpot = 2;
@@ -5902,7 +5902,7 @@ const SPOT_KINDS = [
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"]]],
   ["こまったとき", [["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
   ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"], ["townhall", "🏛", "役所"], ["library", "📚", "図書館"], ["post", "📮", "郵便局"], ["fire", "🚒", "消防署"],
-    ["factory", "🏭", "工場"], ["waterw", "🚰", "浄水場・水道局"], ["power", "⚡", "発電所"], ["ground", "🏟", "グラウンド・球場"]]],
+    ["factory", "🏭", "工場"], ["waterw", "🚰", "浄水場・水道局"], ["power", "⚡", "発電所"], ["ground", "🏟", "グラウンド・球場"], ["danchi", "🏢", "団地"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
     ["oneway", "➡", "一方通行"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"]]],
