@@ -196,7 +196,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
       <input type="text" id="jump" enterkeyhint="search" placeholder="🔍 地名・駅名で地図を動かす" style="flex:1;min-width:0;padding:8px 10px;border:1px solid #ccc;border-radius:10px;font-size:14px">
       <button class="ib" id="bNew" style="display:none;white-space:nowrap;font-size:12px;padding:6px 8px">🗑 ルート消去</button></div>
-    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="pts"><span class="ti">📌</span><span class="tl">スポット</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
+    <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="pts"><span class="ti">📌</span><span class="tl">スポット</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
     <div id="rtabs" class="ttabs"><button data-r="route">🚲 シンプル</button><button data-r="quest">🏁 クエスト</button></div>
     <div id="tabPts" style="display:none"></div>
     <div id="tabQuest" style="display:none">
