@@ -409,6 +409,11 @@ function buildGraph(osm, cfg, onProg) {
     else xcost[i] = sig || xw ? 0 : midPen(cfg.midCross);
   }
   const nBlk = applyBlocks(lat, lon, adj, N);
+  if (paintedSet && paintedSet.size && PAINT_PEN > 1) {   // 👣 まだ塗っていない道を通りたい：もう塗った区間を ×PAINT_PEN
+    let np = 0;
+    for (let u = 0; u < N; u++) for (const e of adj[u] || []) { const a = ids[u], b = ids[e.v]; if (paintedSet.has(a < b ? a + "-" + b : b + "-" + a)) { e.c *= PAINT_PEN; np++; } }
+    if (np) log(`👣 もう塗った道 ${np}区間を ×${PAINT_PEN}（まだ塗っていない道を通るように）`);
+  }
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
   return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen,
@@ -419,6 +424,7 @@ function buildGraph(osm, cfg, onProg) {
 let blockPts = [], avoidPts = [], preferPts = [];   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）／ 👍 通りたい（その道を ×PREFER_K）
 let PREFER_K = 0.5;   // 👍 通りたい道の重み（設定 preferK：0.7・0.5・0.3）
 let AVOID_PEN = 5;   // ⚠ 通りたくない道の重み（設定 avoidPen：2・5・10・30）
+let paintedSet = null, PAINT_PEN = 1;   // 👣 もう塗った道（区間の名前「小さい点の番号-大きい点の番号」）と、その道の重み（設定 paintPen：1＝気にしない）
 const BLOCK_R = 12;
 let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
 const USED_PEN = 2;
@@ -1804,6 +1810,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "packStop") { pkStop = true; return; }
       if (d.cmd === "footLive") { const segs = await footLive(d.t0, d.pair); return self.postMessage({ type: "footLive", segs }); }
       if (d.cmd === "footMatch") { const segs = await footMatch(d.runs); return self.postMessage({ type: "footMatch", id: d.id, segs }); }
+      if (d.cmd === "painted") { paintedSet = new Set(d.keys || []); return; }   // 👣 もう塗った道（画面から）
       if (d.cmd === "slopeView") { const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
@@ -1828,6 +1835,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       blockPts = Array.isArray(d.blocks) ? d.blocks : [];
       avoidPts = Array.isArray(d.avoids) ? d.avoids : [];
       AVOID_PEN = Math.max(1, +(d.cfg && d.cfg.avoidPen) || 10);
+      PAINT_PEN = Math.max(1, +(d.cfg && d.cfg.paintPen) || 1);
       preferPts = Array.isArray(d.prefers) ? d.prefers : [];
       PREFER_K = Math.min(1, Math.max(0.2, +(d.cfg && d.cfg.preferK) || 0.5));
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
@@ -1844,4 +1852,4 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     }
   };
 }
-if (typeof module !== "undefined") module.exports = { applySlope, demCache, heightAt, demXY, tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
+if (typeof module !== "undefined") module.exports = { _setPaint: (k, p) => { paintedSet = new Set(k); PAINT_PEN = p; }, applySlope, demCache, heightAt, demXY, tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
