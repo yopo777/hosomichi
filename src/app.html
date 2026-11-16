@@ -2711,7 +2711,7 @@ $("bNew").onclick = async () => {
   clearShared();   // ルートの線・流れる点・ナビのゲージ・ミスコースの点線 などをまとめて消す
   // ↩ ミスコースのときの「ルートにもどる」ボタン・「外れています」の しるしも消す
   try { vcOff = false; vcFor = null; vcJoined = false; joinFor = null; vcEnd = false; tickFor = null; for (const t of $("bar").querySelectorAll(".tick")) t.remove(); $("bar").classList.remove("run", "busy", "done"); setBar(0); } catch {}
-  try { if (ovMode) ovSet(false); autoOvBy = false; } catch {}
+  try { if (ovMode) ovSet(false, "ルート消去"); autoOvBy = false; } catch {}
   lsSet(LKEY, null);   // 読みこみなおしても 消したルートが もどってこないように
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
   legend(null);
@@ -2964,8 +2964,11 @@ function updHeading(c, ll) {
 // 🗺 住所をタップ：北が上でルート全体を見せる。もう一回タップでもとにもどる
 let ovMode = false, ovZoom = 16;
 const ovOn = () => ovMode;
-function ovSet(on) {
+let ovSince = 0;   // 全体図にした時刻（すぐもどったときに 理由をログに出す）
+function ovSet(on, why) {
   if (on === ovMode) return;
+  if (on) ovSince = Date.now();
+  else if (Date.now() - ovSince < 8000) addLog(`🗺 全体図を ${((Date.now() - ovSince) / 1000).toFixed(1)}秒でやめた（${why || "?"}）`, "w");
   ovMode = on; document.body.classList.toggle("ov", on); applyBearing(); xUpd();
   if (on) {
     ovZoom = map.getZoom();
@@ -2973,7 +2976,7 @@ function ovSet(on) {
     map.fitBounds(bb, { padding: [50, 50], animate: true });
   } else if (follow && me) map.setView(me.getLatLng(), ovZoom, { animate: true });
 }
-$("addr").onclick = () => { if (follow && me) ovSet(!ovMode); };
+$("addr").onclick = () => { if (follow && me) ovSet(!ovMode, "住所の帯をタップ"); };
 function applyBearing() {
   const b = headUp && heading != null && !ovOn() ? -heading : 0;
   if (headUp) $("dirL").textContent = heading == null ? "動くと回るよ" : "進む向きが上";
@@ -3125,7 +3128,7 @@ function vsMark(s) {
 function vsTidy(ll) { vsMk = vsMk.filter(x => { const keep = Date.now() - x.t < 120000 && hav(ll, x.p) < Math.max(300, VS_R + 150); if (!keep) vsLayer.removeLayer(x.m); return keep; }); }
 // 🗺 ときどき全体図 ＋ 住所、🕐 時報（ナビ中だけ。曲がる手前・コース外れ・しゃべっている最中はあとまわし）
 let autoOvMin = +lsGet("hosomichi_aovmin", 0) || 0, autoOvSec = +lsGet("hosomichi_aovsec", 10) || 10, jihoOn = !!lsGet("hosomichi_jiho", false);
-let autoOvLast = Date.now(), autoOvBy = false, jihoLast = null;
+let autoOvLast = Date.now(), autoOvBy = false, autoOvRun = 0, jihoLast = null;
 $("autoOvMin").value = autoOvMin; $("autoOvSec").value = autoOvSec; $("jihoOn").checked = jihoOn;
 $("autoOvMin").onchange = () => { autoOvMin = +$("autoOvMin").value; lsSet("hosomichi_aovmin", autoOvMin); autoOvLast = Date.now(); };
 $("autoOvSec").onchange = () => { autoOvSec = +$("autoOvSec").value; lsSet("hosomichi_aovsec", autoOvSec); };
@@ -3144,10 +3147,10 @@ function autoTick() {
     else if (slot !== jihoLast && quietNow()) { jihoLast = slot; say(`現在の時刻は、${now.getHours()}時${now.getMinutes() >= 30 ? "半" : ""}です`); return; }
   }
   if (autoOvMin && !ovMode && Date.now() - autoOvLast > autoOvMin * 60000 && Date.now() - blkTouch > 15000 && quietNow()) {
-    autoOvLast = Date.now(); autoOvBy = true; ovSet(true); blkShowMap(autoOvSec * 1000);
+    autoOvLast = Date.now(); autoOvBy = true; const run = ++autoOvRun; ovSet(true); blkShowMap(autoOvSec * 1000);
     const ll = me.getLatLng();
     if (vcOn) addrName([ll.lat, ll.lng]).then(n => { if (n && autoOvBy) say(`現在地は、${n}です`); });
-    setTimeout(() => { if (autoOvBy && ovMode) ovSet(false); autoOvBy = false; }, autoOvSec * 1000);
+    setTimeout(() => { if (run !== autoOvRun) return; if (autoOvBy && ovMode) ovSet(false, "時間"); autoOvBy = false; }, autoOvSec * 1000);   // 前の回のタイマーで 今の回を消さない
   }
 }
 setInterval(() => { try { autoTick(); } catch {} }, 5000);
@@ -3406,7 +3409,7 @@ $("dir").onclick = () => {
 };
 // ナビ中は地図を動かせない（拡大・縮小だけ。自分の位置を中心に）。◎をもう一度押すまで解除しない
 function setFollow(on) {
-  if (!on && ovMode) { ovMode = false; document.body.classList.remove("ov"); }
+  if (!on && ovMode) { if (Date.now() - ovSince < 8000) addLog("🗺 全体図をやめた（固定をはずした）", "w"); ovMode = false; document.body.classList.remove("ov"); }
   follow = on; document.body.classList.toggle("navi", on); if (!on) { try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {} }
   $("gps").classList.toggle("on", on);
   $("gpsL").classList.toggle("on", on); $("gpsL").textContent = on ? "現在地に固定中" : wid !== null ? "押すと固定" : "現在地";
