@@ -2690,11 +2690,13 @@ async function snsOpen() {
     albSave(pinSrc).catch(() => {});   // 📷 写真を小さくして アルバムへ
     const files = [map0, ...photos].filter(Boolean), text = $("snsTxt").value;
     try {
-      if (navigator.canShare && navigator.canShare({ files, text })) { await navigator.share({ files, text }); return; }
+      if (navigator.canShare && navigator.canShare({ files, text })) { await navigator.share({ files, text }); snsDone(); return; }
     } catch (e) { if (e.name === "AbortError") return; }
     // 共有できないとき（パソコンなど）：画像を保存して、文を入れた投稿画面をひらく（画像はXの画面でつけてね）
-    files.forEach(save); window.open("https://x.com/intent/post?text=" + encodeURIComponent(text), "_blank");
+    files.forEach(save); window.open("https://x.com/intent/post?text=" + encodeURIComponent(text), "_blank"); snsDone();
   };
+  // 共有したら まっさらにもどす（次に開いたとき 前の写真・ひとこと・画像がのこっていないように）
+  const snsDone = () => setTimeout(() => { if ($("snsBox") && trkV === "sns") { snsOpen(); setMsg("📣 共有したよ。SNSの画面は まっさらにもどしたよ"); } }, 300);
 };
 $("bGpx").onclick = () => {
   const x = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="hosomichi" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>細道ルート</name><trkseg>\n'
