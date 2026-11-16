@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1101</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1155</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3320,7 +3320,7 @@ function showRoute(r, fit) {
     const R = r.route; let k = R.length - 1; while (k > 0 && hav(R[k], E) < 30) k--;
     const a = bearingDeg(R[k], E);
     L.marker(E, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="position:relative;width:0;height:0"><div style="position:absolute;left:-9px;top:-9px;width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 4px #0006"></div><div style="position:absolute;left:-8px;top:-8px;width:16px;height:16px;transform:rotate(${a}deg) translateY(-17px)"><div style="width:0;height:0;margin:auto;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:12px solid #1a73e8"></div></div></div>` }), zIndexOffset: 500 })
-      .addTo(layer).bindTooltip("いまここ（投稿したとき）", { permanent: true, direction: "right", offset: [14, 0], className: "hereTip" });
+      .addTo(layer).bindTooltip("イマココ（投稿したとき）", { permanent: true, direction: "right", offset: [14, 0], className: "hereTip" });
   } else if (!r.partial && !r.cutE) L.circleMarker(E, { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
   if (!r.partial) pulseShow([...(r.cutS ? [] : [[r.nav[0], "s"]]), ...(r.cutE || r.here ? [] : [[E, ""]]), ...(r.stops || []).map(q => [q.p, "m"])]);
   (r.stops || []).forEach(q => L.marker(q.p, { icon: L.divIcon({ className: "", html: '<div style="font-size:24px;line-height:1;transform:translate(-50%,-90%);text-shadow:0 0 3px #fff">📍</div>', iconSize: [0, 0] }), zIndexOffset: 400 }).addTo(layer).bindTooltip(q.name));   // 1周の経由地
@@ -3763,7 +3763,10 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
       g.fillStyle = "#1a73e8"; g.strokeStyle = "#fff"; g.lineWidth = 6; g.beginPath(); g.moveTo(0, -46); g.lineTo(20, -18); g.lineTo(-20, -18); g.closePath(); g.fill(); g.stroke();
       g.restore();
       g.fillStyle = "#1a73e8"; g.beginPath(); g.arc(x, y, 20, 0, 7); g.fill(); g.lineWidth = 7; g.strokeStyle = "#fff"; g.stroke();
-      g.font = "bold 38px sans-serif"; g.textBaseline = "middle"; g.lineWidth = 9; g.strokeStyle = "#fff"; g.strokeText("いまここ", x + 34, y + 30); g.fillStyle = "#1a73e8"; g.fillText("いまここ", x + 34, y + 30);
+      g.font = "bold 38px sans-serif"; g.textBaseline = "middle"; g.lineWidth = 9; g.strokeStyle = "#fff";
+      const tw = g.measureText("イマココ").width, cw = g.canvas.width, ch = g.canvas.height;
+      const tx = x + 34 + tw > cw - 12 ? x - 34 - tw : x + 34, ty = Math.max(30, Math.min(ch - 30, y + 30));   // 右のはしで切れるときは 左に出す
+      g.strokeText("イマココ", tx, ty); g.fillStyle = "#1a73e8"; g.fillText("イマココ", tx, ty);
     }
     // 📷 写真：地図の すみっこ（左上・右上・左下）に小さく置いて、撮った所と線でつなぐ
     const S = 250, corners = [[18, 18], [W - 18, 18], [18, H - 138]];   // 左下は下の帯の上
