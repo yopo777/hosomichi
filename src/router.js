@@ -295,6 +295,7 @@ function buildGraph(osm, cfg, onProg) {
   // 橋・地下・屋根つき・建物の中・階（level）がある・名前に「通路」「コンコース」「改札」「駅」がある道
   const stPen = cfg.station === "no" ? null : (+cfg.station || 1), STA_R = 150;
   const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1), parkPen = cfg.park === "no" ? null : (+cfg.park || 1);
+  const danPen = cfg.danchi === "no" ? null : (+(cfg.danchi ?? 5) || 1);   // 🏢 団地の中の道（はじめは ×5）
   const inArea = (kind, nd) => {   // 道のまん中の点（と両はし）が はんいの中か
     const m = nd[nd.length >> 1];
     return areaHas(kind, lat[m], lon[m]) || (nd.length > 2 && areaHas(kind, lat[nd[0]], lon[nd[0]]) && areaHas(kind, lat[nd[nd.length - 1]], lon[nd[nd.length - 1]]));
@@ -348,6 +349,12 @@ function buildGraph(osm, cfg, onProg) {
       && !(["residential", "unclassified", "living_street"].includes(hw) || (hw === "cycleway" && wayLen(nd) >= 400))) {
       if (parkPen === null) continue;
       pen = Math.max(pen, 1) * parkPen; name = "公園の中";
+    }
+    // 🏢 団地の中の道（棟のあいだの通路・駐車場の道など）。団地の中を通りぬける ふつうの道路（住宅街の道など）は そのまま
+    if (areaGrids && areaGrids.danchi && danPen !== 1 && !BIG_HW.has(hw) && !["residential", "unclassified", "tertiary", "tertiary_link"].includes(hw)
+      && !(hw === "cycleway" && wayLen(nd) >= 400) && inArea("danchi", nd)) {
+      if (danPen === null) continue;
+      pen = Math.max(pen, 1) * danPen; name = "団地の中";
     }
     if (["footway", "path", "pedestrian", "cycleway", "track"].includes(hw) && nd.some(i => ntags.get(i)?.railway === "crossing")) {
       let wl = 0; for (let i = 1; i < nd.length; i++) wl += d(nd[i - 1], nd[i]);
@@ -1268,7 +1275,7 @@ async function loadAreas() {
   try {
     const res = await fetch(packBase + "areas.json"); if (!res.ok) { areaTried = false; return; }
     const j = await res.json(), out = {}, cnt = [];
-    for (const kind of ["cemetery", "park", "closed"]) {
+    for (const kind of ["cemetery", "park", "closed", "danchi"]) {
       const g = new Map(); let n = 0;
       for (const pts of j[kind] || []) {
         let s = 90, w = 180, nn = -90, e = -180;
@@ -1279,7 +1286,7 @@ async function loadAreas() {
         }
       }
       if (n) out[kind] = g;
-      cnt.push(`${kind === "park" ? "公園" : kind === "closed" ? "学校や工場の敷地" : "霊園・墓地"} ${n}か所`);
+      cnt.push(`${kind === "park" ? "公園" : kind === "closed" ? "学校や工場の敷地" : kind === "danchi" ? "団地" : "霊園・墓地"} ${n}か所`);
     }
     areaGrids = out; log(`はんいのデータ: ${cnt.join("・")}`);
   } catch { areaTried = false; }

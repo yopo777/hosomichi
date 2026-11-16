@@ -330,24 +330,32 @@ def write_stations(srcs, out):
 # ---- 霊園・墓地／公園のはんい（アプリの設定「霊園の中の道」「公園の中の道」用）----
 # areas.json = {"cemetery": [[[緯度, 経度], …], …], "park": […], "closed": […]}（外がわの輪だけ・5m より近い点は間引く）
 # closed：学校・病院・工場などの敷地（中の通路は ふつうは入れないので、ルートに使わない）
+# danchi：団地・集合住宅の敷地（住宅地 landuse=residential のうち、名前が団地っぽいもの・residential=apartments）
+DANCHI = re.compile(r"団地|公団|公社|都営|県営|府営|市営|町営|区営|UR|住宅|ハイツ|コーポ|レジデンス|マンション|ヒルズ|ニュータウン|パークハウス|パークシティ|シティ|コート|苑$|荘$")
+
 def write_areas(srcs, out):
-    t0 = time.time(); found = {"cemetery": [], "park": [], "closed": []}; seen = set()
+    t0 = time.time(); found = {"cemetery": [], "park": [], "closed": [], "danchi": []}; seen = set()
     for src in srcs: area_file(src, found, seen)
     with open(os.path.join(out, "areas.json"), "w", encoding="utf-8") as f: json.dump(found, f, separators=(",", ":"))
-    print(f"  霊園・墓地 {len(found['cemetery']):,}か所・公園 {len(found['park']):,}か所・学校や工場の敷地 {len(found['closed']):,}か所 → areas.json（{os.path.getsize(os.path.join(out, 'areas.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
+    print(f"  霊園・墓地 {len(found['cemetery']):,}か所・公園 {len(found['park']):,}か所・学校や工場の敷地 {len(found['closed']):,}か所・団地 {len(found['danchi']):,}か所 → areas.json（{os.path.getsize(os.path.join(out, 'areas.json')) / 1048576:.1f}MB・{time.time() - t0:.0f}秒）", flush=True)
 
 def area_file(src, found, seen):
     print(f"霊園・墓地／公園のはんいをさがし中: {src}", flush=True)
     TF = (("landuse", "cemetery"), ("amenity", "grave_yard"), ("leisure", "park"),
           ("amenity", "school"), ("amenity", "university"), ("amenity", "college"), ("amenity", "kindergarten"), ("amenity", "hospital"),
-          ("amenity", "prison"), ("man_made", "works"), ("landuse", "military"))
+          ("amenity", "prison"), ("man_made", "works"), ("landuse", "military"), ("landuse", "residential"))
     fp = osmium.FileProcessor(src).with_areas(osmium.filter.TagFilter(*TF)) \
         .with_filter(osmium.filter.EntityFilter(osmium.osm.AREA)).with_filter(osmium.filter.TagFilter(*TF))
     for o in fp:
         if o.id in seen: continue   # さかい目の面は2つの pbf にある
         seen.add(o.id)
         tg = o.tags
-        kind = "park" if tg.get("leisure") == "park" else "cemetery" if tg.get("landuse") == "cemetery" or tg.get("amenity") == "grave_yard" else "closed"
+        if tg.get("landuse") == "residential":   # 住宅地は 団地っぽいものだけ
+            if not (tg.get("residential") == "apartments" or DANCHI.search(tg.get("name") or "")): continue
+            kind = "danchi"
+        elif tg.get("leisure") == "park": kind = "park"
+        elif tg.get("landuse") == "cemetery" or tg.get("amenity") == "grave_yard": kind = "cemetery"
+        else: kind = "closed"
         polys = found[kind]
         for ring in o.outer_rings():
             pts = []
