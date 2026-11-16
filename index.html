@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1836</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1838</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -5286,6 +5286,7 @@ function clearShared() {
   try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {}
 }
 $("gps").onclick = async () => {
+  if (IN_APP && wid === null && $("inapp") && $("inapp").style.display !== "flex") $("inapp").style.display = "flex";   // 📱 Xなどの中で走りはじめるときだけ「ブラウザで」と出す（見るだけなら出さない）
   if (wid === null && cur && cur.shared) clearShared();
   if (wid === null && !fakePos && !lsGet("hosomichi_geook", false)) {
     const a = await geoAsk();
@@ -5608,7 +5609,7 @@ function askSave(what) {
 }
 
 if (IN_APP) {
-  $("inapp").style.display = "flex";   // 見るだけなら このままでOK。走る（記録する）ときだけ ブラウザで、と1行で
+  // 見るだけなら何も出さない。◎で走りはじめるときだけ「走るときはブラウザで」と1行で出す
   if (/Android/i.test(UA)) {   // Android は Chrome を直接ひらける（共有ルートの #… もそのまま）
     const a = $("inappGo"); $("inappHow").style.display = "none";
     const u = location.pathname + (location.hash.length > 1 ? "?h=" + encodeURIComponent(location.hash.slice(1)) : "");

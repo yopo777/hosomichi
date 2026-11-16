@@ -3439,6 +3439,7 @@ function clearShared() {
   try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {}
 }
 $("gps").onclick = async () => {
+  if (IN_APP && wid === null && $("inapp") && $("inapp").style.display !== "flex") $("inapp").style.display = "flex";   // 📱 Xなどの中で走りはじめるときだけ「ブラウザで」と出す（見るだけなら出さない）
   if (wid === null && cur && cur.shared) clearShared();
   if (wid === null && !fakePos && !lsGet("hosomichi_geook", false)) {
     const a = await geoAsk();
@@ -3761,7 +3762,7 @@ function askSave(what) {
 }
 
 if (IN_APP) {
-  $("inapp").style.display = "flex";   // 見るだけなら このままでOK。走る（記録する）ときだけ ブラウザで、と1行で
+  // 見るだけなら何も出さない。◎で走りはじめるときだけ「走るときはブラウザで」と1行で出す
   if (/Android/i.test(UA)) {   // Android は Chrome を直接ひらける（共有ルートの #… もそのまま）
     const a = $("inappGo"); $("inappHow").style.display = "none";
     const u = location.pathname + (location.hash.length > 1 ? "?h=" + encodeURIComponent(location.hash.slice(1)) : "");
