@@ -1778,7 +1778,8 @@ function snsPassBy(P) {
 async function snsData() {
   const R = snsTest ? 0 : snsR;
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
-  const riding = useRide && !ride.done && wid !== null;
+  // 走っている途中：◎で位置をとっている。とめていても（Xにうつった・写真をとった など）さいごの点が15分以内なら 走っている途中とする
+  const riding = useRide && !ride.done && (wid !== null || Date.now() - ride.pts[ride.pts.length - 1][2] < 15 * 60e3);
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
   // 🔒 消す所：家と、その日の出発地（親せきの家などから出ても、かならず消す）
   const anchors = [...(home ? [home] : []), ...secrets.map(q => q.p)];   // 家と 🔒秘密の場所
@@ -1820,7 +1821,20 @@ async function snsData() {
     // 同じ所は1回だけ：名前が同じか、片方がもう片方をふくむ（「妙典寺」と「日蓮宗妙典寺」など）
     const seen = [], list = items.sort((x, y) => x.t - y.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); x.name = k; return true; });
     // 地図に「いまここ」を出せるときは、さいごに「〇〇(イマココ)」（地名＝市区町村＋町名。行った所がなくても出す）
-    const hn = here ? await addrName(here) : "", tail = hn ? [{ name: hn + "(イマココ)" }] : [];
+    // イマココの名前：すぐそば（80m）に 名所・お店・施設があれば その名前（例：廣幡八幡宮）、なければ 地名
+    let hn = "";
+    if (here) {
+      try {
+        const t = await spotTile(Math.floor(here[0] / SPOT_T) + "_" + Math.floor(here[1] / SPOT_T)); let bd = 80;
+        for (const k of [...VS_KINDS, ...Object.keys(FOOD_WORD), "station"]) for (const q of (t && t[k]) || []) {
+          if (!q[0]) continue; const dd = q[4] && VS_MACHI.has(k) ? polyDist(here, q[4]) : hav(here, [q[1], q[2]]);
+          if (dd < bd) { bd = dd; hn = clean(q[0]); }
+        }
+      } catch {}
+      if (!hn) hn = await addrName(here);
+    }
+    const tail = hn ? [{ name: hn + "(イマココ)" }] : [];
+    if (hn) for (let i = list.length - 1; i >= 0; i--) if (list[i].name === hn) list.splice(i, 1);   // イマココと同じ所は 1回だけ
     const rest = [...L, "🗺 ルート↓", SNS_URL, SNS_TAGS].join("\n"), pick = [];
     for (let i = list.length - 1; i >= 0; i--) {   // 新しいものから
       const line = "📍 " + [list[i], ...pick, ...tail].map(x => x.name).join("→");
