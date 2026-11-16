@@ -2204,13 +2204,16 @@ function pi() {
 let footPiT = 0;
 // ---- 〰 接近音（EV みたいな「ウィーン」）：走っているあいだ ずっと小さく鳴らす。速さで音が高くなる・止まると消える ----
 let evAcc = 0; const evCoast = true; lsSet("hosomichi_evCoast", null);   // 🚲ラチェットは いつも 速さがへっている時（こいでいない時）だけ鳴らす
-// 近接音の出口：まとめて 2.5倍に大きくして、さいごに リミッター（音がわれないように 0dB の手前でおさえる）
+// 近接音の出口：まとめて 2倍に大きくして、さいごに リミッター（音がわれないように 0dB の手前でおさえる）
+// スマホの小さいスピーカーは 低い音（300Hzより下）を大きく出すと ビビる（ビリビリ鳴る）ので、そこは けずる。リミッターも ゆっくり効かせて ひずませない
 let evOutN = null;
 function evOut() {
   if (evOutN && evOutN.context === actx) return evOutN;
-  const g = actx.createGain(), lim = actx.createDynamicsCompressor();
-  g.gain.value = 2.5; lim.threshold.value = -2; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.002; lim.release.value = 0.1;
-  g.connect(lim); lim.connect(actx.destination);
+  const g = actx.createGain(), hp = actx.createBiquadFilter(), lim = actx.createDynamicsCompressor(), out = actx.createGain();
+  g.gain.value = 2; hp.type = "highpass"; hp.frequency.value = 300; hp.Q.value = 0.7;
+  lim.threshold.value = -8; lim.knee.value = 6; lim.ratio.value = 12; lim.attack.value = 0.008; lim.release.value = 0.25;
+  out.gain.value = 0.9;   // さいごに少しだけ下げて 0dB をこえないように
+  g.connect(hp); hp.connect(lim); lim.connect(out); out.connect(actx.destination);
   return evOutN = g;
 }
 let evOn = !!lsGet("hosomichi_ev", false), evVol = +lsGet("hosomichi_evVol", 0.25), evN = null, evLast = null, evSp = 0, evT = 0;
