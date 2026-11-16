@@ -1374,7 +1374,7 @@ function applySlope(G, k, stK, slK) {   // k：のぼり1mを何m分 / stK：�
     let dh = h[e.v] - h[u];
     if (!(dh > 0) || e.L < 3 || e.b) continue;
     dh = Math.min(dh, e.L * 0.15);
-    e.c += dh * k * (dh / e.L > 0.08 ? 2 : 1);
+    e.c += dh * k;   // 急な所は ⛰急坂・🪜たぶん階段 の設定のほうで見るので、ここは のぼった高さだけ
   }
   if (marks.length && typeof self !== "undefined" && self.postMessage && typeof module === "undefined") self.postMessage({ type: "slope", marks });
   if (st || sl) log(`標高で：🪜たぶん階段 ${st}か所（${stK === "no" ? "通らない" : "×" + (+stK || 1)}）・⛰急坂 ${sl}か所（×${+slK || 1}）`);
