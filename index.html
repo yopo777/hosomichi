@@ -106,31 +106,32 @@ body.ov .me-ic::before{content:"";position:absolute;left:50%;top:50%;width:90px;
 #list .it button{border:1px solid #ccc;background:#fff;border-radius:6px;padding:4px 8px;font-size:13px}
 #share{display:none;margin-top:8px;font-size:13px;background:#f6f6f6;border-radius:8px;padding:8px}
 #share textarea{width:100%;height:60px;font-size:11px}
-#gps{position:absolute;top:calc(50% + 96px);right:12px;z-index:1000;width:50px;height:50px;border-radius:50%;
+:root{--rb:64px}   /* 右はしのボタンを まとめて下へ（上のパネルにかくれないように） */
+#gps{position:absolute;top:calc(50% + var(--rb) + 96px);right:12px;z-index:1000;width:50px;height:50px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:24px;line-height:50px;text-align:center}
 #gps.on{background:#1a73e8;color:#fff}
-#gpsL{position:absolute;top:calc(50% + 148px);right:4px;z-index:1000;width:76px;text-align:center;font-size:11px;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff;pointer-events:none;white-space:nowrap}
+#gpsL{position:absolute;top:calc(50% + var(--rb) + 148px);right:4px;z-index:1000;width:76px;text-align:center;font-size:11px;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff;pointer-events:none;white-space:nowrap}
 #gpsL.on{color:#1a73e8;font-weight:bold}
 body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;font-weight:bold}   /* 本当の場所じゃないことがわかるように */
-#dir{position:absolute;top:calc(50% + 34px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+#dir{position:absolute;top:calc(50% + var(--rb) + 34px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0;display:none}
 #dir.on{background:#1a73e8}
 .fetchBox{animation:fbk 1s ease-in-out infinite}
 @keyframes fbk{50%{opacity:.25}}
-#col{position:absolute;top:calc(50% - 86px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+#col{position:absolute;top:calc(50% + var(--rb) - 86px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
 #fl,#flr{position:absolute;right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0;display:none}
-#fl{top:calc(50% - 146px)}
+#fl{top:calc(50% + var(--rb) - 146px)}
 #fl.off{opacity:.45;filter:grayscale(1)}
 #fl small,#flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 .shLbl{white-space:nowrap;pointer-events:none}.shLbl i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#5f6368;border:2px solid #fff;box-sizing:border-box}
 .shLbl b{position:absolute;left:7px;top:-8px;font-size:11px;color:#333;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}   /* 🔗 共有ルートの 通った所の名前 */
-#ft{position:absolute;top:calc(50% - 266px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+#ft{position:absolute;top:calc(50% + var(--rb) - 266px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
 #ft.off{opacity:.45;filter:grayscale(1)}
 #ft small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
-#mk{position:absolute;top:calc(50% - 206px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+#mk{position:absolute;top:calc(50% + var(--rb) - 206px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0;display:none}
 #mk.off{opacity:.45;filter:grayscale(1)}
 #mk small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
@@ -139,7 +140,7 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
   box-shadow:0 2px 8px #0003;padding:6px 8px;font-size:11px;line-height:1.6;display:none;max-width:60%}
 #legend.min{padding:4px 8px;opacity:.75;font-size:12px}   /* タップでたたむ */
 #legend .lgT{float:right;margin-left:6px;color:#999;font-size:11px}
-#alt{position:absolute;top:calc(50% - 26px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+#alt{position:absolute;top:calc(50% + var(--rb) - 26px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:17px;font-weight:bold;color:#d93025;padding:0;display:none}
 #alt small{position:absolute;right:-6px;left:-6px;text-align:center;bottom:-15px;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap;font-weight:normal}
 #legend i{display:inline-block;width:18px;height:6px;border-radius:3px;margin-right:4px;vertical-align:middle}
@@ -189,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1155</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1709</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
