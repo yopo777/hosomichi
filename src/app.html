@@ -239,6 +239,12 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
     <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
+      <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <b>📤 自分のデータを まるごと書き出す</b>
+        <div style="font-size:11px;color:#666;margin-top:2px">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あとを、1つの JSON ファイルにしてダウンロードするよ（📷写真は重いので入れないよ）。パソコンで ながめる用だよ</div>
+        <div class="btns" style="margin-top:6px"><button class="ib" id="myExp" style="font-size:12px">⬇ JSON で書き出す</button></div>
+        <div style="font-size:11px;color:#b45309;margin-top:2px">⚠ 家の場所や走った道がぜんぶ入っているよ。人にわたしたり、公開の場所に置いたりしないでね</div>
+      </div>
       <div style="margin-top:10px;padding:8px;border-radius:8px;background:#e8f0fe;font-size:12px;line-height:1.6">
         <b>🔒 データについて</b><br>
         🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、<b>この端末の中だけ</b>に保存していて、どこにも送らないよ。<br>
@@ -825,6 +831,39 @@ function onPk(m) {
   else if (m.msg) $("pkMsg").textContent = m.msg;
   if (m.fin) { pkOn = false; $("pkAll").textContent = "📦 この地方の配布データをまとめて入れる"; drawArea(); if (!m.stopped && m.total) chime(); }
 }
+// 📤 自分のデータを まるごと JSON で書き出す（パソコンで ながめる用・読みこみはなし）
+function idbDump(name, store) {   // IndexedDB の1つの入れ物を ぜんぶ配列で
+  return new Promise(ok => {
+    let r; try { r = indexedDB.open(name); } catch { return ok(null); }
+    r.onupgradeneeded = () => { try { r.transaction.abort(); } catch {} };   // まだ無いDBは作らない
+    r.onerror = () => ok(null);
+    r.onsuccess = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains(store)) { db.close(); return ok(null); }
+      const q = db.transaction(store).objectStore(store).getAll();
+      q.onsuccess = () => ok(q.result); q.onerror = () => ok(null);
+    };
+  });
+}
+$("myExp").onclick = async () => {
+  const b = $("myExp"); b.disabled = true; b.textContent = "書き出し中…";
+  try {
+    const ls = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
+      const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; }
+    }
+    const out = { app: "hosomichi", kind: "mydata", ver: "__VER__", at: new Date().toISOString(),
+      localStorage: ls, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
+    const blob = new Blob([JSON.stringify(out)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = `hosomichi-mydata-${today()}.json`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    addLog(`📤 自分のデータを書き出したよ（${(blob.size / 1024).toFixed(0)}KB・過去の記録 ${(out.hist || []).length}日分）`, "m");
+  } catch (e) { alert("書き出せなかったよ: " + e); }
+  b.disabled = false; b.textContent = "⬇ JSON で書き出す";
+};
+
 // 書き出し・読みこみ（ためた道路データをほかの端末や人にわたす）
 $("pfExp").onclick = () => { $("pfExp").textContent = "書き出し中…"; worker.postMessage({ cmd: "export" }); };
 $("pfImp").onclick = () => $("pfFile").click();
