@@ -265,6 +265,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-weight:bold;margin-top:6px">🏯 名所の近くに来たら教える<span class="pw u">⚡小</span></div>
         <div style="margin-top:2px">きょり：<label style="margin-right:10px"><input type="radio" name="vcSpotR" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpotR" value="100"> 100m</label><label style="margin-right:10px"><input type="radio" name="vcSpotR" value="300"> 300m</label><label><input type="radio" name="vcSpotR" value="500"> 500m</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">神社・お寺・城・名所・展望・古墳・湧き水…（「めぐる」）の近くを通ると「近くに〇〇があります」と言うよ</div>
+        <div style="font-weight:bold;margin-top:6px">🍴 食事・コンビニの近くに来たら教える<span class="pw u">⚡小</span></div>
+        <div style="margin-top:2px">きょり：<label style="margin-right:10px"><input type="radio" name="vcFoodR" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcFoodR" value="100"> 100m</label><label style="margin-right:10px"><input type="radio" name="vcFoodR" value="300"> 300m</label><label><input type="radio" name="vcFoodR" value="500"> 500m</label></div>
+        <div style="font-size:11px;color:#666;margin-top:2px">コンビニ・ラーメン・そば・定食・カフェ・パン屋…の近くを通ると「近くに ラーメンの〇〇があります」と言うよ（名前のあるお店だけ・同じ店は1回）</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="vcMachiOn">🏫 となりの施設・公園・橋を教える<span class="pw u">⚡小</span></label>
         <div style="font-size:11px;color:#666;margin-top:2px">学校・病院・役所・図書館・郵便局・消防署・工場・浄水場・グラウンド…と公園の となりの道を通ったとき、名前のある橋をわたるときに「これは、〇〇です」と言うよ</div>
         <div style="font-size:11px;color:#666;margin-top:2px">どちらも地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
@@ -3142,6 +3145,11 @@ for (const r of document.querySelectorAll("[name=vcSpotR]")) {
   r.onchange = () => { VS_R = +r.value; vcSpot = VS_R ? 2 : 0; lsSet("hosomichi_vcspotr", VS_R || 70); lsSet("hosomichi_vcspot", vcSpot); };
 }
 const vsDone = new Set(); let vsBusy = false;
+// 🍴 食事・コンビニ（きょり 0＝しない / 100 / 300 / 500m）
+let vcFoodR = +lsGet("hosomichi_vcfoodr", 0) || 0;
+for (const r of document.querySelectorAll("[name=vcFoodR]")) { r.checked = +r.value === vcFoodR; r.onchange = () => { vcFoodR = +r.value; lsSet("hosomichi_vcfoodr", vcFoodR); }; }
+const FOOD_WORD = { conv: "コンビニ", cafe: "カフェ", ramen: "ラーメン", soba: "そば・うどん", sushi: "おすし", curry: "カレー", chinese: "中華", burger: "ハンバーガー",
+  western: "洋食", teishoku: "定食", restaurant: "食べもの屋さん", bakery: "パン屋さん", sweets: "おかし屋さん" };
 // 案内した名所に、むらさきの輪と名前を出す（2分たつか、300m はなれたら消す。出すのは新しい2つまで）
 const vsLayer = L.layerGroup().addTo(map); let vsMk = [];
 function vsMark(s) {
@@ -3193,12 +3201,12 @@ function polyDist(ll, f) {   // 外形（[緯度, 経度, …]）までの距離
 }
 async function vcSpotCheck(ll) {
   vsTidy(ll);
-  if (!vcOn || (!vcSpot && !vcMachi && !vcPark && !vcBridge) || vsBusy || wid === null || !follow) return;
+  if (!vcOn || (!vcSpot && !vcMachi && !vcPark && !vcBridge && !vcFoodR) || vsBusy || wid === null || !follow) return;
   if (vcOff || (vcTurns && navAlong != null && vcTurns.some(t => t.s > navAlong - 5 && t.s - navAlong < 150))) return;   // 曲がる手前・コース外れのときは案内を優先
   vsBusy = true;
   try {
     // まわりのマスも（500m だと となりのマスにかかる）
-    const dla = Math.max(VS_R, 70) / 111000, dlo = dla / Math.cos(ll[0] * RAD), ks = new Set();
+    const dla = Math.max(VS_R, vcFoodR, 70) / 111000, dlo = dla / Math.cos(ll[0] * RAD), ks = new Set();
     for (const a of [-dla, dla]) for (const o of [-dlo, dlo]) ks.add(Math.floor((ll[0] + a) / SPOT_T) + "_" + Math.floor((ll[1] + o) / SPOT_T));
     const t = {};
     for (const key of ks) { const x = await spotTile(key); for (const k in x || {}) (t[k] || (t[k] = [])).push(...x[k]); }
@@ -3216,7 +3224,17 @@ async function vcSpotCheck(ll) {
       if (!(VS_MACHI.has(k) || k === "bridge" || k === "park") && behind([s[1], s[2]], 100)) continue;   // 名所だけ（建物・公園・橋は となりを通ったときなので そのまま）
       if (d < (VS_MACHI.has(k) || k === "bridge" || k === "park" ? 70 : VS_R) && (!best || (s[3] || 0) > (best[1][3] || 0) || d < best[2])) best = [id, s, d, k];
     }
-    if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); vsDone.add(best[1][0]);
+    if (!best && vcFoodR) for (const k in FOOD_WORD) for (const s of t[k] || []) {   // 🍴 名所がないときに 食事・コンビニ
+      if (!s[0]) continue;
+      const id = k + s[1] + "," + s[2]; if (vsDone.has(id)) continue;
+      const d = hav(ll, [s[1], s[2]]); if (d >= vcFoodR || behind([s[1], s[2]], 100)) continue;
+      if (!best || d < best[2]) best = [id, s, d, k];
+    }
+    if (best && FOOD_WORD[best[3]] && !speechSynthesis.speaking) {
+      vsDone.add(best[0]); const nm = best[1][0], w = FOOD_WORD[best[3]];
+      say(nm.includes(w) ? `近くに、${nm}があります` : `近くに、${w}の${nm}があります`); vsMark(best[1]);
+    }
+    else if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); vsDone.add(best[1][0]);
       say(VS_MACHI.has(best[3]) || best[3] === "bridge" || best[3] === "park" ? `これは、${best[1][0]}です` : `近くに、${best[1][0]}があります`); vsMark(best[1]); }
   } catch {} finally { vsBusy = false; }
 }
