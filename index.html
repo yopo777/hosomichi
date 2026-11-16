@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1825</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1826</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -255,7 +255,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="margin-top:4px">〰 こいでいる時：<select id="evKind" style="padding:4px;border:1px solid #ccc;border-radius:8px"></select></div>
         <div style="margin-top:4px">🚲 足を止めた時：<select id="evClick" style="padding:4px;border:1px solid #ccc;border-radius:8px"></select></div>
         <div style="font-size:11px;color:#666;margin-top:2px">EVみたいに、走っているあいだ「ウィーン」と小さく鳴らして、歩いている人に気づいてもらうよ。速さに合わせて音が高くなるよ。止まると消えるよ。<b>ベルのかわりにはならないから、ベルははずさないでね</b>。画面を消すと止まることがあるよ（⬛暗くするなら鳴りつづけるよ）</div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="evCoast">🚲 ラチェット音は、速さがへっている時（こいでいない時）だけ鳴らす</label>
         <label style="display:flex;align-items:center;gap:6px;margin-top:4px">🔈<input type="range" id="evVol" min="0.02" max="3" step="0.02" style="flex:1">🔊</label>
         <div class="btns" style="margin-top:4px"><button class="ib" id="evTest" style="font-size:12px">🔊 ためしに聞く</button></div>
       </div>
@@ -4050,7 +4049,7 @@ function pi() {
 }
 let footPiT = 0;
 // ---- 〰 接近音（EV みたいな「ウィーン」）：走っているあいだ ずっと小さく鳴らす。速さで音が高くなる・止まると消える ----
-let evAcc = 0, evCoast = lsGet("hosomichi_evCoast", true) !== false;   // evCoast：🚲ラチェットは 速さがへっている時（こいでいない時）だけ鳴らす
+let evAcc = 0; const evCoast = true; lsSet("hosomichi_evCoast", null);   // 🚲ラチェットは いつも 速さがへっている時（こいでいない時）だけ鳴らす
 // 近接音の出口：まとめて 2.5倍に大きくして、さいごに リミッター（音がわれないように 0dB の手前でおさえる）
 let evOutN = null;
 function evOut() {
@@ -4314,8 +4313,7 @@ function ftBtn() { $("ft").classList.toggle("off", !footOn); $("ftL").textConten
 ftBtn(); evBtn();
 $("evOnCb").onchange = e => evToggle(e.target.checked);
 $("evVol").value = evVol;
-$("evCoast").checked = evCoast;
-$("evCoast").onchange = e => { evCoast = e.target.checked; lsSet("hosomichi_evCoast", evCoast); };
+
 const evOpts = (cl, cur) => `<option value="none"${cur === "none" ? " selected" : ""}>なし</option>` + Object.entries(EV_KINDS).filter(([, K]) => !!K.click === cl).map(([k, K]) => `<option value="${k}"${k === cur ? " selected" : ""}>${K.n.replace("🚲 ", "")}</option>`).join("");
 $("evKind").innerHTML = evOpts(false, evKind); $("evClick").innerHTML = evOpts(true, evClick);
 $("evKind").onchange = e => { evKind = e.target.value; lsSet("hosomichi_evKind", evKind); evKill(); if (evOn) evSet(Date.now() - evT < 4000 ? evSp : 0); };   // 選んだだけでは鳴らさない（🔊ためしに聞く で聞く）
