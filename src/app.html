@@ -1831,6 +1831,7 @@ function snsHide(pts, R, anchors) {
     if (ok && i0 < 0) i0 = i; else if (!ok && i0 >= 0) { if (i - i0 > 1) runs.push(Object.assign(pts.slice(i0, i), { cutS: i0 > 0, cutE: i < pts.length, i0, i1: i })); i0 = -1; }
   }
   const hideP = (p, idx) => {   // その場所（ルートでいちばん近い点）が消す所なら true
+    if (idx != null && !(idx >= 0 && idx < pts.length)) idx = null;   // 番号がおかしいときは 場所でさがしなおす（消しわすれ防止）
     if (idx == null) { let bd = 250; idx = -1; for (let i = 0; i < pts.length; i++) { const d = hav(pts[i], p); if (d < bd) { bd = d; idx = i; } } }
     return idx < 0 ? anchors.some(a => hav(p, a) < X) : hidden[idx];
   };
@@ -1898,7 +1899,8 @@ async function snsData() {
     const clean = n => n.replace(/^[^\p{L}\p{N}]+/u, "").replace(/^\d+\.\s*/, "").trim();   // 先頭の絵文字（🎯 ⛲ など）・番号をとる
     const items = [];
     for (const e of ride.ev) if ((e.k === "stop" || e.k === "stamp") && !(e.p && hideP(e.p))) items.push({ t: e.t, name: clean(e.name), p: e.p });
-    for (const c of await passList(ride.pts, hideP).catch(() => [])) items.push({ t: c.t, name: c.name, p: c.p });
+    // ⚠ passList の番号は ride.pts の番号。hideP の番号は snsPassBy でへらした pts の番号なので、番号はわたさず 場所で見てもらう
+    for (const c of await passList(ride.pts, p => hideP(p)).catch(() => [])) items.push({ t: c.t, name: c.name, p: c.p });
     // 同じ所は1回だけ：名前が同じか、片方がもう片方をふくむ（「妙典寺」と「日蓮宗妙典寺」など）
     const seen = [], list = items.sort((x, y) => x.t - y.t).filter(x => { const k = clean(x.name); if (!k || seen.some(o => o.includes(k) || k.includes(o))) return false; seen.push(k); x.name = k; return true; });
     // 地図に「いまここ」を出せるときは、さいごに「〇〇(イマココ)」（地名＝市区町村＋町名。行った所がなくても出す）
