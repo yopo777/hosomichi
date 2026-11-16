@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1826</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1829</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -263,8 +263,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">曲がる所の手前（100mくらい・まもなく）と、ルートから外れたときにしゃべるよ（ゴールでは言わないよ）。道なりのカーブは案内しないよ（前に作ったルートは線の形から見つけるので、カーブでもしゃべることがあるよ。作りなおすと直るよ）</div>
         <div class="btns" style="margin-top:4px"><button class="ib" id="vcTest" style="font-size:12px">🔊 ためしに聞く</button></div>
         <div style="font-weight:bold;margin-top:6px">🏯 名所の近くに来たら教える<span class="pw u">⚡小</span></div>
-        <div style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="vcSpot" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpot" value="1"> 有名な所だけ</label><label><input type="radio" name="vcSpot" value="2"> いろいろ</label></div>
-        <div style="margin-top:2px">名所を知らせる範囲：<select id="vcSpotR"><option value="50">50m</option><option value="70">70m</option><option value="100">100m</option><option value="150">150m</option><option value="200">200m</option><option value="300">300m</option></select></div>
+        <div style="margin-top:2px">きょり：<label style="margin-right:10px"><input type="radio" name="vcSpotR" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="vcSpotR" value="100"> 100m</label><label style="margin-right:10px"><input type="radio" name="vcSpotR" value="300"> 300m</label><label><input type="radio" name="vcSpotR" value="500"> 500m</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">神社・お寺・城・名所・展望・古墳・湧き水…（「めぐる」）の近くを通ると「近くに〇〇があります」と言うよ</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="vcMachiOn">🏫 となりの施設・公園・橋を教える<span class="pw u">⚡小</span></label>
         <div style="font-size:11px;color:#666;margin-top:2px">学校・病院・役所・図書館・郵便局・消防署・工場・浄水場・グラウンド…と公園の となりの道を通ったとき、名前のある橋をわたるときに「これは、〇〇です」と言うよ</div>
@@ -4982,13 +4981,14 @@ let vcPark = vcMachi, vcBridge = vcMachi;
 $("vcMachiOn").checked = vcMachi; $("vcMachiOn").onchange = () => { vcMachi = vcPark = vcBridge = $("vcMachiOn").checked; lsSet("hosomichi_vcmachi", vcMachi); };
 const VS_KINDS = ["park", "bridge", "school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground", "shrine", "temple", "church", "castle", "kofun", "monument", "sight", "view", "michi", "jizo", "ichiri", "tree", "spring", "fall", "ferry"];
 const VS_MACHI = new Set(["school", "univ", "hospital", "townhall", "library", "post", "fire", "factory", "waterw", "power", "ground"]);   // まちの建物は「これは〇〇です」
-let VS_R = +lsGet("hosomichi_vcspotr", 70) || 70;   // 知らせる範囲（50〜300m）
-$("vcSpotR").value = VS_R; $("vcSpotR").onchange = () => { VS_R = +$("vcSpotR").value; lsSet("hosomichi_vcspotr", VS_R); };
-const vsDone = new Set(); let vsBusy = false;
-for (const r of document.querySelectorAll("[name=vcSpot]")) {
-  r.checked = +r.value === vcSpot;
-  r.onchange = () => { vcSpot = +r.value; lsSet("hosomichi_vcspot", vcSpot); };
+// 名所は いつも全部（有名な所だけ はやめた）。きょり：0＝しない / 100 / 300 / 500m（前の設定は近いほうに）
+let VS_R = (() => { if (!vcSpot) return 0; const r = +lsGet("hosomichi_vcspotr", 70) || 70; return r <= 100 ? 100 : r <= 300 ? 300 : 500; })();
+if (VS_R) vcSpot = 2;
+for (const r of document.querySelectorAll("[name=vcSpotR]")) {
+  r.checked = +r.value === VS_R;
+  r.onchange = () => { VS_R = +r.value; vcSpot = VS_R ? 2 : 0; lsSet("hosomichi_vcspotr", VS_R || 70); lsSet("hosomichi_vcspot", vcSpot); };
 }
+const vsDone = new Set(); let vsBusy = false;
 // 案内した名所に、むらさきの輪と名前を出す（2分たつか、300m はなれたら消す。出すのは新しい2つまで）
 const vsLayer = L.layerGroup().addTo(map); let vsMk = [];
 function vsMark(s) {
@@ -5044,7 +5044,11 @@ async function vcSpotCheck(ll) {
   if (vcOff || (vcTurns && navAlong != null && vcTurns.some(t => t.s > navAlong - 5 && t.s - navAlong < 150))) return;   // 曲がる手前・コース外れのときは案内を優先
   vsBusy = true;
   try {
-    const t = await spotTile(Math.floor(ll[0] / SPOT_T) + "_" + Math.floor(ll[1] / SPOT_T));
+    // まわりのマスも（500m だと となりのマスにかかる）
+    const dla = Math.max(VS_R, 70) / 111000, dlo = dla / Math.cos(ll[0] * RAD), ks = new Set();
+    for (const a of [-dla, dla]) for (const o of [-dlo, dlo]) ks.add(Math.floor((ll[0] + a) / SPOT_T) + "_" + Math.floor((ll[1] + o) / SPOT_T));
+    const t = {};
+    for (const key of ks) { const x = await spotTile(key); for (const k in x || {}) (t[k] || (t[k] = [])).push(...x[k]); }
     let best = null;
     // うしろにあるもの（通りすぎた所）は言わない：進む向きから 横より後ろ
     const behind = (p, lim) => heading != null && Math.abs(((bearingDeg(ll, p) - heading + 540) % 360) - 180) > lim;
@@ -5057,7 +5061,7 @@ async function vcSpotCheck(ll) {
       else if (k === "bridge") { if (d > 40) continue; }   // 橋：まん中の点の近く＝わたっているとき
       else if (k === "park") { d = s[4] ? polyDist(ll, s[4]) : d; if (d > (s[4] ? 30 : 40)) continue; }   // 公園：となりを通ったときだけ   // まちの建物：となりの道を走っているときだけ（外形から30m・外形がなければ点から40m）
       if (!(VS_MACHI.has(k) || k === "bridge" || k === "park") && behind([s[1], s[2]], 100)) continue;   // 名所だけ（建物・公園・橋は となりを通ったときなので そのまま）
-      if (d < VS_R && (!best || (s[3] || 0) > (best[1][3] || 0) || d < best[2])) best = [id, s, d, k];
+      if (d < (VS_MACHI.has(k) || k === "bridge" || k === "park" ? 70 : VS_R) && (!best || (s[3] || 0) > (best[1][3] || 0) || d < best[2])) best = [id, s, d, k];
     }
     if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); vsDone.add(best[1][0]);
       say(VS_MACHI.has(best[3]) || best[3] === "bridge" || best[3] === "park" ? `これは、${best[1][0]}です` : `近くに、${best[1][0]}があります`); vsMark(best[1]); }
