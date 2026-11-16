@@ -367,6 +367,10 @@ def area_file(src, found, seen):
                 p = (round(n.lat, 5), round(n.lon, 5))
                 if not pts or abs(p[0] - pts[-1][0]) + abs(p[1] - pts[-1][1]) > 0.00005: pts.append(p)
             if len(pts) < 4: continue
+            if kind == "parking":   # 小さい駐車場（500m²より小さい）は 近道にならないので入れない（areas.json を大きくしないため）
+                c = math.cos(math.radians(pts[0][0])); A = 0
+                for (y1, x1), (y2, x2) in zip(pts, pts[1:] + pts[:1]): A += (x1 * c * 111320) * (y2 * 110540) - (x2 * c * 111320) * (y1 * 110540)
+                if abs(A) / 2 < 500: continue
             if not any(S0 < la < N0 and W0 < lo < E0 for (la, lo) in pts): continue
             polys.append(pts)
 
