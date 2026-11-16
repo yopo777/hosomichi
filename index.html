@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.2023</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.2029</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2269,6 +2269,8 @@ const BASES = {
     { subdomains: "abc", maxZoom: 20, maxNativeZoom: 20, crossOrigin: "anonymous", attribution: "CyclOSM | 地図データ &copy; OpenStreetMap contributors" })],   // crossOrigin：見ていた地図のタイルを、SNS・軌跡の画像づくりでそのまま使えるように（もう一回読まなくていい）
   pale: ["国土地理院 淡色", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
   std: ["国土地理院 標準", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
+  // 航空写真：拡大すると階段や段差・柵が見える（写真は18まで。19・20は18をのばして見せる）
+  photo: ["国土地理院 航空写真", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg", { maxZoom: 20, maxNativeZoom: 18, attribution: attr })],
 };
 const base = {};
 const map = L.map("map", { zoomControl: false, rotate: true, bearing: 0, rotateControl: false, touchRotate: false,
@@ -3279,9 +3281,9 @@ function setColorMode(m) {
   if (cur) showRoute(cur, false); else legend(null);
 }
 // 🗺 右のボタン：地図の種類を順番に切りかえ（ルートの色は ⚙ 設定へ）
-const BASE_SHORT = { auto: "自動", cyclosm: "自転車用", pale: "淡色", std: "標準" };
+const BASE_SHORT = { auto: "自動", cyclosm: "自転車用", pale: "淡色", std: "標準", photo: "写真" };
 const baseBtn = () => { $("colL").textContent = BASE_SHORT[baseName] || baseName; };
-$("col").onclick = () => { const ks = BG_ALL; setBase(ks[(ks.indexOf(baseName) + 1) % ks.length]); baseBtn(); for (const r of document.querySelectorAll("[name=bg]")) r.checked = r.value === baseName; };
+$("col").onclick = () => { if (photoBack) { photoBack = null; photoBackBtn(); } const ks = BG_ALL; setBase(ks[(ks.indexOf(baseName) + 1) % ks.length]); baseBtn(); for (const r of document.querySelectorAll("[name=bg]")) r.checked = r.value === baseName; };
 baseBtn();
 
 let cum = [];
@@ -4883,17 +4885,44 @@ function openStreetView(ll) {
   addLog(`📷 ストビューを開くよ${head != null ? `（ルートの進む向き ${Math.round(head)}°）` : ""}`);
   window.open(url, "_blank", "noopener");
 }
+// 🛰 その場所を航空写真で大きく見る（階段・段差・柵をたしかめる）。もう一度おすと、前の地図・前の大きさにもどる
+let photoBack = null;
+function photoPeek(ll) {
+  if (baseName !== "photo") photoBack = { bg: baseName, c: map.getCenter(), z: map.getZoom() };
+  setBase("photo"); if (typeof baseBtn === "function") baseBtn();
+  for (const r of document.querySelectorAll("[name=bg]")) r.checked = r.value === "photo";
+  map.setView(ll, 19);
+  addLog("🛰 航空写真で見るよ（もどすときは 地図の上の「🛰 もどす」）");
+  photoBackBtn();
+}
+function photoBackBtn() {
+  let b = $("phBack");
+  if (!b) {
+    b = document.createElement("button"); b.id = "phBack"; b.textContent = "🛰 もどす";
+    b.style.cssText = "position:absolute;top:calc(env(safe-area-inset-top,0px) + 70px);left:50%;transform:translateX(-50%);z-index:1200;padding:6px 14px;border:0;border-radius:16px;background:#fff;box-shadow:0 1px 4px #0006;font-size:14px";
+    b.onclick = () => {
+      const p = photoBack; photoBack = null; b.style.display = "none";
+      if (!p) return;
+      setBase(p.bg); if (typeof baseBtn === "function") baseBtn();
+      for (const r of document.querySelectorAll("[name=bg]")) r.checked = r.value === p.bg;
+      if (!follow) map.setView(p.c, p.z);
+    };
+    document.body.appendChild(b);
+  }
+  b.style.display = photoBack ? "block" : "none";
+}
 function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
     + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br><button data-fav='1'>⭐ お気に入り</button>"
-    + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-b='w' style='color:#188038'>👍 通りたい</button><button data-sv='1'>📷 ストビュー</button>"
+    + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-b='w' style='color:#188038'>👍 通りたい</button><button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>"
     + "<br><button data-fake='1' style='color:#888'>🧪 ここを現在地にする（debug用）</button>"   // いちばん下：ふだんは使わない
     + (fakePos ? "<br><button data-fake='0' style='color:#1a73e8'>🧪 本当の現在地にもどす（debug用）</button>" : "");
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
     if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), ev.target.dataset.b); map.closePopup(pop); return; }   // 🚫／⚠ その場でつける
     if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
+    if (ev.target.dataset.ph) { L.DomEvent.stopPropagation(ev); map.closePopup(pop); photoPeek(L.latLng(ll)); return; }
     if (ev.target.dataset.fake) { L.DomEvent.stopPropagation(ev); setFake(ev.target.dataset.fake === "1" ? [+ll.lat.toFixed(6), +ll.lng.toFixed(6)] : null); map.closePopup(pop); return; }
     if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); return; }
     if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); return; }
