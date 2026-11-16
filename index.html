@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1728</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1729</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3902,7 +3902,18 @@ function warpSplit(P) {   // 点の列 → ワープで切った かたまり（
   if (seg.length > 1) runs.push(seg);
   return runs;
 }
+// 家（🏠のまわり150m）の中にいた はじめ と おわり は のぞく（ふとんの中で◎を押した・家の中でGPSがゆれた などを 走ったことにしない）
+// 家を決めていないときは、さいしょの点から150m はなれるまでを のぞく
+function rideTrim(P) {
+  if (!P || P.length < 2) return P;
+  const H = typeof home !== "undefined" && home, far = q => hav(q, H || P[0]) > 150;
+  let s = P.findIndex(far); if (s < 0) return P;
+  let e = P.length - 1; if (H) { while (e > s && !far(P[e])) e--; e = Math.min(P.length - 1, e + 1); }   // 家に帰ってきた所まで
+  s = Math.max(0, s - 1);   // 家を出た所から
+  return P.slice(s, e + 1);
+}
 function trkStats(P) {
+  P = rideTrim(P);
   let dist = 0, move = 0;
   for (let i = 1; i < P.length; i++) { const d = hav(P[i - 1], P[i]), dt = P[i][2] - P[i - 1][2]; if (dt < 5 * 60e3 && !isWarp(P[i - 1], P[i])) { dist += d; move += dt; } }
   return { dist, move };
@@ -4426,7 +4437,7 @@ async function trkDay(R, today) {
     <div style="display:flex;gap:8px;margin:6px 0;flex-wrap:wrap">
       <div class="trkN"><small>走ったきょり</small><b>${fmtKm(dist)}</b></div>
       <div class="trkN"><small>走っていた時間</small><b>${(m => (m >= 60 ? Math.floor(m / 60) + "時間" : "") + (m % 60) + "分")(Math.round(move / 60e3))}</b></div>
-      <div class="trkN"><small>はじめ〜さいご</small><b>${hhmm(P[0][2])}〜${hhmm(P[P.length - 1][2])}</b></div>
+      <div class="trkN"><small>はじめ〜さいご</small><b>${(Q => hhmm(Q[0][2]) + "〜" + hhmm(Q[Q.length - 1][2]))(rideTrim(P))}</b></div>
     </div>
     ${oldImg ? `<img id="trkImg" src="${oldImg}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="text-align:center;color:#888;padding:30px 0;border:1px solid #eee;border-radius:8px">地図を作っているよ…</div>'}
 
