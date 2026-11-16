@@ -1425,7 +1425,10 @@ async function routeOnce(req, prog, partial) {
   const slopeK = +(cfg && cfg.slope) || 0;
   if (cfg && cfg.station !== 1) await loadStations();
   await loadAreas();   // 霊園・公園のほか、学校や工場の敷地（中の通路は通らない）にも使うので いつも読む
-  const demP = loadDem(s, g, pad + 0.005).catch(() => false);   // 標高：坂道・急坂と、印のない階段さがしに使う（いつも）
+  // 標高：坂道・⛰急坂・🪜たぶん階段に使う。3つとも「気にしない」なら 取らない（マークも出ない）
+  const stK0 = cfg && cfg.stepsGuess != null ? cfg.stepsGuess : DEFAULT_CFG.stepsGuess, slK0 = cfg && cfg.steep != null ? cfg.steep : DEFAULT_CFG.steep;
+  const needDem = slopeK || stK0 === "no" || +stK0 !== 1 || +slK0 !== 1;
+  const demP = needDem ? loadDem(s, g, pad + 0.005).catch(() => false) : Promise.resolve(false);
   const noLink = msg => Object.assign(new Error(msg), { noLink: true, usedPad: pad });
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
   { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
