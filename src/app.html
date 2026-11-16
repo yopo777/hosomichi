@@ -284,7 +284,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div id="ringLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="ringLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="ringLv" value="1"> 小さい丸</label><label><input type="radio" name="ringLv" value="2"> もっと小さい丸</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">丸の外を黒くするよ。さわるとしばらく丸がはずれるよ（有機ELなら、画面の電気が半分くらいになるよ）</div>
         <div style="font-weight:bold;margin-top:6px">⬛ ナビ中、さわらないと画面を暗くする<span class="pw s">🔋節電大</span></div>
-        <div id="blkLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="blkLv" value="0"> しない</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="50"> 50%</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="70"> 70%</label><label><input type="radio" name="blkLv" value="100"> まっ黒</label></div>
+        <div id="blkLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="blkLv" value="0"> 0%（しない）</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="25"> 25%</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="50"> 50%</label><label style="margin-right:10px"><input type="radio" name="blkLv" value="75"> 75%</label><label><input type="radio" name="blkLv" value="100"> 100%（まっ黒）</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">さわらないと暗くなるよ（50%でも、光の量は2割くらいになるよ）。音声案内・スタンプはそのまま動くよ。タッチすると地図にもどるし、曲がる手前やルートから外れたときは自動で地図が出るよ。有機ELのスマホだと、黒い所はほとんど電池を使わないよ</div>
         <div style="font-weight:bold;margin-top:6px">⏱ さわらないで何秒たったら節電する？<span class="pw s">🔋節電中</span></div>
         <div id="idleLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="idleLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="idleLv" value="10"> 10秒</label><label><input type="radio" name="idleLv" value="15"> 15秒</label></div>
@@ -3342,7 +3342,7 @@ function vcNav(off, rest) {
   else if (dist <= 120) { if (!t.a1) { t.a1 = true; say(`${Math.max(50, Math.round(dist / 50) * 50)}メートル先、${vcWord(t.d)}です${then}`); } }
 }
 // ---------- ⬛ さわらないと画面をまっ黒に（画面はついたままなので、GPS・音声は動く。有機ELなら黒は電池をほぼ使わない） ----------
-let blkScr = (v => v === true ? 100 : +v || 0)(lsGet("hosomichi_black", 0)), blkTouch = Date.now(), blkUntil = 0;
+let blkScr = (v => v === true ? 100 : +v === 70 ? 75 : +v || 0)(lsGet("hosomichi_black", 0)),   /* 前の 70% は 75% に */ blkTouch = Date.now(), blkUntil = 0;
 let BLK_IDLE = (+lsGet("hosomichi_idle", 15) || 15) * 1000;   // 節電に入るまでの秒数（5 / 10 / 15）
 for (const r of document.querySelectorAll("[name=idleLv]")) {
   r.checked = +r.value * 1000 === BLK_IDLE;
@@ -3354,7 +3354,7 @@ function saveSet(on) {
   if (on === saving) return; saving = on; document.body.classList.toggle("save", on);
   if (on) { guideStop(); flowStop(); } else flowPrep();   // マークは出したまま
 }
-for (const r of document.querySelectorAll("[name=blkLv]")) {   // しない / 50% / 70% / まっ黒
+for (const r of document.querySelectorAll("[name=blkLv]")) {   // 0（しない）/ 25 / 50 / 75 / 100（まっ黒）
   r.checked = +r.value === blkScr;
   r.onchange = () => { blkScr = +r.value; lsSet("hosomichi_black", blkScr); blkTouch = Date.now(); blkTick(); };
 }
