@@ -315,7 +315,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="simWipe" style="font-size:12px;color:#c5221f">🧪 ためしの軌跡と足あとを消す（本物はのこす）</button></div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="footDbg">👣 ためし走行も足あとに入れる（今日の分だけ・保存しない・過去には入らないよ）</label>
+
       </div>
       <div style="font-size:11px;color:#666;margin-bottom:6px">🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）→「ここを現在地にする」で決めるよ。もどすときも長おし →「本当の現在地にもどす」</div>
       </div>
@@ -407,10 +407,10 @@ const map = L.map("map", { zoomControl: false, rotate: true, bearing: 0, rotateC
   zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 120,   // 拡大・縮小をこまかく（1段ずつだと急すぎる）
   shiftKeyRotate: false, compassBearing: false }).setView([35.69, 139.75], 11);
 let baseName = (() => { try { return localStorage.getItem("hosomichi_bg") || "cyclosm"; } catch { return "cyclosm"; } })();
-// 「自動」：近いときは自転車用、ひいたら地理院 標準（町の名前がわかりやすい）
-const AUTO_Z = 14, BG_ALL = ["auto", ...Object.keys(BASES)];
-if (!BG_ALL.includes(baseName)) baseName = "cyclosm";
-const realBase = () => baseName === "auto" ? (map.getZoom() >= AUTO_Z ? "cyclosm" : "std") : baseName;
+// 「自動」はやめた（前に自動にしていた人は 自転車用に）
+const BG_ALL = Object.keys(BASES);
+if (!BG_ALL.includes(baseName)) { baseName = "cyclosm"; try { localStorage.setItem("hosomichi_bg", baseName); } catch {} }
+const realBase = () => baseName;
 let shownBase = null;
 try { localStorage.removeItem("hosomichi_base"); } catch {}
 const baseLayer = n => base[n] || (base[n] = BASES[n][1]());
@@ -2114,7 +2114,7 @@ async function histMonth(ym) {   // その月の日ごとの きょり（中身�
 map.createPane("footPane", map._rotatePane || map.getPane("mapPane")); map.getPane("footPane").style.zIndex = 360;   // ルートの線（400）より下（蛍光ペン方式） map.getPane("footPane").style.pointerEvents = "none";
 const footRend = L.svg({ pane: "footPane" })   /* ルートと同じ SVG（canvas だと 地図が動いているあいだ ルートとずれて見えた）。線は1本にまとめるので軽い */, footLayer = L.layerGroup().addTo(map), footTodayLayer = L.layerGroup().addTo(map);
 let footOn = !!lsGet("hosomichi_foot", false), footRuns = null, footStat = null, footTodayN = -1;
-let footMode = "road", footDbg = !!lsGet("hosomichi_footDbg", false);   // footMode：line＝走った線 / road＝塗れた道（道にあてはめた結果）。footDbg：🧪ためし走行も入れる（デバッグ用・今日の分だけ・保存しない）
+let footMode = "road"; const footDbg = true; lsSet("hosomichi_footDbg", null);   // 🧪ためし走行も いつも足あとに入れる（今日の分だけ・保存しない・過去には入らない。🧪のボタンや0時で消える）   // footMode：line＝走った線 / road＝塗れた道（道にあてはめた結果）。footDbg：🧪ためし走行も入れる（デバッグ用・今日の分だけ・保存しない）
 // 蛍光ペン方式：地図の道くらい太い 半透明の赤を ルートの下に（ルートのまわりに赤がはみ出す）。引いたら細く
 const footW = () => { const z = map.getZoom(); return z >= 17 ? 16 : z >= 16 ? 12 : z >= 15 ? 8 : z >= 14 ? 5 : 3; };
 const FOOT_ROAD = { color: "#ff1744", weight: 16, opacity: 0.45, lineCap: "round", lineJoin: "round", interactive: false };
@@ -2374,7 +2374,7 @@ async function footTab() {
     </div>
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:4px 0"><input type="checkbox" id="footPi" ${footPi ? "checked" : ""}>🔔 走っていて 新しく塗れたら「ピッ」</label>
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:2px 0 6px 26px">🔈<input type="range" id="footPiVol" min="0.02" max="1" step="0.02" value="${footPiVol}" style="flex:1">🔊</label>
-    ${footDbg ? '<div style="font-size:11px;color:#c5221f;margin:2px 0">🧪 いまは ためし走行も入れているよ（🛠デバッグ → ツール で切りかえ）</div>' : ""}
+
     <div class="btns" style="margin:6px 0"><button class="ib" id="footFit">🗺 足あと全体を見る</button></div>
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り</div><div id="footCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:6px 8px">しらべてるよ…</div>
     <div style="font-size:11px;color:#888;line-height:1.6">今まで走った所（🗓過去＋今日）を道にあてはめて、塗れた道をメインの地図に<b style="color:#ff1744">赤</b>で出すよ。道の6割（短い道は少しでも）を通ったら塗れるよ。色がついてない道が、まだ行ってない道！<br>ONにしておくと、ほかのタブでも出たままだよ。この端末の中だけで、SNSには出さないよ</div></div>`;
@@ -2495,8 +2495,7 @@ $("simWipe").onclick = () => {   // 🧪 今日の軌跡から ためしの点�
   if (trkV === "today" && $("trkBody")) trkDay(ride, true);
   alert(`🧪 ためしの軌跡 ${n}点を消したよ`);
 };
-$("footDbg").checked = footDbg;   // 🛠デバッグ → ツール の 🧪ためし走行 の中
-$("footDbg").onchange = e => { footDbg = e.target.checked; lsSet("hosomichi_footDbg", footDbg); footTodayN = -1; footDraw(); if ($("footCity")) footCityShow(); };
+
 let trkYM = null;
 // ---- 📷 アルバム：📣SNSで 共有・保存した写真を 小さくして この端末にのこす（日付ごと。🛤軌跡の その日の画面で見られる）----
 let albDBp = null;
@@ -2880,7 +2879,7 @@ const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${Strin
 function renderCfg() {
   const row = ([k, t, o]) => `<div class="c"><span>${t}</span><select data-k="${k}">${optHtml(o, cfg[k])}</select></div>`;
   const get = ks => OTHER_ROWS.filter(r => ks.includes(r[0])).map(row).join("");
-  let h = "<h4>背景の地図</h4>" + [["auto", ["自動（近くは自転車用・ひいたら国土地理院 標準）"]], ...Object.entries(BASES)].map(([k, [t]]) =>
+  let h = "<h4>背景の地図</h4>" + Object.entries(BASES).map(([k, [t]]) =>
     `<label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="radio" name="bg" value="${k}"${k === baseName ? " checked" : ""}>${t}</label>`).join("") +
     '<div class="note">道路データがない所（ルートを作るときにダウンロードが必要な所）は、地図が少し暗くなるよ。右の🗺ボタンでも切りかえられるよ</div>';
   h += "<h4>ルートの色</h4>" + [["kind", "道の種類"], ["slope", "坂"]].map(([k, t]) =>
