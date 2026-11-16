@@ -939,6 +939,7 @@ async function slopeView(bb) {
   }
   if (!els.length) return { st: 0, sl: 0, miss };
   const ok = await loadDem([S, W], [N, E], 0.002).catch(() => false);
+  await loadStairsAI();
   if (!ok || isNaN(heightAt((S + N) / 2, (W + E) / 2))) return { noDem: true, miss };
   const G = buildGraph({ elements: els }, DEFAULT_CFG), r = applySlope(G, 0, 1, 1, true);
   return { st: r.st, sl: r.sl, miss };
@@ -1266,6 +1267,28 @@ async function loadStations() {
     stationGrid = g; log(`駅の一覧: ${g.size}か所のまわりを「駅の通路」として見るよ`);
   } catch {}
 }
+// ==== 階段っぽさ（配布データの stairs_ai.json）：[緯度, 経度, 階段っぽさ%]
+let stairsAI = null, stairsTried = false;
+const AI_YES = 60, AI_NO = 30;   // 60%以上＝階段・30%以下＝階段じゃない（あいだは 標高だけで決める）
+async function loadStairsAI() {
+  if (stairsAI || stairsTried || !packBase) return;
+  stairsTried = true;
+  try {
+    const res = await fetch(packBase + "stairs_ai.json"); if (!res.ok) return;
+    const g = new Map(); let n = 0;
+    for (const [la, lo, p] of (await res.json()).pts || []) { const k = Math.floor(la / 0.002) + "," + Math.floor(lo / 0.002); if (!g.has(k)) g.set(k, []); g.get(k).push([la, lo, p]); n++; }
+    stairsAI = g; log(`階段っぽさ: ${n}か所`);
+  } catch { stairsTried = false; }
+}
+function stairsAt(pts) {   // 道（点のならび）から 12m以内の 階段っぽさ（いちばん近いもの）の %。なければ null
+  if (!stairsAI) return null;
+  let best = null, bd = 12;
+  for (const [la, lo] of pts) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++)
+    for (const q of stairsAI.get((Math.floor(la / 0.002) + i) + "," + (Math.floor(lo / 0.002) + j)) || []) {
+      const d = hav(la, lo, q[0], q[1]); if (d < bd) { bd = d; best = q[2]; }
+    }
+  return best;
+}
 // ==== 霊園・墓地／公園のはんい（配布データの areas.json）====
 let areaGrids = null, areaTried = false;   // { cemetery: Map, park: Map }
 const BIG_HW = new Set(["tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link"]);
@@ -1390,7 +1413,10 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
       if (seen.has(key)) continue; seen.add(key);
       if (bad || L > 80 || L < 5 || brN[a] || brN[z] || deg(z) === 2) continue;
       const dh = Math.abs(h[z] - h[a]); if (!(dh >= 2)) continue;
-      const gr = dh / L, stair = dh >= 2.5 && gr >= (car ? 0.2 : 0.1), steep = !stair && gr >= 0.1;
+      const gr = dh / L; let stair = dh >= 2.5 && gr >= (car ? 0.2 : 0.1), steep = !stair && gr >= 0.1;
+      // 階段っぽさ：高ければ 階段？・低ければ 急坂？
+      const ai = stairsAt(path.map(i => [G.lat[i], G.lon[i]]));
+      if (ai != null && gr >= 0.1) { if (ai >= AI_YES) { stair = true; steep = false; } else if (ai <= AI_NO) { stair = false; steep = true; } }
       if (!stair && !steep) continue;
       if (stair) st++; else sl++;
       { const m = path[path.length >> 1], m2 = path[(path.length - 1) >> 1];
@@ -1457,6 +1483,7 @@ async function routeOnce(req, prog, partial) {
   const pad = req.pad || padFor(s, g, area);
   const slopeK = +(cfg && cfg.slope) || 0;
   if (cfg && cfg.station !== 1) await loadStations();
+  await loadStairsAI();
   await loadAreas();   // 霊園・公園のほか、学校や工場の敷地（中の通路は通らない）にも使うので いつも読む
   // 標高：坂道・⛰急坂？・🪜階段？に使う。3つとも「気にしない」なら 取らない（マークも出ない）
   const stK0 = cfg && cfg.stepsGuess != null ? cfg.stepsGuess : DEFAULT_CFG.stepsGuess, slK0 = cfg && cfg.steep != null ? cfg.steep : DEFAULT_CFG.steep;
