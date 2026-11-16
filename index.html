@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1806</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1818</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3788,14 +3788,22 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
       if (!(here && hav(here, q.p) < 40)) { g.fillStyle = "#e8710a"; g.beginPath(); g.arc(x, y, 11, 0, 7); g.fill(); g.lineWidth = 4; g.strokeStyle = "#fff"; g.stroke(); }
     });
     if (thumbs.length) {   // 📷 小さい写真を 4すみから はしにそって並べる（撮った所から いちばん近い あき場所へ。入らない分は出さない）
-      const T = 120, G = 10, y0 = (test ? 110 : 0) + G, y1 = H - 120 - T - G, slots = [];
+      const T = 84, G = 8, y0 = (test ? 110 : 0) + G, y1 = H - 120 - T - G, slots = [];   // 小さめ
       slots.push([G, y0], [W - T - G, y0], [G, y1], [W - T - G, y1]);   // 4すみ
       for (let k = 1; ; k++) { let add = 0;   // すみから 内がわへ じゅんに
         const xs = [G + k * (T + G), W - T - G - k * (T + G)], ys = [y0 + k * (T + G), y1 - k * (T + G)];
         for (const x of xs) if (x > G && x < W - T - G && !slots.some(s => Math.abs(s[0] - x) < T && Math.abs(s[1] - y0) < T)) { slots.push([x, y0], [x, y1]); add++; }
         for (const y of ys) if (y > y0 && y < y1 && !slots.some(s => Math.abs(s[1] - y) < T && Math.abs(s[0] - G) < T)) { slots.push([G, y], [W - T - G, y]); add++; }
         if (!add) break; }
-      const used = new Set(), put = [];
+      // 軌跡にかぶる場所には置かない（線の点を 約8pxおきに見る）
+      const tp = [];
+      for (const r of runs) for (let k = 1; k < r.length; k++) {
+        const [ax, ay] = X(r[k - 1]), [bx, by] = X(r[k]), n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 8));
+        for (let m = 0; m <= n; m++) tp.push([ax + (bx - ax) * m / n, ay + (by - ay) * m / n]);
+      }
+      if (here) tp.push(X(here));
+      const used = new Set(), put = [], M = 14;
+      slots.forEach((sl, i) => { if (tp.some(([x, y]) => x > sl[0] - M && x < sl[0] + T + M && y > sl[1] - M && y < sl[1] + T + M)) used.add(i); });
       for (const q of thumbs) {
         const [px, py] = X(q.p); let bi = -1, bd = Infinity;
         slots.forEach((s, i) => { if (used.has(i)) return; const d = Math.hypot(s[0] + T / 2 - px, s[1] + T / 2 - py); if (d < bd) { bd = d; bi = i; } });
