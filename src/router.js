@@ -1721,7 +1721,7 @@ async function routeOnce(req, prog, partial) {
   else if (conf.length > 1 && !(cfg && (cfg.alts === false || cfg.alts === "no"))) {
     try {
       const ta = Date.now(), Dkm = hav(s[0], s[1], g[0], g[1]) / 1000;
-      const offKm = Math.min(6, Math.max(1, Dkm * 0.15));          // 左右にずらす量
+      const offKm = Math.min(8, Math.max(1.5, Dkm * 0.25));        // 左右にずらす量（大きめ：遠くても ちがう道を）
       let altTiles = tiles;
       const wpad = Math.max(pad, offKm / 111 + 0.01), wt = tilesFor(s, g, wpad, tiles[0].key.startsWith("0.01") ? 0.01 : 0.005);
       if (wt.length > tiles.length && wt.length <= 1500) {          // 広げた所のデータを手元から集める（ダウンロードはしない）
@@ -1751,15 +1751,16 @@ async function routeOnce(req, prog, partial) {
           const tryPath = (p, how) => {
             if (!p || p.length < 2) return;
             const a = analyze(G, p);
-            if (a.len > mainLen * 1.35) return;                                        // 遠回りすぎ
-            if (picked.some(st => shared(p, st) > 0.5)) return;                         // 半分以上同じ道
-            picked.push(setOf(p)); cands.push({ p, a, how });
+            if (a.len > mainLen * 1.7) return;                                         // 遠回りすぎ（1.7倍まではOK）
+            if (picked.some(st => shared(p, st) > 0.3)) return;                         // 3割より多く同じ道
+            const ov = shared(p, picked[0]);
+            picked.push(setOf(p)); cands.push({ p, a, how, ov });
           };
           // ① まん中を左右にずらした地点を通る
           const c0 = Math.cos(s[0] * RAD), ex = (g[1] - s[1]) * c0 * 111.32, ny = (g[0] - s[0]) * 111.32, Lk = Math.hypot(ex, ny) || 1;
           const px = -ny / Lk, py = ex / Lk, mla = (s[0] + g[0]) / 2, mlo = (s[1] + g[1]) / 2;
-          for (const sg of [1, -1]) {
-            const vla = mla + sg * py * offKm / 111.32, vlo = mlo + sg * px * offKm / (111.32 * c0);
+          for (const [sg, kk] of [[1, 1], [-1, 1], [1, 0.5], [-1, 0.5]]) {   // 大きく・半分 左右にずらす
+            const vla = mla + sg * py * offKm * kk / 111.32, vlo = mlo + sg * px * offKm * kk / (111.32 * c0);
             const qv = nearestGood(G, vla, vlo, qs.n); if (qv.n < 0 || qv.d > 1500) continue;
             const ra = search(G, qs.n, qv.n, [G.lat[qv.n], G.lon[qv.n]], false); if (ra.goal < 0) continue;
             const rb = search(G, qv.n, qg.n, g, false); if (rb.goal < 0) continue;
@@ -1767,16 +1768,21 @@ async function routeOnce(req, prog, partial) {
             let k = 0; while (k + 1 < p2.length && p1.length - 2 - k >= 0 && p1[p1.length - 2 - k] === p2[1 + k]) k++;   // 行って戻るムダをけずる
             tryPath(p1.slice(0, p1.length - k).concat(p2.slice(1 + k)), sg > 0 ? "左まわり" : "右まわり");
           }
-          // ② 使った道を通りにくくしてさがしなおす
-          const penal = p => { for (let i = 1; i < p.length; i++) { const u = p[i - 1], v = p[i];
-            for (const e of G.adj[u]) if (e.v === v) e.c *= 3; for (const e of G.adj[v]) if (e.v === u) e.c *= 3; } };
+          // ② 使った道と そのまわり（約150m・となりの平行な道も）を通りにくくしてさがしなおす
+          const cellK = (la, lo) => Math.round(la * 740) + "," + Math.round(lo * 600);
+          const penal = p => { const cs = new Set();
+            for (let i = 0; i < p.length; i++) { const u = p[i]; cs.add(cellK(G.lat[u], G.lon[u]));
+              if (i) { const w = p[i - 1], n = Math.floor(eLen(w, u) / 60); for (let k = 1; k <= n; k++) cs.add(cellK(G.lat[w] + (G.lat[u] - G.lat[w]) * k / (n + 1), G.lon[w] + (G.lon[u] - G.lon[w]) * k / (n + 1))); } }
+            for (let u = 0; u < G.adj.length; u++) { if (!G.adj[u] || !cs.has(cellK(G.lat[u], G.lon[u]))) continue; for (const e of G.adj[u]) if (cs.has(cellK(G.lat[e.v], G.lon[e.v]))) e.c *= 2.5; }
+            for (let i = 1; i < p.length; i++) { const u = p[i - 1], v = p[i];
+              for (const e of G.adj[u]) if (e.v === v) e.c *= 3; for (const e of G.adj[v]) if (e.v === u) e.c *= 3; } };
           let last = p0;
-          for (let tries = 0; tries < 4 && cands.length < 4; tries++) {
+          for (let tries = 0; tries < 5 && cands.length < 6; tries++) {
             penal(last);
             const r1 = search(G, qs.n, qg.n, g, false); if (r1.goal < 0) break;
             last = pathTo(r1.prev, r1.goal); tryPath(last, "べつの道");
           }
-          cands.sort((a, b) => a.a.len - b.a.len);
+          cands.sort((a, b) => (a.ov - b.ov) || (a.a.len - b.a.len));   // いちばんのルートと 重なりが少ないものから（遠くてもOK）
           for (const { p, a } of cands.slice(0, 2))
             alts.push({ route: p.map(u => [G.lat[u], G.lon[u]]), ek: a.ek, ok: a.ok, xw: a.xw, ng: a.ng, tp: a.tp, kinds: a.kinds, turns: a.turns, len: a.len });
           log(`ほかのルート: 候補 ${cands.length}本（${cands.map(c => c.how + " " + (c.a.len / 1000).toFixed(1) + "km").join("・") || "なし"}）`);
