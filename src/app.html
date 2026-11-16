@@ -2287,9 +2287,11 @@ function evSet(sp) {   // sp：m/秒。止まりぎわ → 時速36km 以上で�
   if (n.nzf) n.nzf.frequency.setTargetAtTime(K.nz[1] + fq * K.nz[2], t, 0.5);
   n.g.gain.setTargetAtTime(run ? evVol * 0.3 * K.v * (c && evCoast && evAcc < -0.08 ? 0.3 : 1) : 0, t, run ? 0.4 : 0.6);   // 止まったら スッと消える・カラカラ中は小さく
 }
-function evPos(ll, gsp) {   // GPS（ためしもふくむ）が来るたび
+function evPos(ll, gsp, acc) {   // GPS（ためしもふくむ）が来るたび
   if (!evOn) return;
   const now = Date.now();
+  // 🏠 家のそば（80m）・GPSがあやしい（家の中など ±35m より悪い）ときは鳴らさない（止まっているのに 位置がゆれて「走っている」ことになるので）
+  if ((home && hav(ll, home) < 80) || (acc && acc > 35)) { evLast = null; if (evSp) { evSp = 0; evSet(0); } return; }
   let sp = gsp != null && !isNaN(gsp) ? gsp : null;
   if (sp == null && evLast) { const dt = (now - evLast[1]) / 1000; if (dt > 0.2) sp = hav(evLast[0], ll) / dt; }
   if (!evLast || now - evLast[1] > 200) evLast = [ll, now];
@@ -3063,7 +3065,7 @@ function gpsSkip() {
 }
 function onPos(p) {
   const ll = [p.coords.latitude, p.coords.longitude];
-  try { evPos(ll, p.coords.speed); } catch {}
+  try { evPos(ll, p.coords.speed, p.coords.accuracy); } catch {}
   try { rideAdd(ll, p.coords.accuracy); } catch {}
   hereFix = [ll, Date.now(), p.coords.accuracy];
   if (gpsSkip()) return;
