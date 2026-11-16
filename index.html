@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.0005</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.0010</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -241,10 +241,11 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>📤 自分のデータを まるごと書き出す</b>
-        <div style="font-size:11px;color:#666;margin-top:2px">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あとを、1つの JSON ファイルにしてダウンロードするよ（📷写真は重いので入れないよ）。パソコンで ながめる用だよ</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あとを、1つの JSON ファイルにしてダウンロードするよ。パソコンで ながめたり、パソコンのナビをスマホとおなじにしたりする用だよ</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="myPh" checked>📷 アルバムの写真も入れる（1枚 100KBくらい）</label>
         <div class="btns" style="margin-top:6px"><button class="ib" id="myExp" style="font-size:12px">⬇ JSON で書き出す</button><button class="ib" id="myImp" style="font-size:12px">⬆ 読みこんで おなじにする</button></div>
         <input type="file" id="myFile" accept=".json,application/json" style="display:none">
-        <div style="font-size:11px;color:#666;margin-top:2px">「⬆ 読みこむ」は、この端末のデータを ファイルの中身で <b>上書き</b>して、書き出した端末とおなじにするよ（スマホ → パソコンのミラー用）。道路データ・📷写真・この端末だけの設定（自動でためる・ためしの現在地など）はそのままだよ</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">「⬆ 読みこむ」は、この端末のデータを ファイルの中身で <b>上書き</b>して、書き出した端末とおなじにするよ（スマホ → パソコンのミラー用）。道路データ・この端末だけの設定（自動でためる・ためしの現在地など）はそのままだよ</div>
         <div style="font-size:11px;color:#b45309;margin-top:2px">⚠ 家の場所や走った道がぜんぶ入っているよ。人にわたしたり、公開の場所に置いたりしないでね</div>
       </div>
       <div style="margin-top:10px;padding:8px;border-radius:8px;background:#e8f0fe;font-size:12px;line-height:1.6">
@@ -2757,13 +2758,18 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.0005", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.0010", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
+    if ($("myPh").checked) {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
+      const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
+      out.album = [];
+      for (const o of await albAll()) { const u = o.b instanceof Blob ? await toUrl(o.b) : null; if (u) out.album.push({ ...o, b: u }); }
+    }
     const blob = new Blob([JSON.stringify(out)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = `hosomichi-mydata-${today()}.json`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    addLog(`📤 自分のデータを書き出したよ（${(blob.size / 1024).toFixed(0)}KB・過去の記録 ${(out.hist || []).length}日分）`, "m");
+    addLog(`📤 自分のデータを書き出したよ（${(blob.size / 1024).toFixed(0)}KB・過去の記録 ${(out.hist || []).length}日分・📷${out.album ? out.album.length + "枚" : "なし"}）`, "m");
   } catch (e) { alert("書き出せなかったよ: " + e); }
   b.disabled = false; b.textContent = "⬇ JSON で書き出す";
 };
@@ -2780,13 +2786,18 @@ $("myFile").onchange = async e => {
   let d; try { d = JSON.parse(await f.text()); } catch { return alert("JSON が読めなかったよ"); }
   if (!d || d.app !== "hosomichi" || d.kind !== "mydata" || !d.localStorage) return alert("ほそみちナビで書き出したファイルじゃないみたい");
   const when = new Date(d.at).toLocaleString("ja-JP");
-  if (!confirm(`${when} に書き出したデータで、この端末を上書きするよ。\n（過去の記録 ${(d.hist || []).length}日分）\n\n⚠ この端末の 家・お気に入り・ルート・印・設定・過去の記録・足あとは、ファイルの中身に入れかわるよ。もとにはもどせないよ。\n\nいい？`)) return;
+  if (!confirm(`${when} に書き出したデータで、この端末を上書きするよ。\n（過去の記録 ${(d.hist || []).length}日分・📷写真 ${d.album ? d.album.length + "枚" : "なし（この端末の写真はそのまま）"}）\n\n⚠ この端末の 家・お気に入り・ルート・印・設定・過去の記録・足あとは、ファイルの中身に入れかわるよ。もとにはもどせないよ。\n\nいい？`)) return;
   try {
     for (const k of Object.keys(localStorage)) if (k.startsWith("hosomichi_") && !MY_KEEP.has(k)) localStorage.removeItem(k);
     const raw = new Set(d.lsRaw || []);
     for (const [k, v] of Object.entries(d.localStorage)) if (k.startsWith("hosomichi_") && !MY_KEEP.has(k)) localStorage.setItem(k, raw.has(k) ? v : JSON.stringify(v));
     if (d.hist) await idbReplace(histOpen(), "days", d.hist);
     if (d.foot) await idbReplace(footDB(), "kv", d.foot);
+    if (d.album) {   // 📷 写真が入っているファイルのときだけ、アルバムも入れかえ
+      const ph = [];
+      for (const o of d.album) { try { ph.push({ ...o, b: await (await fetch(o.b)).blob() }); } catch {} }
+      await idbReplace(albDB(), "ph", ph);
+    }
     alert("読みこんだよ！ページを読みなおすね");
     location.reload();
   } catch (err) { alert("とちゅうで失敗しちゃった: " + err); }
