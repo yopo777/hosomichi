@@ -2406,6 +2406,24 @@ async function footSegsRun(prog) {   // 過去の分（まだのものだけ あ
   if (today) { prog("今日の分をあてはめてるよ…"); for (const [k, ...v] of await footMatchReq(footSplit(footAfter(ride.pts), footDbg))) all[k] = v; }
   return all;
 }
+let footCitySort = lsGet("hosomichi_citysort", "p") === "m" ? "m" : "p", footCityLast = null;   // p：％順 / m：走った距離順
+function footCityHtml() {
+  const { tot, C, by } = footCityLast;
+  let h = `<div style="display:flex;align-items:center;gap:6px;color:#222;margin-bottom:4px"><span style="flex:1">通った道（ぜんぶ）：<b>${fmtKm(tot)}</b></span>`
+    + (C ? ["p", "m"].map(k => `<button class="ib" data-csort="${k}" style="font-size:11px;padding:2px 8px;${footCitySort === k ? "background:#e8f0fe;border-color:#1a73e8;color:#1a73e8;font-weight:bold" : ""}">${k === "p" ? "％順" : "距離順"}</button>`).join("") : "") + `</div>`;
+  if (!C) h += "市ごとの％は、配布データに cities.json ができたら出るよ";
+  else {
+    const list = Object.keys(by).map(c => ({ n: C.names[c], m: by[c], all: C.total[c] })).map(x => ({ ...x, p: x.all ? 100 * x.m / x.all : 0 }))
+      .sort((a, b) => footCitySort === "m" ? b.m - a.m : b.p - a.p);
+    h += list.length ? list.map(x => `<div style="display:flex;align-items:center;gap:6px;color:#222;padding:3px 0;border-top:1px solid #f3f3f3">
+      <span style="width:6.5em;flex:none">${esc(x.n)}</span>
+      <span style="flex:1;height:8px;background:#f1f1f1;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.min(100, Math.max(1, x.p)).toFixed(1)}%;background:#ff6d00"></i></span>
+      <b style="width:4.2em;text-align:right">${x.p < 1 ? x.p.toFixed(2) : x.p.toFixed(1)}%</b>
+      <small style="width:7.5em;text-align:right;color:#888">${(x.m / 1000).toFixed(1)}/${x.all < 10000 ? (x.all / 1000).toFixed(1) : Math.round(x.all / 1000)}km</small></div>`).join("") : "まだ どの市も塗れてないよ";
+  }
+  $("footCity").innerHTML = h;
+  for (const b of $("footCity").querySelectorAll("[data-csort]")) b.onclick = () => { footCitySort = b.dataset.csort; lsSet("hosomichi_citysort", footCitySort); footCityHtml(); };
+}
 async function footCityShow() {
   const box = () => $("footCity"); if (!box() || footBusy) return;
   footBusy = true;
@@ -2415,17 +2433,7 @@ async function footCityShow() {
     let tot = 0; const by = {};
     for (const k in all) { const [L, la, lo] = all[k]; tot += L; if (C) { const c = footCityOf(C, la, lo); if (c >= 0) by[c] = (by[c] || 0) + L; } }
     if (!box()) return;
-    let h = `<div style="color:#222;margin-bottom:4px">通った道（ぜんぶ）：<b>${fmtKm(tot)}</b></div>`;
-    if (!C) h += "市ごとの％は、配布データに cities.json ができたら出るよ";
-    else {
-      const list = Object.keys(by).map(c => ({ n: C.names[c], m: by[c], all: C.total[c] })).map(x => ({ ...x, p: x.all ? 100 * x.m / x.all : 0 })).sort((a, b) => b.p - a.p);
-      h += list.length ? list.map(x => `<div style="display:flex;align-items:center;gap:6px;color:#222;padding:3px 0;border-top:1px solid #f3f3f3">
-        <span style="width:6.5em;flex:none">${esc(x.n)}</span>
-        <span style="flex:1;height:8px;background:#f1f1f1;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.min(100, Math.max(1, x.p)).toFixed(1)}%;background:#ff6d00"></i></span>
-        <b style="width:4.2em;text-align:right">${x.p < 1 ? x.p.toFixed(2) : x.p.toFixed(1)}%</b>
-        <small style="width:7.5em;text-align:right;color:#888">${(x.m / 1000).toFixed(1)}/${x.all < 10000 ? (x.all / 1000).toFixed(1) : Math.round(x.all / 1000)}km</small></div>`).join("") : "まだ どの市も塗れてないよ";
-    }
-    box().innerHTML = h;
+    footCityLast = { tot, C, by }; footCityHtml();
   } catch (e) { if (box()) box().textContent = "しらべられなかったよ: " + e.message; }
   finally { footBusy = false; }
 }
