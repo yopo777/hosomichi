@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1859</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1903</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -4308,8 +4308,11 @@ async function footSegsRun(prog) {   // 過去の分（まだのものだけ あ
 }
 let footFirst = {};   // 区間 → はじめて塗った日（"2026-11-16"）。今日の分は入っていない（今日の区間で ここにないもの＝今日はじめて塗った）
 // 🛤 その日の 🏙市ごと：通った道と、その日はじめて塗った道（過去の記録・今日の軌跡の下）
+const trkCityC = new Map();   // 日付:点の数 → 表のHTML（同じ記録なら 計算しなおさない。今日は 走って点がふえたら 計算しなおす）
 async function trkCityShow(R, today) {
   const box = () => $("trkCity"); if (!box()) return;
+  const ck = dkey(R.t0) + ":" + (R.pts || []).length + ":" + (today ? 1 : 0);
+  if (trkCityC.has(ck)) { box().innerHTML = trkCityC.get(ck); return; }
   try {
     const C = await footCityData(); if (!C) { box().textContent = "市ごとは、配布データに cities.json ができたら出るよ"; return; }
     await footSegsAll(() => {});   // はじめて塗った日を そろえる
@@ -4321,9 +4324,11 @@ async function trkCityShow(R, today) {
     }
     const list = Object.values(by).sort((a, b) => b.nw - a.nw || b.m - a.m);
     if (!box()) return;
-    box().innerHTML = list.length ? `<div style="display:flex;color:#888;font-size:11px;padding:0 0 2px"><span style="flex:1">市区町村</span><span style="width:6em;text-align:right">通った道</span><span style="width:7em;text-align:right">はじめて塗った</span></div>`
+    const html = list.length ? `<div style="display:flex;color:#888;font-size:11px;padding:0 0 2px"><span style="flex:1">市区町村</span><span style="width:6em;text-align:right">通った道</span><span style="width:7em;text-align:right">はじめて塗った</span></div>`
       + list.map(x => `<div style="display:flex;color:#222;padding:3px 0;border-top:1px solid #f3f3f3"><span style="flex:1">${esc(x.n)}</span><span style="width:6em;text-align:right">${(x.m / 1000).toFixed(1)}km</span><b style="width:7em;text-align:right;color:#e8710a">${x.nw >= 50 ? "+" + (x.nw / 1000).toFixed(1) + "km" : "—"}</b></div>`).join("")
       : "道にあてはまる所がなかったよ";
+    trkCityC.set(ck, html); if (trkCityC.size > 30) trkCityC.delete(trkCityC.keys().next().value);
+    if (box()) box().innerHTML = html;
   } catch (e) { if (box()) box().textContent = "しらべられなかったよ: " + e.message; }
 }
 let footCitySort = lsGet("hosomichi_citysort", "p") === "m" ? "m" : "p", footCityLast = null;   // p：％順 / m：走った距離順
