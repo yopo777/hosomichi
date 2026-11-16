@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.2012</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.2016</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3643,13 +3643,11 @@ function snsPassBy(P) {
   }
   return out.filter((_, k) => !cut[k]);
 }
-let snsHereOn = null;   // 📍 イマココを出す（null：おまかせ。SNSの画面を開くたびに おまかせにもどす）
-const snsHereAuto = () => !!(ride && ride.pts.length && !ride.done && dkey(ride.t0) === dkey(Date.now()) && Date.now() - ride.pts[ride.pts.length - 1][2] < 3 * 3600e3);
 async function snsData() {
   const R = snsTest ? 0 : snsR;
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
-  // 走っている途中（イマココを出す）：📣SNSの「📍 イマココを出す」で決める（はじめは、今日の記録で さいごの点が3時間以内ならオン）
-  const riding = useRide && !ride.done && (snsHereOn ?? snsHereAuto());
+  // 走っている途中（イマココを出す）：今日の記録なら いつも。さいごの点が 家（🔒秘密の場所・出発地）のそばの消す丸の中なら「おわり」（イマココなし）
+  const riding = useRide && !ride.done && dkey(ride.t0) === dkey(Date.now());
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
   // 🔒 消す所：家と、その日の出発地（親せきの家などから出ても、かならず消す）
   const anchors = [...(home ? [home] : []), ...secrets.map(q => q.p)];   // 家と 🔒秘密の場所
@@ -3679,7 +3677,7 @@ async function snsData() {
   // 🚲 スタート直後（見せられる線がまだない＝家のまわりの丸の中）：地図のかわりに「スタート！」の絵
   // 🏁 帰ってきた（今いる所が 消す丸の中＝家・秘密の場所のそば）：「サイクリングしてきたよ」
   const visLen = runs.reduce((a, r) => a + lineLen(r), 0), start = !useRide || visLen < 200, fin = !start && riding && !here;
-  const L = [start ? "ほそみちナビ(無料)🚴でサイクリングスタート！" : fin || (useRide && !riding) ? "ほそみちナビ(無料)🚴でサイクリングしてきたよ" : "ほそみちナビ(無料)🚴でサイクリング中"];
+  const L = [start ? "ほそみちナビ(無料)🚴でサイクリングスタート！" : !here ? "ほそみちナビ(無料)🚴でサイクリングしてきたよ" : "ほそみちナビ(無料)🚴でサイクリング中"];
   let marks = [];   // 🏷 地図に小さく出す 通った所の名前   // いつも同じ（どこがスタートでどこが終わりかは決めない）   // 日付は入れない
   if (useRide) {
     // 📍 行った所：経由地・寄り道スポット・スタンプ・通った駅/お寺/神社 を時間順に。
@@ -4593,7 +4591,7 @@ async function snsOpen() {
   if (IN_APP) { $("trkBody").innerHTML = '<div style="font-size:13px;padding:12px;border:1px solid #f3c2c2;background:#fde7e9;color:#c5221f;border-radius:10px;line-height:1.6"><b>📱 アプリの中では 📣SNS は作れないよ</b><br>ここは いつものブラウザとデータがべつで、🏠家 や 🔒秘密の場所 が入っていないの。このまま作ると 家のまわりが消えないから、「︙」→「ブラウザで開く」で開いてから作ってね</div>'; return; }
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:15px">📣 SNSに出す</b> <span style="font-size:11px;color:#666">消しかた・写真を決めてから「🖼 作る」を押してね</span>
-    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="1000">さいごの1km</option><option value="3000">さいごの3km</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><label style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;font-weight:bold;color:#1a73e8"><input type="checkbox" id="snsHere">📍 イマココを出す</label><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地もかならず消すよ。とちゅうで長くいた所は、ただ通りすぎたように見せるよ）。投稿はXなどで自分でしてね</span></div>
+    <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="1000">さいごの1km</option><option value="3000">さいごの3km</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地もかならず消すよ。とちゅうで長くいた所は、ただ通りすぎたように見せるよ）。投稿はXなどで自分でしてね</span></div>
     <div id="snsWarn" style="display:none;background:#fde7e9;color:#c5221f;font-weight:bold;font-size:13px;padding:6px 8px;border-radius:8px;margin-bottom:6px">🧪 テスト中：家のまわりも出発地も消していないよ。共有・文やURLのコピーはできないよ（画像の保存だけできるよ。画像にも「テスト」と入るよ。画面をとじるともどるよ）</div>
     <div style="margin-top:2px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
       <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ。撮った所に小さく置くよ</span></div>
@@ -4635,7 +4633,6 @@ async function snsOpen() {
     stale(); lock();
   };
   $("snsLbl").value = snsLbl; $("snsLbl").onchange = () => { snsLbl = $("snsLbl").value; lsSet("hosomichi_snsLbl", snsLbl); stale(); };
-  snsHereOn = null; $("snsHere").checked = snsHereAuto(); $("snsHere").onchange = () => { snsHereOn = $("snsHere").checked; stale(); };
   $("snsTr").value = snsTrail; $("snsTr").onchange = () => { snsTrail = +$("snsTr").value; lsSet("hosomichi_trail", snsTrail); stale(); };
   lock();
   $("snsMake").onclick = async () => { $("snsMake").disabled = true; try { snsCm = $("snsCm").value; await draw(await snsData()); } finally { $("snsMake").disabled = false; } };
