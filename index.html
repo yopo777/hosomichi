@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1717</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1719</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3856,10 +3856,15 @@ async function exifOf(f) {
 function photoPlace(ex, f, d) {
   const near = p => d.runs.some(r => r.some(q => hav(q, p) < 150)) || (d.here && hav(d.here, p) < 150);
   if (ex.p && near(ex.p)) return ex.p;
-  const t = ex.t || f.lastModified; if (!t || !ride || !ride.pts.length) return null;
-  let bi = -1, bd = 10 * 60e3; ride.pts.forEach((q, i) => { const dt = Math.abs(q[2] - t); if (dt < bd) { bd = dt; bi = i; } });
-  if (bi < 0) return null; const p = [ride.pts[bi][0], ride.pts[bi][1]];
-  return near(p) ? p : null;
+  const t = ex.t || f.lastModified, P = ride && ride.pts;
+  const fail = why => { addLog(`📷 写真の場所がわからなかった（${why}・撮った時刻 ${t ? new Date(t).toLocaleTimeString("ja-JP") : "なし"}・写真の位置情報 ${ex.p ? "あり" : "なし"}）`, "w"); return null; };
+  if (!t || !P || !P.length) return fail("走った記録がない");
+  // 撮った時刻にいちばん近い 走った点。スマホが寝ていて 記録がとぎれている間（とまって写真をとった など）でも、
+  // 今日走ったはじめ〜おわり（＋1時間）の間なら いちばん近い点を使う（とまった所の前後の点は だいたい同じ場所）
+  if (t < P[0][2] - 10 * 60e3 || t > P[P.length - 1][2] + 60 * 60e3) return fail("走った時間の外");
+  let bi = 0, bd = Infinity; P.forEach((q, i) => { const dt = Math.abs(q[2] - t); if (dt < bd) { bd = dt; bi = i; } });
+  const p = t > P[P.length - 1][2] && d.here ? d.here : [P[bi][0], P[bi][1]];
+  return near(p) ? p : fail("地図に出していない所");
 }
 async function snsPhoto(f) {   // 写真は描きなおして、位置情報（Exif）を消す・大きすぎるのは小さく
   const bm = await createImageBitmap(f, { imageOrientation: "from-image" }).catch(() => null); if (!bm) return null;
