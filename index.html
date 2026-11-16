@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.0930</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1033</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -5141,11 +5141,20 @@ for (const r of document.querySelectorAll("[name=blkLv]")) {   // しない / 50
 }
 function blkShowMap(ms) { blkUntil = Date.now() + ms; blkTick(); }   // 曲がる手前など：しばらく地図を出す
 document.addEventListener("pointerdown", () => { blkTouch = Date.now(); document.body.classList.add("ringOff"); }, true);
+// メニューをさわっている（スクロール・文字入力・えらぶ）ときも「さわっている」とする
+for (const ev of ["pointermove", "wheel", "keydown", "input", "change", "focusin"]) document.addEventListener(ev, e => { if (ev !== "pointermove" || e.buttons || e.pointerType === "touch") blkTouch = Date.now(); }, { capture: true, passive: true });
+document.addEventListener("scroll", () => { blkTouch = Date.now(); }, { capture: true, passive: true });
+function menuOpen() {   // メニュー・ふきだし・入力中・ききかえしの画面が出ているあいだは 節電に入らない
+  const a = document.activeElement;
+  return !$("panel").classList.contains("min") || !!(map._popup && map.hasLayer(map._popup)) || !!document.querySelector("#geoAsk,#msnAsk")
+    || !!(a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName));
+}
 // 暗いときのタッチは「明るくする」だけ。下のボタンが押されないように、指をはなしてから少しして消す
 $("blk").addEventListener("touchstart", e => { blkTouch = Date.now(); e.preventDefault(); }, { passive: false });
 $("blk").addEventListener("pointerup", () => { blkTouch = Date.now(); setTimeout(() => { $("blk").style.display = "none"; }, 350); });
 $("blk").addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); });
 function blkTick() {
+  if (menuOpen()) blkTouch = Date.now();   // メニューを開いているあいだは 時間をすすめない（とじてから数えはじめる）
   document.body.classList.toggle("ringOff", Date.now() - blkTouch < BLK_IDLE);
   const now = Date.now(), on = blkScr && wid !== null && follow && !document.hidden && now - blkTouch > BLK_IDLE && now > blkUntil;
   if (on) {
