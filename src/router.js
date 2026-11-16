@@ -911,6 +911,25 @@ async function packTile(big) {   // 大きいマスを配布データから取�
   return { el, bytes: blob.size };
 }
 // 📍 一方通行の矢印用：見えている範囲の一方通行の道（端末にある道路データか配布データだけ。サーバーには取りにいかない）
+// 📍長押し「このあたりの🪜⛰を見る」：見えている範囲の道（端末か配布データにあるものだけ）と標高で、たぶん階段・急坂をさがす
+async function slopeView(bb) {
+  const [S, W, N, E] = bb, T = 0.01, keys = [];
+  for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
+  if (keys.length > 36) return { tooWide: true };
+  const els = [], seen = new Set(); let miss = 0;
+  for (const k of keys) {
+    let el = mem.get(k);
+    if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+    if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+    if (!el) { miss++; continue; }
+    for (const e of el) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); els.push(e); } }
+  }
+  if (!els.length) return { st: 0, sl: 0, miss };
+  const ok = await loadDem([S, W], [N, E], 0.002).catch(() => false);
+  if (!ok || isNaN(heightAt((S + N) / 2, (W + E) / 2))) return { noDem: true, miss };
+  const G = buildGraph({ elements: els }, DEFAULT_CFG), r = applySlope(G, 0, 1, 1, true);
+  return { st: r.st, sl: r.sl, miss };
+}
 async function onewayIn(bb) {
   const [S, W, N, E] = bb, T = 0.01, keys = [];
   for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
@@ -1331,7 +1350,7 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 //  ・急坂：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×3。じっさいは階段のことも多い）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
-function applySlope(G, k, stK, slK) {   // k：のぼり1mを何m分 / stK：🪜たぶん階段の倍率（"no"＝通らない） / slK：⛰急坂の倍率
+function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍長押しの「このあたりを見る」）   // k：のぼり1mを何m分 / stK：🪜たぶん階段の倍率（"no"＝通らない） / slK：⛰急坂の倍率
   if (typeof OffscreenCanvas === "undefined") return G;
   const n = G.lat.length, h = new Float32Array(n);
   for (let i = 0; i < n; i++) h[i] = G.inGraph[i] ? heightAt(G.lat[i], G.lon[i]) : NaN;
@@ -1377,6 +1396,7 @@ function applySlope(G, k, stK, slK) {   // k：のぼり1mを何m分 / stK：�
     e.c += dh * k;   // 急な所は ⛰急坂・🪜たぶん階段 の設定のほうで見るので、ここは のぼった高さだけ
   }
   if (marks.length && typeof self !== "undefined" && self.postMessage && typeof module === "undefined") self.postMessage({ type: "slope", marks });
+  if (count) return { st, sl };
   if (st || sl) log(`標高で：🪜たぶん階段 ${st}か所（${stK === "no" ? "通らない" : "×" + (+stK || 1)}）・⛰急坂 ${sl}か所（×${+slK || 1}）`);
   return G;
 }
@@ -1784,6 +1804,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "packStop") { pkStop = true; return; }
       if (d.cmd === "footLive") { const segs = await footLive(d.t0, d.pair); return self.postMessage({ type: "footLive", segs }); }
       if (d.cmd === "footMatch") { const segs = await footMatch(d.runs); return self.postMessage({ type: "footMatch", id: d.id, segs }); }
+      if (d.cmd === "slopeView") { const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;

@@ -366,7 +366,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
-<button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
+<button id="mk" title="マークを出す／かくす（長押し：このあたりの🪜たぶん階段・⛰急坂を見る）">📍<small id="mkL">マーク</small></button>
 <button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">➤</span><small id="flL">進行方向</small></button>
 <button id="col" title="地図の種類">🗺<small id="colL"></small></button>
 <div id="legend"></div>
@@ -903,6 +903,11 @@ worker.onmessage = ev => {
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
   if (m.type === "pk") { onPk(m); return; }
   if (m.type === "slope") { slopeAdd(m.marks); return; }
+  if (m.type === "slopeView") {
+    setMsg(m.tooWide ? "🪜⛰ 広すぎるよ。もう少し近づいて（ズーム14より近く）長押ししてね" : m.noDem ? "🪜⛰ 標高のデータが取れなかったよ（電波かな？）"
+      : `🪜⛰ このあたり：たぶん階段 ${m.st}か所・急坂 ${m.sl}か所${m.miss ? `（道のデータがない所 ${m.miss}マスは見てないよ）` : ""}`, !!(m.tooWide || m.noDem));
+    return;
+  }
   if (m.type === "export") { onExport(m); return; }
   if (m.type === "imported") { onImported(m); return; }
   if (m.type === "stats") {
@@ -4054,9 +4059,23 @@ function slopeAdd(list) {
 function slopeClear() { slopeLayer.clearLayers(); slopeSeen.clear(); }
 // 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印・🪜たぶん階段・⛰急坂）をまとめて かくす／出す。えらんだジャンルはそのまま
 function mkBtn() {
-  $("mk").style.display = spotOn.size || slopeSeen.size ? "block" : "none";
+  $("mk").style.display = "block";   // 長押しで🪜⛰を見るので いつも出す
   $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
   for (const ly of [spotLayer, owLayer, slopeLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
+}
+// 📍を長押し：このあたり（見えている範囲）の 🪜たぶん階段・⛰急坂 を1回だけ計算してマークを出す（走っている間は自動では計算しない）
+{ let lpT = null, lpDone = false;
+  const up = () => clearTimeout(lpT);
+  $("mk").addEventListener("pointerdown", () => { lpDone = false; clearTimeout(lpT); lpT = setTimeout(() => {
+    lpDone = true; try { navigator.vibrate?.(30); } catch {}
+    if (map.getZoom() < 14) return setMsg("🪜⛰ もう少し近づいて（ズーム14より近く）長押ししてね", true);
+    const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); }
+    setMsg("🪜⛰ このあたりの たぶん階段・急坂 をしらべてるよ…");
+    worker.postMessage({ cmd: "slopeView", bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()] });
+  }, 600); });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) $("mk").addEventListener(ev, up);
+  $("mk").addEventListener("click", e => { if (lpDone) { e.stopImmediatePropagation(); lpDone = false; } }, true);
+  $("mk").addEventListener("contextmenu", e => e.preventDefault());
 }
 $("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } };
 mkBtn();

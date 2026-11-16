@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.0912</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.0922</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -366,7 +366,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
-<button id="mk" title="マークを出す／かくす">📍<small id="mkL">マーク</small></button>
+<button id="mk" title="マークを出す／かくす（長押し：このあたりの🪜たぶん階段・⛰急坂を見る）">📍<small id="mkL">マーク</small></button>
 <button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">➤</span><small id="flL">進行方向</small></button>
 <button id="col" title="地図の種類">🗺<small id="colL"></small></button>
 <div id="legend"></div>
@@ -1293,6 +1293,25 @@ async function packTile(big) {   // 大きいマスを配布データから取�
   return { el, bytes: blob.size };
 }
 // 📍 一方通行の矢印用：見えている範囲の一方通行の道（端末にある道路データか配布データだけ。サーバーには取りにいかない）
+// 📍長押し「このあたりの🪜⛰を見る」：見えている範囲の道（端末か配布データにあるものだけ）と標高で、たぶん階段・急坂をさがす
+async function slopeView(bb) {
+  const [S, W, N, E] = bb, T = 0.01, keys = [];
+  for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
+  if (keys.length > 36) return { tooWide: true };
+  const els = [], seen = new Set(); let miss = 0;
+  for (const k of keys) {
+    let el = mem.get(k);
+    if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+    if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+    if (!el) { miss++; continue; }
+    for (const e of el) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); els.push(e); } }
+  }
+  if (!els.length) return { st: 0, sl: 0, miss };
+  const ok = await loadDem([S, W], [N, E], 0.002).catch(() => false);
+  if (!ok || isNaN(heightAt((S + N) / 2, (W + E) / 2))) return { noDem: true, miss };
+  const G = buildGraph({ elements: els }, DEFAULT_CFG), r = applySlope(G, 0, 1, 1, true);
+  return { st: r.st, sl: r.sl, miss };
+}
 async function onewayIn(bb) {
   const [S, W, N, E] = bb, T = 0.01, keys = [];
   for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
@@ -1713,7 +1732,7 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 //  ・急坂：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×3。じっさいは階段のことも多い）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
-function applySlope(G, k, stK, slK) {   // k：のぼり1mを何m分 / stK：🪜たぶん階段の倍率（"no"＝通らない） / slK：⛰急坂の倍率
+function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍長押しの「このあたりを見る」）   // k：のぼり1mを何m分 / stK：🪜たぶん階段の倍率（"no"＝通らない） / slK：⛰急坂の倍率
   if (typeof OffscreenCanvas === "undefined") return G;
   const n = G.lat.length, h = new Float32Array(n);
   for (let i = 0; i < n; i++) h[i] = G.inGraph[i] ? heightAt(G.lat[i], G.lon[i]) : NaN;
@@ -1759,6 +1778,7 @@ function applySlope(G, k, stK, slK) {   // k：のぼり1mを何m分 / stK：�
     e.c += dh * k;   // 急な所は ⛰急坂・🪜たぶん階段 の設定のほうで見るので、ここは のぼった高さだけ
   }
   if (marks.length && typeof self !== "undefined" && self.postMessage && typeof module === "undefined") self.postMessage({ type: "slope", marks });
+  if (count) return { st, sl };
   if (st || sl) log(`標高で：🪜たぶん階段 ${st}か所（${stK === "no" ? "通らない" : "×" + (+stK || 1)}）・⛰急坂 ${sl}か所（×${+slK || 1}）`);
   return G;
 }
@@ -2166,6 +2186,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "packStop") { pkStop = true; return; }
       if (d.cmd === "footLive") { const segs = await footLive(d.t0, d.pair); return self.postMessage({ type: "footLive", segs }); }
       if (d.cmd === "footMatch") { const segs = await footMatch(d.runs); return self.postMessage({ type: "footMatch", id: d.id, segs }); }
+      if (d.cmd === "slopeView") { const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
@@ -2729,6 +2750,11 @@ worker.onmessage = ev => {
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
   if (m.type === "pk") { onPk(m); return; }
   if (m.type === "slope") { slopeAdd(m.marks); return; }
+  if (m.type === "slopeView") {
+    setMsg(m.tooWide ? "🪜⛰ 広すぎるよ。もう少し近づいて（ズーム14より近く）長押ししてね" : m.noDem ? "🪜⛰ 標高のデータが取れなかったよ（電波かな？）"
+      : `🪜⛰ このあたり：たぶん階段 ${m.st}か所・急坂 ${m.sl}か所${m.miss ? `（道のデータがない所 ${m.miss}マスは見てないよ）` : ""}`, !!(m.tooWide || m.noDem));
+    return;
+  }
   if (m.type === "export") { onExport(m); return; }
   if (m.type === "imported") { onImported(m); return; }
   if (m.type === "stats") {
@@ -5880,9 +5906,23 @@ function slopeAdd(list) {
 function slopeClear() { slopeLayer.clearLayers(); slopeSeen.clear(); }
 // 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印・🪜たぶん階段・⛰急坂）をまとめて かくす／出す。えらんだジャンルはそのまま
 function mkBtn() {
-  $("mk").style.display = spotOn.size || slopeSeen.size ? "block" : "none";
+  $("mk").style.display = "block";   // 長押しで🪜⛰を見るので いつも出す
   $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
   for (const ly of [spotLayer, owLayer, slopeLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
+}
+// 📍を長押し：このあたり（見えている範囲）の 🪜たぶん階段・⛰急坂 を1回だけ計算してマークを出す（走っている間は自動では計算しない）
+{ let lpT = null, lpDone = false;
+  const up = () => clearTimeout(lpT);
+  $("mk").addEventListener("pointerdown", () => { lpDone = false; clearTimeout(lpT); lpT = setTimeout(() => {
+    lpDone = true; try { navigator.vibrate?.(30); } catch {}
+    if (map.getZoom() < 14) return setMsg("🪜⛰ もう少し近づいて（ズーム14より近く）長押ししてね", true);
+    const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); }
+    setMsg("🪜⛰ このあたりの たぶん階段・急坂 をしらべてるよ…");
+    worker.postMessage({ cmd: "slopeView", bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()] });
+  }, 600); });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) $("mk").addEventListener(ev, up);
+  $("mk").addEventListener("click", e => { if (lpDone) { e.stopImmediatePropagation(); lpDone = false; } }, true);
+  $("mk").addEventListener("contextmenu", e => e.preventDefault());
 }
 $("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } };
 mkBtn();
