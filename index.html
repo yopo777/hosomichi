@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1729</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1806</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -5081,6 +5081,20 @@ function vcFromTp() {   // ルートを作ったときに見つけた曲がり�
   }
   return out;
 }
+// 声では言わない 道なりの曲がり（Y字路・T字路で 道なりに曲がる所など）：25°以上 向きがかわる所。手前で 節電をといて地図を出すだけ
+function vcQuietFind() {
+  const R = cur.nav, W = 15, out = [], tot = cum[cum.length - 1];
+  for (let i = 1; i < R.length - 1; i++) {
+    const sd = cum[i]; if (sd < 10 || sd > tot - 10) continue;
+    let d = bearingDeg(R[i], vcAt(sd + W)) - bearingDeg(vcAt(sd - W), R[i]); d = ((d + 540) % 360) - 180;
+    if (Math.abs(d) < 25) continue;
+    if (vcTurns.some(t => Math.abs(t.s - sd) < 20)) continue;   // 声で言う所は そっちで
+    if (out.length && sd - out[out.length - 1] < 25) continue;
+    out.push(sd);
+  }
+  return out;
+}
+let vcQuiet = [];
 function vcFromShape() {   // 古いルート・共有URL用：前後20mの向きの差が40°以上の所＝曲がる所。近い所（25m以内）は大きいほうだけ
   const R = cur.nav, W = 20, out = [], tot = cum[cum.length - 1];
   for (let i = 1; i < R.length - 1; i++) {
@@ -5140,7 +5154,7 @@ function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
   const say = (t, hi) => { if (vcOn) window.say(t, hi); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
-  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); vcOff = false; vcEnd = false; vcLast = navAlong; }
+  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); try { vcQuiet = vcQuietFind(); } catch { vcQuiet = []; } vcOff = false; vcEnd = false; vcLast = navAlong; }
   // 2周目・3周目：ルートの位置が大きくもどったら（ゴール→スタート）、案内を言ったしるしを消して、もう一回言うようにする
   if (navAlong < vcLast - 300) {
     for (const t of vcTurns) t.a1 = t.a2 = false;
@@ -5160,6 +5174,7 @@ function vcNav(off, rest) {
     q.said = true; sayHi = Date.now() + 3000; pirorin(); try { navigator.vibrate?.([80, 60, 160]); } catch {} blkShowMap(20000);   /* 「ピローン」→「〇〇に着きました。休憩です」（寄り道の場所だけ。家・ゴールでは鳴らさない・言わない） */
     setTimeout(() => say(`${q.name.replace(/^🎯\s*\S+\s*/, "").replace(/^[^\p{L}\p{N}]+/u, "")}に着きました。休憩です`, true), 900);   // いちばん大事
   }
+  if (vcQuiet.some(s => s - navAlong > -5 && s - navAlong <= 35)) blkShowMap(5000);   // 道なりの曲がり：声はなし・地図だけ出す
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
   const then = nx && nx.s - t.s < 60 ? `、すぐ${vcWord(nx.d)}` : "";
@@ -5199,7 +5214,7 @@ $("blk").addEventListener("pointerup", () => { blkTouch = Date.now(); setTimeout
 $("blk").addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); });
 function blkTick() {
   if (menuOpen()) blkTouch = Date.now();   // メニューを開いているあいだは 時間をすすめない（とじてから数えはじめる）
-  document.body.classList.toggle("ringOff", Date.now() - blkTouch < BLK_IDLE);
+  document.body.classList.toggle("ringOff", Date.now() - blkTouch < BLK_IDLE || Date.now() < blkUntil);   // 曲がる手前なども ⭕丸をはずして 地図を広く
   const now = Date.now(), on = blkScr && wid !== null && follow && !document.hidden && now - blkTouch > BLK_IDLE && now > blkUntil;
   if (on) {
     const full = blkScr >= 100;   // まっ黒のときだけ、のこり・住所を出す（暗くするだけなら地図が見えるので）
