@@ -1015,7 +1015,7 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   }
   $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
-  rtDrop = false; if (!prefix) slopeClear();   // 新しいルート：🪜⛰マークも出しなおす
+  rtDrop = false;
   worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a" && b.r !== "w").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   $("stop").style.display = ""; $("bar").classList.remove("done", "trip"); $("bar").classList.add("run");
 }
@@ -4043,20 +4043,35 @@ function owDraw(m) {
   }
 }
 map.on("moveend", () => owUpdate(false));
-// 🪜 たぶん階段・⛰ 急坂（ルートを計算したとき、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
-const slopeLayer = L.layerGroup().addTo(map), slopeSeen = new Set();
+// 🪜 たぶん階段・⛰ 急坂（ルートを計算したときや 📍長押しで、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
+// 一度しらべた所は この端末におぼえておいて、地図に近づいたら（ズーム14より近く）いつでも出す
+const SLOPE_V = 2;   // 見分け方を変えたら上げる（古いマークはすてる）
+const slopeLayer = L.layerGroup().addTo(map);
+let slopeDB = (() => { const d = lsGet("hosomichi_slope", null); return d && d.v === SLOPE_V && d.t ? d : { v: SLOPE_V, t: {} }; })(), slopeSaveT = null;
+const slopeKey = (la, lo) => Math.floor(la / 0.01) + "_" + Math.floor(lo / 0.01);
 function slopeAdd(list) {
-  for (const [la, lo, st, g, dh, len] of list) {
-    const k = la.toFixed(5) + "," + lo.toFixed(5); if (slopeSeen.has(k)) continue; slopeSeen.add(k);
-    const t = `${st ? "🪜 たぶん階段" : "⛰ 急坂"}（標高で・坂${g}%・高さの差${dh}m・長さ${len}m）`;
-    L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
-        html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
-      .bindTooltip(t, { direction: "top", offset: [0, -10] })
-      .on("click", () => pinPopup(L.latLng(la, lo), la.toFixed(6) + "," + lo.toFixed(6), t)).addTo(slopeLayer);
+  for (const m of list) {
+    const k = slopeKey(m[0], m[1]), a = slopeDB.t[k] || (slopeDB.t[k] = []);
+    if (!a.some(x => Math.abs(x[0] - m[0]) < 2e-5 && Math.abs(x[1] - m[1]) < 2e-5)) a.push(m);
   }
-  mkBtn();
+  clearTimeout(slopeSaveT); slopeSaveT = setTimeout(() => lsSet("hosomichi_slope", slopeDB), 1000);
+  slopeDraw();
 }
-function slopeClear() { slopeLayer.clearLayers(); slopeSeen.clear(); }
+function slopeDraw() {
+  slopeLayer.clearLayers();
+  if (spotHide || map.getZoom() < 14) return;
+  const b = map.getBounds().pad(0.2);
+  for (let i = Math.floor(b.getSouth() / 0.01); i <= Math.floor(b.getNorth() / 0.01); i++)
+    for (let j = Math.floor(b.getWest() / 0.01); j <= Math.floor(b.getEast() / 0.01); j++)
+      for (const [la, lo, st, g, dh, len] of slopeDB.t[i + "_" + j] || []) {
+        const t = `${st ? "🪜 たぶん階段" : "⛰ 急坂"}（標高で・坂${g}%・高さの差${dh}m・長さ${len}m）`;
+        L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
+            html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
+          .bindTooltip(t, { direction: "top", offset: [0, -10] })
+          .on("click", () => pinPopup(L.latLng(la, lo), la.toFixed(6) + "," + lo.toFixed(6), t)).addTo(slopeLayer);
+      }
+}
+map.on("moveend", slopeDraw);
 // 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印・🪜たぶん階段・⛰急坂）をまとめて かくす／出す。えらんだジャンルはそのまま
 function mkBtn() {
   $("mk").style.display = "block";   // 長押しで🪜⛰を見るので いつも出す
@@ -4069,7 +4084,7 @@ function mkBtn() {
   $("mk").addEventListener("pointerdown", () => { lpDone = false; clearTimeout(lpT); lpT = setTimeout(() => {
     lpDone = true; try { navigator.vibrate?.(30); } catch {}
     if (map.getZoom() < 14) return setMsg("🪜⛰ もう少し近づいて（ズーム14より近く）長押ししてね", true);
-    const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); }
+    const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); spotUpdate(true); owUpdate(true); }
     setMsg("🪜⛰ このあたりの たぶん階段・急坂 をしらべてるよ…");
     worker.postMessage({ cmd: "slopeView", bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()] });
   }, 600); });
@@ -4077,8 +4092,8 @@ function mkBtn() {
   $("mk").addEventListener("click", e => { if (lpDone) { e.stopImmediatePropagation(); lpDone = false; } }, true);
   $("mk").addEventListener("contextmenu", e => e.preventDefault());
 }
-$("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } };
-mkBtn();
+$("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } slopeDraw(); };
+mkBtn(); slopeDraw();
 
 owUpdate(true);
 
