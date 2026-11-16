@@ -366,7 +366,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
-<button id="mk" title="マークを出す／かくす（長押し：このあたりの🪜たぶん階段・⛰急坂を見る）">📍<small id="mkL">マーク</small></button>
+<button id="mk" title="マークを出す／かくす（長押し：このあたりの🪜階段？・⛰急坂？を見る）">📍<small id="mkL">マーク</small></button>
 <button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">➤</span><small id="flL">進行方向</small></button>
 <button id="col" title="地図の種類">🗺<small id="colL"></small></button>
 <div id="legend"></div>
@@ -905,7 +905,7 @@ worker.onmessage = ev => {
   if (m.type === "slope") { slopeAdd(m.marks); return; }
   if (m.type === "slopeView") {
     setMsg(m.tooWide ? "🪜⛰ 広すぎるよ。もう少し近づいて（ズーム14より近く）長押ししてね" : m.noDem ? "🪜⛰ 標高のデータが取れなかったよ（電波かな？）"
-      : `🪜⛰ このあたり：たぶん階段 ${m.st}か所・急坂 ${m.sl}か所${m.miss ? `（道のデータがない所 ${m.miss}マスは見てないよ）` : ""}`, !!(m.tooWide || m.noDem));
+      : `🪜⛰ このあたり：階段？ ${m.st}か所・急坂？ ${m.sl}か所${m.miss ? `（道のデータがない所 ${m.miss}マスは見てないよ）` : ""}`, !!(m.tooWide || m.noDem));
     return;
   }
   if (m.type === "export") { onExport(m); return; }
@@ -2810,8 +2810,8 @@ const OTHER_ROWS = [
   ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
   ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
   ["slope", "坂道（のぼり）", [[0, "気にしない"], [5, "少し避ける（のぼり1m＝5m）"], [10, "避ける（のぼり1m＝10m）"], [20, "かなり避ける（のぼり1m＝20m）"]]],
-  ["stepsGuess", "🪜 たぶん階段（標高で）", [[1, "気にしない"], [3, "少し避ける（×3）"], [30, "ほとんど通らない（×30）"], ["no", "通らない"]]],
-  ["steep", "⛰ 急坂（標高で・10%より急）", [[1, "気にしない"], [1.5, "少し避ける（×1.5）"], [3, "避ける（×3）"], [10, "かなり避ける（×10）"]]],
+  ["stepsGuess", "🪜 階段？", [[1, "気にしない"], [3, "少し避ける（×3）"], [30, "ほとんど通らない（×30）"], ["no", "通らない"]]],
+  ["steep", "⛰ 急坂？", [[1, "気にしない"], [1.5, "少し避ける（×1.5）"], [3, "避ける（×3）"], [10, "かなり避ける（×10）"]]],
   ["park", "公園の中の道", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
   ["cemetery", "霊園・墓地の中の道", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
   ["station", "駅の中の通路", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
@@ -2841,8 +2841,8 @@ function renderCfg() {
   h += "<h4>計算</h4>" + get(["mode", "alts", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
-  h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂・🪜たぶん階段 で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div>'
-    + get(["stepsGuess", "steep"]) + '<div class="note">標高で見つけた所（地図の🪜⛰マーク）。交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜たぶん階段＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div>';
+  h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div>'
+    + get(["stepsGuess", "steep"]) + '<div class="note">標高で見つけた所（地図の🪜⛰マーク）。交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div>';
   h += "<h4>公園・霊園</h4>" + get(["park", "cemetery"]) + '<div class="note">公園や霊園・墓地の敷地の中を通る道のこと（人が歩いていて、自転車はひんしゅく）。川ぞいのサイクリングロードみたいな長い自転車道（400m以上）と、住宅街の道は、公園の中でも気にしないよ。配布データのはんいで見分けるよ</div>';
   h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ</div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div>';
@@ -3893,7 +3893,7 @@ const SPOT_KINDS = [
     ["factory", "🏭", "工場"], ["waterw", "🚰", "浄水場・水道局"], ["power", "⚡", "発電所"], ["ground", "🏟", "グラウンド・球場"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
-    ["oneway", "➡", "一方通行"], ["gstep", "🪜", "たぶん階段（標高で）"], ["steep", "⛰", "急坂（標高で）"]]],
+    ["oneway", "➡", "一方通行"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"]]],
   ["車止め", [["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
   ["ランチ", [["ramen", "🍜", "ラーメン"], ["soba", "🥢", "そば・うどん"], ["sushi", "🍣", "寿司"], ["curry", "🍛", "カレー"], ["teishoku", "🍱", "定食・和食"], ["chinese", "🥟", "中華"],
     ["western", "🍝", "洋食・イタリアン"], ["burger", "🍔", "ハンバーガー"], ["restaurant", "🍴", "そのほかの食堂"]]],
@@ -4045,7 +4045,7 @@ function owDraw(m) {
   }
 }
 map.on("moveend", () => owUpdate(false));
-// 🪜 たぶん階段・⛰ 急坂（ルートを計算したときや 📍長押しで、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
+// 🪜 階段？・⛰ 急坂？（ルートを計算したときや 📍長押しで、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
 // 一度しらべた所は この端末におぼえておいて、地図に近づいたら（ズーム14より近く）いつでも出す
 const SLOPE_V = 2;   // 見分け方を変えたら上げる（古いマークはすてる）
 const slopeLayer = L.layerGroup().addTo(map);
@@ -4067,7 +4067,7 @@ function slopeDraw() {
     for (let j = Math.floor(b.getWest() / 0.01); j <= Math.floor(b.getEast() / 0.01); j++)
       for (const [la, lo, st, g, dh, len] of slopeDB.t[i + "_" + j] || []) {
         if (!spotOn.has(st ? "gstep" : "steep")) continue;   // ⚙マークの設定で えらんだものだけ
-        const t = `${st ? "🪜 たぶん階段" : "⛰ 急坂"}（標高で・坂${g}%・高さの差${dh}m・長さ${len}m）`;
+        const t = `${st ? "🪜 階段？" : "⛰ 急坂？"}（標高で・坂${g}%・高さの差${dh}m・長さ${len}m）`;
         L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
             html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
           .bindTooltip(t, { direction: "top", offset: [0, -10] })
@@ -4075,13 +4075,13 @@ function slopeDraw() {
       }
 }
 map.on("moveend", slopeDraw);
-// 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印・🪜たぶん階段・⛰急坂）をまとめて かくす／出す。えらんだジャンルはそのまま
+// 右はしの 📍 ボタン：マーク（スポット・一方通行の矢印・🪜階段？・⛰急坂？）をまとめて かくす／出す。えらんだジャンルはそのまま
 function mkBtn() {
   $("mk").style.display = "block";   // 長押しで🪜⛰を見るので いつも出す
   $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
   for (const ly of [spotLayer, owLayer, slopeLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
 }
-// 📍を長押し：このあたり（見えている範囲）の 🪜たぶん階段・⛰急坂 を1回だけ計算してマークを出す（走っている間は自動では計算しない）
+// 📍を長押し：このあたり（見えている範囲）の 🪜階段？・⛰急坂？ を1回だけ計算してマークを出す（走っている間は自動では計算しない）
 { let lpT = null, lpDone = false;
   const up = () => clearTimeout(lpT);
   $("mk").addEventListener("pointerdown", () => { lpDone = false; clearTimeout(lpT); lpT = setTimeout(() => {
@@ -4089,7 +4089,7 @@ function mkBtn() {
     if (map.getZoom() < 14) return setMsg("🪜⛰ もう少し近づいて（ズーム14より近く）長押ししてね", true);
     if (!spotOn.has("gstep") || !spotOn.has("steep")) { spotOn.add("gstep"); spotOn.add("steep"); lsSet("hosomichi_spots", [...spotOn]); renderSpots(); }   // 長押ししたら 🪜⛰ はオンに
     const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); spotUpdate(true); owUpdate(true); }
-    setMsg("🪜⛰ このあたりの たぶん階段・急坂 をしらべてるよ…");
+    setMsg("🪜⛰ このあたりの 階段？・急坂？ をしらべてるよ…");
     worker.postMessage({ cmd: "slopeView", bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()] });
   }, 600); });
   for (const ev of ["pointerup", "pointerleave", "pointercancel"]) $("mk").addEventListener(ev, up);

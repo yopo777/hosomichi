@@ -15,8 +15,8 @@ const DEFAULT_CFG = {
   cemetery: 5,           // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
-  stepsGuess: 30,        // 🪜 たぶん階段（標高で見つけた、印のない階段かも）：倍率 or "no"（1＝気にしない）
-  steep: 3,              // ⛰ 急坂（標高で10%より急な短い道）：倍率（1＝気にしない）
+  stepsGuess: 30,        // 🪜 階段？（標高で見つけた、印のない階段かも）：倍率 or "no"（1＝気にしない）
+  steep: 3,              // ⛰ 急坂？（標高で10%より急な短い道）：倍率（1＝気にしない）
   sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
@@ -911,7 +911,7 @@ async function packTile(big) {   // 大きいマスを配布データから取�
   return { el, bytes: blob.size };
 }
 // 📍 一方通行の矢印用：見えている範囲の一方通行の道（端末にある道路データか配布データだけ。サーバーには取りにいかない）
-// 📍長押し「このあたりの🪜⛰を見る」：見えている範囲の道（端末か配布データにあるものだけ）と標高で、たぶん階段・急坂をさがす
+// 📍長押し「このあたりの🪜⛰を見る」：見えている範囲の道（端末か配布データにあるものだけ）と標高で、階段？・急坂？をさがす
 async function slopeView(bb) {
   const [S, W, N, E] = bb, T = 0.01, keys = [];
   for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
@@ -1343,14 +1343,14 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
   }
   return s / w;
 }
-// のぼり 1m を k m 分と数える（急な所は ⛰急坂・🪜たぶん階段 の設定で）。標高のゆれ（橋・切り通し）に強くするため 15% で頭打ち
+// のぼり 1m を k m 分と数える（急な所は ⛰急坂？・🪜階段？ の設定で）。標高のゆれ（橋・切り通し）に強くするため 15% で頭打ち
 // 印のない階段さがし（tools/test_dem.py で船橋・松戸でためした方法）：
 //  道を「交差点から交差点まで」に区切って、80mまでの短い道の「はし→はし」の高さの差で見る（とちゅうのでこぼこ・崖のそばのずれに強い）
-//  ・たぶん階段：車の通る道で 20%より急／歩道・小道で 10%より急（高さの差 2.5m以上。歩道・小道の急な所は 階段のことが多い）→ 設定 stepsGuess の倍率（はじめ ×30。"no"＝通らない）
-//  ・急坂：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×3。じっさいは階段のことも多い）
+//  ・階段？：車の通る道で 20%より急／歩道・小道で 10%より急（高さの差 2.5m以上。歩道・小道の急な所は 階段のことが多い）→ 設定 stepsGuess の倍率（はじめ ×30。"no"＝通らない）
+//  ・急坂？：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×3。じっさいは階段のことも多い）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
-function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍長押しの「このあたりを見る」）   // k：のぼり1mを何m分 / stK：🪜たぶん階段の倍率（"no"＝通らない） / slK：⛰急坂の倍率
+function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍長押しの「このあたりを見る」）   // k：のぼり1mを何m分 / stK：🪜階段？の倍率（"no"＝通らない） / slK：⛰急坂？の倍率
   if (typeof OffscreenCanvas === "undefined") return G;
   const n = G.lat.length, h = new Float32Array(n);
   for (let i = 0; i < n; i++) h[i] = G.inGraph[i] ? heightAt(G.lat[i], G.lon[i]) : NaN;
@@ -1361,7 +1361,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
   const deg = i => nb[i] ? nb[i].size : 0;
   const edge = (a, b) => G.adj[a].find(e => e.v === b);
   let st = 0, sl = 0;
-  const seen = new Set(), marks = [];   // 地図のマーク用：[緯度, 経度, 1=たぶん階段/0=急坂, 坂%, 高さの差, 長さ]
+  const seen = new Set(), marks = [];   // 地図のマーク用：[緯度, 経度, 1=階段？/0=急坂？, 坂%, 高さの差, 長さ]
   for (let a = 0; a < n; a++) {
     if (!nb[a] || deg(a) === 2) continue;   // 交差点・行き止まりから歩きだす
     for (const first of nb[a]) {
@@ -1384,7 +1384,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
         marks.push([+((G.lat[m] + G.lat[m2]) / 2).toFixed(6), +((G.lon[m] + G.lon[m2]) / 2).toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L)]); }
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
-        if (stair) { e.c *= stK === "no" ? 1e4 : (+stK || 1); e.k = "たぶん階段（標高で）"; }
+        if (stair) { e.c *= stK === "no" ? 1e4 : (+stK || 1); e.k = "階段？"; }
         else e.c *= +slK || 1;
       }
     }
@@ -1393,11 +1393,11 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
     let dh = h[e.v] - h[u];
     if (!(dh > 0) || e.L < 3 || e.b) continue;
     dh = Math.min(dh, e.L * 0.15);
-    e.c += dh * k;   // 急な所は ⛰急坂・🪜たぶん階段 の設定のほうで見るので、ここは のぼった高さだけ
+    e.c += dh * k;   // 急な所は ⛰急坂？・🪜階段？ の設定のほうで見るので、ここは のぼった高さだけ
   }
   if (marks.length && typeof self !== "undefined" && self.postMessage && typeof module === "undefined") self.postMessage({ type: "slope", marks });
   if (count) return { st, sl };
-  if (st || sl) log(`標高で：🪜たぶん階段 ${st}か所（${stK === "no" ? "通らない" : "×" + (+stK || 1)}）・⛰急坂 ${sl}か所（×${+slK || 1}）`);
+  if (st || sl) log(`標高で：🪜階段？ ${st}か所（${stK === "no" ? "通らない" : "×" + (+stK || 1)}）・⛰急坂？ ${sl}か所（×${+slK || 1}）`);
   return G;
 }
 // 道がつながらないとき（大きい川の橋が範囲の外にある、など）：データが手元にあれば範囲を広げてやりなおす
@@ -1445,7 +1445,7 @@ async function routeOnce(req, prog, partial) {
   const slopeK = +(cfg && cfg.slope) || 0;
   if (cfg && cfg.station !== 1) await loadStations();
   await loadAreas();   // 霊園・公園のほか、学校や工場の敷地（中の通路は通らない）にも使うので いつも読む
-  // 標高：坂道・⛰急坂・🪜たぶん階段に使う。3つとも「気にしない」なら 取らない（マークも出ない）
+  // 標高：坂道・⛰急坂？・🪜階段？に使う。3つとも「気にしない」なら 取らない（マークも出ない）
   const stK0 = cfg && cfg.stepsGuess != null ? cfg.stepsGuess : DEFAULT_CFG.stepsGuess, slK0 = cfg && cfg.steep != null ? cfg.steep : DEFAULT_CFG.steep;
   const needDem = slopeK || stK0 === "no" || +stK0 !== 1 || +slK0 !== 1;
   const demP = needDem ? loadDem(s, g, pad + 0.005).catch(() => false) : Promise.resolve(false);
