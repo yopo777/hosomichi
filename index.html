@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1833</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1836</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -362,9 +362,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="ask" style="display:none;position:fixed;inset:0;z-index:2500;background:#0006;align-items:center;justify-content:center;padding:16px"></div>
 <div id="upd" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:2000;background:#188038;color:#fff;
   border-radius:10px;padding:8px 12px;font-size:14px;box-shadow:0 2px 8px #0005;white-space:nowrap"></div>
-<div id="inapp" style="display:none;position:absolute;left:8px;right:8px;top:calc(var(--ptop) + 8px);z-index:1001;background:#333;color:#fff;
-  border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5"><button onclick="this.parentNode.remove()" style="float:right;margin-left:8px;border:none;background:#555;color:#fff;border-radius:6px;padding:2px 8px">とじる</button>📱 <b>X などのアプリの中で開いてるよ</b><br>ここは いつものブラウザと<b style="color:#ffd54f">データが べつ</b>だから、家・スポット・軌跡が 空っぽに見えるよ（消えてはいないよ）。ここで走ると 軌跡もこっちにたまって、📣SNSも作れないの。サイクリングは「︙」→「ブラウザで開く」で Chrome や Safari で開いてね
-  <div id="inappGo" style="display:none;margin-top:6px"><a style="display:inline-block;background:#1a73e8;color:#fff;border-radius:8px;padding:6px 12px;text-decoration:none;font-weight:bold">🌐 Chrome で開く</a></div></div>
+<div id="inapp" style="display:none;position:absolute;left:8px;right:8px;top:calc(var(--ptop) + 8px);z-index:1001;background:#333e;color:#fff;
+  border-radius:10px;padding:6px 8px 6px 12px;font-size:13px;align-items:center;gap:8px"><span style="flex:1">📱 走るときはブラウザで<span id="inappHow">（「⋮」→ブラウザで開く）</span></span><a id="inappGo" style="display:none;background:#1a73e8;color:#fff;border-radius:8px;padding:5px 10px;text-decoration:none;font-weight:bold;white-space:nowrap">🌐 Chrome</a><button onclick="this.parentNode.remove()" style="border:none;background:#555;color:#fff;border-radius:6px;padding:4px 8px">✕</button></div>
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
@@ -5609,9 +5608,9 @@ function askSave(what) {
 }
 
 if (IN_APP) {
-  $("inapp").style.display = "block";
+  $("inapp").style.display = "flex";   // 見るだけなら このままでOK。走る（記録する）ときだけ ブラウザで、と1行で
   if (/Android/i.test(UA)) {   // Android は Chrome を直接ひらける（共有ルートの #… もそのまま）
-    const a = $("inappGo").querySelector("a");
+    const a = $("inappGo"); $("inappHow").style.display = "none";
     const u = location.pathname + (location.hash.length > 1 ? "?h=" + encodeURIComponent(location.hash.slice(1)) : "");
     a.href = `intent://${location.host}${u}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(location.origin + u)};end`;
     $("inappGo").style.display = "";
