@@ -2177,6 +2177,15 @@ function pi() {
 let footPiT = 0;
 // ---- 〰 接近音（EV みたいな「ウィーン」）：走っているあいだ ずっと小さく鳴らす。速さで音が高くなる・止まると消える ----
 let evAcc = 0, evCoast = lsGet("hosomichi_evCoast", true) !== false;   // evCoast：🚲ラチェットは 速さがへっている時（こいでいない時）だけ鳴らす
+// 近接音の出口：まとめて 2.5倍に大きくして、さいごに リミッター（音がわれないように 0dB の手前でおさえる）
+let evOutN = null;
+function evOut() {
+  if (evOutN && evOutN.context === actx) return evOutN;
+  const g = actx.createGain(), lim = actx.createDynamicsCompressor();
+  g.gain.value = 2.5; lim.threshold.value = -2; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.002; lim.release.value = 0.1;
+  g.connect(lim); lim.connect(actx.destination);
+  return evOutN = g;
+}
 let evOn = !!lsGet("hosomichi_ev", false), evVol = +lsGet("hosomichi_evVol", 0.25), evN = null, evLast = null, evSp = 0, evT = 0;
 // 音の種類（10こ）。w：[波の形, 何倍の高さ, 大きさ]…・f：止まりぎわ〜時速36km の高さ(Hz)・lp：こもらせ具合（基本Hz, 高さに対する倍）
 // vib：ゆらぎ [速さHz, 深さ（高さに対する割合）]・trem：音量のゆれ [速さ, 深さ]・nz：風の音 [大きさ, 帯域の基本Hz, 高さに対する倍, Q]・v：全体の大きさ
@@ -2214,7 +2223,7 @@ if (evKind !== "none" && !EV_KINDS[evKind]) evKind = "hybrid";
 if (evClick !== "none" && !(EV_KINDS[evClick] && EV_KINDS[evClick].click)) evClick = "none";
 function evClickNodes(K) {   // 🚲 ラチェット：カチッという短い音を、速さに合わせた間かくで先に予約していく
   const g = actx.createGain(), cp = actx.createDynamicsCompressor(), sr = actx.sampleRate, n = Math.floor(sr * Math.max(0.012, K.dec * 0.006));
-  g.gain.value = 0; cp.threshold.value = -14; cp.ratio.value = 6; g.connect(cp); cp.connect(actx.destination);
+  g.gain.value = 0; cp.threshold.value = -14; cp.ratio.value = 6; g.connect(cp); cp.connect(evOut());
   const mk = tone => { const b = actx.createBuffer(1, n, sr), d = b.getChannelData(0);
     for (let i = 0; i < n; i++) { const t = i / sr; d[i] = ((Math.random() * 2 - 1) * K.nz * Math.exp(-t / 0.0007) + Math.sin(2 * Math.PI * tone * t) * Math.exp(-t / (K.dec / 1000))) * 0.9; }
     return b; };
@@ -2247,7 +2256,7 @@ function evNodes() {
   amp.gain.value = 1 - K.trem[1];
   if (K.trem[1]) { const l = actx.createOscillator(), lg = actx.createGain(); l.frequency.value = K.trem[0]; lg.gain.value = K.trem[1]; l.connect(lg); lg.connect(amp.gain); l.start(); stops.push(l); }
   const cp = actx.createDynamicsCompressor(); cp.threshold.value = -14; cp.knee.value = 8; cp.ratio.value = 6; cp.attack.value = 0.01; cp.release.value = 0.3;   // 大きくしても音がわれないように
-  mix.connect(amp); amp.connect(f); f.connect(g); g.connect(cp); cp.connect(actx.destination);
+  mix.connect(amp); amp.connect(f); f.connect(g); g.connect(cp); cp.connect(evOut());
   return evN = { g, f, os, vg, nzf, K, stops };
 }
 function evKill() { if (!evN) return; const n = evN; evN = null; clearInterval(n.timer); try { n.g.gain.setTargetAtTime(0, actx.currentTime, 0.05); } catch {} setTimeout(() => { for (const o of n.stops) try { o.stop(); } catch {} try { n.g.disconnect(); } catch {} }, 300); }
@@ -3296,7 +3305,7 @@ function blkShowMap(ms) { blkUntil = Date.now() + ms; blkTick(); }   // 曲が�
 document.addEventListener("pointerdown", () => { blkTouch = Date.now(); document.body.classList.add("ringOff"); }, true);
 // メニューをさわっている（スクロール・文字入力・えらぶ）ときも「さわっている」とする
 for (const ev of ["pointermove", "wheel", "keydown", "input", "change", "focusin"]) document.addEventListener(ev, e => { if (ev !== "pointermove" || e.buttons || e.pointerType === "touch") blkTouch = Date.now(); }, { capture: true, passive: true });
-document.addEventListener("scroll", () => { blkTouch = Date.now(); }, { capture: true, passive: true });
+document.addEventListener("touchmove", () => { blkTouch = Date.now(); }, { capture: true, passive: true });   // 指でスクロール（scroll は ログの自動スクロールでも出るので 使わない）
 function menuOpen() {   // メニュー・ふきだし・入力中・ききかえしの画面が出ているあいだは 節電に入らない
   const a = document.activeElement;
   return !$("panel").classList.contains("min") || !!(map._popup && map.hasLayer(map._popup)) || !!document.querySelector("#geoAsk,#msnAsk")
