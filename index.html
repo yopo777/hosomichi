@@ -190,7 +190,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1847</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.1850</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2815,11 +2815,11 @@ worker.onmessage = ev => {
     job = null; return;
   }
   if (job && job.next) { barMax = 0.5; setBar(0.5); } else { barMax = 0; setBar(1); }   // 経由地まで できた所は まん中
-  if (m.tour) setMsg(`🏁 できた！ ${m.tour}か所をまわる ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）` + ((m.skip || []).length ? `\n⚠ 行けなかった所: ${m.skip.join("、")}` : "")); else
-  if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${m.sec.toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")
+  if (m.tour) setMsg(`🏁 できた！ ${m.tour}か所をまわる ${fmtKm(m.len || 0)}（${(m.sec + paintWait).toFixed(1)}秒）` + ((m.skip || []).length ? `\n⚠ 行けなかった所: ${m.skip.join("、")}` : "")); else
+  if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${(m.sec + paintWait).toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")
     + (midNone ? "\n🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にしたよ" : "")
     + (midPick && m.len > m.loop * 1000 * 1.4 ? `\n🎯 ${midPick.name}まで遠回りになったみたい（川などで）。もう一回押すと別の所になるよ` : "")); else
-  setMsg(`できた！ ${fmtKm(m.len || 0)}（${m.sec.toFixed(1)}秒）\n` +
+  setMsg(`できた！ ${fmtKm(m.len || 0)}（${(m.sec + paintWait).toFixed(1)}秒）\n` + (paintWait ? `👣 足あと ${paintWait.toFixed(1)}秒\n` : "") +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
   showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: midStops(m.stops),
@@ -2861,15 +2861,14 @@ function merged(m) {
     len: (P.len || 0) + (m.len || 0), short: null, slen: 0 };
 }
 // 👣 もう塗った道を ワーカーにわたしておく（「もう塗った道」をさけるとき）。おわるまで待たないので、さいしょのルートは少し前の分になることも
-let paintBusy = false;
-function paintSend() {
-  if (!(+cfg.paintPen > 1) || paintBusy || footBusy) return;
-  paintBusy = true;
-  footSegsAll(() => {}).then(all => worker.postMessage({ cmd: "painted", keys: Object.keys(all) })).catch(() => {}).finally(() => { paintBusy = false; });
+let paintP = null, paintWait = 0;   // paintWait：ルート計算の前に 足あとを読むのを待った秒数（所要時間に入れる）
+function paintSend() {   // おわったら解決する Promise（読んでいる最中なら それを返す）
+  if (!(+cfg.paintPen > 1)) return Promise.resolve();
+  if (paintP) return paintP;
+  return paintP = footSegsAll(() => {}).then(all => worker.postMessage({ cmd: "painted", keys: Object.keys(all) })).catch(() => {}).finally(() => { paintP = null; });
 }
 setTimeout(paintSend, 4000);
 function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
-  if (!prefix) paintSend();
   job = { g, cfg: jcfg, prefix: prefix || null, loop: loop || 0 };
   drawPreview(null);
   if (!prefix) {   // 新しいルート：古いルートは画面から消す（ナビの「のこり」もまちがえないように）
@@ -2881,7 +2880,12 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: prefix ? "続きを計算するよ" : "" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   rtDrop = false;
-  worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a" && b.r !== "w").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  const myJob = job, send = () => { if (job !== myJob) return;   // 待っている間に 止めた・消した
+    worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => b.r !== "a" && b.r !== "w").map(b => b.p), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+  };
+  // 👣 もう塗った道をさけるときは、今日の分まで あてはめおわってから計算する（その待ちも 所要時間に入る）
+  if (!prefix && +jcfg.paintPen > 1) { lastProg = { stage: 1, msg: "👣 足あと（もう塗った道）を読んでるよ" }; showProg(); const t0 = Date.now(); paintSend().then(() => { paintWait = (Date.now() - t0) / 1000; send(); }); }
+  else { if (!prefix) paintWait = 0; send(); }
   $("stop").style.display = ""; $("bar").classList.remove("done", "trip"); $("bar").classList.add("run");
 }
 $("stop").onclick = () => {
