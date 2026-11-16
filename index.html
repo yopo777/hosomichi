@@ -189,7 +189,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.0925</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1116.0927</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -5740,7 +5740,7 @@ const SPOT_KINDS = [
     ["factory", "🏭", "工場"], ["waterw", "🚰", "浄水場・水道局"], ["power", "⚡", "発電所"], ["ground", "🏟", "グラウンド・球場"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
-    ["oneway", "➡", "一方通行"]]],
+    ["oneway", "➡", "一方通行"], ["gstep", "🪜", "たぶん階段（標高で）"], ["steep", "⛰", "急坂（標高で）"]]],
   ["車止め", [["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
   ["ランチ", [["ramen", "🍜", "ラーメン"], ["soba", "🥢", "そば・うどん"], ["sushi", "🍣", "寿司"], ["curry", "🍛", "カレー"], ["teishoku", "🍱", "定食・和食"], ["chinese", "🥟", "中華"],
     ["western", "🍝", "洋食・イタリアン"], ["burger", "🍔", "ハンバーガー"], ["restaurant", "🍴", "そのほかの食堂"]]],
@@ -5766,7 +5766,9 @@ let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
 let spotHide = lsGet("hosomichi_spothide", false);   // 右はしの📍ボタンで、えらんだマークをまとめて かくす／出す
 // はじめて使う人は、一方通行の矢印だけオン
-let spotOn = new Set(lsGet("hosomichi_spots", ["oneway"])), spotAt = null, spotSz = lsGet("hosomichi_spotsz", "M");
+let spotOn = new Set(lsGet("hosomichi_spots", ["oneway", "gstep", "steep"])), spotAt = null, spotSz = lsGet("hosomichi_spotsz", "M");
+if (!lsGet("hosomichi_spotsV2", false)) { spotOn.add("gstep"); spotOn.add("steep"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV2", true); }   // 🪜⛰ははじめオン
+const SPOT_SELF = new Set(["oneway", "gstep", "steep"]);   // スポットのデータではなく、アプリが自分で出すマーク
 const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
 spotSize();
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
@@ -5782,7 +5784,7 @@ $("tabSpot").addEventListener("change", e => {
   if (sg != null) { for (const [kk] of SPOT_KINDS[+sg][1]) e.target.checked ? spotOn.add(kk) : spotOn.delete(kk); }   // カテゴリぜんぶ
   else if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
   renderSpots();
-  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn();
+  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn(); slopeDraw();
 });
 let spotOv = null;
 function spotOverview() {   // 引いたとき用（配布データぜんぶ・間引いたもの）
@@ -5805,7 +5807,7 @@ async function spotUpdate(force) {
   if (spotHide) return;   // かくし中は読みも描きもしない
   if (!spotOn.size || map.getZoom() < SPOT_MIN_Z) { spotLayer.clearLayers(); spotAt = null; return; }
   const fixed = follow && me, c = fixed ? me.getLatLng() : map.getCenter(), p = [c.lat, c.lng];
-  const onAll = [...spotOn].filter(k => k !== "oneway"), roadOn = map.getZoom() >= SPOT_ROAD_Z ? onAll.filter(k => SPOT_ROAD.has(k)) : [];
+  const onAll = [...spotOn].filter(k => !SPOT_SELF.has(k)), roadOn = map.getZoom() >= SPOT_ROAD_Z ? onAll.filter(k => SPOT_ROAD.has(k)) : [];
   const on = onAll.filter(k => !SPOT_ROAD.has(k));
   if (!force && fixed && spotAt && hav(spotAt, p) < (roadOn.length ? 120 : 500)) return;   // 少し動くまでは入れかえない（電池にやさしく）
   spotAt = p;
@@ -5911,6 +5913,7 @@ function slopeDraw() {
   for (let i = Math.floor(b.getSouth() / 0.01); i <= Math.floor(b.getNorth() / 0.01); i++)
     for (let j = Math.floor(b.getWest() / 0.01); j <= Math.floor(b.getEast() / 0.01); j++)
       for (const [la, lo, st, g, dh, len] of slopeDB.t[i + "_" + j] || []) {
+        if (!spotOn.has(st ? "gstep" : "steep")) continue;   // ⚙マークの設定で えらんだものだけ
         const t = `${st ? "🪜 たぶん階段" : "⛰ 急坂"}（標高で・坂${g}%・高さの差${dh}m・長さ${len}m）`;
         L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
             html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
@@ -5931,6 +5934,7 @@ function mkBtn() {
   $("mk").addEventListener("pointerdown", () => { lpDone = false; clearTimeout(lpT); lpT = setTimeout(() => {
     lpDone = true; try { navigator.vibrate?.(30); } catch {}
     if (map.getZoom() < 14) return setMsg("🪜⛰ もう少し近づいて（ズーム14より近く）長押ししてね", true);
+    if (!spotOn.has("gstep") || !spotOn.has("steep")) { spotOn.add("gstep"); spotOn.add("steep"); lsSet("hosomichi_spots", [...spotOn]); renderSpots(); }   // 長押ししたら 🪜⛰ はオンに
     const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); spotUpdate(true); owUpdate(true); }
     setMsg("🪜⛰ このあたりの たぶん階段・急坂 をしらべてるよ…");
     worker.postMessage({ cmd: "slopeView", bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()] });
