@@ -3080,7 +3080,7 @@ function renderCfg() {
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div>'
-    + get(["stepsGuess", "steep"]) + '<div class="note">標高で見つけた所（地図の🪜⛰マーク）。交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div>';
+    + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）</div>';
   h += "<h4>👣 足あとを広げる</h4>" + get(["paintPen"]) + '<div class="note">もう塗った道（👣足あと・今日の分も）を さけて、まだ塗っていない道を通るルートにするよ。行き止まりや遠回りもふえるので、塗りたいときだけ</div>';
   h += "<h4>公園・霊園・団地</h4>" + get(["park", "cemetery", "danchi", "privy"]) + '<div class="note">🏠私道＝家の敷地に入る道・「住んでいる人と用事のある人だけ」の道・駐車場の中（コンビニ・スーパーの駐車場をつっきる近道など）。🏢団地＝名前が「〇〇団地」「〇〇住宅」「ハイツ」などの住宅地の中の、棟のあいだの通路・駐車場の道（通りぬける住宅街の道は気にしない）。公園や霊園・墓地の敷地の中を通る道のこと（人が歩いていて、自転車はひんしゅく）。川ぞいのサイクリングロードみたいな長い自転車道（400m以上）と、住宅街の道は、公園の中でも気にしないよ。配布データのはんいで見分けるよ</div>';
   h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ</div>';
@@ -3153,9 +3153,9 @@ function photoBackBtn() {
   }
   b.style.display = photoBack ? "block" : "none";
 }
-function pinPopup(ll, v, title) {   // 「ここを 出発にする / 到着にする」
+function pinPopup(ll, v, title, note) {   // 「ここを 出発にする / 到着にする」（note：タイトルの下の 小さい説明1行）
   const div = document.createElement("div"); div.className = "pin";
-  div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
+  div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note)}</span><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
     + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br><button data-fav='1'>⭐ お気に入り</button>"
     + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-b='w' style='color:#188038'>👍 通りたい</button><button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>"
     + "<br><button data-fake='1' style='color:#888'>🧪 ここを現在地にする（debug用）</button>"   // いちばん下：ふだんは使わない
@@ -4263,7 +4263,8 @@ const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
   $("spotBox").innerHTML = `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
     + SPOT_KINDS.map(([g, ks], gi) => `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
-      `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("") + "</div></div>").join("");
+      `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("")
+      + (g === "道" ? '<div style="font-size:11px;color:#666;margin-top:2px">🪜階段？⛰急坂？＝地図ではふつうの道だけど、標高で見つけた所</div>' : "") + "</div></div>").join("");
   for (const el of $("spotBox").querySelectorAll("[data-sg]")) { const ks = SPOT_KINDS[+el.dataset.sg][1]; el.indeterminate = !el.checked && ks.some(x => spotOn.has(x[0])); }   // 一部だけオンのときは「－」
 }
 $("tabSpot").addEventListener("change", e => {
@@ -4394,6 +4395,8 @@ function slopeAdd(list) {
   clearTimeout(slopeSaveT); slopeSaveT = setTimeout(() => lsSet("hosomichi_slope", slopeDB), 1000);
   slopeDraw();
 }
+// 🪜⛰ の説明（1行）：地図データ（OSM）に「階段」と書いてなくて ふつうの道になっている所を、標高から見つけたもの
+const SLOPE_NOTE = ["地図ではふつうの道。標高だと急な坂（階段のことも）", "地図ではふつうの道。標高だと急すぎるので階段かも"];
 function slopeDraw() {
   slopeLayer.clearLayers();
   if (spotHide || map.getZoom() < 14) return;
@@ -4402,11 +4405,11 @@ function slopeDraw() {
     for (let j = Math.floor(b.getWest() / 0.01); j <= Math.floor(b.getEast() / 0.01); j++)
       for (const [la, lo, st, g, dh, len] of slopeDB.t[i + "_" + j] || []) {
         if (!spotOn.has(st ? "gstep" : "steep")) continue;   // ⚙マークの設定で えらんだものだけ
-        const t = `${st ? "🪜 階段？" : "⛰ 急坂？"}（標高で・坂${g}%・高さの差${dh}m・長さ${len}m）`;
+        const t = `${st ? "🪜 階段？" : "⛰ 急坂？"}（坂${g}%・高さの差${dh}m・長さ${len}m）`, nt = SLOPE_NOTE[st ? 1 : 0];
         L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
             html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
           .bindTooltip(t, { direction: "top", offset: [0, -10] })
-          .on("click", () => pinPopup(L.latLng(la, lo), la.toFixed(6) + "," + lo.toFixed(6), t)).addTo(slopeLayer);
+          .on("click", () => pinPopup(L.latLng(la, lo), la.toFixed(6) + "," + lo.toFixed(6), t, nt)).addTo(slopeLayer);
       }
 }
 map.on("moveend", slopeDraw);
