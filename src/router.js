@@ -243,6 +243,13 @@ function buildGraph(osm, cfg, onProg) {
   }
   const N = lat.length, adj = Array.from({ length: N }, () => []);
   const lvl = new Uint8Array(N), inGraph = new Uint8Array(N);
+  // 地図データに 階段と書いてある道（と 階段っぽい歩道）の点：標高の 階段？・急坂？は ここでは見ない（もう わかっているので）
+  const stepN = new Uint8Array(N);
+  for (const e of osm.elements) {
+    if (e.type !== "way" || !e.tags) continue;
+    const t = e.tags, hw = t.highway;
+    if (hw === "steps" || (FOOTLIKE.has(hw) && (t.step_count || t["ramp:bicycle"] || t["ramp:stroller"] || /階段|石段/.test(t.name || "")))) for (const id of e.nodes) { const i = idx.get(id); if (i !== undefined) stepN[i] = 1; }
+  }
   const d = (u, v) => hav(lat[u], lon[u], lat[v], lon[v]);
   const NE = osm.elements.length; let ei = 0;
   const mainWays = [];
@@ -430,7 +437,7 @@ function buildGraph(osm, cfg, onProg) {
   }
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
-  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen,
+  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
     hk: Math.min(1, +cfg.kodo || 1) * (preferPts.length ? PREFER_K : 1) };   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
@@ -1474,6 +1481,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
       const z = path[path.length - 1], key = a < z ? a + "-" + z + "-" + path[1] : z + "-" + a + "-" + path[path.length - 2];
       if (seen.has(key)) continue; seen.add(key);
       if (bad || L > 80 || L < 5 || brN[a] || brN[z] || deg(z) === 2) continue;
+      if (G.stepN && path.some(i => G.stepN[i])) continue;   // 地図データの 階段に つながっている道は 見ない（階段の手前の歩道が 急坂？になっていた）
       const dh = Math.abs(h[z] - h[a]); if (!(dh >= 2)) continue;
       const gr = dh / L; let stair = dh >= 2.5 && gr >= (car ? 0.2 : 0.1), steep = !stair && gr >= 0.1;
       // 階段っぽさ：高ければ 階段？・低ければ 急坂？
