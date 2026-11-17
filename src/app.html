@@ -1017,6 +1017,7 @@ worker.onmessage = ev => {
   if (m.type === "pk") { onPk(m); return; }
   if (m.type === "slope") { slopeAdd(m.marks); return; }
   if (m.type === "slopeView") {
+    if (slopeQuiet) { slopeQuiet = false; return; }
     setMsg(m.tooWide ? "🪜⛰ 広すぎるよ。もう少し近づいて（ズーム14より近く）長押ししてね" : m.noDem ? "🪜⛰ 標高のデータが取れなかったよ（電波かな？）"
       : `🪜⛰ このあたり：階段？ ${m.st}か所・急坂？ ${m.sl}か所${m.miss ? `（道のデータがない所 ${m.miss}マスは見てないよ）` : ""}`, !!(m.tooWide || m.noDem));
     return;
@@ -3812,7 +3813,7 @@ function drawBlocks() {
     const div = document.createElement("div"); div.className = "pin";
     div.innerHTML = `<b>${BLK_IC(b.r)} ${BLK_NM(b.r)}</b>` + (b.name ? `<br>${esc(b.name)}` : "") + (b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : "")
       + `<div style="font-size:11px;color:#666">${sy ? HQ("近くの道を 🪜階段？にするよ", "標高で ⛰急坂？になったけど ほんとうは階段だった所。いちばん近い道（12m以内）を 🪜階段？として あつかうよ（通るかどうかは ⚙設定 → 🚲道の好み の 🪜階段？）。あとで 見分け方を直すときの 答え合わせにも使うよ") : sg ? HQ("近くの道は 🪜階段？じゃなくて ⛰急坂？にするよ", "標高で 🪜階段？になったけど 階段じゃなかった所。いちばん近い道（12m以内）を ⛰急坂？として、坂の分だけ 少し避けるよ（どれくらいかは ⚙設定 → 🚲道の好み の ⛰急坂？）。あとで 見分け方を直すときの 答え合わせにも使うよ") : ok ? HQ("近くの道の 🪜階段？・⛰急坂？を 取り消すよ", "標高で見つけた 🪜階段？・⛰急坂？は まちがいのこともあるので、印からいちばん近い道（12m以内）だけ、ふつうの道にもどすよ。地図データに 階段と書いてある所は 取り消さないよ") : av ? HQ("近くの道を まるごと避けるよ", "印からいちばん近い道（12m以内）を、その道まるごと 避けるよ（どれくらい避けるかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）") : wa ? HQ("近くの道を まるごと通りやすくするよ", "印からいちばん近い道（12m以内）を、その道まるごと 通りやすくするよ（どれくらいかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）") : "近くの道（12m以内）だけ通らないよ"}</div><button>この印を消す</button>`;
-    div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog(`${BLK_TX(b.r)} ${BLK_NM(b.r)}の印を1つ消したよ`); };
+    div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); if (BLK_FIX(b.r)) slopeRecheck(b.p); addLog(`${BLK_TX(b.r)} ${BLK_NM(b.r)}の印を1つ消したよ`); };
     m.bindPopup(div);
   });
   const na = blocks.filter(b => b.r === "a").length, ng = blocks.filter(b => b.r === "n").length, ny = blocks.filter(b => b.r === "y").length; if ($("blkN")) $("blkN").textContent = `（🚫 通れない ${blocks.length - na - ng - ny}・⚠ 通りたくない ${na}・🪜✕ 階段じゃない ${ng}・🪜✓ 階段だった ${ny}）`;
@@ -3848,7 +3849,7 @@ function ptDel(k, ask) {   // ask：地図から消すときは 確認する（�
   if (k === "h") { home = null; lsSet("hosomichi_home", null); drawHome(); homeDist(); }
   else if (k[0] === "s") { secrets.splice(+k.slice(1), 1); lsSet("hosomichi_secret", secrets); drawSecrets(); }
   else if (k[0] === "f") { favs.splice(+k.slice(1), 1); lsSet("hosomichi_fav", favs); drawFavs(); }
-  else { blocks.splice(+k.slice(1), 1); saveBlocks(); }
+  else { const b = blocks[+k.slice(1)]; blocks.splice(+k.slice(1), 1); saveBlocks(); if (b && BLK_FIX(b.r)) slopeRecheck(b.p); }   // 🪜✕／🪜✓ を消したら もとの 🪜⛰ に
   spotsTabDraw();
 }
 // 🗺 地図の ⭐🏠🔒 をタップ：名前と、出発・経由・到着／名前をかえる／消す
@@ -4475,10 +4476,17 @@ function slopeAdd(list) {
 }
 // 🪜⛰ の説明（1行）：地図データ（OSM）に「階段」と書いてなくて ふつうの道になっている所を、標高から見つけたもの
 const SLOPE_NOTE = ["地図ではふつうの道。標高だと急な坂（階段のことも）", "地図ではふつうの道。標高だと急すぎるので階段かも"];
+// 🪜✕／🪜✓ をつけた・消したとき：その道のまわり（約90m）だけ しらべなおして、マークを出しなおす
+function slopeRecheck(p) {
+  for (const k in slopeDB.t) slopeDB.t[k] = slopeDB.t[k].filter(m => hav([m[0], m[1]], p) > 15);   // その場所の 前のマークは消す（同じ所にあると 新しいのが出ないので）
+  lsSet("hosomichi_slope", slopeDB); slopeDraw();
+  slopeQuiet = true;
+  worker.postMessage({ cmd: "slopeView", bb: [p[0] - 0.0008, p[1] - 0.001, p[0] + 0.0008, p[1] + 0.001], oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]) });
+}
+let slopeQuiet = false;   // しらべなおしのときは「このあたり：…か所」を出さない
 function slopeFix(la, lo, r) {   // 🪜⛰マークを 🪜✕ 階段じゃない／🪜✓ 階段だった の印に かえる（マークは消す。次に見たとき ⛰／🪜で出なおす）
   addBlock(L.latLng(la, lo), r);
-  for (const k in slopeDB.t) slopeDB.t[k] = slopeDB.t[k].filter(m => !(m[0] === la && m[1] === lo));
-  lsSet("hosomichi_slope", slopeDB); slopeDraw();
+  slopeRecheck([la, lo]);   // すぐ ⛰／🪜 で出なおす
 }
 function slopeDraw() {
   slopeLayer.clearLayers();
