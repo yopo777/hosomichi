@@ -1913,15 +1913,15 @@ async function snsData() {
       } catch {}
       if (!hn) hn = await addrName(here);
     }
-    const tail = hn ? [{ name: hn + "(イマココ)" }] : [];
+    const tail = hn ? [{ name: "📍" + hn + "（イマココ）" }] : [];   // 📍は いまいる所にだけつける
     if (hn) for (let i = list.length - 1; i >= 0; i--) if (list[i].name === hn) list.splice(i, 1);   // イマココと同じ所は 1回だけ
     const rest = [...L, "🗺 ルート↓", SNS_URL, SNS_TAGS].join("\n"), pick = [];
     for (let i = list.length - 1; i >= 0; i--) {   // 新しいものから
-      const line = "📍 " + [list[i], ...pick, ...tail].map(x => x.name).join("→");
+      const line = [list[i], ...pick, ...tail].map(x => x.name).join("→");
       if (xLen(rest + "\n" + line) > SNS_MAX) break;
       pick.unshift(list[i]);
     }
-    if (pick.length || tail.length) L.push("📍 " + [...pick, ...tail].map(x => x.name).join("→"));
+    if (pick.length || tail.length) L.push([...pick, ...tail].map(x => x.name).join("→"));
     marks = (snsLbl === "all" ? list : snsLbl === "x" ? pick : []).filter(x => x.p);
   }
   // 🗺 共有ルートのリンク：地図に出している線（走っている途中は来た道、走り終わったら走ったところ）。開いた人はそのルートを見られる
