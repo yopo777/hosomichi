@@ -352,7 +352,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <button class="ib" id="bSave">💾 保存</button>
         <button class="ib" id="bShare" style="display:none">🔗 共有URL</button>
         <button class="ib" id="bGpx">⬇ GPX</button>
-        <button class="ib" id="bOther" style="display:none">🔄 ちがう道で</button>
+        <button class="ib" id="bOther" style="display:none">🔄 別のルートを探索</button>
+        <button class="ib" id="bPick" style="display:none">🔢 別のルートを選ぶ</button>
 
 
         <button class="ib" id="bResume" style="display:none;flex-basis:100%;border-color:#188038;color:#188038;font-weight:bold">▶ 続きを計算</button>
@@ -1169,16 +1170,18 @@ worker.onmessage = ev => {
   }
   if (job && job.next) { barMax = 0.5; setBar(0.5); } else { barMax = 0; setBar(1); }   // 経由地まで できた所は まん中
   if (m.tour) setMsg(`🏁 できた！ ${m.tour}か所をまわる ${fmtKm(m.len || 0)}（${(m.sec + paintWait).toFixed(1)}秒）` + ((m.skip || []).length ? `\n⚠ 行けなかった所: ${m.skip.join("、")}` : "")); else
-  if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${(m.sec + paintWait).toFixed(1)}秒）` + ((m.alts || []).length ? `\n右の🔢ボタンで、ちがう向きのまわり方に切りかえられるよ` : "")
-    + (midNone ? "\n🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にしたよ" : "")
+  if (m.loop) setMsg(`🔁 できた！ ${fmtKm(m.len || 0)}の1周（目標 ${m.loop}km・${(m.sec + paintWait).toFixed(1)}秒）` + (midNone ? "\n🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にしたよ" : "")
     + (midPick && m.len > m.loop * 1000 * 1.4 ? `\n🎯 ${midPick.name}まで遠回りになったみたい（川などで）。もう一回押すと別の所になるよ` : "")); else
   setMsg(`できた！ ${fmtKm(m.len || 0)}（${(m.sec + paintWait).toFixed(1)}秒）\n` + (paintWait ? `👣 足あと ${paintWait.toFixed(1)}秒\n` : "") +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
-  showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: midStops(m.stops),
-    opts: job && job.prefix || !(m.alts || []).length ? null
-      : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, stops: midStops(m.stops) }, ...m.alts.map(a => ({ ...a, stops: midStops(a.stops) }))], sel: 0,
-    name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined, redo: job && job.redo || null }), !follow && !(job && job.prefix));
+  const R = merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: midStops(m.stops),
+    name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined, redo: job && job.redo || null });
+  if (!(job && job.next)) {   // できあがり：探索したルートを おぼえておく（🔢 別のルートを選ぶ で じゅんばんに出せる）
+    const e = { ...R }; delete e.name; delete e.savedId; delete e.redo;
+    explored = [...explored, e].slice(-8); R.opts = explored.length > 1 ? explored : null; R.sel = explored.length - 1;
+  }
+  showRoute(R, !follow && !(job && job.prefix));
   if (job && job.prefix) cur.slen = 0;
   if (job && job.next) {   // 経由地まで できた → つづけて 経由地から到着地まで
     const nx = job.next, P = { ...cur, tent: null, partial: false, opts: null };
@@ -1221,19 +1224,19 @@ function paintSend() {   // おわったら解決する Promise（読んでい�
   return paintP = footSegsAll(() => {}).then(all => worker.postMessage({ cmd: "painted", keys: Object.keys(all) })).catch(() => {}).finally(() => { paintP = null; });
 }
 setTimeout(paintSend, 4000);
-// 🔄 ちがう道で：同じ出発・到着（1周なら同じ寄り道）で、前に出したルートの道（とそのとなり）を 通りにくくして もう一回
-let otherRoutes = null, lastRedo = null;   // otherRoutes：さけるルート（前のぜんぶ）・lastRedo：同じ計算を もう一回する関数
+// 🔄 別のルートを探索：同じ出発・到着（1周なら同じ寄り道）で、前に出したルートの道（とそのとなり）を 通りにくくして もう一回
+let otherRoutes = null, lastRedo = null, explored = [], redoNow = false;   // otherRoutes：さけるルート・lastRedo：同じ計算を もう一回する関数・explored：探索したルート（8本まで）
 const thin = r => r.filter((_, i) => i % 3 === 0 || i === r.length - 1).map(p => [+p[0].toFixed(5), +p[1].toFixed(5)]);
 $("bOther").onclick = () => {
   if (!cur || !cur.redo || $("go").disabled) return;
-  const seen = cur.opts && cur.opts.length > 1 ? cur.opts.map(o => o.route) : [cur.route];   // 🔢 で第2・第3のルートも出ていたら、それも ぜんぶさける
-  otherRoutes = [...(otherRoutes || []), ...seen.filter(r => r && r.length > 1).map(thin)].slice(-6);   // 6本前まで
-  addLog(`🔄 ちがう道で もう一回（前の ${otherRoutes.length}本の道を 通りにくくするよ）`, "m");
-  const f = cur.redo; f();
+  const seen = explored.length ? explored.map(o => o.route) : [cur.route];   // 探索したルートは ぜんぶさける
+  otherRoutes = seen.filter(r => r && r.length > 1).map(thin).slice(-6);   // 新しいほうから6本
+  addLog(`🔄 別のルートを探索（前の ${otherRoutes.length}本の道を 通りにくくするよ）`, "m");
+  redoNow = true; const f = cur.redo; lastRedo = f; f();   // lastRedo：つぎのルートでも 🔄 を使えるように
 };
 function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   job = { g, cfg: jcfg, prefix: prefix || null, loop: loop || 0, redo: prefix ? prefix.redo || null : lastRedo };   // redo：🔄 ちがう道で 用（保存したルートを開いたときは ない）
-  if (!prefix) lastRedo = null;
+  if (!prefix) { lastRedo = null; if (!redoNow) { explored = []; otherRoutes = null; } redoNow = false; }   // 新しいルート：探索したルートを わすれる
   drawPreview(null);
   if (!prefix) {   // 新しいルート：古いルートは画面から消す（ナビの「のこり」もまちがえないように）
     cur = null; cum = []; navAlong = null;
@@ -1245,7 +1248,7 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   rtDrop = false;
   const myJob = job, send = () => { if (job !== myJob) return;   // 待っている間に 止めた・消した
-    worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => !BLK_SOFT(b.r)).map(b => b.p), oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, others: otherRoutes, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+    worker.postMessage({ s, g, cfg: { ...jcfg, alts: "no" }, blocks: blocks.filter(b => !BLK_SOFT(b.r)).map(b => b.p), oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, others: otherRoutes, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   };
   // 👣 もう塗った道をさけるときは、今日の分まで あてはめおわってから計算する（その待ちも 所要時間に入る）
   if (!prefix && +jcfg.paintPen > 1) { lastProg = { stage: 1, msg: "👣 足あと（もう塗った道）を読んでるよ" }; showProg(); const t0 = Date.now(); paintSend().then(() => { paintWait = (Date.now() - t0) / 1000; send(); }); }
@@ -1536,22 +1539,23 @@ function legend(r) {
   }
   lg.innerHTML = h; lg.style.display = "block";
 }
-// ルートの候補（第2・第3のルート）：パネルのラジオボタンで切りかえる。地図には選んだルートだけ出す
+// 探索したルート：🔢 別のルートを選ぶ・パネルのラジオボタンで切りかえる。地図には選んだルートだけ出す
 function selectOpt(i) {
   const r = cur, o = r && r.opts && r.opts[i]; if (!o || r.sel === i) return;
-  const n = { ...o, name: r.name, opts: r.opts, sel: i, short: r.short, slen: r.slen, redo: r.redo };   // redo：🔄 ちがう道で を 切りかえても使えるように
-  delete n.kc; delete n.elev; delete n.elevInfo; delete n.elevErr;
+  const n = { short: r.short, slen: r.slen, ...o, name: r.name, opts: r.opts, sel: i, redo: r.redo };   // redo：🔄 を 切りかえても使えるように
+  delete n.elev; delete n.elevInfo; delete n.elevErr;
   addLog(`ルート${i + 1}（${fmtKm(o.len)}）にしたよ`);
   showRoute(n, false); lsSet(LKEY, packRoute(n));
 }
 // 右はしの切りかえボタン（スマホ用）：押すたびに ルート1→2→3→1…
 function altBtn(r) {
-  $("bOther").style.display = r && !r.partial && r.redo ? "" : "none";   // 🔄 ちがう道で
+  $("bOther").style.display = r && !r.partial && r.redo ? "" : "none";   // 🔄 別のルートを探索
   const b = $("alt"), n = r && !r.partial && r.opts ? r.opts.length : 0;
+  $("bPick").style.display = n > 1 ? "" : "none";
   if (n < 2) { b.style.display = "none"; return; }
   b.style.display = "block"; $("altN").textContent = (r.sel || 0) + 1; $("altL").textContent = `ルート${(r.sel || 0) + 1}/${n}`;
 }
-$("alt").onclick = () => { if (cur && cur.opts && cur.opts.length > 1) selectOpt(((cur.sel || 0) + 1) % cur.opts.length); };
+$("alt").onclick = $("bPick").onclick = () => { if (cur && cur.opts && cur.opts.length > 1) selectOpt(((cur.sel || 0) + 1) % cur.opts.length); };
 function drawRoute(r) {
   const R = r.route;
   L.polyline(R, { color: "#fff", weight: 11, opacity: .85, interactive: false }).addTo(layer);   // ふちどり
@@ -3288,7 +3292,7 @@ function renderCfg() {
   h += '<h4>階段？・急坂？</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="slopeAuto"' + (lsGet("hosomichi_slopeauto", false) ? " checked" : "") + '>地図を動かしたら、見ている所を 自動でしらべる<span class="pw u">⚡小</span></label><div class="note">ズーム16より近いとき・ナビで固定していないときだけ<span class="hq">?</span><div class="hd">地図をスクロールして止まると、見えている所の 階段？・急坂？ を しらべてマークを出すよ（📍ボタンの長押しと同じ）。標高のデータを取るので、少し通信するよ。一度しらべた所は しらべないよ。ナビで走っているあいだは 電池のために しらべないよ</div></div>';
   h += '<h4>進行方向</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="flow"' + (lsGet("hosomichi_flowmode", "fwd") !== "off" ? " checked" : "") + '>➤ ルートの上に 進む向きの矢印を出す</label>';
   $("cfgMap").innerHTML = h; h = "";
-  h += "<h4>計算</h4>" + get(["mode", "alts", "area", "turn"]);
+  h += "<h4>計算</h4>" + get(["mode", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">3車線以上の所は 4車線と同じにしてるよ<span class="hq">?</span><div class="hd">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">細い道なら 一方通行の逆向きも走るよ（少し避ける）<span class="hq">?</span><div class="hd">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div></div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか<span class="hq">?</span><div class="hd">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div></div>'
