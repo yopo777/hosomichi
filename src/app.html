@@ -370,7 +370,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="gps" title="現在地についていく">◎</button><div id="gpsL">現在地</div>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
-<button id="mk" title="マークを出す／かくす（長押し：このあたりの🪜階段？・⛰急坂？を見る）">📍<small id="mkL">マーク</small></button>
+<button id="mk" title="マークと📌スポット（⭐🏠🔒🚫）を出す／かくす（長押し：このあたりの🪜階段？・⛰急坂？を見る）">📍<small id="mkL">マーク</small></button>
 <button id="col" title="地図の種類">🗺<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qToast"></div>
@@ -4264,16 +4264,20 @@ const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S")
 spotSize();
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
-  $("spotBox").innerHTML = `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div>`
+  $("spotBox").innerHTML = `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ 地図に出すよ<span class="hq">?</span><div class="hd">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div></div>`
+    + (() => { const all = SPOT_KINDS.flatMap(x => x[1]), on = all.filter(x => spotOn.has(x[0])).length;
+        return `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-weight:bold;font-size:14px"><input type="checkbox" data-sall="1"${on === all.length ? " checked" : ""}>📍 すべてのマーク<span style="font-weight:normal;font-size:11px;color:#888">（${on}/${all.length}）</span></label>`; })()
     + SPOT_KINDS.map(([g, ks], gi) => `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("")
       + (g === "道" ? '<div style="font-size:11px;color:#666;margin-top:2px">🪜階段？⛰急坂？＝地図ではふつうの道だけど、標高で見つけた所</div>' : "") + "</div></div>").join("");
   for (const el of $("spotBox").querySelectorAll("[data-sg]")) { const ks = SPOT_KINDS[+el.dataset.sg][1]; el.indeterminate = !el.checked && ks.some(x => spotOn.has(x[0])); }   // 一部だけオンのときは「－」
+  { const el = $("spotBox").querySelector("[data-sall]"); if (el) el.indeterminate = !el.checked && spotOn.size > 0; }
 }
 $("tabSpot").addEventListener("change", e => {
   if (e.target.dataset.sz) { spotSz = e.target.dataset.sz; lsSet("hosomichi_spotsz", spotSz); spotSize(); return; }
-  const k = e.target.dataset.sk, sg = e.target.dataset.sg; if (!k && sg == null) return;
-  if (sg != null) { for (const [kk] of SPOT_KINDS[+sg][1]) e.target.checked ? spotOn.add(kk) : spotOn.delete(kk); }   // カテゴリぜんぶ
+  const k = e.target.dataset.sk, sg = e.target.dataset.sg, sall = e.target.dataset.sall; if (!k && sg == null && !sall) return;
+  if (sall) { for (const [, ks] of SPOT_KINDS) for (const [kk] of ks) e.target.checked ? spotOn.add(kk) : spotOn.delete(kk); }   // ぜんぶ
+  else if (sg != null) { for (const [kk] of SPOT_KINDS[+sg][1]) e.target.checked ? spotOn.add(kk) : spotOn.delete(kk); }   // カテゴリぜんぶ
   else if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
   renderSpots();
   lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn(); slopeDraw();
@@ -4421,6 +4425,7 @@ function mkBtn() {
   $("mk").style.display = "block";   // 長押しで🪜⛰を見るので いつも出す
   $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
   for (const ly of [spotLayer, owLayer, slopeLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
+  try { ptShow(); } catch {}   // 📌スポット（⭐🏠🔒🚫⚠👍）も いっしょに（読みこみの はじめは まだないので あとで呼ぶ）
 }
 // 📍を長押し：このあたり（見えている範囲）の 🪜階段？・⛰急坂？ を1回だけ計算してマークを出す（走っている間は自動では計算しない）
 { let lpT = null, lpDone = false;
@@ -4506,6 +4511,7 @@ drawSecrets();
 // ⭐ お気に入り（よく行く所）：名前は はじめ その場所の住所（市区町村＋町名）。SNSでは消さない。この端末の中だけ
 let favs = lsGet("hosomichi_fav", []).filter(q => q && Array.isArray(q.p));
 const favLayer = L.layerGroup().addTo(map);
+function ptShow() { for (const ly of [homeLayer, secLayer, favLayer, blkLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); } }   // 右はしの📍で かくす／出す
 function drawFavs() {
   favLayer.clearLayers();
   favs.forEach((q, i) => L.marker(q.p, { zIndexOffset: 300, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">⭐</div>' }) }).on("click", () => ptPop("f" + i)).addTo(favLayer));   // タップで 名前と ボタン
@@ -4522,7 +4528,7 @@ async function addFav(ll, title) {   // title：マークの名前（「🪨 庚
   favs.push({ p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], name: name.trim() || def || "お気に入り", t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` });
   lsSet("hosomichi_fav", favs); drawFavs(); setMsg("⭐ お気に入りにしたよ（📌スポットから出発・到着にすぐ入れられるよ）");
 }
-drawFavs();
+drawFavs(); ptShow();   // 📍でかくし中なら ⭐🏠🔒🚫 もかくす
 function setHome(ll) {
   if (home && hav(home, [ll.lat, ll.lng]) > 30 && !confirm("家の場所を、ここに変える？")) return;
   home = [+ll.lat.toFixed(6), +ll.lng.toFixed(6)]; lsSet("hosomichi_home", home); homeName = null; lsSet("hosomichi_homename", null); drawHome(); homeDist(); try { spotsTabDraw(); } catch {}
