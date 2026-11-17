@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1235</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1240</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2779,7 +2779,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1235", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1240", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4470,26 +4470,48 @@ async function footCityData() {   // cities.json（なければ null。作るま
   try { const r = await fetch(new URL("../hosomichi-data/cities.json", location.href).href); footCities = r.ok ? await r.json() : null; } catch { footCities = null; }
   return footCities;
 }
-// 🏙 市の名前をタップ：その市を地図いっぱいに出して、市の形を少しのあいだ うすく塗る
-const cityBoxC = new Map(), cityHiLayer = L.layerGroup().addTo(map); let cityHiT = 0;
+// 🏙 市の名前をタップ：その市を地図いっぱいに出して、市のさかい目を 太い線でかこむ（足あとが どれだけ塗れたか見る用）
+// さかい目は cities.json のマス目（約100m）から作るので、少しカクカクだよ。もう一回 同じ市をタップすると消える
+const cityRunC = new Map(), cityEdgeC = new Map(), cityHiLayer = L.layerGroup().addTo(map); let cityHiNow = null;
 function cityRuns(C, c) {   // その市のマス目の横ならび [緯度番号, 経度番号はじめ, おわり]
-  if (cityBoxC.has(c)) return cityBoxC.get(c);
+  if (cityRunC.has(c)) return cityRunC.get(c);
   const out = [];
   C.rows.forEach((row, r) => { if (row) for (let n = 0; n < row.length; n += 3) if (row[n + 2] === c) out.push([r + C.i0, row[n], row[n + 1]]); });
-  cityBoxC.set(c, out); return out;
+  cityRunC.set(c, out); return out;
+}
+function cityEdges(C, c) {   // さかい目の線：となりのマスが ほかの市なら、そのあいだに線。まっすぐ続く所は1本にまとめる
+  if (cityEdgeC.has(c)) return cityEdgeC.get(c);
+  const runs = cityRuns(C, c), G = C.G, has = new Set();
+  for (const [i, j0, j1] of runs) for (let j = j0; j < j1; j++) has.add(i * 1e6 + j);
+  const H = new Map(), V = new Map();   // H：緯度の線（キー＝線の緯度番号）・V：経度の線（キー＝線の経度番号）
+  const put = (M, k, v) => { let a = M.get(k); if (!a) M.set(k, a = []); a.push(v); };
+  for (const [i, j0, j1] of runs) for (let j = j0; j < j1; j++) {
+    if (!has.has((i + 1) * 1e6 + j)) put(H, i + 1, j);
+    if (!has.has((i - 1) * 1e6 + j)) put(H, i, j);
+    if (!has.has(i * 1e6 + j - 1)) put(V, j, i);
+    if (!has.has(i * 1e6 + j + 1)) put(V, j + 1, i);
+  }
+  const segs = [], join = (M, mk) => { for (const [k, a] of M) { a.sort((x, y) => x - y); let s0 = a[0], p = a[0];
+    for (let n = 1; n <= a.length; n++) { if (n < a.length && a[n] === p + 1) { p = a[n]; continue; } segs.push(mk(k, s0, p + 1)); if (n < a.length) s0 = p = a[n]; } } };
+  join(H, (k, x0, x1) => [[k * G, x0 * G], [k * G, x1 * G]]);
+  join(V, (k, y0, y1) => [[y0 * G, k * G], [y1 * G, k * G]]);
+  cityEdgeC.set(c, segs); return segs;
 }
 async function cityGo(c) {
-  const C = await footCityData(); if (!C) return;
-  const runs = cityRuns(C, +c); if (!runs.length) return;
+  c = +c; const C = await footCityData(); if (!C) return;
+  cityHiLayer.clearLayers();
+  if (cityHiNow === c) { cityHiNow = null; return; }   // もう一回タップで消す
+  const runs = cityRuns(C, c); if (!runs.length) return;
   let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
   for (const [i, j0, j1] of runs) { la0 = Math.min(la0, i * C.G); la1 = Math.max(la1, (i + 1) * C.G); lo0 = Math.min(lo0, j0 * C.G); lo1 = Math.max(lo1, j1 * C.G); }
   if (follow) setFollow(false);
   $("panel").classList.add("min"); $("tog").textContent = "ひらく";
   map.fitBounds([[la0, lo0], [la1, lo1]], { padding: [20, 20] });
-  cityHiLayer.clearLayers(); clearTimeout(cityHiT);
-  const rend = L.canvas({ padding: 0.2 });
-  for (const [i, j0, j1] of runs) L.rectangle([[i * C.G, j0 * C.G], [(i + 1) * C.G, j1 * C.G]], { renderer: rend, stroke: false, fillColor: "#ff6d00", fillOpacity: 0.15, interactive: false }).addTo(cityHiLayer);
-  cityHiT = setTimeout(() => cityHiLayer.clearLayers(), 5000);
+  const segs = cityEdges(C, c), rend = L.canvas({ padding: 0.3 });
+  L.polyline(segs, { renderer: rend, color: "#fff", weight: 9, opacity: 0.9, interactive: false, lineCap: "square" }).addTo(cityHiLayer);   // ふち（白）
+  L.polyline(segs, { renderer: rend, color: "#6a1b9a", weight: 5, opacity: 0.85, interactive: false, lineCap: "square" }).addTo(cityHiLayer);
+  cityHiNow = c;
+  setMsg(`🏙 ${C.names[c]}（もう一回 名前をタップで わくを消すよ）`);
 }
 document.addEventListener("click", e => { const t = e.target.closest && e.target.closest("[data-city]"); if (t) cityGo(t.dataset.city); });   // 👣足あと・その日の記録の 市の名前
 function footCityOf(C, la, lo) {
