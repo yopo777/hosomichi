@@ -3212,7 +3212,7 @@ function photoBackBtn() {
 }
 function pinPopup(ll, v, title, note) {   // 「ここを 出発にする / 到着にする」（note：タイトルの下の 小さい説明1行）
   const div = document.createElement("div"); div.className = "pin";
-  div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note)}</span><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
+  div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note).replace(/\n/g, "<br>")}</span><br>` : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
     + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br><button data-fav='1'>⭐ お気に入り</button>"
     + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-b='w' style='color:#188038'>👍 通りたい</button><button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>"
     + "<br><button data-fake='1' style='color:#888'>🧪 ここを現在地にする（debug用）</button>"   // いちばん下：ふだんは使わない
@@ -4446,7 +4446,7 @@ function owDraw(m) {
 map.on("moveend", () => owUpdate(false));
 // 🪜 階段？・⛰ 急坂？（ルートを計算したときや 📍長押しで、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
 // 一度しらべた所は この端末におぼえておいて、地図に近づいたら（ズーム14より近く）いつでも出す
-const SLOPE_V = 5;   // 見分け方を変えたら上げる（古いマークはすてる）
+const SLOPE_V = 6;   // 見分け方を変えたら上げる（古いマークはすてる）
 const slopeLayer = L.layerGroup().addTo(map);
 let slopeDB = (() => { const d = lsGet("hosomichi_slope", null); return d && d.v === SLOPE_V && d.t ? d : { v: SLOPE_V, t: {} }; })(), slopeSaveT = null;
 const slopeKey = (la, lo) => Math.floor(la / 0.01) + "_" + Math.floor(lo / 0.01);
@@ -4466,9 +4466,9 @@ function slopeDraw() {
   const b = map.getBounds().pad(0.2);
   for (let i = Math.floor(b.getSouth() / 0.01); i <= Math.floor(b.getNorth() / 0.01); i++)
     for (let j = Math.floor(b.getWest() / 0.01); j <= Math.floor(b.getEast() / 0.01); j++)
-      for (const [la, lo, st, g, dh, len] of slopeDB.t[i + "_" + j] || []) {
+      for (const [la, lo, st, g, dh, len, why] of slopeDB.t[i + "_" + j] || []) {
         if (!spotOn.has(st ? "gstep" : "steep")) continue;   // ⚙マークの設定で えらんだものだけ
-        const t = `${st ? "🪜 階段？" : "⛰ 急坂？"}（坂${g}%・高さの差${dh}m・長さ${len}m）`, nt = SLOPE_NOTE[st ? 1 : 0];
+        const t = `${st ? "🪜 階段？" : "⛰ 急坂？"}（坂${g}%・高さの差${dh}m・長さ${len}m）`, nt = SLOPE_NOTE[st ? 1 : 0] + (why ? "\n🔍 " + why : "");
         L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
             html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
           .bindTooltip(t, { direction: "top", offset: [0, -10] })

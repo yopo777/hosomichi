@@ -1397,7 +1397,7 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 //    とちゅうの点で、はしとはしの高さのあいだ（±0.5m）から飛び出したものは 崖・擁壁のずれとして すてる（3割をこえたら見ない）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
 const STEP_WIN = 15, STEP_MASS = 0.7, STEP_GR = 0.25, STEP_TOL = 0.5;
-function stepConc(pts, need) {   // 道（点のならび）で、15mまでの間に need m 以上かわる所の いちばん急な坂（なければ 0）
+function stepConc(pts, need) {   // 道（点のならび）で、15mまでの間に need m 以上かわる所の いちばん急な坂 gr（なければ 0）・15mの間の いちばん大きい差 loc・すてた点の わりあい drop
   const sm = []; let d0 = 0;
   for (let i = 1; i < pts.length; i++) {
     const [a1, o1] = pts[i - 1], [a2, o2] = pts[i], L = hav(a1, o1, a2, o2);
@@ -1405,17 +1405,18 @@ function stepConc(pts, need) {   // 道（点のならび）で、15mまでの�
     d0 += L;
   }
   const [la, lo] = pts[pts.length - 1]; sm.push([d0, heightAt(la, lo)]);
-  if (sm.some(x => isNaN(x[1]))) return null;
+  if (sm.some(x => isNaN(x[1]))) return { why: "標高データなし" };
   // はしとはしの高さの あいだ（±0.5m）から飛び出した点は、崖・擁壁のそばの 標高のずれとして すてる。すてる点が3割をこえたら あてにならない
   const lo0 = Math.min(sm[0][1], sm[sm.length - 1][1]) - STEP_TOL, hi0 = Math.max(sm[0][1], sm[sm.length - 1][1]) + STEP_TOL, n0 = sm.length;
   for (let i = sm.length - 1; i >= 0; i--) if (sm[i][1] < lo0 || sm[i][1] > hi0) sm.splice(i, 1);
-  if (sm.length < n0 * 0.7 || sm.length < 3) return null;
-  let gr = 0, j = 0;
+  const drop = 1 - sm.length / n0;
+  if (sm.length < n0 * 0.7 || sm.length < 3) return { why: "すてた点が多い", drop };
+  let gr = 0, loc = 0, j = 0;
   for (let i = 0; i < sm.length; i++) {
     while (sm[i][0] - sm[j][0] > STEP_WIN) j++;
-    for (let k = j; k < i; k++) { const d = Math.abs(sm[i][1] - sm[k][1]); if (d >= need) gr = Math.max(gr, d / Math.max(sm[i][0] - sm[k][0], 6)); }   // 6mより短い所は 6mとして（標高データのゆれで 急になりすぎないように）
+    for (let k = j; k < i; k++) { const d = Math.abs(sm[i][1] - sm[k][1]); loc = Math.max(loc, d); if (d >= need) gr = Math.max(gr, d / Math.max(sm[i][0] - sm[k][0], 6)); }   // 6mより短い所は 6mとして（標高データのゆれで 急になりすぎないように）
   }
-  return gr;
+  return { gr, loc, drop };
 }
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
 function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍長押しの「このあたりを見る」）   // k：のぼり1mを何m分 / stK：🪜階段？の倍率（"no"＝通らない） / slK：⛰急坂？の倍率
@@ -1449,9 +1450,12 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
       // 階段っぽさ：高ければ 階段？・低ければ 急坂？
       const ai = stairsAt(path.map(i => [G.lat[i], G.lon[i]]));
       if (ai != null && gr >= 0.1) { if (ai >= AI_YES) { stair = true; steep = false; } else if (ai <= AI_NO) { stair = false; steep = true; } }
+      let why = ai != null ? `航空写真AI ${ai}%` : "";   // 🔍 マークをタップしたときに出す 判定の数字（調整用）
       if (steep && ai == null) {   // ⛰急坂？：高さの差が 15mの間に まとまっていたら 🪜階段？
         const q = stepConc(path.map(i => [G.lat[i], G.lon[i]]), Math.max(2, STEP_MASS * dh));
-        if (q != null && q >= STEP_GR) { stair = true; steep = false; }
+        if (q.gr != null && q.gr >= STEP_GR) { stair = true; steep = false; }
+        why = q.why ? q.why + (q.drop != null ? ` ${Math.round(q.drop * 100)}%` : "")
+          : `15mの間のまとまり ${Math.round(100 * q.loc / dh)}%（${Math.round(STEP_MASS * 100)}%いる）・そこの坂 ${Math.round(q.gr * 100)}%（${Math.round(STEP_GR * 100)}%いる）・すてた点 ${Math.round(q.drop * 100)}%`;
       }
       if (!stair && !steep) continue;
       if (stair) st++; else sl++;
@@ -1462,7 +1466,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
           if (d >= half) { const t = d ? half / d : 0; mla = G.lat[p0] + (G.lat[p1] - G.lat[p0]) * t; mlo = G.lon[p0] + (G.lon[p1] - G.lon[p0]) * t; break; }
           half -= d; mla = G.lat[p1]; mlo = G.lon[p1];
         }
-        marks.push([+mla.toFixed(6), +mlo.toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L)]); }
+        marks.push([+mla.toFixed(6), +mlo.toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L), why]); }
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
         if (stair) { e.c *= stK === "no" ? 1e4 : (+stK || 1); e.k = "階段？"; }
