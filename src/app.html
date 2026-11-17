@@ -281,7 +281,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">どちらも地図のマークのオン・オフとは関係なく使えるよ。曲がる手前ではしゃべらないよ</div>
         <div style="font-weight:bold;margin-top:6px">🗺 ときどき全体図を見せて、いまの住所を言う<span class="pw u">⚡小</span></div>
         <div style="margin-top:2px"><select id="autoOvMin"><option value="0">しない</option><option value="5">5分ごと</option><option value="10">10分ごと</option><option value="15">15分ごと</option><option value="30">30分ごと</option></select>
-          <select id="autoOvSec"><option value="5">5秒見せる</option><option value="10">10秒見せる</option><option value="15">15秒見せる</option></select></div>
+          <select id="autoOvSec"><option value="3">3秒見せる</option><option value="5">5秒見せる</option><option value="7">7秒見せる</option></select></div>
         <div style="font-size:11px;color:#666;margin-top:2px">道なりで、曲がる所が近くないときだけ。「現在地は、〇〇市〇〇三丁目です」と言うよ</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="jihoOn">🕐 30分ごとに時刻を言う（時報）<span class="pw u">⚡小</span></label>
       </div>
@@ -3384,7 +3384,7 @@ function vsMark(s) {
 }
 function vsTidy(ll) { vsMk = vsMk.filter(x => { const keep = Date.now() - x.t < 120000 && hav(ll, x.p) < Math.max(300, VS_R + 150); if (!keep) vsLayer.removeLayer(x.m); return keep; }); }
 // 🗺 ときどき全体図 ＋ 住所、🕐 時報（ナビ中だけ。曲がる手前・コース外れ・しゃべっている最中はあとまわし）
-let autoOvMin = +lsGet("hosomichi_aovmin", 0) || 0, autoOvSec = +lsGet("hosomichi_aovsec", 10) || 10, jihoOn = !!lsGet("hosomichi_jiho", false);
+let autoOvMin = +lsGet("hosomichi_aovmin", 0) || 0, autoOvSec = [3, 5, 7].includes(+lsGet("hosomichi_aovsec", 5)) ? +lsGet("hosomichi_aovsec", 5) : 5, jihoOn = !!lsGet("hosomichi_jiho", false);   // 見せる秒：3・5・7秒（前の10・15秒は5秒に）
 let autoOvLast = Date.now(), autoOvBy = false, autoOvRun = 0, jihoLast = null;
 $("autoOvMin").value = autoOvMin; $("autoOvSec").value = autoOvSec; $("jihoOn").checked = jihoOn;
 $("autoOvMin").onchange = () => { autoOvMin = +$("autoOvMin").value; lsSet("hosomichi_aovmin", autoOvMin); autoOvLast = Date.now(); };
@@ -3406,7 +3406,7 @@ function autoTick() {
   if (autoOvMin && !ovMode && Date.now() - autoOvLast > autoOvMin * 60000 && Date.now() - blkTouch > 15000 && quietNow()) {
     autoOvLast = Date.now(); autoOvBy = true; const run = ++autoOvRun; ovSet(true); blkShowMap(autoOvSec * 1000);
     const ll = me.getLatLng();
-    if (vcOn) addrName([ll.lat, ll.lng]).then(n => { if (n && autoOvBy) say(`現在地は、${n}です`); });
+    if (vcOn) addrName([ll.lat, ll.lng]).then(n => { if (n && run === autoOvRun) say(`現在地は、${n}です`); });   // 3秒だと 住所がわかる前に全体図が終わることがあるので、終わっていても言う
     setTimeout(() => { if (run !== autoOvRun) return; if (autoOvBy && ovMode) ovSet(false, "時間"); autoOvBy = false; }, autoOvSec * 1000);   // 前の回のタイマーで 今の回を消さない
   }
 }
