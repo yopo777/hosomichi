@@ -84,6 +84,7 @@ body.navi .pulse{display:none;animation:none}
 @keyframes pulse{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.4);opacity:0}}
 body.ov .me-ic svg{transform:scale(1.7)}
 body.ov .me-ic::before{content:"";position:absolute;left:50%;top:50%;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;border:6px solid #1a73e8;box-sizing:border-box;animation:pulse 1.4s ease-out infinite;pointer-events:none}   /* 🗺 全体図では自分を大きく・輪で目立たせる */
+#cityAsk{position:fixed;left:0;right:0;bottom:0;z-index:5000;padding:10px;pointer-events:none}#cityAsk .box{pointer-events:auto;background:#fff;border-radius:14px;padding:10px 14px;max-width:440px;margin:0 auto;box-shadow:0 -2px 16px #0004;display:flex;align-items:center;gap:10px}#cityAsk button{padding:9px 12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px;white-space:nowrap}
 #msnAsk{position:fixed;left:0;right:0;bottom:0;z-index:6000;padding:10px}#msnAsk .box{background:#fff;border-radius:14px;padding:14px;max-width:440px;margin:0 auto;box-shadow:0 -2px 16px #0004}#msnAsk button{padding:11px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:15px}#msnAsk button.big{background:#d93025;border-color:#d93025;color:#fff;font-weight:bold}
 .hereTip{color:#1a73e8;font-weight:bold;font-size:13px}
 #stabs{display:flex;gap:4px;margin:6px 0 2px;flex-wrap:wrap}#stabs button{flex:1;border:1px solid #ddd;background:#fff;border-radius:999px;padding:5px 2px;font-size:12px;color:#555;white-space:nowrap}#stabs button.on{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold}   /* 設定の中の小さいタブ */
@@ -191,7 +192,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1449</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1452</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2809,7 +2810,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1449", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1452", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4529,20 +4530,30 @@ function cityEdges(C, c) {   // さかい目の線：となりのマスが ほ�
 }
 async function cityGo(c) {
   c = +c; const C = await footCityData(); if (!C) return;
-  cityHiLayer.clearLayers();
+  cityOff();
   if (cityHiNow === c) { cityHiNow = null; return; }   // もう一回タップで消す
   const runs = cityRuns(C, c); if (!runs.length) return;
   let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
   for (const [i, j0, j1] of runs) { la0 = Math.min(la0, i * C.G); la1 = Math.max(la1, (i + 1) * C.G); lo0 = Math.min(lo0, j0 * C.G); lo1 = Math.max(lo1, j1 * C.G); }
   if (follow) setFollow(false);
   $("panel").classList.add("min"); $("tog").textContent = "ひらく";
-  map.fitBounds([[la0, lo0], [la1, lo1]], { padding: [20, 20] });
+  map.fitBounds([[la0, lo0], [la1, lo1]], { paddingTopLeft: [20, 90], paddingBottomRight: [60, 120] });   // 上のパネル・下の窓・右のボタンに かくれないように
   const segs = cityEdges(C, c), rend = L.canvas({ padding: 0.3 });
   L.polyline(segs, { renderer: rend, color: "#fff", weight: 9, opacity: 0.9, interactive: false, lineCap: "square" }).addTo(cityHiLayer);   // ふち（白）
   L.polyline(segs, { renderer: rend, color: "#6a1b9a", weight: 5, opacity: 0.85, interactive: false, lineCap: "square" }).addTo(cityHiLayer);
   cityHiNow = c;
-  setMsg(`🏙 ${C.names[c]}（もう一回 名前をタップで わくを消すよ）`);
+  // 下の白い窓：〇〇市 ○%走破（👣足あとの％を出したことがあれば）・わくを消すボタン
+  const L0 = footCityLast && footCityLast.C === C ? footCityLast.by[c] || 0 : null, all = C.total[c] || 0;
+  const pc = L0 == null || !all ? "" : (p => p < 1 ? p.toFixed(2) : p.toFixed(1))(100 * L0 / all);
+  const d = document.createElement("div"); d.id = "cityAsk";
+  d.innerHTML = `<div class="box"><div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:bold">🏙 ${esc(C.names[c])}</div>`
+    + (pc ? `<div style="font-size:14px;color:#ff6d00;font-weight:bold">${pc}% 走破<span style="font-size:11px;color:#888;font-weight:normal">（${(L0 / 1000).toFixed(1)} / ${Math.round(all / 1000)}km）</span></div>`
+      : `<div style="font-size:12px;color:#888">道 ${Math.round(all / 1000)}km（👣足あとを出すと ％が出るよ）</div>`)
+    + `</div><button data-x="1">✕ わくを消す</button></div>`;
+  d.querySelector("[data-x]").onclick = () => { cityOff(); cityHiNow = null; };
+  document.body.appendChild(d);
 }
+function cityOff() { cityHiLayer.clearLayers(); const d = $("cityAsk"); if (d) d.remove(); }
 document.addEventListener("click", e => { const t = e.target.closest && e.target.closest("[data-city]"); if (t) cityGo(t.dataset.city); });   // 👣足あと・その日の記録の 市の名前
 function footCityOf(C, la, lo) {
   const row = C.rows[Math.floor(la / C.G) - C.i0], j = Math.floor(lo / C.G);
