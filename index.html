@@ -120,18 +120,16 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
 @keyframes fbk{50%{opacity:.25}}
 #col{position:absolute;top:calc(50% + var(--rb) - 86px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
-#fl,#flr{position:absolute;right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+#flr{position:absolute;right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0;display:none}
-#fl{top:calc(50% + var(--rb) - 146px)}
-#fl.off{opacity:.45;filter:grayscale(1)}
-#fl small,#flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
+#flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 .shLbl{white-space:nowrap;pointer-events:none}.shLbl i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#5f6368;border:2px solid #fff;box-sizing:border-box}
 .shLbl b{position:absolute;left:7px;top:-8px;font-size:11px;color:#333;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}   /* 🔗 共有ルートの 通った所の名前 */
-#ft{position:absolute;top:calc(50% + var(--rb) - 266px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+#ft{position:absolute;top:calc(50% + var(--rb) - 206px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
 #ft.off{opacity:.45;filter:grayscale(1)}
 #ft small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
-#mk{position:absolute;top:calc(50% + var(--rb) - 206px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
+#mk{position:absolute;top:calc(50% + var(--rb) - 146px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0;display:none}
 #mk.off{opacity:.45;filter:grayscale(1)}
 #mk small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
@@ -190,7 +188,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.0829</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.0935</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -377,7 +375,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
 <button id="mk" title="マークを出す／かくす（長押し：このあたりの🪜階段？・⛰急坂？を見る）">📍<small id="mkL">マーク</small></button>
-<button id="fl" title="進行方向（進む向き → 逆向き → 消す）"><span id="flI">➤</span><small id="flL">進行方向</small></button>
 <button id="col" title="地図の種類">🗺<small id="colL"></small></button>
 <div id="legend"></div>
 <div id="qToast"></div>
@@ -2758,7 +2755,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.0829", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.0935", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     if ($("myPh").checked) {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4947,6 +4944,7 @@ function renderCfg() {
     '<div class="note">道路データがない所（ルートを作るときにダウンロードが必要な所）は、地図が少し暗くなるよ。右の🗺ボタンでも切りかえられるよ</div>';
   h += "<h4>ルートの色</h4>" + [["kind", "道の種類"], ["slope", "坂"]].map(([k, t]) =>
     `<label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="radio" name="rcol" value="${k}"${k === colorMode ? " checked" : ""}>${t}</label>`).join("");
+  h += '<h4>進行方向</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="flow"' + (lsGet("hosomichi_flowmode", "fwd") !== "off" ? " checked" : "") + '>➤ ルートの上に 進む向きの矢印を出す</label>';
   $("cfgMap").innerHTML = h; h = "";
   h += "<h4>計算</h4>" + get(["mode", "alts", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div>';
@@ -4972,6 +4970,7 @@ showStab(lsGet("hosomichi_stab", "road"));
 $("cfgMap").onchange = e => {
   if (e.target.name === "bg") { setBase(e.target.value); return baseBtn(); }
   if (e.target.name === "rcol") return setColorMode(e.target.value);
+  if (e.target.name === "flow") return flowSet(e.target.checked);
 };
 $("cfgBox").onchange = e => {
   if (e.target.name === "bg") { setBase(e.target.value); return baseBtn(); }
@@ -6397,20 +6396,11 @@ drawHome();
 const flowLayer = L.layerGroup().addTo(map);
 map.createPane("flowPane", map._rotatePane || map.getPane("mapPane")).style.zIndex = 450;   // ルートの線（400）より上・マーク（600）より下（地図といっしょに回る層に入れる）
 let flowBalls = [], flowRaf = 0, flowT0 = 0, flowSpeed = 0, flowLast = 0, flowSize = 10;
-// 右はしの ⚪ ボタン1つで：進む向き → 逆向き → 消す → 進む向き …
-let flowMode = lsGet("hosomichi_flowmode", "fwd");
-let flowOn = flowMode !== "off", flowRev = flowMode === "rev";
-function flowBtns() {
-  const has = !!(cur && cur.route && cur.route.length > 1);
-  $("fl").style.display = has ? "block" : "none";
-  $("fl").classList.toggle("off", flowMode === "off");
-  $("flI").textContent = flowMode === "rev" ? "⇄" : "➤";
-  $("flL").textContent = { fwd: "進行方向", rev: "逆向き", off: "消し中" }[flowMode];
-}
-$("fl").onclick = () => {
-  flowMode = { fwd: "rev", rev: "off", off: "fwd" }[flowMode]; lsSet("hosomichi_flowmode", flowMode);
-  flowOn = flowMode !== "off"; flowRev = flowMode === "rev"; flowPrep();
-};
+// ⚙設定 → 🗺地図 の「進行方向の矢印」で 出す・出さない（逆向きは一方通行があるのでやめた。前の「逆向き」は「出す」に）
+let flowOn = lsGet("hosomichi_flowmode", "fwd") !== "off";
+const flowRev = false;
+function flowBtns() {}   // 右はしのボタンはやめた（呼んでいる所が多いので のこしておく）
+function flowSet(on) { flowOn = on; lsSet("hosomichi_flowmode", on ? "fwd" : "off"); if (on) flowPrep(); else flowStop(); }
 function flowStop() { clearInterval(flowRaf); flowRaf = 0; flowLayer.clearLayers(); flowBalls = []; }
 // 進む向きの矢印（三角）：点 p で、a→c の向き（flowRev なら逆）。大きさ s は m
 function flowTri(p, a, c, s) {
