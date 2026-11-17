@@ -159,8 +159,6 @@ body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!i
 body.navi.ov #addr::after{content:'　↩ タップでもどる';font-size:12px;font-weight:normal;color:#1a73e8}
 body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font-size:14px!important}
 .pin{font-size:13px}
-.nost,.yest{position:relative;display:inline-block}.yest::after{content:"✓";position:absolute;right:-.25em;bottom:-.2em;color:#188038;font-weight:900;font-size:.95em;line-height:1;text-shadow:0 0 2px #fff,0 0 2px #fff}   /* 🪜✓ 階段だった */
-.nost::after{content:"✕";position:absolute;left:50%;top:50%;transform:translate(-50%,-52%);color:#d93025;font-weight:900;font-size:1.15em;line-height:1;text-shadow:0 0 2px #fff,0 0 2px #fff}   /* 🪜✕ 階段じゃない */
 .hq{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#e3e6ea;color:#5f6368;font:bold 10px/1 sans-serif;margin-left:4px;vertical-align:1px;cursor:pointer;position:relative;user-select:none;-webkit-user-select:none}
 .hq::after{content:"";position:absolute;inset:-9px}.hq.on{background:#1a73e8;color:#fff}   /* ？：くわしい説明を開く（指で押しやすいよう、さわれる所は広め） */
 .hd{display:none;margin:3px 0 2px;padding:5px 8px;background:#f3f6fa;border-left:3px solid #c6d4e8;border-radius:4px;font-size:11px;color:#444;line-height:1.55;font-weight:normal;white-space:normal}.hq.on+.hd{display:block}
@@ -3821,6 +3819,25 @@ for (const b of document.querySelectorAll("#dtabs button")) b.onclick = () => {
   if (d === "issue") dbgIssueDraw();
   if (d === "log" && $("lgAuto").checked) $("log").scrollTop = $("log").scrollHeight;
 };
+// 自分で描いたアイコン（マーク・印で使う。印の一覧を はじめに描くので ここで先に決めておく）
+const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#333"><rect x="0.5" y="1" width="2.2" height="12"/><rect x="4.7" y="1" width="2.2" height="12"/><rect x="8.9" y="1" width="2.2" height="12"/><rect x="13.1" y="1" width="2.2" height="12"/></g></svg>',
+  // 階段（横から見た段々）
+  steps: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1 13H5V9.5H8.5V6H12V2.5H15.5" fill="none" stroke="#333" stroke-width="2.2" stroke-linejoin="round"/></svg>',
+  // 自転車スロープつき階段（段々に 青い坂の線）
+  ramp: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1 13H5V9.5H8.5V6H12V2.5H15.5" fill="none" stroke="#333" stroke-width="2" stroke-linejoin="round"/><path d="M1.3 12.7L15.2 2.3" stroke="#1a73e8" stroke-width="2" stroke-linecap="round"/></svg>',
+  // 階段？（標高で見つけた。段々に ？）
+  gstep: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1 13H5V9.5H8.5V6H12V2.5H15.5" fill="none" stroke="#b06000" stroke-width="2.2" stroke-linejoin="round"/><text x="0.6" y="8.6" font-size="11" font-weight="900" font-family="sans-serif" fill="#d93025" stroke="#fff" stroke-width="0.6" paint-order="stroke">?</text></svg>',
+  // 急坂？（標高で見つけた。坂に ？）
+  steep: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M3.5 13H15.5V3.5Z" fill="#8d6e63"/><text x="0.6" y="8.6" font-size="11" font-weight="900" font-family="sans-serif" fill="#d93025" stroke="#fff" stroke-width="0.6" paint-order="stroke">?</text></svg>',
+  // 階段じゃない（段々に ✕）・階段だった（段々に ✓）：🪜⛰を直す印
+  nost: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1 13H5V9.5H8.5V6H12V2.5H15.5" fill="none" stroke="#333" stroke-width="2" stroke-linejoin="round"/><path d="M1.5 1.5L7 7M7 1.5L1.5 7" stroke="#d93025" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  yest: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1 13H5V9.5H8.5V6H12V2.5H15.5" fill="none" stroke="#333" stroke-width="2.2" stroke-linejoin="round"/><path d="M1.2 5L3.8 7.6L8.2 1.8" fill="none" stroke="#188038" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  // 自転車止めの柵（くいちがいの柵を上から）
+  cbar: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1.5 3.5H10M6 10.5H14.5" stroke="#d93025" stroke-width="2.6" stroke-linecap="round"/><path d="M1.5 2v3M6 9v3M14.5 9v3M10 2v3" stroke="#555" stroke-width="1.6"/></svg>',
+  // ポール（車止めの棒が3本）
+  bollard: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#555"><rect x="1.5" y="2" width="2.8" height="11" rx="1.2"/><rect x="6.6" y="2" width="2.8" height="11" rx="1.2"/><rect x="11.7" y="2" width="2.8" height="11" rx="1.2"/></g><g fill="#fbbc04"><rect x="1.5" y="4.5" width="2.8" height="2"/><rect x="6.6" y="4.5" width="2.8" height="2"/><rect x="11.7" y="4.5" width="2.8" height="2"/></g></svg>',
+  // ゲート・遮断機（柱と、赤白のバー）
+  gate: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><rect x="0.8" y="2" width="2.6" height="11" rx="1" fill="#555"/><rect x="3" y="5" width="12.4" height="3" fill="#d93025"/><g fill="#fff"><rect x="5.6" y="5" width="2.2" height="3"/><rect x="10" y="5" width="2.2" height="3"/></g></svg>' };
 const BKEY = "hosomichi_blocks";
 const BLK_R = { s: "階段", p: "人の家・敷地", x: "柵・工事・行き止まり", o: "その他" };
 let blocks = lsGet(BKEY, []).filter(b => b && Array.isArray(b.p));
@@ -3829,7 +3846,7 @@ let blocks = lsGet(BKEY, []).filter(b => b && Array.isArray(b.p));
   if (blocks.length < n0) { lsSet(BKEY, blocks); setTimeout(() => addLog(`📌 前の印（👍 通りたい・✅ 通れる・⤴️ 坂だった）を ${n0 - blocks.length}こ 消したよ`, "m"), 1500); }
 }
 const blkLayer = L.layerGroup().addTo(map);
-const BLK_IC = r => r === "a" ? "⚠️" : r === "n" ? '<span class="nost">🪜</span>' : r === "y" ? '<span class="yest">🪜</span>' : "🚫", BLK_NM = r => r === "a" ? "通りたくない" : r === "n" ? "階段じゃない" : r === "y" ? "階段だった" : "通れない";   // n：🪜✕ 階段じゃない（🪜階段？→⛰急坂？）・y：🪜✓ 階段だった（⛰急坂？→🪜階段？）
+const BLK_IC = r => r === "a" ? "⚠️" : r === "n" ? '<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.nost + '</span>' : r === "y" ? '<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.yest + '</span>' : "🚫", BLK_NM = r => r === "a" ? "通りたくない" : r === "n" ? "階段じゃない" : r === "y" ? "階段だった" : "通れない";   // n：🪜✕ 階段じゃない（🪜階段？→⛰急坂？）・y：🪜✓ 階段だった（⛰急坂？→🪜階段？）
 const BLK_TX = r => r === "n" ? "🪜✕" : r === "y" ? "🪜✓" : BLK_IC(r);   // ログ用（文字だけ）
 const BLK_SOFT = r => r === "a" || r === "n" || r === "y";   // 道を切らない印（🚫 いがい）
 const BLK_FIX = r => r === "n" || r === "y";   // 標高の 🪜⛰ を直す印（🪜✕ 階段じゃない・🪜✓ 階段だった）
@@ -3915,8 +3932,8 @@ function spotsTabDraw() {
     + sec(`🔒 秘密の場所 ${secrets.length}`, "親せきの家・職場など。SNSでは家と同じように まわりを消すよ", newest(secrets).map(([q, i]) => row("🔒", q.name || "秘密の場所", "s" + i)).join(""))
     + sec(`🚫 通れない ${bo.length}`, "いちばん近い道（12m以内）を ルートに使わないよ", bo.map(([b, i]) => row("🚫", b.name || "通れない", "b" + i)).join(""))
     + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", b.name || "通りたくない", "b" + i)).join(""))
-    + sec(`<span class="nost">🪜</span> 階段じゃない ${bg.length}`, "🪜階段？のマークから つけた所。いちばん近い道を ⛰急坂？にするよ", bg.map(([b, i]) => row('<span class="nost">🪜</span>', b.name || "階段じゃない", "b" + i)).join(""))
-    + sec(`<span class="yest">🪜</span> 階段だった ${by.length}`, "⛰急坂？のマークから つけた所。いちばん近い道を 🪜階段？にするよ", by.map(([b, i]) => row('<span class="yest">🪜</span>', b.name || "階段だった", "b" + i)).join(""));
+    + sec(`${BLK_IC("n")} 階段じゃない ${bg.length}`, "🪜階段？のマークから つけた所。いちばん近い道を ⛰急坂？にするよ", bg.map(([b, i]) => row(BLK_IC("n"), b.name || "階段じゃない", "b" + i)).join(""))
+    + sec(`${BLK_IC("y")} 階段だった ${by.length}`, "⛰急坂？のマークから つけた所。いちばん近い道を 🪜階段？にするよ", by.map(([b, i]) => row(BLK_IC("y"), b.name || "階段だった", "b" + i)).join(""));
   const pos = ptPos, rename = ptRename;
   for (const e of T.querySelectorAll("[data-use]")) e.onclick = () => { const [k, key] = e.dataset.use.split(":"); ptUse(key, k); };   // 🚲ルートの 出発・経由・到着に入れる（すぐ引ける）
   for (const e of T.querySelectorAll("[data-go]")) {
@@ -4341,15 +4358,6 @@ const SPOT_KINDS = [
     ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"],
     ["jizo", "🙏", "お地蔵さん・道祖神"], ["ichiri", "🌲", "一里塚"], ["tree", "🌳", "大きな木"], ["spring", "🫧", "湧き水"], ["fall", "🏞", "滝"], ["ferry", "⛴", "渡し船"]]]];
 // 絵文字にないアイコン（横断歩道＝上から見たしましま）
-const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#333"><rect x="0.5" y="1" width="2.2" height="12"/><rect x="4.7" y="1" width="2.2" height="12"/><rect x="8.9" y="1" width="2.2" height="12"/><rect x="13.1" y="1" width="2.2" height="12"/></g></svg>',
-  // 階段（横から見た段々）
-  steps: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1 13H5V9.5H8.5V6H12V2.5H15.5" fill="none" stroke="#333" stroke-width="2.2" stroke-linejoin="round"/></svg>',
-  // 自転車止めの柵（くいちがいの柵を上から）
-  cbar: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><path d="M1.5 3.5H10M6 10.5H14.5" stroke="#d93025" stroke-width="2.6" stroke-linecap="round"/><path d="M1.5 2v3M6 9v3M14.5 9v3M10 2v3" stroke="#555" stroke-width="1.6"/></svg>',
-  // ポール（車止めの棒が3本）
-  bollard: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><g fill="#555"><rect x="1.5" y="2" width="2.8" height="11" rx="1.2"/><rect x="6.6" y="2" width="2.8" height="11" rx="1.2"/><rect x="11.7" y="2" width="2.8" height="11" rx="1.2"/></g><g fill="#fbbc04"><rect x="1.5" y="4.5" width="2.8" height="2"/><rect x="6.6" y="4.5" width="2.8" height="2"/><rect x="11.7" y="4.5" width="2.8" height="2"/></g></svg>',
-  // ゲート・遮断機（柱と、赤白のバー）
-  gate: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><rect x="0.8" y="2" width="2.6" height="11" rx="1" fill="#555"/><rect x="3" y="5" width="12.4" height="3" fill="#d93025"/><g fill="#fff"><rect x="5.6" y="5" width="2.2" height="3"/><rect x="10" y="5" width="2.2" height="3"/></g></svg>' };
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
 const SPOT_COL = { "道": "#188038", "休けい・自転車": "#1a73e8", "ごはん・おやつ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
 const SPOT_KCOL = { cbar: "#d93025", bollard: "#d93025", gate: "#d93025", police: "#d01884", aed: "#d01884", hospital: "#d01884" };   // まとめる前のジャンルの色を のこす物（車止め＝赤・こまったとき＝ピンク）
@@ -4371,7 +4379,7 @@ function renderSpots() {
         return `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-weight:bold;font-size:14px"><input type="checkbox" data-sall="1"${on === all.length ? " checked" : ""}>📍 すべてのマーク<span style="font-weight:normal;font-size:11px;color:#888">（${on}/${all.length}）</span></label>`; })()
     + SPOT_KINDS.map(([g, ks], gi) => `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("")
-      + (g === "道" ? '<div style="font-size:11px;color:#666;margin-top:2px">🪜階段？⛰急坂？＝地図ではふつうの道だけど、標高で見つけた所</div>' : "") + "</div></div>").join("");
+      + (g === "道" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所</div>' : "") + "</div></div>").join("");
   for (const el of $("spotBox").querySelectorAll("[data-sg]")) { const ks = SPOT_KINDS[+el.dataset.sg][1]; el.indeterminate = !el.checked && ks.some(x => spotOn.has(x[0])); }   // 一部だけオンのときは「－」
   { const el = $("spotBox").querySelector("[data-sall]"); if (el) el.indeterminate = !el.checked && spotOn.size > 0; }
 }
@@ -4528,7 +4536,7 @@ function slopeDraw() {
         if (!spotOn.has(st ? "gstep" : "steep")) continue;   // ⚙マークの設定で えらんだものだけ
         const t = `${st ? "🪜 階段？" : "⛰ 急坂？"}（坂${g}%・高さの差${dh}m・長さ${len}m）`, nt = SLOPE_NOTE[st ? 1 : 0] + (why ? "\n🔍 " + why : "");
         L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
-            html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
+            html: `<div style="transform:translate(-50%,-50%) scale(${st ? 1.15 : 1});filter:drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff);opacity:${st ? 1 : .85}">${SPOT_SVG[st ? "gstep" : "steep"]}</div>` }) })
           .bindTooltip(t, { direction: "top", offset: [0, -10] })
           .on("click", () => pinPopup(L.latLng(la, lo), la.toFixed(6) + "," + lo.toFixed(6), t, nt,
           st ? [{ t: "🪜✕ 階段じゃない", col: "#d93025", fn: () => slopeFix(la, lo, "n") }] : [{ t: "🪜✓ 階段だった", col: "#188038", fn: () => slopeFix(la, lo, "y") }], true)).addTo(slopeLayer);
