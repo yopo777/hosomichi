@@ -220,41 +220,36 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="qList"></div>
     </div>
     <div id="tabCfg" style="display:none">
-      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 音声</button><button data-s="power">🔋 節電</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="data">📦 データ・その他</button></div>
+      <div id="stabs"><button data-s="road">🚲 道の好み</button><button data-s="navi">🗣 音声</button><button data-s="power">🔋 節電</button><button data-s="map">🗺 地図</button><button data-s="spot">📍 マーク</button><button data-s="data">📦 データ</button></div>
     <div id="tabSpot" class="spane" data-s="spot">
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
     <div id="tabData" class="spane" data-s="data">
-      <div style="font-size:11px;color:#666;margin-top:6px">地図がカラーの所は、道路データがもう入ってるよ<span class="hq">?</span><div class="hd">ルートを作るのに使う道路データのこと。地図がカラーの所は、もう端末に入っているよ</div></div>
-    <div id="pfBox" style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-<div style="margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:6px">
-        <button class="ib" id="pkAll" style="font-size:12px;width:100%">📦 この地方の配布データをまとめて入れる</button>
-        <div id="pkMsg" style="font-size:11px;color:#666;margin-top:2px">ルート作りが速くなるよ。パソコン（Wi-Fi）向け<span class="hq">?</span><div class="hd">配布データがある所は、ルートを作るときもサーバーにアクセスしないですぐ取れるよ。まとめて入れるのはパソコン（Wi-Fi）向け（数百MB）</div></div>
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="pfAuto">🗺 地図のまわりの道路データを自動でためる<span class="pw u">⚡大</span></label>
-      <div style="font-size:11px;color:#b45309;font-weight:bold;margin-top:2px">⚠ パソコン用。スマホでオンにすると ギガをたくさん使うよ<span class="hq">?</span><div class="hd">⚠ パソコン（Wi-Fi・光回線）用だよ。スマホではオンにしないでね！ギガをたくさん使っちゃう（1日 最大100MBくらい）</div></div>
-      <div id="pfMsg" style="font-size:11px;color:#666;margin-top:2px">いつも使うあたりから、ゆっくり取っていくよ<span class="hq">?</span><div class="hd">もう持っている道路データのとなりを、いつも使うあたりに近い順に、ゆっくり1マスずつ取るよ（ルート計算中はお休み）</div></div>
-      <div class="btns" style="margin-top:6px"><button class="ib" id="pfExp" style="font-size:12px">⬇ ためたデータを書き出す</button><button class="ib" id="pfImp" style="font-size:12px">⬆ 読みこむ</button></div>
-      <input type="file" id="pfFile" style="display:none">
-
-    </div>
-    <div id="store" style="font-size:11px;color:#888;margin-top:6px;display:none">📦 端末に保存した道路データ: <span id="stv"></span>
-      <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
-      <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <b>📤 自分のデータを まるごと書き出す</b>
-        <div style="font-size:11px;color:#666;margin-top:2px">家・ルート・記録などを 1つのファイルにするよ<span class="hq">?</span><div class="hd">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あとを、1つのファイルにしてダウンロードするよ。パソコンのナビをスマホとおなじにしたり、パソコンで ながめたりする用だよ</div></div>
+      <div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:#e8f0fe;font-size:12px">🔒 家・ルート・印・設定は <b>この端末の中だけ</b>。どこにも送らないよ<span class="hq">?</span><div class="hd">🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、この端末の中だけに保存していて、どこにも送らないよ。<br>ただし、地図の画像・道路データ・住所や地名をさがすときは、見ている場所や入れた地名を、それぞれの地図サービス（OpenStreetMap・国土地理院など）に問い合わせるよ。アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。</div></div>
+      <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <b>📤 バックアップ</b>
+        <div style="font-size:11px;color:#666;margin-top:2px">家・ルート・記録・写真を、1つのファイルにするよ<span class="hq">?</span><div class="hd">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あと・📷アルバムの写真を、1つのファイルにしてダウンロードするよ。パソコンのナビをスマホとおなじにしたり、パソコンで ながめたりする用だよ。<br>ファイルは パスワードで <b>暗号化</b>するよ（AES-256）。読みこむときも おなじパスワードがいるよ。パスワードは どこにも保存しないので、わすれないでね。<br>「⬆ 読みこむ」は、この端末のデータを ファイルの中身で <b>上書き</b>して、書き出した端末とおなじにするよ（スマホ → パソコンのミラー用）。道路データ・この端末だけの設定（自動でためる・ためしの現在地など）はそのままだよ。<br>⚠ 家の場所や走った道がぜんぶ入っているよ。暗号化していても、人にわたしたり 公開の場所に置いたりしないでね</div></div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:6px">🔑<input type="text" id="myPw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore placeholder="パスワード（6文字以上）" style="-webkit-text-security:disc;flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:8px;font-size:13px"><label style="font-size:11px;white-space:nowrap"><input type="checkbox" id="myPwShow">見せる</label></div>
-        <div style="font-size:11px;color:#666;margin-top:2px">このパスワードで暗号化するよ。わすれないでね<span class="hq">?</span><div class="hd">ファイルは このパスワードで <b>暗号化</b>するよ（AES-256）。読みこむときも おなじパスワードがいるよ。パスワードは どこにも保存しないので、わすれないでね</div></div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="myPh" checked>📷 アルバムの写真も入れる（1枚 100KBくらい）</label>
-        <div class="btns" style="margin-top:6px"><button class="ib" id="myExp" style="font-size:12px">⬇ 暗号化して書き出す</button><button class="ib" id="myImp" style="font-size:12px">⬆ 読みこんで おなじにする</button></div>
+        <div class="btns" style="margin-top:6px"><button class="ib" id="myExp" style="font-size:12px">⬇ 暗号化して書き出す</button><button class="ib" id="myImp" style="font-size:12px">⬆ 読みこむ</button></div>
         <input type="file" id="myFile" accept=".enc,.json" style="display:none">
-        <div style="font-size:11px;color:#666;margin-top:2px">⬆ 読みこむと、この端末をファイルの中身で <b>上書き</b>するよ<span class="hq">?</span><div class="hd">「⬆ 読みこむ」は、この端末のデータを ファイルの中身で <b>上書き</b>して、書き出した端末とおなじにするよ（スマホ → パソコンのミラー用）。道路データ・この端末だけの設定（自動でためる・ためしの現在地など）はそのままだよ</div></div>
-        <div style="font-size:11px;color:#b45309;margin-top:2px">⚠ 家の場所も入ってるよ。人にわたさないでね<span class="hq">?</span><div class="hd">⚠ 家の場所や走った道がぜんぶ入っているよ。暗号化していても、人にわたしたり 公開の場所に置いたりしないでね</div></div>
       </div>
-      <div style="margin-top:10px;padding:8px;border-radius:8px;background:#e8f0fe;font-size:12px;line-height:1.6">
-        <b>🔒 データについて</b><br>家・ルート・印・設定は <b>この端末の中だけ</b>。どこにも送らないよ<span class="hq">?</span><div class="hd">🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、この端末の中だけに保存していて、どこにも送らないよ。<br>ただし、地図の画像・道路データ・住所や地名をさがすときは、見ている場所や入れた地名を、それぞれの地図サービス（OpenStreetMap・国土地理院など）に問い合わせるよ。アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。</div>
+      <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <b>🗺 道路データ</b>
+        <div style="font-size:11px;color:#666;margin-top:2px">地図がカラーの所は、もう入ってるよ<span class="hq">?</span><div class="hd">ルートを作るのに使う道路データのこと。関東・関西・中京は、ルートを作るときに いる所だけ 配布データから自動で取ってくるよ。地図がカラーの所は、もう端末に入っているよ</div></div>
+        <div id="store" style="font-size:11px;color:#888;margin-top:2px;display:none">保存中：<span id="stv"></span>
+          <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
+        <details id="pfBox" style="margin-top:6px"><summary style="font-size:12px;color:#555;cursor:pointer">くわしい人向け（電波のない所・配布データの外）</summary>
+          <div style="margin:6px 0 8px;border-bottom:1px solid #eee;padding-bottom:6px">
+            <button class="ib" id="pkAll" style="font-size:12px;width:100%">📦 この地方の配布データをまとめて入れる</button>
+            <div id="pkMsg" style="font-size:11px;color:#666;margin-top:2px">電波のない所でも ルートを作りたいとき用（数百MB）<span class="hq">?</span><div class="hd">関東・関西・中京の配布データを、ぜんぶ先に入れておくよ。ふだんは いる所だけ自動で取るので いらないよ。山の中など 電波のない所でも ルートを作れるようになるよ（地図の絵は、見たことのある所しか出ないよ）。数百MBあるので、パソコンか Wi-Fi で</div></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:bold"><input type="checkbox" id="pfAuto">🗺 地図のまわりの道路データを自動でためる<span class="pw u">⚡大</span></label>
+          <div style="font-size:11px;color:#b45309;font-weight:bold;margin-top:2px">⚠ 配布データの外の人の パソコン用（ギガを使うよ）<span class="hq">?</span><div class="hd">関東・関西・中京いがいで、配布データがない所の道路データを、OpenStreetMap からためておくよ。関東・関西・中京の人は いらないよ。⚠ スマホではオンにしないでね！ギガをたくさん使っちゃう（1日 最大100MBくらい）</div></div>
+          <div id="pfMsg" style="font-size:11px;color:#666;margin-top:2px">いつも使うあたりから、ゆっくり取っていくよ<span class="hq">?</span><div class="hd">もう持っている道路データのとなりを、いつも使うあたりに近い順に、ゆっくり1マスずつ取るよ（ルート計算中はお休み）</div></div>
+          <div class="btns" style="margin-top:6px"><button class="ib" id="pfExp" style="font-size:12px">⬇ ためたデータを書き出す</button><button class="ib" id="pfImp" style="font-size:12px">⬆ 読みこむ</button></div>
+          <input type="file" id="pfFile" style="display:none">
+        </details>
       </div>
-      <div class="note" style="margin-top:8px">🏠 家・🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）して決めるよ</div>
     </div>
       <div class="spane" data-s="navi">
       <div style="font-size:11px;color:#666;margin:2px 0 4px">右の印：<span class="pw u">⚡</span>＝電池を使う　<span class="pw s">🔋</span>＝節約になる<span class="hq">?</span><div class="hd">右の印：<span class="pw u">⚡大・中・小</span>＝電池を使う量　<span class="pw s">🔋節電 大・中・小</span>＝電池の節約になる量（いちばん効くのは画面の明るさ・GPS・地図の描きなおし）</div></div>
@@ -796,7 +791,7 @@ function pfStart() {
   if (pfCount() >= PF_DAY) { $("pfMsg").textContent = `今日は ${PF_DAY}マスためたので、ここまで。明日また続けるよ`; return; }
   pfWorking = true; worker.postMessage({ cmd: "autoPf" });
 }
-$("pfAuto").checked = pfAutoOn;
+$("pfAuto").checked = pfAutoOn; if (pfAutoOn) $("pfBox").open = true;   // 自動でためるをオンにしている人（パソコン）は、たたまないで見せる
 $("pfAuto").onchange = () => {
   if ($("pfAuto").checked && isPhone() && !confirm("⚠ スマホでオンにすると、ギガ（データ通信量）をたくさん使っちゃうよ（1日 最大100MBくらい）。\nパソコンでためて「⬇ 書き出す」→ スマホで「⬆ 読みこむ」がおすすめだよ。\n\nそれでもオンにする？")) { $("pfAuto").checked = false; return; }
   pfAutoOn = $("pfAuto").checked; lsSet("hosomichi_autopf", pfAutoOn);
@@ -884,7 +879,7 @@ $("myExp").onclick = async () => {
     }
     const out = { app: "hosomichi", kind: "mydata", ver: "__VER__", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
-    if ($("myPh").checked) {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
+    {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
       out.album = [];
       for (const o of await albAll()) { const u = o.b instanceof Blob ? await toUrl(o.b) : null; if (u) out.album.push({ ...o, b: u }); }
