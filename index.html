@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1103</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1110</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -243,7 +243,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>📤 自分のデータを まるごと書き出す</b>
         <div style="font-size:11px;color:#666;margin-top:2px">家・ルート・記録などを 1つのファイルにするよ<span class="hq">?</span><div class="hd">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あとを、1つのファイルにしてダウンロードするよ。パソコンのナビをスマホとおなじにしたり、パソコンで ながめたりする用だよ</div></div>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:6px">🔑<input type="password" id="myPw" autocomplete="new-password" placeholder="パスワード（6文字以上）" style="flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:8px;font-size:13px"><label style="font-size:11px;white-space:nowrap"><input type="checkbox" id="myPwShow">見せる</label></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:6px">🔑<input type="text" id="myPw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore placeholder="パスワード（6文字以上）" style="-webkit-text-security:disc;flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:8px;font-size:13px"><label style="font-size:11px;white-space:nowrap"><input type="checkbox" id="myPwShow">見せる</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">このパスワードで暗号化するよ。わすれないでね<span class="hq">?</span><div class="hd">ファイルは このパスワードで <b>暗号化</b>するよ（AES-256）。読みこむときも おなじパスワードがいるよ。パスワードは どこにも保存しないので、わすれないでね</div></div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="myPh" checked>📷 アルバムの写真も入れる（1枚 100KBくらい）</label>
         <div class="btns" style="margin-top:6px"><button class="ib" id="myExp" style="font-size:12px">⬇ 暗号化して書き出す</button><button class="ib" id="myImp" style="font-size:12px">⬆ 読みこんで おなじにする</button></div>
@@ -2772,7 +2772,8 @@ async function myDecrypt(buf, pw) {   // まちがったパスワードなら nu
   try { const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: u.slice(m + 16, m + 28) }, await myKey(pw, u.slice(m, m + 16)), u.slice(m + 28)); return new TextDecoder().decode(await gzipBuf(new Uint8Array(pt), true)); }
   catch { return null; }
 }
-$("myPwShow").onchange = () => { $("myPw").type = $("myPwShow").checked ? "text" : "password"; };
+// type="password" にすると ブラウザが「安全なパスワードを自動生成」を出して、おぼえられないのができちゃうので、ふつうの文字の欄を ●● で見せる
+$("myPwShow").onchange = () => { $("myPw").style.webkitTextSecurity = $("myPwShow").checked ? "none" : "disc"; };
 $("myExp").onclick = async () => {
   const pw = $("myPw").value;
   if (pw.length < 6) { alert("🔑 パスワードを6文字以上 入れてね（読みこむときに使うよ）"); $("myPw").focus(); return; }
@@ -2783,7 +2784,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1103", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1110", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     if ($("myPh").checked) {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
