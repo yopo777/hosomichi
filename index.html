@@ -194,7 +194,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1825</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1830</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -283,6 +283,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">道なりで、曲がる所が近くないときだけ。「現在地は、〇〇市〇〇三丁目です」と言うよ</div>
         <div style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px">📏 走行距離を言う<select id="distVc" style="font-weight:normal"><option value="0">しない</option><option value="5">5kmごと</option><option value="10">10kmごと</option></select></div>
         <div style="font-size:11px;color:#666;margin-top:2px">「走行距離は、15キロです」。曲がる所の近くでは、すぎてから言うよ</div>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="batVc">🔋 スマホの電池を10%ごとに言う</label>
+        <div style="font-size:11px;color:#666;margin-top:2px">「スマホのバッテリー残量は、40%です」。充電して ふえたときも言うよ（iPhoneのSafariなどでは 取れないよ）</div>
         <label style="display:flex;align-items:center;gap:6px;font-weight:bold;margin-top:6px"><input type="checkbox" id="jihoOn">🕐 30分ごとに時刻を言う（時報）<span class="pw u">⚡小</span></label>
       </div>
       </div>
@@ -2858,7 +2860,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1825", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1830", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5427,6 +5429,20 @@ $("jihoOn").onchange = () => { jihoOn = $("jihoOn").checked; lsSet("hosomichi_ji
 let distVc = [0, 5, 10].includes(+lsGet("hosomichi_distvc", 5)) ? +lsGet("hosomichi_distvc", 5) : 5, distLast = null;   // distLast：[記録の t0, 言った回数]
 $("distVc").value = distVc;
 $("distVc").onchange = () => { distVc = +$("distVc").value; lsSet("hosomichi_distvc", distVc); distLast = null; };
+// 🔋 スマホの電池：10%ごと（へったときも ふえたときも）。前に言った所から 次の10%のさかい目まで うごいたら言う（49%↔50%で くりかえさない）
+let batVc = lsGet("hosomichi_batvc", true) !== false, bat = null, batLast = null;
+$("batVc").checked = batVc;
+$("batVc").onchange = () => { batVc = $("batVc").checked; lsSet("hosomichi_batvc", batVc); batLast = null; };
+try { navigator.getBattery?.().then(b => { bat = b; }).catch(() => {}); } catch {}
+if (!navigator.getBattery) { $("batVc").disabled = true; $("batVc").parentElement.style.opacity = 0.5; }
+function batCheck() {   // 言うことがあれば その文
+  if (!bat) return null;
+  const pc = Math.round(bat.level * 100);
+  if (batLast == null) { batLast = pc; return null; }   // はじめは 今の所から（55%なら 次は50%で言う）
+  const down = Math.ceil(batLast / 10) * 10 - 10, up = Math.floor(batLast / 10) * 10 + 10;   // 言った所から 次の10%のさかい目（50%で言ったら 40%か60%）
+  if (pc <= down || pc >= up) { batLast = Math.floor(pc / 10) * 10; return `スマホのバッテリー残量は、${batLast}%です`; }
+  return null;
+}
 function rideKmNow() { let d = 0; const P = ride && ride.pts || []; for (let i = 1; i < P.length; i++) d += hav(P[i - 1], P[i]); return d / 1000; }
 function quietNow() {   // いまは案内をじゃましない？
   if (vcOff || speechSynthesis.speaking) return false;
@@ -5440,6 +5456,7 @@ function autoTick() {
     if (!distLast || distLast[0] !== ride.t0) distLast = [ride.t0, n];   // 開いたとき・日がかわったときは 今の所から数える
     else if (n > distLast[1] && quietNow()) { distLast[1] = n; say(`走行距離は、${n * distVc}キロです`); return; }
   }
+  if (vcOn && batVc && bat && quietNow()) { const t = batCheck(); if (t) { say(t); return; } }   // 🔋 10%ごと
   if (vcOn && jihoOn) {   // 🕐 0分と30分（あとまわしは5分まで）
     const slot = now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0), m = now.getMinutes() % 30;
     if (jihoLast === null) jihoLast = slot;
