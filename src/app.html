@@ -159,6 +159,7 @@ body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!i
 body.navi.ov #addr::after{content:'　↩ タップでもどる';font-size:12px;font-weight:normal;color:#1a73e8}
 body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font-size:14px!important}
 .pin{font-size:13px}
+.nost{position:relative;display:inline-block}.nost::after{content:"✕";position:absolute;left:50%;top:50%;transform:translate(-50%,-52%);color:#d93025;font-weight:900;font-size:1.15em;line-height:1;text-shadow:0 0 2px #fff,0 0 2px #fff}   /* 🪜✕ 階段じゃない */
 .hq{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#e3e6ea;color:#5f6368;font:bold 10px/1 sans-serif;margin-left:4px;vertical-align:1px;cursor:pointer;position:relative;user-select:none;-webkit-user-select:none}
 .hq::after{content:"";position:absolute;inset:-9px}.hq.on{background:#1a73e8;color:#fff}   /* ？：くわしい説明を開く（指で押しやすいよう、さわれる所は広め） */
 .hd{display:none;margin:3px 0 2px;padding:5px 8px;background:#f3f6fa;border-left:3px solid #c6d4e8;border-radius:4px;font-size:11px;color:#444;line-height:1.55;font-weight:normal;white-space:normal}.hq.on+.hd{display:block}
@@ -3094,7 +3095,6 @@ const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclass
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（×2）"], [5, "避ける（×5）"], [10, "かなり避ける（×10・はじめ）"], [30, "ほぼ通らない（×30）"]]],
-  ["preferK", "👍 通りたい道", [[0.7, "少し通る（×0.7）"], [0.5, "通る（×0.5・はじめ）"], [0.3, "かなり通る（×0.3）"]]],
   ["alts", "第2・第3のルート", [["yes", "作る（えらべる・少し時間がかかる）"], ["no", "作らない（早い）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["auto", "おまかせ（データが手元にあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（まわり道 2〜4km）"]]],
@@ -3144,7 +3144,7 @@ function renderCfg() {
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">すぐ横に歩道がある道（段差や柵が多い）<span class="hq">?</span><div class="hd">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div></div>';
   h += "<h4>旧街道</h4>" + get(["kodo"]) + '<div class="note">旧東海道みたいな旧街道を、遠回りしても通るよ<span class="hq">?</span><div class="hd">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div></div>';
   h += "<h4>階段・歩道橋・砂利</h4>" + get(["steps", "bridge", "unpaved"]);
-  h += "<h4>通りたくない・通りたい地点</h4>" + get(["avoidPen", "preferK"]) + '<div class="note">印のいちばん近い道を、何倍の長さと数えるか<span class="hq">?</span><div class="hd">地図を長おし →「⚠ 通りたくない」「👍 通りたい」でつけた印の、いちばん近い道（12m以内）を、その道まるごと 何倍の長さと数えるか（×5 なら 100m の道を 500m 分、×0.5 なら 50m 分）。「🚫 通れない」の印は、いつも通らないよ</div></div>';
+  h += "<h4>通りたくない地点</h4>" + get(["avoidPen"]) + '<div class="note">印のいちばん近い道を、何倍の長さと数えるか<span class="hq">?</span><div class="hd">地図を長おし →「⚠ 通りたくない」でつけた印の、いちばん近い道（12m以内）を、その道まるごと 何倍の長さと数えるか（×5 なら 100m の道を 500m 分）。「🚫 通れない」の印は、いつも通らないよ</div></div>';
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
   h += '<div class="note" style="margin-top:6px">設定はこの端末におぼえておくよ。変えたらもう一度「ルートを作る」を押してね</div>';
@@ -3215,7 +3215,7 @@ function pinPopup(ll, v, title, note, acts) {   // 「ここを 出発にする 
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note).replace(/\n/g, "<br>")}</span><br>` : "")
     + (acts ? acts.map((a, i) => `<button data-act="${i + 1}" style="color:${a.col};font-weight:bold">${esc(a.t)}</button>`).join("") + "<br>" : "") + (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>到着にする</button><br>")
     + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br><button data-fav='1'>⭐ お気に入り</button>"
-    + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-b='w' style='color:#188038'>👍 通りたい</button><button data-b='k' style='color:#1a73e8'>✅ 通れる</button><button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>"
+    + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>"
     + "<br><button data-fake='1' style='color:#888'>🧪 ここを現在地にする（debug用）</button>"   // いちばん下：ふだんは使わない
     + (fakePos ? "<br><button data-fake='0' style='color:#1a73e8'>🧪 本当の現在地にもどす（debug用）</button>" : "");
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
@@ -3774,7 +3774,7 @@ const ISSUES = [
   ["⛰ 電波のない所で 地図の絵が出ない", "地図の絵は その場でネットから取るだけで、端末にためていないよ。山岳道路などでは灰色になるの（ルートの線・現在地・曲がる案内は出るよ）。坂の見分け・地名さがし・住所の読み上げも ネットがいるよ。",
     "家でルートを作ってから出かける。直すなら「ルートのまわりの地図を先に入れておく」（地図サービスのルールを確かめてから）"],
   ["⛰ すごく急な坂が 🪜階段？になる", "標高で 15mの間に30%より急な所は 🪜階段？にしているので、すごく急な坂も階段あつかいになって 通らないことがあるよ（階段を坂とまちがえるよりは ましなので、迷ったら階段にしているの）。",
-    "🪜をタップ →「⤴️ 坂だった」で ⛰急坂？に、「✅ ふつうに通れる」で取り消しにできるよ（📌スポットに入るよ）"],
+    "🪜をタップ →「🪜✕ 階段じゃない」で、その道を ⛰急坂？にできるよ（📌スポットに入るよ。あとで見分け方を直すときの答え合わせにもなるよ）"],
   ["↩ リルートがいまいち", "ルートから外れたときのリルートは、ルートの「400m先」にもどる道を探すよ。だから、近くにもどれる所があっても遠回りになったり、もどり先がへんな所になったりするの。",
     "いまは地図を見て自分でもどる。直すなら「いちばん近いルート上の点＋100m先」にもどるようにする案があるよ"],
 ];
@@ -3792,10 +3792,15 @@ for (const b of document.querySelectorAll("#dtabs button")) b.onclick = () => {
 const BKEY = "hosomichi_blocks";
 const BLK_R = { s: "階段", p: "人の家・敷地", x: "柵・工事・行き止まり", o: "その他" };
 let blocks = lsGet(BKEY, []).filter(b => b && Array.isArray(b.p));
+{ // 👍 通りたい は廃止（消す）・✅ 通れる は 🪜✕ 階段じゃない に まとめた
+  const nw = blocks.filter(b => b.r === "w").length, nk = blocks.filter(b => b.r === "k").length;
+  if (nw || nk) { blocks = blocks.filter(b => b.r !== "w"); for (const b of blocks) if (b.r === "k") b.r = "g"; lsSet(BKEY, blocks);
+    setTimeout(() => addLog(`📌 印を整理したよ（👍 通りたい ${nw}こは廃止・✅ 通れる ${nk}こは 🪜✕ 階段じゃない に）`, "m"), 1500); }
+}
 const blkLayer = L.layerGroup().addTo(map);
-const BLK_IC = r => r === "a" ? "⚠️" : r === "w" ? "👍" : r === "k" ? "✅" : r === "g" ? "⤴️" : "🚫", BLK_NM = r => r === "a" ? "通りたくない" : r === "w" ? "通りたい" : r === "k" ? "通れる" : r === "g" ? "坂だった" : "通れない";
+const BLK_IC = r => r === "a" ? "⚠️" : r === "g" ? '<span class="nost">🪜</span>' : "🚫", BLK_NM = r => r === "a" ? "通りたくない" : r === "g" ? "階段じゃない" : "通れない";   // g：🪜✕ 階段じゃない（標高の 🪜階段？を ⛰急坂？にする）
 const BLK_SOFT = r => r === "a" || r === "w" || r === "k" || r === "g";   // 道を切らない印（🚫 いがい）
-const BLK_FIX = r => r === "k" || r === "g";   // 標高の 🪜⛰ を直す印（✅ 通れる・⤴️ 坂だった）
+const BLK_FIX = r => r === "k" || r === "g";   // 標高の 🪜⛰ を直す印（🪜✕ 階段じゃない）
 function blkIcon(r) { return L.divIcon({ className: "", html: `<div style="font-size:${BLK_SOFT(r) ? 17 : 20}px;line-height:22px;text-align:center;text-shadow:0 0 3px #fff">${BLK_IC(r)}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }); }
 function drawBlocks() {
   blkLayer.clearLayers();
@@ -3805,11 +3810,11 @@ function drawBlocks() {
     const m = L.marker(b.p, { icon: blkIcon(b.r), zIndexOffset: 500 }).addTo(blkLayer);
     const div = document.createElement("div"); div.className = "pin";
     div.innerHTML = `<b>${BLK_IC(b.r)} ${BLK_NM(b.r)}</b>` + (b.name ? `<br>${esc(b.name)}` : "") + (b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : "")
-      + `<div style="font-size:11px;color:#666">${sg ? HQ("近くの道の 🪜階段？を ⛰急坂？にするよ", "標高で 🪜階段？になったけど ほんとうは急な坂だった所。いちばん近い道（12m以内）を ⛰急坂？として、坂の分だけ 少し避けるよ（どれくらいかは ⚙設定 → 🚲道の好み の ⛰急坂？）") : ok ? HQ("近くの道の 🪜階段？・⛰急坂？を 取り消すよ", "標高で見つけた 🪜階段？・⛰急坂？は まちがいのこともあるので、印からいちばん近い道（12m以内）だけ、ふつうの道にもどすよ。地図データに 階段と書いてある所は 取り消さないよ") : av ? HQ("近くの道を まるごと避けるよ", "印からいちばん近い道（12m以内）を、その道まるごと 避けるよ（どれくらい避けるかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）") : wa ? HQ("近くの道を まるごと通りやすくするよ", "印からいちばん近い道（12m以内）を、その道まるごと 通りやすくするよ（どれくらいかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）") : "近くの道（12m以内）だけ通らないよ"}</div><button>この印を消す</button>`;
-    div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog(`${BLK_IC(b.r)} ${BLK_NM(b.r)}の印を1つ消したよ`); };
+      + `<div style="font-size:11px;color:#666">${sg ? HQ("近くの道は 🪜階段？じゃなくて ⛰急坂？にするよ", "標高で 🪜階段？になったけど 階段じゃなかった所。いちばん近い道（12m以内）を ⛰急坂？として、坂の分だけ 少し避けるよ（どれくらいかは ⚙設定 → 🚲道の好み の ⛰急坂？）。あとで 見分け方を直すときの 答え合わせにも使うよ") : ok ? HQ("近くの道の 🪜階段？・⛰急坂？を 取り消すよ", "標高で見つけた 🪜階段？・⛰急坂？は まちがいのこともあるので、印からいちばん近い道（12m以内）だけ、ふつうの道にもどすよ。地図データに 階段と書いてある所は 取り消さないよ") : av ? HQ("近くの道を まるごと避けるよ", "印からいちばん近い道（12m以内）を、その道まるごと 避けるよ（どれくらい避けるかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）") : wa ? HQ("近くの道を まるごと通りやすくするよ", "印からいちばん近い道（12m以内）を、その道まるごと 通りやすくするよ（どれくらいかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）") : "近くの道（12m以内）だけ通らないよ"}</div><button>この印を消す</button>`;
+    div.querySelector("button").onclick = () => { blocks.splice(i, 1); saveBlocks(); map.closePopup(); addLog(`${b.r === "g" ? "🪜✕" : BLK_IC(b.r)} ${BLK_NM(b.r)}の印を1つ消したよ`); };
     m.bindPopup(div);
   });
-  const na = blocks.filter(b => b.r === "a").length, nw = blocks.filter(b => b.r === "w").length, nk = blocks.filter(b => b.r === "k").length, ng = blocks.filter(b => b.r === "g").length; if ($("blkN")) $("blkN").textContent = `（🚫 通れない ${blocks.length - na - nw - nk - ng}・⚠ 通りたくない ${na}・👍 通りたい ${nw}・✅ 通れる ${nk}・⤴️ 坂だった ${ng}）`;
+  const na = blocks.filter(b => b.r === "a").length, ng = blocks.filter(b => b.r === "g").length; if ($("blkN")) $("blkN").textContent = `（🚫 通れない ${blocks.length - na - ng}・⚠ 通りたくない ${na}・🪜✕ 階段じゃない ${ng}）`;
   // 一覧：タップでその場所を地図で見る・🗑で消す
   const L0 = $("blkList");
   if (L0) {
@@ -3878,9 +3883,7 @@ function spotsTabDraw() {
     + sec(`🔒 秘密の場所 ${secrets.length}`, "親せきの家・職場など。SNSでは家と同じように まわりを消すよ", newest(secrets).map(([q, i]) => row("🔒", q.name || "秘密の場所", "s" + i)).join(""))
     + sec(`🚫 通れない ${bo.length}`, "いちばん近い道（12m以内）を ルートに使わないよ", bo.map(([b, i]) => row("🚫", b.name || "通れない", "b" + i)).join(""))
     + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", b.name || "通りたくない", "b" + i)).join(""))
-    + sec(`👍 通りたい ${bw.length}`, "いちばん近い道を まるごと通りやすくするよ（広い歩道・気持ちいい道など。どれくらいかは ⚙設定 → 🚲道の好み）", bw.map(([b, i]) => row("👍", b.name || "通りたい", "b" + i)).join(""))
-    + sec(`✅ 通れる ${bk.length}`, "標高で見つけた 🪜階段？・⛰急坂？を、いちばん近い道だけ 取り消すよ", bk.map(([b, i]) => row("✅", b.name || "通れる", "b" + i)).join(""))
-    + sec(`⤴️ 坂だった ${bg.length}`, "🪜階段？を、いちばん近い道だけ ⛰急坂？にするよ", bg.map(([b, i]) => row("⤴️", b.name || "坂だった", "b" + i)).join(""));
+    + sec(`<span class="nost">🪜</span> 階段じゃない ${bg.length}`, "🪜階段？のマークから つけた所。いちばん近い道を ⛰急坂？にするよ", bg.map(([b, i]) => row('<span class="nost">🪜</span>', b.name || "階段じゃない", "b" + i)).join(""));
   const pos = ptPos, rename = ptRename;
   for (const e of T.querySelectorAll("[data-use]")) e.onclick = () => { const [k, key] = e.dataset.use.split(":"); ptUse(key, k); };   // 🚲ルートの 出発・経由・到着に入れる（すぐ引ける）
   for (const e of T.querySelectorAll("[data-go]")) {
@@ -3911,9 +3914,8 @@ function addBlock(ll, r) {
   const b = { p: [+ll.lat.toFixed(6), +ll.lng.toFixed(6)], r, t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` };
   blocks.push(b); saveBlocks();
   addrName(b.p).then(n => { if (n) { b.name = n; lsSet(BKEY, blocks); try { spotsTabDraw(); } catch {} } }).catch(() => {});   /* 名前は住所 */
-  if (r === "k") return addLog(`✅ 通れる印をつけたよ。次のルート計算から、その道の 🪜階段？・⛰急坂？を取り消すよ`, "m");
-  if (r === "g") return addLog(`⤴️ 坂だった印をつけたよ。次のルート計算から、その道は ⛰急坂？として少し避けるよ`, "m");
-  addLog(r === "a" ? `⚠ 通りたくない印をつけたよ。次のルート計算から、その道を避けるよ` : r === "w" ? `👍 通りたい印をつけたよ。次のルート計算から、その道を通りやすくするよ` : `🚫 通れない印をつけたよ。次のルート計算から通らないよ`, "ok");
+  if (r === "g") return addLog(`🪜✕ 階段じゃない印をつけたよ。次のルート計算から、その道は ⛰急坂？として少し避けるよ`, "m");
+  addLog(r === "a" ? `⚠ 通りたくない印をつけたよ。次のルート計算から、その道を避けるよ` : `🚫 通れない印をつけたよ。次のルート計算から通らないよ`, "ok");
 }
 // URL・QR用にみじかくする：理由1文字＋緯度経度（10万倍の36進数）
 function blkEncode() { return blocks.map(b => b.r + Math.round(b.p[0] * 1e5).toString(36) + "." + Math.round(b.p[1] * 1e5).toString(36)).join("_"); }
@@ -4470,7 +4472,7 @@ function slopeAdd(list) {
 }
 // 🪜⛰ の説明（1行）：地図データ（OSM）に「階段」と書いてなくて ふつうの道になっている所を、標高から見つけたもの
 const SLOPE_NOTE = ["地図ではふつうの道。標高だと急な坂（階段のことも）", "地図ではふつうの道。標高だと急すぎるので階段かも"];
-function slopeFix(la, lo, r) {   // 🪜⛰マークを ✅ 通れる／⤴️ 坂だった／🚫 通れない の印に かえる（マークは消す。⤴️は 次に見たとき ⛰で出なおす）
+function slopeFix(la, lo, r) {   // 🪜⛰マークを 🪜✕ 階段じゃない／🚫 通れない の印に かえる（マークは消す。🪜✕は 次に見たとき ⛰で出なおす）
   addBlock(L.latLng(la, lo), r);
   for (const k in slopeDB.t) slopeDB.t[k] = slopeDB.t[k].filter(m => !(m[0] === la && m[1] === lo));
   lsSet("hosomichi_slope", slopeDB); slopeDraw();
@@ -4488,8 +4490,7 @@ function slopeDraw() {
             html: `<div style="transform:translate(-50%,-50%);font-size:${st ? 16 : 13}px;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff);opacity:${st ? 1 : .8}">${st ? "🪜" : "⛰"}</div>` }) })
           .bindTooltip(t, { direction: "top", offset: [0, -10] })
           .on("click", () => pinPopup(L.latLng(la, lo), la.toFixed(6) + "," + lo.toFixed(6), t, nt,
-          st ? [{ t: "⤴️ 坂だった", col: "#8d6e63", fn: () => slopeFix(la, lo, "g") }, { t: "✅ ふつうに通れる", col: "#1a73e8", fn: () => slopeFix(la, lo, "k") }]
-             : [{ t: "🚫 階段だった（通れない）", col: "#c00", fn: () => slopeFix(la, lo, "o") }, { t: "✅ ふつうに通れる", col: "#1a73e8", fn: () => slopeFix(la, lo, "k") }])).addTo(slopeLayer);
+          st ? [{ t: "🪜✕ 階段じゃない", col: "#d93025", fn: () => slopeFix(la, lo, "g") }] : [{ t: "🚫 階段だった（通れない）", col: "#c00", fn: () => slopeFix(la, lo, "o") }])).addTo(slopeLayer);
       }
 }
 map.on("moveend", slopeDraw);
@@ -4498,7 +4499,7 @@ function mkBtn() {
   $("mk").style.display = "block";   // 長押しで🪜⛰を見るので いつも出す
   $("mk").classList.toggle("off", spotHide); $("mkL").textContent = spotHide ? "かくし中" : "マーク";
   for (const ly of [spotLayer, owLayer, slopeLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }
-  try { ptShow(); } catch {}   // 📌スポット（⭐🏠🔒🚫⚠👍）も いっしょに（読みこみの はじめは まだないので あとで呼ぶ）
+  try { ptShow(); } catch {}   // 📌スポット（⭐🏠🔒🚫⚠🪜✕）も いっしょに（読みこみの はじめは まだないので あとで呼ぶ）
 }
 // 📍を長押し：このあたり（見えている範囲）の 🪜階段？・⛰急坂？ を1回だけ計算してマークを出す（走っている間は自動では計算しない）
 { let lpT = null, lpDone = false;
