@@ -3411,7 +3411,7 @@ function autoTick() {
   }
 }
 setInterval(() => { try { autoTick(); } catch {} }, 5000);
-document.addEventListener("pointerdown", () => { autoOvBy = false; }, true);   // さわったら自動でもどすのはやめる（自分で見ているので）
+document.addEventListener("pointerdown", () => { if (autoOvBy) autoOvRun++; autoOvBy = false; }, true);   // 番号を進めて、まだ言っていない住所の読み上げも中止   // さわったら自動でもどすのはやめる（自分で見ているので）
 function polyDist(ll, f) {   // 外形（[緯度, 経度, …]）までの距離 m。中にいたら 0
   const ky = 111320, kx = 111320 * Math.cos(ll[0] * Math.PI / 180), P = [];
   for (let i = 0; i < f.length; i += 2) P.push([(f[i + 1] - ll[1]) * kx, (f[i] - ll[0]) * ky]);
