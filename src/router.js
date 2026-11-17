@@ -1394,8 +1394,9 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 //  ・⛰急坂？になった道だけ、道にそって2mごとに高さを見て、高さの差のほとんど（7割以上）が 15mの間に まとまっていて
 //    そこが25%より急なら 🪜階段？にする（長い道の まん中だけ階段、みたいな所。はし→はしだと うすまって急坂？になる）
 //    （どの道でも15mの間を見ると 崖のそばのずれで まちがえやすいので、はし→はしで もう急な道だけにしぼる）
+//    とちゅうの点で、はしとはしの高さのあいだ（±0.5m）から飛び出したものは 崖・擁壁のずれとして すてる（3割をこえたら見ない）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
-const STEP_WIN = 15, STEP_MASS = 0.7, STEP_GR = 0.25;
+const STEP_WIN = 15, STEP_MASS = 0.7, STEP_GR = 0.25, STEP_TOL = 0.5;
 function stepConc(pts, need) {   // 道（点のならび）で、15mまでの間に need m 以上かわる所の いちばん急な坂（なければ 0）
   const sm = []; let d0 = 0;
   for (let i = 1; i < pts.length; i++) {
@@ -1405,6 +1406,10 @@ function stepConc(pts, need) {   // 道（点のならび）で、15mまでの�
   }
   const [la, lo] = pts[pts.length - 1]; sm.push([d0, heightAt(la, lo)]);
   if (sm.some(x => isNaN(x[1]))) return null;
+  // はしとはしの高さの あいだ（±0.5m）から飛び出した点は、崖・擁壁のそばの 標高のずれとして すてる。すてる点が3割をこえたら あてにならない
+  const lo0 = Math.min(sm[0][1], sm[sm.length - 1][1]) - STEP_TOL, hi0 = Math.max(sm[0][1], sm[sm.length - 1][1]) + STEP_TOL, n0 = sm.length;
+  for (let i = sm.length - 1; i >= 0; i--) if (sm[i][1] < lo0 || sm[i][1] > hi0) sm.splice(i, 1);
+  if (sm.length < n0 * 0.7 || sm.length < 3) return null;
   let gr = 0, j = 0;
   for (let i = 0; i < sm.length; i++) {
     while (sm[i][0] - sm[j][0] > STEP_WIN) j++;
