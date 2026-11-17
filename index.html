@@ -192,7 +192,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1910</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1926</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2858,7 +2858,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1910", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1926", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5110,6 +5110,7 @@ function renderCfg() {
     '<div class="note">道路データがない所は、地図が少し暗くなるよ<span class="hq">?</span><div class="hd">道路データがない所（ルートを作るときにダウンロードが必要な所）は、地図が少し暗くなるよ。右の🗺ボタンでも切りかえられるよ</div></div>';
   h += "<h4>ルートの色</h4>" + [["kind", "道の種類"], ["slope", "坂"]].map(([k, t]) =>
     `<label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="radio" name="rcol" value="${k}"${k === colorMode ? " checked" : ""}>${t}</label>`).join("");
+  h += '<h4>階段？・急坂？</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="slopeAuto"' + (lsGet("hosomichi_slopeauto", false) ? " checked" : "") + '>地図を動かしたら、見ている所を 自動でしらべる<span class="pw u">⚡小</span></label><div class="note">ズーム15より近いとき・ナビで固定していないときだけ<span class="hq">?</span><div class="hd">地図をスクロールして止まると、見えている所の 階段？・急坂？ を しらべてマークを出すよ（📍ボタンの長押しと同じ）。標高のデータを取るので、少し通信するよ。一度しらべた所は しらべないよ。ナビで走っているあいだは 電池のために しらべないよ</div></div>';
   h += '<h4>進行方向</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="flow"' + (lsGet("hosomichi_flowmode", "fwd") !== "off" ? " checked" : "") + '>➤ ルートの上に 進む向きの矢印を出す</label>';
   $("cfgMap").innerHTML = h; h = "";
   h += "<h4>計算</h4>" + get(["mode", "alts", "area", "turn"]);
@@ -5137,6 +5138,9 @@ $("cfgMap").onchange = e => {
   if (e.target.name === "bg") { setBase(e.target.value); return baseBtn(); }
   if (e.target.name === "rcol") return setColorMode(e.target.value);
   if (e.target.name === "flow") return flowSet(e.target.checked);
+  if (e.target.name === "slopeAuto") { slopeAuto = e.target.checked; lsSet("hosomichi_slopeauto", slopeAuto);
+    if (slopeAuto) { if (!spotOn.has("gstep") || !spotOn.has("steep")) { spotOn.add("gstep"); spotOn.add("steep"); lsSet("hosomichi_spots", [...spotOn]); renderSpots(); } slopeAutoKick(); }
+    return; }
 };
 $("cfgBox").onchange = e => {
   if (e.target.name === "bg") { setBase(e.target.value); return baseBtn(); }
@@ -6489,6 +6493,21 @@ function slopeAdd(list) {
 }
 // 🪜⛰ の説明（1行）：地図データ（OSM）に「階段」と書いてなくて ふつうの道になっている所を、標高から見つけたもの
 const SLOPE_NOTE = ["地図ではふつうの道。標高だと急な坂（階段のことも）", "地図ではふつうの道。標高だと急すぎるので階段かも"];
+// 🪜⛰ 地図を動かしたら 見ている所を自動でしらべる（⚙設定 → 🗺地図）。ナビで固定中・計算中・ズーム15より遠いときは しない
+let slopeAuto = !!lsGet("hosomichi_slopeauto", false), slopeAutoT = 0;
+const slopeSeen = [];   // しらべた範囲（さいきんの30こ）
+function slopeAutoKick() { clearTimeout(slopeAutoT); slopeAutoT = setTimeout(slopeAutoRun, 1200); }
+function slopeAutoRun() {
+  if (!slopeAuto || follow || $("go").disabled || document.hidden || map.getZoom() < 15) return;
+  const b = map.getBounds(); if (slopeSeen.some(x => x.contains(b))) return;
+  let B = b.pad(0.3);
+  const nT = B2 => (Math.floor(B2.getNorth() / 0.01) - Math.floor(B2.getSouth() / 0.01) + 1) * (Math.floor(B2.getEast() / 0.01) - Math.floor(B2.getWest() / 0.01) + 1);
+  if (nT(B) > 36) { const c = b.getCenter(); B = L.latLngBounds([c.lat - 0.022, c.lng - 0.022], [c.lat + 0.022, c.lng + 0.022]); }   // パソコンの大きい画面：一度に しらべられる広さ（0.01度のマス 36こ）まで。まん中から
+  slopeSeen.push(B); if (slopeSeen.length > 30) slopeSeen.shift();
+  slopeQuiet = true;
+  worker.postMessage({ cmd: "slopeView", bb: [B.getSouth(), B.getWest(), B.getNorth(), B.getEast()], oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]) });
+}
+map.on("moveend", () => { if (slopeAuto) slopeAutoKick(); });
 // 🪜✕／🪜✓ をつけた・消したとき：その道のまわり（約90m）だけ しらべなおして、マークを出しなおす
 function slopeRecheck(p) {
   for (const k in slopeDB.t) slopeDB.t[k] = slopeDB.t[k].filter(m => hav([m[0], m[1]], p) > 15);   // その場所の 前のマークは消す（同じ所にあると 新しいのが出ないので）
