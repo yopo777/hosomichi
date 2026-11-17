@@ -192,7 +192,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1935</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1958</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2590,16 +2590,20 @@ async function geocode(text) {
   }
   const ll = text.normalize("NFKC").replace(/\s/g, "").match(/^(-?\d+\.\d+)[,、](-?\d+\.\d+)$/);
   if (ll) return [[+ll[1], +ll[2]], "座標"];
+  // 同じ名前の所が いくつもあるとき（「上山町」など）は、いま見ている地図の まん中に いちばん近い所にする
+  const c0 = map.getCenter(), near = (a, b) => hav([c0.lat, c0.lng], a) - hav([c0.lat, c0.lng], b);
   const gsi = async () => {
     const q = cleanAddr(text);
     const r = await (await tfetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q=" + encodeURIComponent(q))).json();
-    if (r.length) return [[r[0].geometry.coordinates[1], r[0].geometry.coordinates[0]], r[0].properties.title];
+    if (!r.length) return;
+    const P = r.map(x => [[x.geometry.coordinates[1], x.geometry.coordinates[0]], x.properties.title]).sort((a, b) => near(a[0], b[0]));
+    return P[0];
   };
   const nomi = async () => {
     const q = text.normalize("NFKC").replace(/〒?\s*\d{3}[-‐－―ー−]\d{4}/, "").trim();
-    const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(q))).json();
+    const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/search?format=json&limit=10&countrycodes=jp&accept-language=ja&q=` + encodeURIComponent(q))).json();
     if (!r.length) return;
-    const pick = r[0];
+    const pick = r.slice().sort((a, b) => near([+a.lat, +a.lon], [+b.lat, +b.lon]))[0];
     return [[+pick.lat, +pick.lon], pick.display_name.split(",").slice(0, 3).join(",")];
   };
   // 「○○駅」は鉄道の駅だけをさがす（「日光駅」で 道の駅・べつの駅・ちがう場所 にならないように）
@@ -2866,7 +2870,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1935", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1958", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
