@@ -4446,7 +4446,7 @@ function owDraw(m) {
 map.on("moveend", () => owUpdate(false));
 // 🪜 階段？・⛰ 急坂？（ルートを計算したときや 📍長押しで、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
 // 一度しらべた所は この端末におぼえておいて、地図に近づいたら（ズーム14より近く）いつでも出す
-const SLOPE_V = 4;   // 見分け方を変えたら上げる（古いマークはすてる）
+const SLOPE_V = 5;   // 見分け方を変えたら上げる（古いマークはすてる）
 const slopeLayer = L.layerGroup().addTo(map);
 let slopeDB = (() => { const d = lsGet("hosomichi_slope", null); return d && d.v === SLOPE_V && d.t ? d : { v: SLOPE_V, t: {} }; })(), slopeSaveT = null;
 const slopeKey = (la, lo) => Math.floor(la / 0.01) + "_" + Math.floor(lo / 0.01);

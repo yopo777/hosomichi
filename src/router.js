@@ -1455,8 +1455,14 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
       }
       if (!stair && !steep) continue;
       if (stair) st++; else sl++;
-      { const m = path[path.length >> 1], m2 = path[(path.length - 1) >> 1];
-        marks.push([+((G.lat[m] + G.lat[m2]) / 2).toFixed(6), +((G.lon[m] + G.lon[m2]) / 2).toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L)]); }
+      { // マークは 道の線にそって ちょうど まん中の所（点の番号のまん中だと、点が2つしかない道では はしの交差点に出て、となりの道の印に見えるので）
+        let half = L / 2, mla = G.lat[path[0]], mlo = G.lon[path[0]];
+        for (let i = 1; i < path.length; i++) {
+          const p0 = path[i - 1], p1 = path[i], d = hav(G.lat[p0], G.lon[p0], G.lat[p1], G.lon[p1]);
+          if (d >= half) { const t = d ? half / d : 0; mla = G.lat[p0] + (G.lat[p1] - G.lat[p0]) * t; mlo = G.lon[p0] + (G.lon[p1] - G.lon[p0]) * t; break; }
+          half -= d; mla = G.lat[p1]; mlo = G.lon[p1];
+        }
+        marks.push([+mla.toFixed(6), +mlo.toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L)]); }
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
         if (stair) { e.c *= stK === "no" ? 1e4 : (+stK || 1); e.k = "階段？"; }
