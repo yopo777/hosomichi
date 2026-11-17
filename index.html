@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1240</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1251</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -1776,7 +1776,27 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 //  道を「交差点から交差点まで」に区切って、80mまでの短い道の「はし→はし」の高さの差で見る（とちゅうのでこぼこ・崖のそばのずれに強い）
 //  ・階段？：車の通る道で 20%より急／歩道・小道で 10%より急（高さの差 2.5m以上。歩道・小道の急な所は 階段のことが多い）→ 設定 stepsGuess の倍率（はじめ ×30。"no"＝通らない）
 //  ・急坂？：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×3。じっさいは階段のことも多い）
+//  ・⛰急坂？になった道だけ、道にそって2mごとに高さを見て、高さの差のほとんど（7割以上）が 15mの間に まとまっていて
+//    そこが25%より急なら 🪜階段？にする（長い道の まん中だけ階段、みたいな所。はし→はしだと うすまって急坂？になる）
+//    （どの道でも15mの間を見ると 崖のそばのずれで まちがえやすいので、はし→はしで もう急な道だけにしぼる）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
+const STEP_WIN = 15, STEP_MASS = 0.7, STEP_GR = 0.25;
+function stepConc(pts, need) {   // 道（点のならび）で、15mまでの間に need m 以上かわる所の いちばん急な坂（なければ 0）
+  const sm = []; let d0 = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [a1, o1] = pts[i - 1], [a2, o2] = pts[i], L = hav(a1, o1, a2, o2);
+    for (let t = 0; t < L; t += 2) sm.push([d0 + t, heightAt(a1 + (a2 - a1) * t / L, o1 + (o2 - o1) * t / L)]);
+    d0 += L;
+  }
+  const [la, lo] = pts[pts.length - 1]; sm.push([d0, heightAt(la, lo)]);
+  if (sm.some(x => isNaN(x[1]))) return null;
+  let gr = 0, j = 0;
+  for (let i = 0; i < sm.length; i++) {
+    while (sm[i][0] - sm[j][0] > STEP_WIN) j++;
+    for (let k = j; k < i; k++) { const d = Math.abs(sm[i][1] - sm[k][1]); if (d >= need) gr = Math.max(gr, d / Math.max(sm[i][0] - sm[k][0], 6)); }   // 6mより短い所は 6mとして（標高データのゆれで 急になりすぎないように）
+  }
+  return gr;
+}
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
 function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍長押しの「このあたりを見る」）   // k：のぼり1mを何m分 / stK：🪜階段？の倍率（"no"＝通らない） / slK：⛰急坂？の倍率
   if (typeof OffscreenCanvas === "undefined") return G;
@@ -1809,6 +1829,10 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
       // 階段っぽさ：高ければ 階段？・低ければ 急坂？
       const ai = stairsAt(path.map(i => [G.lat[i], G.lon[i]]));
       if (ai != null && gr >= 0.1) { if (ai >= AI_YES) { stair = true; steep = false; } else if (ai <= AI_NO) { stair = false; steep = true; } }
+      if (steep && ai == null) {   // ⛰急坂？：高さの差が 15mの間に まとまっていたら 🪜階段？
+        const q = stepConc(path.map(i => [G.lat[i], G.lon[i]]), Math.max(2, STEP_MASS * dh));
+        if (q != null && q >= STEP_GR) { stair = true; steep = false; }
+      }
       if (!stair && !steep) continue;
       if (stair) st++; else sl++;
       { const m = path[path.length >> 1], m2 = path[(path.length - 1) >> 1];
@@ -2779,7 +2803,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1240", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1251", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5027,7 +5051,7 @@ function renderCfg() {
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">3車線以上の所は 4車線と同じにしてるよ<span class="hq">?</span><div class="hd">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">細い道なら 一方通行の逆向きも走るよ（少し避ける）<span class="hq">?</span><div class="hd">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div></div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか<span class="hq">?</span><div class="hd">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div></div>'
-    + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）<span class="hq">?</span><div class="hd">交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div></div>';
+    + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）<span class="hq">?</span><div class="hd">交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。⛰急坂？の中でも、高さの差のほとんどが 15mの間に まとまっていて 25%より急な所（長い道の まん中だけ階段、みたいな所）は 🪜階段？にするよ。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div></div>';
   h += "<h4>👣 足あとを広げる</h4>" + get(["paintPen"]) + '<div class="note">まだ塗っていない道を通るルートにするよ<span class="hq">?</span><div class="hd">もう塗った道（👣足あと・今日の分も）を さけて、まだ塗っていない道を通るルートにするよ。行き止まりや遠回りもふえるので、塗りたいときだけ</div></div>';
   h += "<h4>公園・霊園・団地</h4>" + get(["park", "cemetery", "danchi", "privy"]) + '<div class="note">公園・霊園・団地・私道の 中を通る道のこと<span class="hq">?</span><div class="hd">🏠私道＝家の敷地に入る道・「住んでいる人と用事のある人だけ」の道・駐車場の中（コンビニ・スーパーの駐車場をつっきる近道など）。🏢団地＝名前が「〇〇団地」「〇〇住宅」「ハイツ」などの住宅地の中の、棟のあいだの通路・駐車場の道（通りぬける住宅街の道は気にしない）。公園や霊園・墓地の敷地の中を通る道のこと（人が歩いていて、自転車はひんしゅく）。川ぞいのサイクリングロードみたいな長い自転車道（400m以上）と、住宅街の道は、公園の中でも気にしないよ。配布データのはんいで見分けるよ</div></div>';
   h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅の自由通路・コンコースのこと（押して歩く所）<span class="hq">?</span><div class="hd">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ</div></div>';

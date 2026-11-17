@@ -1391,7 +1391,27 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 //  道を「交差点から交差点まで」に区切って、80mまでの短い道の「はし→はし」の高さの差で見る（とちゅうのでこぼこ・崖のそばのずれに強い）
 //  ・階段？：車の通る道で 20%より急／歩道・小道で 10%より急（高さの差 2.5m以上。歩道・小道の急な所は 階段のことが多い）→ 設定 stepsGuess の倍率（はじめ ×30。"no"＝通らない）
 //  ・急坂？：10%より急（高さの差 2m以上）→ 設定 steep の倍率（はじめ ×3。じっさいは階段のことも多い）
+//  ・⛰急坂？になった道だけ、道にそって2mごとに高さを見て、高さの差のほとんど（7割以上）が 15mの間に まとまっていて
+//    そこが25%より急なら 🪜階段？にする（長い道の まん中だけ階段、みたいな所。はし→はしだと うすまって急坂？になる）
+//    （どの道でも15mの間を見ると 崖のそばのずれで まちがえやすいので、はし→はしで もう急な道だけにしぼる）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
+const STEP_WIN = 15, STEP_MASS = 0.7, STEP_GR = 0.25;
+function stepConc(pts, need) {   // 道（点のならび）で、15mまでの間に need m 以上かわる所の いちばん急な坂（なければ 0）
+  const sm = []; let d0 = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [a1, o1] = pts[i - 1], [a2, o2] = pts[i], L = hav(a1, o1, a2, o2);
+    for (let t = 0; t < L; t += 2) sm.push([d0 + t, heightAt(a1 + (a2 - a1) * t / L, o1 + (o2 - o1) * t / L)]);
+    d0 += L;
+  }
+  const [la, lo] = pts[pts.length - 1]; sm.push([d0, heightAt(la, lo)]);
+  if (sm.some(x => isNaN(x[1]))) return null;
+  let gr = 0, j = 0;
+  for (let i = 0; i < sm.length; i++) {
+    while (sm[i][0] - sm[j][0] > STEP_WIN) j++;
+    for (let k = j; k < i; k++) { const d = Math.abs(sm[i][1] - sm[k][1]); if (d >= need) gr = Math.max(gr, d / Math.max(sm[i][0] - sm[k][0], 6)); }   // 6mより短い所は 6mとして（標高データのゆれで 急になりすぎないように）
+  }
+  return gr;
+}
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
 function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍長押しの「このあたりを見る」）   // k：のぼり1mを何m分 / stK：🪜階段？の倍率（"no"＝通らない） / slK：⛰急坂？の倍率
   if (typeof OffscreenCanvas === "undefined") return G;
@@ -1424,6 +1444,10 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
       // 階段っぽさ：高ければ 階段？・低ければ 急坂？
       const ai = stairsAt(path.map(i => [G.lat[i], G.lon[i]]));
       if (ai != null && gr >= 0.1) { if (ai >= AI_YES) { stair = true; steep = false; } else if (ai <= AI_NO) { stair = false; steep = true; } }
+      if (steep && ai == null) {   // ⛰急坂？：高さの差が 15mの間に まとまっていたら 🪜階段？
+        const q = stepConc(path.map(i => [G.lat[i], G.lon[i]]), Math.max(2, STEP_MASS * dh));
+        if (q != null && q >= STEP_GR) { stair = true; steep = false; }
+      }
       if (!stair && !steep) continue;
       if (stair) st++; else sl++;
       { const m = path[path.length >> 1], m2 = path[(path.length - 1) >> 1];
