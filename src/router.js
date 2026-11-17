@@ -435,7 +435,7 @@ function buildGraph(osm, cfg, onProg) {
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
-let blockPts = [], avoidPts = [], preferPts = [];   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）／ 👍 通りたい（その道を ×PREFER_K）
+let blockPts = [], avoidPts = [], preferPts = [], okPts = [];   // okPts：✅ 通れる（標高で見つけた 🪜階段？・⛰急坂？を その道だけ取り消す）   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）／ 👍 通りたい（その道を ×PREFER_K）
 let PREFER_K = 0.5;   // 👍 通りたい道の重み（設定 preferK：0.7・0.5・0.3）
 let AVOID_PEN = 5;   // ⚠ 通りたくない道の重み（設定 avoidPen：2・5・10・30）
 let paintedSet = null, PAINT_PEN = 1;   // 👣 もう塗った道（区間の名前「小さい点の番号-大きい点の番号」）と、その道の重み（設定 paintPen：1＝気にしない）
@@ -1425,6 +1425,16 @@ function stepConc(pts, need) {   // 道（点のならび）で、15mまでの�
   return { gr, gr2, loc, drop };
 }
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
+function okNear(G, path) {   // ✅ 通れる の印が、この道（点のならび）から12m以内にあるか
+  const M = 111320, cosl = Math.cos(G.lat[path[0]] * RAD);
+  for (const p of okPts) for (let i = 1; i < path.length; i++) {
+    const u = path[i - 1], v = path[i];
+    const ax = (G.lon[u] - p[1]) * cosl * M, ay = (G.lat[u] - p[0]) * M, bx = (G.lon[v] - p[1]) * cosl * M, by = (G.lat[v] - p[0]) * M;
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+    if (Math.hypot(ax + dx * t, ay + dy * t) < BLOCK_R) return true;
+  }
+  return false;
+}
 function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍長押しの「このあたりを見る」）   // k：のぼり1mを何m分 / stK：🪜階段？の倍率（"no"＝通らない） / slK：⛰急坂？の倍率
   if (typeof OffscreenCanvas === "undefined") return G;
   const n = G.lat.length, h = new Float32Array(n);
@@ -1465,6 +1475,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
             + `・3m以上の所の坂 ${Math.round(q.gr2 * 100)}%（${Math.round(STEP_GR2 * 100)}%いれば 長い階段）・すてた点 ${Math.round(q.drop * 100)}%`;
       }
       if (!stair && !steep) continue;
+      if (okPts.length && okNear(G, path)) continue;   // ✅ 通れる の印がある道は 取り消し（マークも出さない）
       if (stair) st++; else sl++;
       { // マークは 道の線にそって ちょうど まん中の所（点の番号のまん中だと、点が2つしかない道では はしの交差点に出て、となりの道の印に見えるので）
         let half = L / 2, mla = G.lat[path[0]], mlo = G.lon[path[0]];
@@ -1904,7 +1915,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "footLive") { const segs = await footLive(d.t0, d.pair); return self.postMessage({ type: "footLive", segs }); }
       if (d.cmd === "footMatch") { const segs = await footMatch(d.runs); return self.postMessage({ type: "footMatch", id: d.id, segs }); }
       if (d.cmd === "painted") { paintedSet = new Set(d.keys || []); return; }   // 👣 もう塗った道（画面から）
-      if (d.cmd === "slopeView") { const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
+      if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
@@ -1930,6 +1941,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       AVOID_PEN = Math.max(1, +(d.cfg && d.cfg.avoidPen) || 10);
       PAINT_PEN = Math.max(1, +(d.cfg && d.cfg.paintPen) || 1);
       preferPts = Array.isArray(d.prefers) ? d.prefers : [];
+      okPts = Array.isArray(d.oks) ? d.oks : [];
       PREFER_K = Math.min(1, Math.max(0.2, +(d.cfg && d.cfg.preferK) || 0.5));
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
       const r = d.tour ? await tourRoute(d, pr) : d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
