@@ -209,6 +209,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div class="row"><label style="width:auto">行き先</label><select id="msnType" style="flex:1;min-width:0;width:100%;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px">
         <option value="spot">⛩ 寄り道</option><option value="lunch">🍜 ランチ</option><option value="snack">🍰 おやつ</option><option value="none">🔁 なし（ふつうの1周）</option></select></div>
       <div id="msnNote" style="font-size:11px;color:#666;margin:-2px 0 2px 4px"></div>
+      <div id="msnArea" style="display:none;font-size:12px;color:#6a1b9a;background:#f3e5f5;border-radius:8px;padding:4px 8px;margin:2px 0"></div>
       <div class="row"><label style="width:auto">長さ</label><select id="loopKm" style="flex:1;padding:6px;border:1px solid #ccc;border-radius:8px;font-size:14px"><option value="auto">おまかせ</option><option>5</option><option selected>10</option><option>20</option><option>30</option><option>40</option><option>50</option><option>70</option><option>100</option></select><span style="font-size:13px">km</span></div>
       <script>
         { const N = { spot: "神社・お寺・公園・湧き水・名所…のどれか", lunch: "ラーメン・そば・定食・中華・カフェ…のどれか", snack: "スイーツ・パン屋・カフェのどれか", none: "寄り道なしで、ぐるっと1周" };
@@ -1326,6 +1327,12 @@ let midPick = null, midNone = false;   // { p, name, ic } いま作っている1
 async function pickMid(s, km, type) {
   const T = km * 1000 / 2.9, lo = T * 0.7, hi = T * 1.1;   // 1周の長さ ≒ まっすぐの距離×2.9
   const dla = hi / 111000, dlo = hi / (111000 * Math.cos(s[0] * RAD)), keys = [];
+  // 🏙 市のわくを出しているときは、その市の中から（距離は見ない）
+  const C = cityHiNow != null ? await footCityData() : null, area = C ? cityBox(C, cityHiNow) : null;
+  if (area) {
+    for (let i = Math.floor(area[0] / SPOT_T); i <= Math.floor(area[2] / SPOT_T); i++)
+      for (let j = Math.floor(area[1] / SPOT_T); j <= Math.floor(area[3] / SPOT_T); j++) keys.push(i + "_" + j);
+  } else
   for (let i = Math.floor((s[0] - dla) / SPOT_T); i <= Math.floor((s[0] + dla) / SPOT_T); i++)
     for (let j = Math.floor((s[1] - dlo) / SPOT_T); j <= Math.floor((s[1] + dlo) / SPOT_T); j++) keys.push(i + "_" + j);
   if (keys.length > 80) keys.length = 80;
@@ -1333,7 +1340,7 @@ async function pickMid(s, km, type) {
   for (const t of tiles) for (const k of MID_KINDS[type]) for (const e of t[k] || []) {
     if (k === "bridge" && /歩道橋/.test(e[0] || "")) continue;   // 歩道橋は見に行く所じゃないので
     const p = [e[1], e[2]], d = hav(s, p);
-    if (d >= lo && d <= hi) all.push({ type, k, p, name: e[0] || SPOT_INFO[k][1], ic: SPOT_INFO[k][0], named: !!e[0], fresh: !seen.has(midKey(p)) });
+    if (area ? footCityOf(C, p[0], p[1]) === cityHiNow : d >= lo && d <= hi) all.push({ type, k, p, name: e[0] || SPOT_INFO[k][1], ic: SPOT_INFO[k][0], named: !!e[0], fresh: !seen.has(midKey(p)) });
   }
   const tiers = [all.filter(c => c.fresh && c.named), all.filter(c => c.fresh), all.filter(c => c.named), all];   // まだ行っていない・名前がある所を先に
   const c = tiers.find(t => t.length); if (!c) return null;
@@ -1364,7 +1371,7 @@ async function askMid(s, km, type, fromHere) {
         d.innerHTML = `<div class="box"><div style="font-size:12px;color:#666">🎯 今日のミッション</div>
           <div style="font-size:22px;font-weight:bold;margin:4px 0">${m.ic} ${esc(m.name)}</div>
           <div class="msnAddr" style="font-size:13px;color:#1a73e8;margin:-2px 0 2px;min-height:1.2em">📍 …</div>
-          <div style="font-size:13px;color:#444">${esc(kind)}・${dir}へ まっすぐ約${fmtKm(hav(s, m.p))}（1周 約${km}km）</div>
+          <div style="font-size:13px;color:#444">${esc(kind)}・${dir}へ まっすぐ約${fmtKm(hav(s, m.p))}${km === "auto" ? `（🏙 ${esc(cityHiName())}の中から・1周 約${autoKm(s, m.p)}km）` : `（1周 約${km}km）`}</div>
           <div style="display:flex;gap:6px;margin-top:10px"><button data-a="go" class="big" style="flex:2">🎯 ここに行く</button><button data-a="again" style="flex:1">🎲 ほかの所</button></div>
           <button data-a="no" style="margin-top:6px;width:100%;color:#666">やめる</button></div>`;
         document.body.appendChild(d);
@@ -1400,7 +1407,8 @@ $("go").onclick = async () => {
       let [v, vn] = viaT ? await geocode(viaT) : [null, ""];
       midPick = null; midNone = false; viaPick = null;
       if (!v && $("msnType").value !== "none") {
-        if (LK === "auto") LK = 10;
+        if (cityHiNow != null) LK = "auto";   // 🏙 市の中から選ぶときは 長さは見ない（行き先が決まってから おまかせ）
+        if (LK === "auto" && cityHiNow == null) LK = 10;
         lastProg = { stage: 1, msg: "🎯 寄り道スポットをさがし中" }; showProg();
         midPick = await askMid(s, LK, $("msnType").value, !fromT);   // 行き先を見せて、決めてもらう
         if (midPick === null) throw new Error("ミッションをやめたよ");
@@ -2677,6 +2685,12 @@ function cityFind(C, q) {
   const out = []; C.names.forEach((nm, i) => { if (nm === n || nm.endsWith(n) || n.endsWith(nm) && nm.length >= 3) out.push(i); });
   return out;
 }
+function cityBox(C, c) {   // [南, 西, 北, 東]
+  const r = cityRuns(C, c); if (!r.length) return null;
+  let a = 90, b = 180, n = -90, e = -180;
+  for (const [i, j0, j1] of r) { a = Math.min(a, i * C.G); n = Math.max(n, (i + 1) * C.G); b = Math.min(b, j0 * C.G); e = Math.max(e, j1 * C.G); }
+  return [a, b, n, e];
+}
 function cityCenter(C, c) { const r = cityRuns(C, c); if (!r.length) return null; const m = r[r.length >> 1]; return [(m[0] + 0.5) * C.G, (m[1] + m[2]) / 2 * C.G]; }
 // 🏙 市の名前をタップ：その市を地図いっぱいに出して、市のさかい目を 太い線でかこむ（足あとが どれだけ塗れたか見る用）
 // さかい目は cities.json のマス目（約100m）から作るので、少しカクカクだよ。もう一回 同じ市をタップすると消える
@@ -2718,7 +2732,7 @@ async function cityGo(c, keep) {   // keep：もう一回でも 消さない（�
   const segs = cityEdges(C, c), rend = L.canvas({ padding: 0.3 });
   L.polyline(segs, { renderer: rend, color: "#fff", weight: 9, opacity: 0.9, interactive: false, lineCap: "square" }).addTo(cityHiLayer);   // ふち（白）
   L.polyline(segs, { renderer: rend, color: "#6a1b9a", weight: 5, opacity: 0.85, interactive: false, lineCap: "square" }).addTo(cityHiLayer);
-  cityHiNow = c;
+  cityHiNow = c; msnAreaUi();
   // 下の白い窓：〇〇市 ○%走破（👣足あとの％を出したことがあれば）・わくを消すボタン
   if (!(footCityLast && footCityLast.C === C) && !footBusy) {   // 👣 ％をまだ出していなければ 計算して、窓を出しなおす
     footBusy = true; footCityCompute().then(() => { if (cityHiNow === c && $("cityAsk")) cityWin(C, c); }).catch(() => {}).finally(() => { footBusy = false; });
@@ -2737,7 +2751,13 @@ function cityWin(C, c) {
   d.querySelector("[data-x]").onclick = () => { cityOff(); cityHiNow = null; };
   document.body.appendChild(d);
 }
-function cityOff() { cityHiLayer.clearLayers(); const d = $("cityAsk"); if (d) d.remove(); }
+function cityOff() { cityHiLayer.clearLayers(); const d = $("cityAsk"); if (d) d.remove(); setTimeout(msnAreaUi); }
+const cityHiName = () => cityHiNow != null && footCities ? footCities.names[cityHiNow] : "";
+function msnAreaUi() {   // 🎯 ミッション：🏙 市のわくを出しているあいだは、長さを えらべない（その市の中から選ぶ）
+  const on = cityHiNow != null, sel = $("loopKm"), nt = $("msnArea"); if (!sel) return;
+  sel.disabled = on; sel.style.opacity = on ? 0.45 : "";
+  if (nt) { nt.style.display = on ? "" : "none"; nt.textContent = on ? `🏙 ${cityHiName()}の中から 行き先を選ぶよ（長さは おまかせ）。わくを消すと ふつうにもどるよ` : ""; }
+}
 document.addEventListener("click", e => { const t = e.target.closest && e.target.closest("[data-city]"); if (t) cityGo(t.dataset.city); });   // 👣足あと・その日の記録の 市の名前
 function footCityOf(C, la, lo) {
   const row = C.rows[Math.floor(la / C.G) - C.i0], j = Math.floor(lo / C.G);
