@@ -2568,6 +2568,28 @@ async function footCityData() {   // cities.json（なければ null。作るま
   try { const r = await fetch(new URL("../hosomichi-data/cities.json", location.href).href); footCities = r.ok ? await r.json() : null; } catch { footCities = null; }
   return footCities;
 }
+// 🏙 市の名前をタップ：その市を地図いっぱいに出して、市の形を少しのあいだ うすく塗る
+const cityBoxC = new Map(), cityHiLayer = L.layerGroup().addTo(map); let cityHiT = 0;
+function cityRuns(C, c) {   // その市のマス目の横ならび [緯度番号, 経度番号はじめ, おわり]
+  if (cityBoxC.has(c)) return cityBoxC.get(c);
+  const out = [];
+  C.rows.forEach((row, r) => { if (row) for (let n = 0; n < row.length; n += 3) if (row[n + 2] === c) out.push([r + C.i0, row[n], row[n + 1]]); });
+  cityBoxC.set(c, out); return out;
+}
+async function cityGo(c) {
+  const C = await footCityData(); if (!C) return;
+  const runs = cityRuns(C, +c); if (!runs.length) return;
+  let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
+  for (const [i, j0, j1] of runs) { la0 = Math.min(la0, i * C.G); la1 = Math.max(la1, (i + 1) * C.G); lo0 = Math.min(lo0, j0 * C.G); lo1 = Math.max(lo1, j1 * C.G); }
+  if (follow) setFollow(false);
+  $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+  map.fitBounds([[la0, lo0], [la1, lo1]], { padding: [20, 20] });
+  cityHiLayer.clearLayers(); clearTimeout(cityHiT);
+  const rend = L.canvas({ padding: 0.2 });
+  for (const [i, j0, j1] of runs) L.rectangle([[i * C.G, j0 * C.G], [(i + 1) * C.G, j1 * C.G]], { renderer: rend, stroke: false, fillColor: "#ff6d00", fillOpacity: 0.15, interactive: false }).addTo(cityHiLayer);
+  cityHiT = setTimeout(() => cityHiLayer.clearLayers(), 5000);
+}
+document.addEventListener("click", e => { const t = e.target.closest && e.target.closest("[data-city]"); if (t) cityGo(t.dataset.city); });   // 👣足あと・その日の記録の 市の名前
 function footCityOf(C, la, lo) {
   const row = C.rows[Math.floor(la / C.G) - C.i0], j = Math.floor(lo / C.G);
   if (row) for (let n = 0; n < row.length; n += 3) if (j >= row[n] && j < row[n + 1]) return row[n + 2];
@@ -2606,13 +2628,13 @@ async function trkCityShow(R, today) {
     const day = dkey(R.t0), m = await footMatchReq(footSplit(footAfter(R.pts || []), today && footDbg)), by = {};
     for (const [k, L, la, lo] of m) {
       const c = footCityOf(C, la, lo); if (c < 0) continue;
-      const o = by[c] || (by[c] = { n: C.names[c], m: 0, nw: 0 }); o.m += L;
+      const o = by[c] || (by[c] = { c, n: C.names[c], m: 0, nw: 0 }); o.m += L;
       if (today ? !footFirst[k] || footFirst[k] >= day : footFirst[k] === day) o.nw += L;   // その日はじめて塗った
     }
     const list = Object.values(by).sort((a, b) => b.nw - a.nw || b.m - a.m);
     if (!box()) return;
     const html = list.length ? `<div style="display:flex;color:#888;font-size:11px;padding:0 0 2px"><span style="flex:1">市区町村</span><span style="width:6em;text-align:right">通った道</span><span style="width:7em;text-align:right">はじめて塗った</span></div>`
-      + list.map(x => `<div style="display:flex;color:#222;padding:3px 0;border-top:1px solid #f3f3f3"><span style="flex:1">${esc(x.n)}</span><span style="width:6em;text-align:right">${(x.m / 1000).toFixed(1)}km</span><b style="width:7em;text-align:right;color:#e8710a">${x.nw >= 50 ? "+" + (x.nw / 1000).toFixed(1) + "km" : "—"}</b></div>`).join("")
+      + list.map(x => `<div style="display:flex;color:#222;padding:3px 0;border-top:1px solid #f3f3f3"><span data-city="${x.c}" style="flex:1;color:#1a73e8;cursor:pointer">${esc(x.n)}</span><span style="width:6em;text-align:right">${(x.m / 1000).toFixed(1)}km</span><b style="width:7em;text-align:right;color:#e8710a">${x.nw >= 50 ? "+" + (x.nw / 1000).toFixed(1) + "km" : "—"}</b></div>`).join("")
       : "道にあてはまる所がなかったよ";
     trkCityC.set(ck, html); if (trkCityC.size > 30) trkCityC.delete(trkCityC.keys().next().value);
     if (box()) box().innerHTML = html;
@@ -2625,10 +2647,10 @@ function footCityHtml() {
     + (C ? ["p", "m"].map(k => `<button class="ib" data-csort="${k}" style="font-size:11px;padding:2px 8px;${footCitySort === k ? "background:#e8f0fe;border-color:#1a73e8;color:#1a73e8;font-weight:bold" : ""}">${k === "p" ? "％順" : "距離順"}</button>`).join("") : "") + `</div>`;
   if (!C) h += "市ごとの％は、配布データに cities.json ができたら出るよ";
   else {
-    const list = Object.keys(by).map(c => ({ n: C.names[c], m: by[c], all: C.total[c] })).map(x => ({ ...x, p: x.all ? 100 * x.m / x.all : 0 }))
+    const list = Object.keys(by).map(c => ({ c, n: C.names[c], m: by[c], all: C.total[c] })).map(x => ({ ...x, p: x.all ? 100 * x.m / x.all : 0 }))
       .sort((a, b) => footCitySort === "m" ? b.m - a.m : b.p - a.p);
     h += list.length ? list.map(x => `<div style="display:flex;align-items:center;gap:6px;color:#222;padding:3px 0;border-top:1px solid #f3f3f3">
-      <span style="width:6.5em;flex:none">${esc(x.n)}</span>
+      <span data-city="${x.c}" style="width:6.5em;flex:none;color:#1a73e8;cursor:pointer">${esc(x.n)}</span>
       <span style="flex:1;height:8px;background:#f1f1f1;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.min(100, Math.max(1, x.p)).toFixed(1)}%;background:#ff6d00"></i></span>
       <b style="width:4.2em;text-align:right">${x.p < 1 ? x.p.toFixed(2) : x.p.toFixed(1)}%</b>
       <small style="width:7.5em;text-align:right;color:#888">${(x.m / 1000).toFixed(1)}/${x.all < 10000 ? (x.all / 1000).toFixed(1) : Math.round(x.all / 1000)}km</small></div>`).join("") : "まだ どの市も塗れてないよ";
