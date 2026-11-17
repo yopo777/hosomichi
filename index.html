@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.2032</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.2036</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2644,6 +2644,9 @@ function sugLocal(q) {
   if (home && sugNorm(homeName || "家").includes(nq)) add("🏠", homeName || "家", "家", home);
   favs.forEach(f => { if (sugNorm(f.name).includes(nq)) add("⭐", f.name, "お気に入り", f.p); });
   secrets.forEach(f => { if (sugNorm(f.name).includes(nq)) add("🔒", f.name, "秘密の場所", f.p); });
+  if (footCities && sugFor && sugFor.id === "jump") for (const i of footCities.names.map((nm, i) => sugNorm(nm).includes(nq) ? i : -1).filter(i => i >= 0).slice(0, 5)) {   // 🏙 市区町村（地名さがしの欄だけ）
+    const ll = cityCenter(footCities, i); if (ll) out.push({ ic: "🏙", nm: footCities.names[i], sub: "わくと 走破％", ll, d: hav(C, ll), city: i });
+  }
   if (packStations && nb) {
     const st = packStations.filter(x => sugNorm(x[0]).startsWith(nb)).map(x => ({ ic: "🚉", nm: x[0] + "駅", sub: "駅", ll: [x[1], x[2]], d: hav(C, [x[1], x[2]]) }));
     st.sort((a, b) => a.d - b.d); out.push(...st.slice(0, 5));
@@ -2678,19 +2681,20 @@ function sugRun(inp) {
   sugT = setTimeout(async () => {
     const ph = await sugPhoton(q, seq); if (!ph || seq !== sugSeq) return;
     const seen = new Set(loc.map(x => x.nm + Math.round(x.ll[0] * 1000)));
-    const mine = loc.filter(x => x.ic !== "🚉"), rest = [...loc.filter(x => x.ic === "🚉"), ...ph.filter(x => !seen.has(x.nm + Math.round(x.ll[0] * 1000)))].sort((a, b) => a.d - b.d);
+    const mine = loc.filter(x => x.ic !== "🚉" && x.city == null), rest = [...loc.filter(x => x.ic === "🚉" || x.city != null), ...ph.filter(x => !seen.has(x.nm + Math.round(x.ll[0] * 1000)))].sort((a, b) => a.d - b.d);
     sugDraw(inp, [...mine, ...rest].slice(0, 10));   // ⭐🏠🔒 が上、駅と地名は 近い順
   }, 400);
 }
 function sugPick(x) {
   const inp = sugFor; if (!x || !inp) return;
+  if (x.city != null && inp.id === "jump") { inp.value = x.nm; sugHide(); inp.blur(); return cityGo(x.city, true); }   // 🏙 わく
   const name = x.sub && x.ic === "📍" ? `${x.nm}（${x.sub.split("・")[0]}）` : x.nm;
   sugPicked.set(name, x.ll); inp.value = name; sugHide();
   if (inp.id === "jump") { inp.blur(); if (follow) setFollow(false); map.setView(x.ll, Math.max(map.getZoom(), 16)); setMsg(`🔍 ${name}`); }
 }
 for (const id of SUG_INPUTS) {
   const inp = $(id); if (!inp) continue;
-  inp.addEventListener("focus", () => { sugFor = inp; if (!packStations) tfetch(new URL("../hosomichi-data/stations.json", location.href), { cache: "no-cache" }).then(r => r.ok && r.json()).then(j => { if (j && !packStations) { packStations = j; if (document.activeElement === inp && inp.value.trim()) sugRun(inp); } }).catch(() => {}); });   // 駅の一覧が とどいたら 出しなおす
+  inp.addEventListener("focus", () => { sugFor = inp; if (id === "jump" && footCities === undefined) footCityData().then(() => { if (document.activeElement === inp && inp.value.trim()) sugRun(inp); }); if (!packStations) tfetch(new URL("../hosomichi-data/stations.json", location.href), { cache: "no-cache" }).then(r => r.ok && r.json()).then(j => { if (j && !packStations) { packStations = j; if (document.activeElement === inp && inp.value.trim()) sugRun(inp); } }).catch(() => {}); });   // 駅の一覧が とどいたら 出しなおす
   inp.addEventListener("input", e => { if (e.isComposing) return; sugFor = inp; sugRun(inp); });
   inp.addEventListener("compositionend", () => { sugFor = inp; sugRun(inp); });
   inp.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== inp) sugHide(); }, 150));
@@ -2953,7 +2957,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.2032", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.2036", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4645,6 +4649,13 @@ async function footCityData() {   // cities.json（なければ null。作るま
   try { const r = await fetch(new URL("../hosomichi-data/cities.json", location.href).href); footCities = r.ok ? await r.json() : null; } catch { footCities = null; }
   return footCities;
 }
+// 🏙 市区町村の名前（松戸市・葛飾区・千葉市中央区 など）→ cities.json の番号。ぴったり か うしろが同じ（「中央区」→ いちばん近い 〇〇市中央区）
+function cityFind(C, q) {
+  const n = String(q || "").normalize("NFKC").replace(/\s/g, ""); if (!n || !/[市区町村]$/.test(n)) return [];
+  const out = []; C.names.forEach((nm, i) => { if (nm === n || nm.endsWith(n) || n.endsWith(nm) && nm.length >= 3) out.push(i); });
+  return out;
+}
+function cityCenter(C, c) { const r = cityRuns(C, c); if (!r.length) return null; const m = r[r.length >> 1]; return [(m[0] + 0.5) * C.G, (m[1] + m[2]) / 2 * C.G]; }
 // 🏙 市の名前をタップ：その市を地図いっぱいに出して、市のさかい目を 太い線でかこむ（足あとが どれだけ塗れたか見る用）
 // さかい目は cities.json のマス目（約100m）から作るので、少しカクカクだよ。もう一回 同じ市をタップすると消える
 const cityRunC = new Map(), cityEdgeC = new Map(), cityHiLayer = L.layerGroup().addTo(map); let cityHiNow = null;
@@ -4672,10 +4683,10 @@ function cityEdges(C, c) {   // さかい目の線：となりのマスが ほ�
   join(V, (k, y0, y1) => [[y0 * G, k * G], [y1 * G, k * G]]);
   cityEdgeC.set(c, segs); return segs;
 }
-async function cityGo(c) {
+async function cityGo(c, keep) {   // keep：もう一回でも 消さない（🔍 さがしたとき）
   c = +c; const C = await footCityData(); if (!C) return;
   cityOff();
-  if (cityHiNow === c) { cityHiNow = null; return; }   // もう一回タップで消す
+  if (cityHiNow === c && !keep) { cityHiNow = null; return; }   // もう一回タップで消す
   const runs = cityRuns(C, c); if (!runs.length) return;
   let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
   for (const [i, j0, j1] of runs) { la0 = Math.min(la0, i * C.G); la1 = Math.max(la1, (i + 1) * C.G); lo0 = Math.min(lo0, j0 * C.G); lo1 = Math.max(lo1, j1 * C.G); }
@@ -4687,12 +4698,19 @@ async function cityGo(c) {
   L.polyline(segs, { renderer: rend, color: "#6a1b9a", weight: 5, opacity: 0.85, interactive: false, lineCap: "square" }).addTo(cityHiLayer);
   cityHiNow = c;
   // 下の白い窓：〇〇市 ○%走破（👣足あとの％を出したことがあれば）・わくを消すボタン
+  if (!(footCityLast && footCityLast.C === C) && !footBusy) {   // 👣 ％をまだ出していなければ 計算して、窓を出しなおす
+    footBusy = true; footCityCompute().then(() => { if (cityHiNow === c && $("cityAsk")) cityWin(C, c); }).catch(() => {}).finally(() => { footBusy = false; });
+  }
+  cityWin(C, c);
+}
+function cityWin(C, c) {
+  const old = $("cityAsk"); if (old) old.remove();
   const L0 = footCityLast && footCityLast.C === C ? footCityLast.by[c] || 0 : null, all = C.total[c] || 0;
   const pc = L0 == null || !all ? "" : (p => p < 1 ? p.toFixed(2) : p.toFixed(1))(100 * L0 / all);
   const d = document.createElement("div"); d.id = "cityAsk";
   d.innerHTML = `<div class="box"><div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:bold">🏙 ${esc(C.names[c])}</div>`
     + (pc ? `<div style="font-size:14px;color:#ff6d00;font-weight:bold">${pc}% 走破<span style="font-size:11px;color:#888;font-weight:normal">（${(L0 / 1000).toFixed(1)} / ${Math.round(all / 1000)}km）</span></div>`
-      : `<div style="font-size:12px;color:#888">道 ${Math.round(all / 1000)}km（👣足あとを出すと ％が出るよ）</div>`)
+      : `<div style="font-size:12px;color:#888">道 ${Math.round(all / 1000)}km（走破％を 計算中…）</div>`)
     + `</div><button data-x="1">✕ わくを消す</button></div>`;
   d.querySelector("[data-x]").onclick = () => { cityOff(); cityHiNow = null; };
   document.body.appendChild(d);
@@ -4767,16 +4785,20 @@ function footCityHtml() {
   $("footCity").innerHTML = h;
   for (const b of $("footCity").querySelectorAll("[data-csort]")) b.onclick = () => { footCitySort = b.dataset.csort; lsSet("hosomichi_citysort", footCitySort); footCityHtml(); };
 }
+async function footCityCompute(onProg) {   // 👣 塗れた道を 市ごとに たす → footCityLast
+  const all = await footSegsAll(onProg || (() => {}));
+  const C = await footCityData();
+  let tot = 0; const by = {};
+  for (const k in all) { const [L, la, lo] = all[k]; tot += L; if (C) { const c = footCityOf(C, la, lo); if (c >= 0) by[c] = (by[c] || 0) + L; } }
+  return footCityLast = { tot, C, by };
+}
 async function footCityShow() {
   const box = () => $("footCity"); if (!box() || footBusy) return;
   footBusy = true;
   try {
-    const all = await footSegsAll(t => { if (box()) box().textContent = t; });
-    const C = await footCityData();
-    let tot = 0; const by = {};
-    for (const k in all) { const [L, la, lo] = all[k]; tot += L; if (C) { const c = footCityOf(C, la, lo); if (c >= 0) by[c] = (by[c] || 0) + L; } }
+    await footCityCompute(t => { if (box()) box().textContent = t; });
     if (!box()) return;
-    footCityLast = { tot, C, by }; footCityHtml();
+    footCityHtml();
   } catch (e) { if (box()) box().textContent = "しらべられなかったよ: " + e.message; }
   finally { footBusy = false; }
 }
@@ -5319,6 +5341,8 @@ $("jump").addEventListener("keydown", async e => {
   const t = $("jump").value.trim(); if (!t) return;
   $("jump").blur();
   try {
+    { const C = await footCityData(); const hit = C ? cityFind(C, t) : [];   // 🏙 市区町村の名前なら、👣足あとと同じ わく（いちばん近い所）
+      if (hit.length) { const c0 = map.getCenter(); hit.sort((a, b) => hav([c0.lat, c0.lng], cityCenter(C, a) || [0, 0]) - hav([c0.lat, c0.lng], cityCenter(C, b) || [0, 0])); return cityGo(hit[0], true); } }
     const [ll, name] = await geocode(t);
     if (follow) setFollow(false);
     map.setView(ll, Math.max(map.getZoom(), 16));
