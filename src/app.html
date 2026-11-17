@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
-      <input type="text" id="jump" enterkeyhint="search" placeholder="🔍 地名・駅名で地図を動かす" style="flex:1;min-width:0;padding:8px 10px;border:1px solid #ccc;border-radius:10px;font-size:14px">
+      <input type="text" autocomplete="off" id="jump" enterkeyhint="search" placeholder="🔍 地名・駅名で地図を動かす" style="flex:1;min-width:0;padding:8px 10px;border:1px solid #ccc;border-radius:10px;font-size:14px">
       <button class="ib" id="bNew" style="display:none;white-space:nowrap;font-size:12px;padding:6px 8px">🗑 ルート消去</button></div>
     <div class="tabs"><button data-t="route" class="on"><span class="ti">🚲</span><span class="tl">ルート</span></button><button data-t="pts"><span class="ti">📌</span><span class="tl">スポット</span></button><button data-t="trk"><span class="ti">🛤</span><span class="tl">軌跡</span></button><button data-t="cfg"><span class="ti">⚙</span><span class="tl">設定</span></button><button data-t="log"><span class="ti">🛠</span><span class="tl">デバッグ <span id="logN"></span></span></button></div>
     <div id="rtabs" class="ttabs"><button data-r="route">🚲 シンプル</button><button data-r="quest">🏁 クエスト</button></div>
@@ -215,7 +215,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <button id="msnGo" style="margin-top:6px">🎯 ミッションを作る</button>
       <h4 style="margin:14px 0 2px;border-top:1px solid #eee;padding-top:10px">🏆 チャレンジ <span style="font-size:11px;color:#666;font-weight:normal">ぜんぶ回る</span></h4>
       <div style="font-size:11px;color:#666;margin-top:2px">駅・神社・お寺などを ぜんぶ回るクエストだよ<span class="hq">?</span><div class="hd">市の駅・神社・お寺や、路線の駅をぜんぶ回るクエストだよ。◎ で走っていて近く（80m）に来ると、自動でスタンプがもらえるよ。記録はこの端末の中だけ</div></div>
-      <div class="row"><input type="text" id="qLine" enterkeyhint="search" placeholder="例：さいたま市、銀座線"><button class="ib" id="qFind" style="font-size:13px;white-space:nowrap">🔍 さがす</button></div>
+      <div class="row"><input type="text" autocomplete="off" id="qLine" enterkeyhint="search" placeholder="例：さいたま市、銀座線"><button class="ib" id="qFind" style="font-size:13px;white-space:nowrap">🔍 さがす</button></div>
       <div id="qCand"></div>
       <div id="qList"></div>
     </div>
@@ -335,9 +335,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       </div>
     </div>
     <div id="tabRoute">
-    <div class="row"><label>出発</label><input type="text" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
-    <div class="row" id="viaRow"><label>経由</label><input type="text" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
-    <div class="row" id="toRow"><label>到着</label><input type="text" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
+    <div class="row"><label>出発</label><input type="text" autocomplete="off" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
+    <div class="row" id="viaRow"><label>経由</label><input type="text" autocomplete="off" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
+    <div class="row" id="toRow"><label>到着</label><input type="text" autocomplete="off" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図を長おし（パソコンは右クリック）しても出発・到着を選べるよ</div>
     <button id="go">ルートを作る</button>
     <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
@@ -357,7 +357,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
           <select id="hide"><option value="0">隠さない</option><option value="400">400m</option><option value="1000">1km</option><option value="2000" selected>2km</option><option value="3000">3km</option></select>
           <label><input type="checkbox" id="hideEnd" checked> 到着地も</label></div>
         <div id="homeNote" style="margin:6px 0;padding:6px 8px;border-radius:6px;background:#fff3e0;color:#b45309;font-weight:bold"></div>
-        <div class="row" style="margin-top:4px"><label style="width:auto">名前</label><input type="text" id="shareName" maxlength="40" placeholder="名前（なくてもOK・空なら「共有されたルート」）"></div>
+        <div class="row" style="margin-top:4px"><label style="width:auto">名前</label><input type="text" autocomplete="off" id="shareName" maxlength="40" placeholder="名前（なくてもOK・空なら「共有されたルート」）"></div>
         <textarea id="url" readonly></textarea>
         <div class="btns"><button class="ib" id="bQr">📷 QR</button><button class="ib" id="bCopy">コピー</button><button class="ib" id="bSys">共有…</button></div>
 
