@@ -188,7 +188,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1034</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1036</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -239,12 +239,14 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <button id="bClear" style="font-size:11px;border:1px solid #ccc;background:#fff;border-radius:6px;padding:1px 6px;margin-left:4px">消す</button></div>
       <div style="font-size:12px;margin-top:6px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>📤 自分のデータを まるごと書き出す</b>
-        <div style="font-size:11px;color:#666;margin-top:2px">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あとを、1つの JSON ファイルにしてダウンロードするよ。パソコンで ながめたり、パソコンのナビをスマホとおなじにしたりする用だよ</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あとを、1つのファイルにしてダウンロードするよ。パソコンのナビをスマホとおなじにしたり、パソコンで ながめたりする用だよ</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:6px">🔑<input type="password" id="myPw" autocomplete="new-password" placeholder="パスワード（6文字以上）" style="flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:8px;font-size:13px"><label style="font-size:11px;white-space:nowrap"><input type="checkbox" id="myPwShow">見せる</label></div>
+        <div style="font-size:11px;color:#666;margin-top:2px">ファイルは このパスワードで <b>暗号化</b>するよ（AES-256）。読みこむときも おなじパスワードがいるよ。パスワードは どこにも保存しないので、わすれないでね</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="myPh" checked>📷 アルバムの写真も入れる（1枚 100KBくらい）</label>
-        <div class="btns" style="margin-top:6px"><button class="ib" id="myExp" style="font-size:12px">⬇ JSON で書き出す</button><button class="ib" id="myImp" style="font-size:12px">⬆ 読みこんで おなじにする</button></div>
-        <input type="file" id="myFile" accept=".json,application/json" style="display:none">
+        <div class="btns" style="margin-top:6px"><button class="ib" id="myExp" style="font-size:12px">⬇ 暗号化して書き出す</button><button class="ib" id="myImp" style="font-size:12px">⬆ 読みこんで おなじにする</button></div>
+        <input type="file" id="myFile" accept=".enc,.json" style="display:none">
         <div style="font-size:11px;color:#666;margin-top:2px">「⬆ 読みこむ」は、この端末のデータを ファイルの中身で <b>上書き</b>して、書き出した端末とおなじにするよ（スマホ → パソコンのミラー用）。道路データ・この端末だけの設定（自動でためる・ためしの現在地など）はそのままだよ</div>
-        <div style="font-size:11px;color:#b45309;margin-top:2px">⚠ 家の場所や走った道がぜんぶ入っているよ。人にわたしたり、公開の場所に置いたりしないでね</div>
+        <div style="font-size:11px;color:#b45309;margin-top:2px">⚠ 家の場所や走った道がぜんぶ入っているよ。暗号化していても、人にわたしたり 公開の場所に置いたりしないでね</div>
       </div>
       <div style="margin-top:10px;padding:8px;border-radius:8px;background:#e8f0fe;font-size:12px;line-height:1.6">
         <b>🔒 データについて</b><br>
@@ -2747,7 +2749,28 @@ function idbDump(name, store) {   // IndexedDB の1つの入れ物を ぜんぶ�
     };
   });
 }
+// 🔐 暗号化：パスワード →（PBKDF2-SHA256 60万回）→ AES-256-GCM。中身は JSON を gzip したもの
+// ファイル：「HOSOMICHI-MYDATA-1\n」＋ salt 16バイト ＋ iv 12バイト ＋ 暗号文（tools/decrypt_mydata.py でも開けるよ）
+const MY_MAGIC = "HOSOMICHI-MYDATA-1\n", MY_ITER = 600000;
+async function myKey(pw, salt) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: MY_ITER, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+const gzipBuf = async (u8, de) => new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(de ? new DecompressionStream("gzip") : new CompressionStream("gzip"))).arrayBuffer());
+async function myEncrypt(text, pw) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await myKey(pw, salt), await gzipBuf(new TextEncoder().encode(text)));
+  return new Blob([MY_MAGIC, salt, iv, new Uint8Array(ct)], { type: "application/octet-stream" });
+}
+async function myDecrypt(buf, pw) {   // まちがったパスワードなら null
+  const m = new TextEncoder().encode(MY_MAGIC).length, u = new Uint8Array(buf);
+  try { const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: u.slice(m + 16, m + 28) }, await myKey(pw, u.slice(m, m + 16)), u.slice(m + 28)); return new TextDecoder().decode(await gzipBuf(new Uint8Array(pt), true)); }
+  catch { return null; }
+}
+$("myPwShow").onchange = () => { $("myPw").type = $("myPwShow").checked ? "text" : "password"; };
 $("myExp").onclick = async () => {
+  const pw = $("myPw").value;
+  if (pw.length < 6) { alert("🔑 パスワードを6文字以上 入れてね（読みこむときに使うよ）"); $("myPw").focus(); return; }
   const b = $("myExp"); b.disabled = true; b.textContent = "書き出し中…";
   try {
     const ls = {}, lsRaw = [];   // lsRaw：JSON じゃない ただの文字で入っているもの（読みこむとき そのままもどす）
@@ -2755,20 +2778,21 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1034", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1036", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     if ($("myPh").checked) {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
       out.album = [];
       for (const o of await albAll()) { const u = o.b instanceof Blob ? await toUrl(o.b) : null; if (u) out.album.push({ ...o, b: u }); }
     }
-    const blob = new Blob([JSON.stringify(out)], { type: "application/json" });
+    b.textContent = "暗号化中…";
+    const blob = await myEncrypt(JSON.stringify(out), pw);
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `hosomichi-mydata-${today()}.json`; document.body.appendChild(a); a.click(); a.remove();
+    a.download = `hosomichi-mydata-${today()}.enc`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     addLog(`📤 自分のデータを書き出したよ（${(blob.size / 1024).toFixed(0)}KB・過去の記録 ${(out.hist || []).length}日分・📷${out.album ? out.album.length + "枚" : "なし"}）`, "m");
   } catch (e) { alert("書き出せなかったよ: " + e); }
-  b.disabled = false; b.textContent = "⬇ JSON で書き出す";
+  b.disabled = false; b.textContent = "⬇ 暗号化して書き出す";
 };
 
 // 📥 書き出したJSONを読みこんで、この端末を おなじにする（ミラー：上書き）
@@ -2780,7 +2804,15 @@ async function idbReplace(dbp, store, rows) {
 $("myImp").onclick = () => $("myFile").click();
 $("myFile").onchange = async e => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-  let d; try { d = JSON.parse(await f.text()); } catch { return alert("JSON が読めなかったよ"); }
+  const buf = await f.arrayBuffer(), head = new TextDecoder().decode(new Uint8Array(buf).slice(0, MY_MAGIC.length));
+  let text;
+  if (head === MY_MAGIC) {   // 🔐 暗号化されたファイル
+    let pw = $("myPw").value || prompt("🔑 書き出したときのパスワードを入れてね");
+    if (!pw) return;
+    text = await myDecrypt(buf, pw);
+    if (text == null) return alert("🔑 パスワードがちがうみたい（またはファイルがこわれてるかも）");
+  } else text = new TextDecoder().decode(buf);   // 前の版の 暗号化してない JSON
+  let d; try { d = JSON.parse(text); } catch { return alert("ファイルが読めなかったよ"); }
   if (!d || d.app !== "hosomichi" || d.kind !== "mydata" || !d.localStorage) return alert("ほそみちナビで書き出したファイルじゃないみたい");
   const when = new Date(d.at).toLocaleString("ja-JP");
   if (!confirm(`${when} に書き出したデータで、この端末を上書きするよ。\n（過去の記録 ${(d.hist || []).length}日分・📷写真 ${d.album ? d.album.length + "枚" : "なし（この端末の写真はそのまま）"}）\n\n⚠ この端末の 家・お気に入り・ルート・印・設定・過去の記録・足あとは、ファイルの中身に入れかわるよ。もとにはもどせないよ。\n\nいい？`)) return;
