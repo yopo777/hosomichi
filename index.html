@@ -192,7 +192,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1517</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1541</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -1781,8 +1781,10 @@ function heightAt(la, lo) {   // まわり4ピクセルで なめらかに
 //    そこが25%より急なら 🪜階段？にする（長い道の まん中だけ階段、みたいな所。はし→はしだと うすまって急坂？になる）
 //    （どの道でも15mの間を見ると 崖のそばのずれで まちがえやすいので、はし→はしで もう急な道だけにしぼる）
 //    とちゅうの点で、はしとはしの高さのあいだ（±0.5m）から飛び出したものは 崖・擁壁のずれとして すてる（3割をこえたら見ない）
+//    長い階段（擁壁のあいだの 高さ5〜8mの階段など）は 15mに入りきらないので、15mの間で3m以上・30%より急なら まとまりは見ないで 🪜階段？
+//    （ふつうの道は 急でも20%くらいまで）
 //  橋・トンネル（と そのはしにつながる道）は 標高のデータと高さが合わないので見ない
-const STEP_WIN = 15, STEP_MASS = 0.7, STEP_GR = 0.25, STEP_TOL = 0.5;
+const STEP_WIN = 15, STEP_MASS = 0.7, STEP_GR = 0.25, STEP_TOL = 0.5, STEP_GR2 = 0.3, STEP_NEED2 = 3;
 function stepConc(pts, need) {   // 道（点のならび）で、15mまでの間に need m 以上かわる所の いちばん急な坂 gr（なければ 0）・15mの間の いちばん大きい差 loc・すてた点の わりあい drop
   const sm = []; let d0 = 0;
   for (let i = 1; i < pts.length; i++) {
@@ -1797,12 +1799,16 @@ function stepConc(pts, need) {   // 道（点のならび）で、15mまでの�
   for (let i = sm.length - 1; i >= 0; i--) if (sm[i][1] < lo0 || sm[i][1] > hi0) sm.splice(i, 1);
   const drop = 1 - sm.length / n0;
   if (sm.length < n0 * 0.7 || sm.length < 3) return { why: "すてた点が多い", drop };
-  let gr = 0, loc = 0, j = 0;
+  let gr = 0, gr2 = 0, loc = 0, j = 0;
   for (let i = 0; i < sm.length; i++) {
     while (sm[i][0] - sm[j][0] > STEP_WIN) j++;
-    for (let k = j; k < i; k++) { const d = Math.abs(sm[i][1] - sm[k][1]); loc = Math.max(loc, d); if (d >= need) gr = Math.max(gr, d / Math.max(sm[i][0] - sm[k][0], 6)); }   // 6mより短い所は 6mとして（標高データのゆれで 急になりすぎないように）
+    for (let k = j; k < i; k++) {
+      const d = Math.abs(sm[i][1] - sm[k][1]), g = d / Math.max(sm[i][0] - sm[k][0], 6); loc = Math.max(loc, d);   // 6mより短い所は 6mとして（標高データのゆれで 急になりすぎないように）
+      if (d >= need) gr = Math.max(gr, g);
+      if (d >= STEP_NEED2) gr2 = Math.max(gr2, g);   // 長い階段用：まとまりは見ない
+    }
   }
-  return { gr, loc, drop };
+  return { gr, gr2, loc, drop };
 }
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
 function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍長押しの「このあたりを見る」）   // k：のぼり1mを何m分 / stK：🪜階段？の倍率（"no"＝通らない） / slK：⛰急坂？の倍率
@@ -1839,9 +1845,10 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
       let why = ai != null ? `航空写真AI ${ai}%` : "";   // 🔍 マークをタップしたときに出す 判定の数字（調整用）
       if (steep && ai == null) {   // ⛰急坂？：高さの差が 15mの間に まとまっていたら 🪜階段？
         const q = stepConc(path.map(i => [G.lat[i], G.lon[i]]), Math.max(2, STEP_MASS * dh));
-        if (q.gr != null && q.gr >= STEP_GR) { stair = true; steep = false; }
+        if (q.gr != null && (q.gr >= STEP_GR || q.gr2 >= STEP_GR2)) { stair = true; steep = false; }
         why = q.why ? q.why + (q.drop != null ? ` ${Math.round(q.drop * 100)}%` : "")
-          : `15mの間のまとまり ${Math.round(100 * q.loc / dh)}%（${Math.round(STEP_MASS * 100)}%いる）・そこの坂 ${Math.round(q.gr * 100)}%（${Math.round(STEP_GR * 100)}%いる）・すてた点 ${Math.round(q.drop * 100)}%`;
+          : `15mの間のまとまり ${Math.round(100 * q.loc / dh)}%（${Math.round(STEP_MASS * 100)}%いる）・そこの坂 ${Math.round(q.gr * 100)}%（${Math.round(STEP_GR * 100)}%いる）`
+            + `・3m以上の所の坂 ${Math.round(q.gr2 * 100)}%（${Math.round(STEP_GR2 * 100)}%いれば 長い階段）・すてた点 ${Math.round(q.drop * 100)}%`;
       }
       if (!stair && !steep) continue;
       if (stair) st++; else sl++;
@@ -2820,7 +2827,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1517", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1541", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5078,7 +5085,7 @@ function renderCfg() {
   h += "<h4>道を渡るとき</h4>" + get(["wideCross", "bigCross", "midCross"]) + '<div class="note">3車線以上の所は 4車線と同じにしてるよ<span class="hq">?</span><div class="hd">右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">細い道なら 一方通行の逆向きも走るよ（少し避ける）<span class="hq">?</span><div class="hd">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div></div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか<span class="hq">?</span><div class="hd">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div></div>'
-    + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）<span class="hq">?</span><div class="hd">交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。⛰急坂？の中でも、高さの差のほとんどが 15mの間に まとまっていて 25%より急な所（長い道の まん中だけ階段、みたいな所）は 🪜階段？にするよ（とちゅうで はしとはしの高さから飛び出した点は、崖や擁壁のずれとして すてるよ）。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div></div>';
+    + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）<span class="hq">?</span><div class="hd">交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。⛰急坂？の中でも、高さの差のほとんどが 15mの間に まとまっていて 25%より急な所（長い道の まん中だけ階段、みたいな所）は 🪜階段？にするよ。長い階段（15mの間で3m以上・30%より急）も 🪜階段？だよ（とちゅうで はしとはしの高さから飛び出した点は、崖や擁壁のずれとして すてるよ）。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div></div>';
   h += "<h4>👣 足あとを広げる</h4>" + get(["paintPen"]) + '<div class="note">まだ塗っていない道を通るルートにするよ<span class="hq">?</span><div class="hd">もう塗った道（👣足あと・今日の分も）を さけて、まだ塗っていない道を通るルートにするよ。行き止まりや遠回りもふえるので、塗りたいときだけ</div></div>';
   h += "<h4>公園・霊園・団地</h4>" + get(["park", "cemetery", "danchi", "privy"]) + '<div class="note">公園・霊園・団地・私道の 中を通る道のこと<span class="hq">?</span><div class="hd">🏠私道＝家の敷地に入る道・「住んでいる人と用事のある人だけ」の道・駐車場の中（コンビニ・スーパーの駐車場をつっきる近道など）。🏢団地＝名前が「〇〇団地」「〇〇住宅」「ハイツ」などの住宅地の中の、棟のあいだの通路・駐車場の道（通りぬける住宅街の道は気にしない）。公園や霊園・墓地の敷地の中を通る道のこと（人が歩いていて、自転車はひんしゅく）。川ぞいのサイクリングロードみたいな長い自転車道（400m以上）と、住宅街の道は、公園の中でも気にしないよ。配布データのはんいで見分けるよ</div></div>';
   h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅の自由通路・コンコースのこと（押して歩く所）<span class="hq">?</span><div class="hd">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ</div></div>';
@@ -6387,7 +6394,7 @@ function owDraw(m) {
 map.on("moveend", () => owUpdate(false));
 // 🪜 階段？・⛰ 急坂？（ルートを計算したときや 📍長押しで、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
 // 一度しらべた所は この端末におぼえておいて、地図に近づいたら（ズーム14より近く）いつでも出す
-const SLOPE_V = 6;   // 見分け方を変えたら上げる（古いマークはすてる）
+const SLOPE_V = 7;   // 見分け方を変えたら上げる（古いマークはすてる）
 const slopeLayer = L.layerGroup().addTo(map);
 let slopeDB = (() => { const d = lsGet("hosomichi_slope", null); return d && d.v === SLOPE_V && d.t ? d : { v: SLOPE_V, t: {} }; })(), slopeSaveT = null;
 const slopeKey = (la, lo) => Math.floor(la / 0.01) + "_" + Math.floor(lo / 0.01);
