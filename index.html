@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.2117</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.2123</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2970,7 +2970,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.2117", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.2123", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -3220,7 +3220,8 @@ let otherRoutes = null, lastRedo = null;   // otherRoutes：さけるルート�
 const thin = r => r.filter((_, i) => i % 3 === 0 || i === r.length - 1).map(p => [+p[0].toFixed(5), +p[1].toFixed(5)]);
 $("bOther").onclick = () => {
   if (!cur || !cur.redo || $("go").disabled) return;
-  otherRoutes = [...(otherRoutes || []), thin(cur.route)].slice(-4);   // 4本前まで
+  const seen = cur.opts && cur.opts.length > 1 ? cur.opts.map(o => o.route) : [cur.route];   // 🔢 で第2・第3のルートも出ていたら、それも ぜんぶさける
+  otherRoutes = [...(otherRoutes || []), ...seen.filter(r => r && r.length > 1).map(thin)].slice(-6);   // 6本前まで
   addLog(`🔄 ちがう道で もう一回（前の ${otherRoutes.length}本の道を 通りにくくするよ）`, "m");
   const f = cur.redo; f();
 };
@@ -3532,7 +3533,7 @@ function legend(r) {
 // ルートの候補（第2・第3のルート）：パネルのラジオボタンで切りかえる。地図には選んだルートだけ出す
 function selectOpt(i) {
   const r = cur, o = r && r.opts && r.opts[i]; if (!o || r.sel === i) return;
-  const n = { ...o, name: r.name, opts: r.opts, sel: i, short: r.short, slen: r.slen };
+  const n = { ...o, name: r.name, opts: r.opts, sel: i, short: r.short, slen: r.slen, redo: r.redo };   // redo：🔄 ちがう道で を 切りかえても使えるように
   delete n.kc; delete n.elev; delete n.elevInfo; delete n.elevErr;
   addLog(`ルート${i + 1}（${fmtKm(o.len)}）にしたよ`);
   showRoute(n, false); lsSet(LKEY, packRoute(n));

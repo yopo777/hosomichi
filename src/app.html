@@ -1226,7 +1226,8 @@ let otherRoutes = null, lastRedo = null;   // otherRoutes：さけるルート�
 const thin = r => r.filter((_, i) => i % 3 === 0 || i === r.length - 1).map(p => [+p[0].toFixed(5), +p[1].toFixed(5)]);
 $("bOther").onclick = () => {
   if (!cur || !cur.redo || $("go").disabled) return;
-  otherRoutes = [...(otherRoutes || []), thin(cur.route)].slice(-4);   // 4本前まで
+  const seen = cur.opts && cur.opts.length > 1 ? cur.opts.map(o => o.route) : [cur.route];   // 🔢 で第2・第3のルートも出ていたら、それも ぜんぶさける
+  otherRoutes = [...(otherRoutes || []), ...seen.filter(r => r && r.length > 1).map(thin)].slice(-6);   // 6本前まで
   addLog(`🔄 ちがう道で もう一回（前の ${otherRoutes.length}本の道を 通りにくくするよ）`, "m");
   const f = cur.redo; f();
 };
@@ -1538,7 +1539,7 @@ function legend(r) {
 // ルートの候補（第2・第3のルート）：パネルのラジオボタンで切りかえる。地図には選んだルートだけ出す
 function selectOpt(i) {
   const r = cur, o = r && r.opts && r.opts[i]; if (!o || r.sel === i) return;
-  const n = { ...o, name: r.name, opts: r.opts, sel: i, short: r.short, slen: r.slen };
+  const n = { ...o, name: r.name, opts: r.opts, sel: i, short: r.short, slen: r.slen, redo: r.redo };   // redo：🔄 ちがう道で を 切りかえても使えるように
   delete n.kc; delete n.elev; delete n.elevInfo; delete n.elevErr;
   addLog(`ルート${i + 1}（${fmtKm(o.len)}）にしたよ`);
   showRoute(n, false); lsSet(LKEY, packRoute(n));
