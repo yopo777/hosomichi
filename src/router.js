@@ -449,6 +449,8 @@ let paintedSet = null, PAINT_PEN = 1;   // 👣 もう塗った道（区間の�
 const BLOCK_R = 12;
 let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
 const USED_PEN = 2;
+let otherUsed = null;   // 🔄 ちがう道で：前のルートが通ったあたり（約180mのマス）。同じ道・となりの平行な道を 通りにくくする
+const OTHER_PEN = 3;
 const usedKey = (la, lo) => Math.round(la * 600) + "," + Math.round(lo * 490);   // 約180mのマス
 function markUsed(route) {
   for (let i = 0; i < route.length; i++) {
@@ -458,6 +460,11 @@ function markUsed(route) {
   }
 }
 function applyBlocks(lat, lon, adj, N) {
+  if (otherUsed && otherUsed.size) {
+    const u8 = new Uint8Array(N);
+    for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && otherUsed.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
+    for (let u = 0; u < N; u++) if (u8[u]) for (const e of adj[u]) if (u8[e.v]) e.c *= OTHER_PEN;
+  }
   if (usedNodes && usedNodes.size) {
     const u8 = new Uint8Array(N);
     for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && usedNodes.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
@@ -1965,6 +1972,10 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       PAINT_PEN = Math.max(1, +(d.cfg && d.cfg.paintPen) || 1);
       preferPts = Array.isArray(d.prefers) ? d.prefers : [];
       okPts = Array.isArray(d.oks) ? d.oks : [];
+      otherUsed = null;
+      if (Array.isArray(d.others) && d.others.length) { const keep = usedNodes; usedNodes = new Set(); for (const r of d.others) markUsed(r); otherUsed = usedNodes; usedNodes = keep;   // 🔄 前のルート（いくつでも）
+        // 出発・到着のまわり（約400m）は さけない（どのルートも通るので）
+        const ends = [d.s, d.g].filter(Boolean); for (const k of [...otherUsed]) { const [a, b] = k.split(",").map(Number), la = a / 600, lo = b / 490; if (ends.some(p => hav(la, lo, p[0], p[1]) < 400)) otherUsed.delete(k); } }
       PREFER_K = Math.min(1, Math.max(0.2, +(d.cfg && d.cfg.preferK) || 0.5));
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
       const r = d.tour ? await tourRoute(d, pr) : d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));

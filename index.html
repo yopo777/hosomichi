@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.2102</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.2117</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -352,6 +352,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <button class="ib" id="bSave">💾 保存</button>
         <button class="ib" id="bShare" style="display:none">🔗 共有URL</button>
         <button class="ib" id="bGpx">⬇ GPX</button>
+        <button class="ib" id="bOther" style="display:none">🔄 ちがう道で</button>
 
 
         <button class="ib" id="bResume" style="display:none;flex-basis:100%;border-color:#188038;color:#188038;font-weight:bold">▶ 続きを計算</button>
@@ -843,6 +844,8 @@ let paintedSet = null, PAINT_PEN = 1;   // 👣 もう塗った道（区間の�
 const BLOCK_R = 12;
 let usedNodes = null;   // ぐるっと1周：前の区間で通ったあたり（約180mのマス）。同じ道も、となりの平行な道も通りにくくする
 const USED_PEN = 2;
+let otherUsed = null;   // 🔄 ちがう道で：前のルートが通ったあたり（約180mのマス）。同じ道・となりの平行な道を 通りにくくする
+const OTHER_PEN = 3;
 const usedKey = (la, lo) => Math.round(la * 600) + "," + Math.round(lo * 490);   // 約180mのマス
 function markUsed(route) {
   for (let i = 0; i < route.length; i++) {
@@ -852,6 +855,11 @@ function markUsed(route) {
   }
 }
 function applyBlocks(lat, lon, adj, N) {
+  if (otherUsed && otherUsed.size) {
+    const u8 = new Uint8Array(N);
+    for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && otherUsed.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
+    for (let u = 0; u < N; u++) if (u8[u]) for (const e of adj[u]) if (u8[e.v]) e.c *= OTHER_PEN;
+  }
   if (usedNodes && usedNodes.size) {
     const u8 = new Uint8Array(N);
     for (let i = 0; i < N; i++) if (adj[i] && adj[i].length && usedNodes.has(usedKey(lat[i], lon[i]))) u8[i] = 1;
@@ -2359,6 +2367,10 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       PAINT_PEN = Math.max(1, +(d.cfg && d.cfg.paintPen) || 1);
       preferPts = Array.isArray(d.prefers) ? d.prefers : [];
       okPts = Array.isArray(d.oks) ? d.oks : [];
+      otherUsed = null;
+      if (Array.isArray(d.others) && d.others.length) { const keep = usedNodes; usedNodes = new Set(); for (const r of d.others) markUsed(r); otherUsed = usedNodes; usedNodes = keep;   // 🔄 前のルート（いくつでも）
+        // 出発・到着のまわり（約400m）は さけない（どのルートも通るので）
+        const ends = [d.s, d.g].filter(Boolean); for (const k of [...otherUsed]) { const [a, b] = k.split(",").map(Number), la = a / 600, lo = b / 490; if (ends.some(p => hav(la, lo, p[0], p[1]) < 400)) otherUsed.delete(k); } }
       PREFER_K = Math.min(1, Math.max(0.2, +(d.cfg && d.cfg.preferK) || 0.5));
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
       const r = d.tour ? await tourRoute(d, pr) : d.loop ? await loopRoute(d, pr) : await route(d, pr, p => self.postMessage({ type: "partial", ...p }));
@@ -2958,7 +2970,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.2102", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.2117", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -3160,7 +3172,7 @@ worker.onmessage = ev => {
   showRoute(merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: midStops(m.stops),
     opts: job && job.prefix || !(m.alts || []).length ? null
       : [{ route: m.route, ek: m.ek, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, stops: midStops(m.stops) }, ...m.alts.map(a => ({ ...a, stops: midStops(a.stops) }))], sel: 0,
-    name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined }), !follow && !(job && job.prefix));
+    name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined, redo: job && job.redo || null }), !follow && !(job && job.prefix));
   if (job && job.prefix) cur.slen = 0;
   if (job && job.next) {   // 経由地まで できた → つづけて 経由地から到着地まで
     const nx = job.next, P = { ...cur, tent: null, partial: false, opts: null };
@@ -3203,8 +3215,18 @@ function paintSend() {   // おわったら解決する Promise（読んでい�
   return paintP = footSegsAll(() => {}).then(all => worker.postMessage({ cmd: "painted", keys: Object.keys(all) })).catch(() => {}).finally(() => { paintP = null; });
 }
 setTimeout(paintSend, 4000);
+// 🔄 ちがう道で：同じ出発・到着（1周なら同じ寄り道）で、前に出したルートの道（とそのとなり）を 通りにくくして もう一回
+let otherRoutes = null, lastRedo = null;   // otherRoutes：さけるルート（前のぜんぶ）・lastRedo：同じ計算を もう一回する関数
+const thin = r => r.filter((_, i) => i % 3 === 0 || i === r.length - 1).map(p => [+p[0].toFixed(5), +p[1].toFixed(5)]);
+$("bOther").onclick = () => {
+  if (!cur || !cur.redo || $("go").disabled) return;
+  otherRoutes = [...(otherRoutes || []), thin(cur.route)].slice(-4);   // 4本前まで
+  addLog(`🔄 ちがう道で もう一回（前の ${otherRoutes.length}本の道を 通りにくくするよ）`, "m");
+  const f = cur.redo; f();
+};
 function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
-  job = { g, cfg: jcfg, prefix: prefix || null, loop: loop || 0 };
+  job = { g, cfg: jcfg, prefix: prefix || null, loop: loop || 0, redo: prefix ? prefix.redo || null : lastRedo };   // redo：🔄 ちがう道で 用（保存したルートを開いたときは ない）
+  if (!prefix) lastRedo = null;
   drawPreview(null);
   if (!prefix) {   // 新しいルート：古いルートは画面から消す（ナビの「のこり」もまちがえないように）
     cur = null; cum = []; navAlong = null;
@@ -3216,7 +3238,7 @@ function startJob(s, g, jcfg, prefix, loop, poi, loopVia, extra) {
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250); showProg();
   rtDrop = false;
   const myJob = job, send = () => { if (job !== myJob) return;   // 待っている間に 止めた・消した
-    worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => !BLK_SOFT(b.r)).map(b => b.p), oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
+    worker.postMessage({ s, g, cfg: jcfg, blocks: blocks.filter(b => !BLK_SOFT(b.r)).map(b => b.p), oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: loop || 0, poi: poi || null, via: loopVia || null, others: otherRoutes, ...(extra || {}) });   // 🚫 通れない印は設定とは別にわたす（共有URLに入らないように）
   };
   // 👣 もう塗った道をさけるときは、今日の分まで あてはめおわってから計算する（その待ちも 所要時間に入る）
   if (!prefix && +jcfg.paintPen > 1) { lastProg = { stage: 1, msg: "👣 足あと（もう塗った道）を読んでるよ" }; showProg(); const t0 = Date.now(); paintSend().then(() => { paintWait = (Date.now() - t0) / 1000; send(); }); }
@@ -3369,6 +3391,7 @@ async function askMid(s, km, type, fromHere) {
 }
 function midSeen(p) { const a = lsGet("hosomichi_midseen", []).filter(x => x !== midKey(p)); a.push(midKey(p)); lsSet("hosomichi_midseen", a.slice(-500)); }
 $("go").onclick = async () => {
+  otherRoutes = null;   // 新しく作るときは 🔄 のさける道を リセット
   audioUnlock();
   let LK = loopKm();
   const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = LK ? "" : $("via").value.trim();
@@ -3414,6 +3437,7 @@ $("go").onclick = async () => {
       else map.setView(s, Math.max(10, Math.min(15, Math.round(15 - Math.log2(LK / 5)))));
       if (geoAbort.signal.aborted) throw new Error("止めたよ");
       geoAbort = null; clearInterval(tickTimer);
+      { const c1 = structuredClone(cfg), LK1 = LK; lastRedo = () => startJob(s, s, structuredClone(c1), null, LK1, null, v); }
       startJob(s, s, structuredClone(cfg), null, LK, null, v);
       return;
     }
@@ -3436,8 +3460,9 @@ $("go").onclick = async () => {
     if (geoAbort.signal.aborted) throw new Error("止めたよ");
     geoAbort = null;
     clearInterval(tickTimer);
-    if (v) { const c2 = structuredClone(cfg); startJob(s, v, c2, null); job.next = { g, cfg: c2 }; job.via = v; }   // まず経由地まで
-    else startJob(s, g, structuredClone(cfg), null);
+    const run = () => { if (v) { const c2 = structuredClone(cfg); startJob(s, v, c2, null); job.next = { g, cfg: c2 }; job.via = v; }   // まず経由地まで
+      else startJob(s, g, structuredClone(cfg), null); };
+    lastRedo = run; run();
   } catch (e) {
     const stopped = geoAbort?.signal.aborted; geoAbort = null;
     clearInterval(tickTimer); $("go").disabled = $("msnGo").disabled = false; $("stop").style.display = "none"; setBar(0);
@@ -3514,6 +3539,7 @@ function selectOpt(i) {
 }
 // 右はしの切りかえボタン（スマホ用）：押すたびに ルート1→2→3→1…
 function altBtn(r) {
+  $("bOther").style.display = r && !r.partial && r.redo ? "" : "none";   // 🔄 ちがう道で
   const b = $("alt"), n = r && !r.partial && r.opts ? r.opts.length : 0;
   if (n < 2) { b.style.display = "none"; return; }
   b.style.display = "block"; $("altN").textContent = (r.sel || 0) + 1; $("altL").textContent = `ルート${(r.sel || 0) + 1}/${n}`;
