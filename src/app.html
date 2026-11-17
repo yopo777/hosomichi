@@ -3725,6 +3725,45 @@ function drawBlocks() {
   }
 }
 // 📌 スポットタブ：登録した地点をぜんぶ一覧に（🏠家・🔒秘密の場所・🚫通れない・⚠通りたくない）
+// 📌 登録した地点（キー：h＝家・f0＝お気に入り・s0＝秘密の場所・b0＝印）を さわる関数（📌スポットのタブと、地図のタップで使う）
+const ptObj = k => k === "h" ? null : k[0] === "s" ? secrets[+k.slice(1)] : k[0] === "f" ? favs[+k.slice(1)] : blocks[+k.slice(1)];
+const ptPos = k => k === "h" ? home : ptObj(k).p;
+function ptRename(k) {
+  const now = k === "h" ? homeName || "家" : ptObj(k).name || "";
+  const n = prompt("名前をかえる", now); if (n === null) return;
+  if (k === "h") { homeName = n.trim(); lsSet("hosomichi_homename", homeName); }
+  else { ptObj(k).name = n.trim(); if (k[0] === "s") { lsSet("hosomichi_secret", secrets); drawSecrets(); } else if (k[0] === "f") { lsSet("hosomichi_fav", favs); drawFavs(); } else lsSet(BKEY, blocks); }
+  spotsTabDraw();
+}
+function ptUse(key, k) {   // k：from / via / to
+  const q = ptPos(key);
+  $(k).value = q[0].toFixed(6) + "," + q[1].toFixed(6); rtLast = "route"; showTab("route"); setMsg(`${{ from: "出発", via: "経由", to: "到着" }[k]}に入れたよ`);
+}
+function ptDel(k, ask) {   // ask：地図から消すときは 確認する（タブからは 家だけ確認）
+  const nm = k === "h" ? "家の登録" : `「${ptObj(k).name || "この地点"}」`;
+  if (k === "h" ? !confirm("家の登録を消す？（SNSで家のまわりが消えなくなるよ）") : ask && !confirm(nm + "を消す？")) return;
+  if (k === "h") { home = null; lsSet("hosomichi_home", null); drawHome(); homeDist(); }
+  else if (k[0] === "s") { secrets.splice(+k.slice(1), 1); lsSet("hosomichi_secret", secrets); drawSecrets(); }
+  else if (k[0] === "f") { favs.splice(+k.slice(1), 1); lsSet("hosomichi_fav", favs); drawFavs(); }
+  else { blocks.splice(+k.slice(1), 1); saveBlocks(); }
+  spotsTabDraw();
+}
+// 🗺 地図の ⭐🏠🔒 をタップ：名前と、出発・経由・到着／名前をかえる／消す
+function ptPop(k) {
+  const ic = { h: "🏠", f: "⭐", s: "🔒" }[k[0]], nm = k === "h" ? homeName || "家" : ptObj(k).name || { f: "お気に入り", s: "秘密の場所" }[k[0]];
+  const note = { h: "SNSでは まわりを消すよ", f: "お気に入り", s: "秘密の場所（SNSでは家と同じように まわりを消すよ）" }[k[0]];
+  const B = (a, col, t) => `<button data-pu="${a}" style="color:${col}">${t}</button>`;
+  const div = document.createElement("div"); div.className = "pin";
+  div.innerHTML = `<b>${ic} ${esc(nm)}</b><br><span style="font-size:11px;color:#666">${note}</span><br>`
+    + (follow ? "" : "ここを<br>" + B("from", "#188038", "出発にする") + (k[0] === "f" ? B("via", "#1a73e8", "経由にする") : "") + B("to", "#d93025", "到着にする") + "<br>")
+    + B("ren", "#333", "✏ 名前をかえる") + B("del", "#888", "🗑 消す");
+  const pop = L.popup().setLatLng(ptPos(k)).setContent(div).openOn(map);
+  div.onclick = ev => {
+    const a = ev.target.dataset.pu; if (!a) return;
+    L.DomEvent.stopPropagation(ev); map.closePopup(pop);
+    if (a === "ren") ptRename(k); else if (a === "del") ptDel(k, true); else ptUse(k, a);
+  };
+}
 function spotsTabDraw() {
   const T = $("tabPts"); if (!T) return;
   const BTN = (k, key, col, t) => `<button data-use="${k}:${key}" style="font-size:11px;padding:2px 6px;border:1px solid ${col};color:${col};border-radius:6px;background:#fff">${t}</button>`;
@@ -3743,19 +3782,8 @@ function spotsTabDraw() {
     + sec(`🚫 通れない ${bo.length}`, "いちばん近い道（12m以内）を ルートに使わないよ", bo.map(([b, i]) => row("🚫", b.name || "通れない", "b" + i)).join(""))
     + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", b.name || "通りたくない", "b" + i)).join(""))
     + sec(`👍 通りたい ${bw.length}`, "いちばん近い道を まるごと通りやすくするよ（広い歩道・気持ちいい道など。どれくらいかは ⚙設定 → 🚲道の好み）", bw.map(([b, i]) => row("👍", b.name || "通りたい", "b" + i)).join(""));
-  const obj = k => k === "h" ? null : k[0] === "s" ? secrets[+k.slice(1)] : k[0] === "f" ? favs[+k.slice(1)] : blocks[+k.slice(1)];
-  const pos = k => k === "h" ? home : obj(k).p;
-  const rename = k => {
-    const now = k === "h" ? homeName || "家" : obj(k).name || "";
-    const n = prompt("名前をかえる", now); if (n === null) return;
-    if (k === "h") { homeName = n.trim(); lsSet("hosomichi_homename", homeName); }
-    else { obj(k).name = n.trim(); if (k[0] === "s") lsSet("hosomichi_secret", secrets); else if (k[0] === "f") { lsSet("hosomichi_fav", favs); drawFavs(); } else lsSet(BKEY, blocks); }
-    spotsTabDraw();
-  };
-  for (const e of T.querySelectorAll("[data-use]")) e.onclick = () => {   // 🚲ルートの 出発・経由・到着に入れる（すぐ引ける）
-    const [k, key] = e.dataset.use.split(":"), q = pos(key);
-    $(k).value = q[0].toFixed(6) + "," + q[1].toFixed(6); rtLast = "route"; showTab("route"); setMsg(`${{ from: "出発", via: "経由", to: "到着" }[k]}に入れたよ`);
-  };
+  const pos = ptPos, rename = ptRename;
+  for (const e of T.querySelectorAll("[data-use]")) e.onclick = () => { const [k, key] = e.dataset.use.split(":"); ptUse(key, k); };   // 🚲ルートの 出発・経由・到着に入れる（すぐ引ける）
   for (const e of T.querySelectorAll("[data-go]")) {
     let lp = null, long = false;
     e.oncontextmenu = ev => { ev.preventDefault(); rename(e.dataset.go); };   // 右クリック
@@ -3763,15 +3791,7 @@ function spotsTabDraw() {
     e.ontouchend = e.ontouchmove = () => clearTimeout(lp);
     e.onclick = () => { if (long) return; if (follow) setFollow(false); map.setView(pos(e.dataset.go), 18); $("panel").classList.add("min"); $("tog").textContent = "ひらく"; };
   }
-  for (const e of T.querySelectorAll("[data-del]")) e.onclick = () => {
-    const k = e.dataset.del;
-    if (k === "h" && !confirm("家の登録を消す？（SNSで家のまわりが消えなくなるよ）")) return;   // 家だけ確認する。ほかは すぐ消す
-    if (k === "h") { home = null; lsSet("hosomichi_home", null); drawHome(); homeDist(); }
-    else if (k[0] === "s") { secrets.splice(+k.slice(1), 1); lsSet("hosomichi_secret", secrets); drawSecrets(); }
-    else if (k[0] === "f") { favs.splice(+k.slice(1), 1); lsSet("hosomichi_fav", favs); drawFavs(); }
-    else { blocks.splice(+k.slice(1), 1); saveBlocks(); }
-    spotsTabDraw();
-  };
+  for (const e of T.querySelectorAll("[data-del]")) e.onclick = () => ptDel(e.dataset.del, false);
   if (T.style.display !== "none") ptFillNames();   // タブを開いているときだけ、名前のない地点の住所をしらべる
 }
 // 名前がまだない地点（前の版で登録した 家・印など）は、住所を名前にする（1回に3か所まで・しらべたら保存）
@@ -4426,14 +4446,14 @@ let home = lsGet("hosomichi_home", null), homeName = lsGet("hosomichi_homename",
 const homeLayer = L.layerGroup().addTo(map);
 function drawHome() {
   homeLayer.clearLayers();
-  if (home) L.marker(home, { interactive: false, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:20px;text-shadow:0 0 3px #fff,0 0 3px #fff">🏠</div>' }) }).addTo(homeLayer);
+  if (home) L.marker(home, { zIndexOffset: 300, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:20px;text-shadow:0 0 3px #fff,0 0 3px #fff">🏠</div>' }) }).on("click", () => ptPop("h")).addTo(homeLayer);
 }
 // 🔒 秘密の場所（親せきの家・職場など）：SNSでは家と同じように まわりを消す。この端末の中だけ
 let secrets = lsGet("hosomichi_secret", []).filter(q => q && Array.isArray(q.p));
 const secLayer = L.layerGroup().addTo(map);
 function drawSecrets() {
   secLayer.clearLayers();
-  for (const q of secrets) L.marker(q.p, { interactive: false, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">🔒</div>' }) }).addTo(secLayer);
+  secrets.forEach((q, i) => L.marker(q.p, { zIndexOffset: 300, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">🔒</div>' }) }).on("click", () => ptPop("s" + i)).addTo(secLayer));
   try { spotsTabDraw(); } catch {}
 }
 async function addSecret(ll) {
@@ -4450,7 +4470,7 @@ let favs = lsGet("hosomichi_fav", []).filter(q => q && Array.isArray(q.p));
 const favLayer = L.layerGroup().addTo(map);
 function drawFavs() {
   favLayer.clearLayers();
-  for (const q of favs) L.marker(q.p, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">⭐</div>' }) }).bindTooltip(esc(q.name || "お気に入り")).addTo(favLayer);
+  favs.forEach((q, i) => L.marker(q.p, { zIndexOffset: 300, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">⭐</div>' }) }).on("click", () => ptPop("f" + i)).addTo(favLayer));   // タップで 名前と ボタン
   try { spotsTabDraw(); } catch {}
 }
 async function addFav(ll, title) {   // title：マークの名前（「🪨 庚申塚」など）。あれば「庚申塚 松戸市○○町○丁目」にする
