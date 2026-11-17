@@ -1425,13 +1425,25 @@ function stepConc(pts, need) {   // 道（点のならび）で、15mまでの�
   return { gr, gr2, loc, drop };
 }
 const CAR_HW = new Set(["residential", "unclassified", "service", "living_street", "tertiary", "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "road"]);
-function okNear(G, path) {   // ✅ 通れる の印が、この道（点のならび）から12m以内にあるか
-  const M = 111320, cosl = Math.cos(G.lat[path[0]] * RAD);
-  for (const p of okPts) for (let i = 1; i < path.length; i++) {
-    const u = path[i - 1], v = path[i];
-    const ax = (G.lon[u] - p[1]) * cosl * M, ay = (G.lat[u] - p[0]) * M, bx = (G.lon[v] - p[1]) * cosl * M, by = (G.lat[v] - p[0]) * M;
-    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
-    if (Math.hypot(ax + dx * t, ay + dy * t) < BLOCK_R) return true;
+// ✅ 通れる：🚫と同じで、印から いちばん近い道（12m以内・いちばん近い道より4m以上はなれた道はのぞく）だけ
+function okSegD(G, p, u, v) {
+  const M = 111320, cosl = Math.cos(p[0] * RAD);
+  const ax = (G.lon[u] - p[1]) * cosl * M, ay = (G.lat[u] - p[0]) * M, bx = (G.lon[v] - p[1]) * cosl * M, by = (G.lat[v] - p[0]) * M;
+  const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+  return Math.hypot(ax + dx * t, ay + dy * t);
+}
+function okMins(G) {   // 印ごとの いちばん近い道までのきょり
+  const out = okPts.map(() => Infinity), n = G.lat.length;
+  for (let u = 0; u < n; u++) if (G.adj[u]) for (const e of G.adj[u]) if (e.v > u) okPts.forEach((p, k) => {
+    if (Math.abs(G.lat[u] - p[0]) > 0.0005 || Math.abs(G.lon[u] - p[1]) > 0.0006) return;   // 遠い道は 計算しない（約55m）
+    const d = okSegD(G, p, u, e.v); if (d < out[k]) out[k] = d;
+  });
+  return out;
+}
+function okNear(G, path, mins) {   // ✅ 通れる の印が、この道（点のならび）に かかっているか
+  for (let k = 0; k < okPts.length; k++) {
+    if (!(mins[k] < BLOCK_R)) continue;
+    for (let i = 1; i < path.length; i++) { const d = okSegD(G, okPts[k], path[i - 1], path[i]); if (d < BLOCK_R && d <= mins[k] + 4) return true; }
   }
   return false;
 }
@@ -1446,6 +1458,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
   const deg = i => nb[i] ? nb[i].size : 0;
   const edge = (a, b) => G.adj[a].find(e => e.v === b);
   let st = 0, sl = 0;
+  let okM = null;   // ✅ 通れる の印ごとの いちばん近い道までのきょり（はじめて いるときに計算）
   const seen = new Set(), marks = [];   // 地図のマーク用：[緯度, 経度, 1=階段？/0=急坂？, 坂%, 高さの差, 長さ]
   for (let a = 0; a < n; a++) {
     if (!nb[a] || deg(a) === 2) continue;   // 交差点・行き止まりから歩きだす
@@ -1475,7 +1488,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
             + `・3m以上の所の坂 ${Math.round(q.gr2 * 100)}%（${Math.round(STEP_GR2 * 100)}%いれば 長い階段）・すてた点 ${Math.round(q.drop * 100)}%`;
       }
       if (!stair && !steep) continue;
-      if (okPts.length && okNear(G, path)) continue;   // ✅ 通れる の印がある道は 取り消し（マークも出さない）
+      if (okPts.length && okNear(G, path, okM || (okM = okMins(G)))) continue;   // ✅ 通れる の印がある道は 取り消し（マークも出さない）
       if (stair) st++; else sl++;
       { // マークは 道の線にそって ちょうど まん中の所（点の番号のまん中だと、点が2つしかない道では はしの交差点に出て、となりの道の印に見えるので）
         let half = L / 2, mla = G.lat[path[0]], mlo = G.lon[path[0]];
