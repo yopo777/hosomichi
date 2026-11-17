@@ -191,7 +191,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1444</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1449</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2341,6 +2341,7 @@ const base = {};
 const map = L.map("map", { zoomControl: false, rotate: true, bearing: 0, rotateControl: false, touchRotate: false,
   zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 120,   // 拡大・縮小をこまかく（1段ずつだと急すぎる）
   shiftKeyRotate: false, compassBearing: false }).setView([35.69, 139.75], 11);
+{ const h = lsGet("hosomichi_home", null); if (Array.isArray(h) && h.length === 2 && h.every(Number.isFinite)) map.setView(h, 15); }   // 🏠 家があれば、はじめは家のまわり（なければ都心）
 let baseName = (() => { try { return localStorage.getItem("hosomichi_bg") || "cyclosm"; } catch { return "cyclosm"; } })();
 // 「自動」はやめた（前に自動にしていた人は 自転車用に）
 const BG_ALL = Object.keys(BASES);
@@ -2808,7 +2809,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1444", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1449", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6200,17 +6201,16 @@ $("qList").onclick = e => {
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
-    ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"]]],
-  ["こまったとき", [["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
+    ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"], ["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
   ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"], ["townhall", "🏛", "役所"], ["library", "📚", "図書館"], ["post", "📮", "郵便局"], ["fire", "🚒", "消防署"],
     ["factory", "🏭", "工場"], ["waterw", "🚰", "浄水場・水道局"], ["power", "⚡", "発電所"], ["ground", "🏟", "グラウンド・球場"], ["danchi", "🏢", "団地"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
-    ["oneway", "➡", "一方通行"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"]]],
-  ["車止め", [["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
-  ["ランチ", [["ramen", "🍜", "ラーメン"], ["soba", "🥢", "そば・うどん"], ["sushi", "🍣", "寿司"], ["curry", "🍛", "カレー"], ["teishoku", "🍱", "定食・和食"], ["chinese", "🥟", "中華"],
-    ["western", "🍝", "洋食・イタリアン"], ["burger", "🍔", "ハンバーガー"], ["restaurant", "🍴", "そのほかの食堂"]]],
-  ["食べ歩き", [["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
+    ["oneway", "➡", "一方通行"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
+    ["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
+  ["ごはん・おやつ", [["ramen", "🍜", "ラーメン"], ["soba", "🥢", "そば・うどん"], ["sushi", "🍣", "寿司"], ["curry", "🍛", "カレー"], ["teishoku", "🍱", "定食・和食"], ["chinese", "🥟", "中華"],
+    ["western", "🍝", "洋食・イタリアン"], ["burger", "🍔", "ハンバーガー"], ["restaurant", "🍴", "そのほかの食堂"],
+    ["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
   ["めぐる", [["shrine", "⛩", "神社"], ["temple", "🛕", "お寺"], ["church", "⛪", "教会"], ["castle", "🏯", "城・城あと"], ["kofun", "🪦", "古墳・遺跡"], ["monument", "🗿", "記念碑・石碑"],
     ["sight", "🌸", "名所・史跡"], ["view", "🔭", "展望スポット"], ["park", "⛲", "公園"], ["michi", "🛣", "道の駅"], ["bridge", "🌉", "橋"],
     ["jizo", "🙏", "お地蔵さん・道祖神"], ["ichiri", "🌲", "一里塚"], ["tree", "🌳", "大きな木"], ["spring", "🫧", "湧き水"], ["fall", "🏞", "滝"], ["ferry", "⛴", "渡し船"]]]];
@@ -6225,8 +6225,9 @@ const SPOT_SVG = { xing: '<svg width="16" height="14" viewBox="0 0 16 14" style=
   // ゲート・遮断機（柱と、赤白のバー）
   gate: '<svg width="16" height="14" viewBox="0 0 16 14" style="display:block"><rect x="0.8" y="2" width="2.6" height="11" rx="1" fill="#555"/><rect x="3" y="5" width="12.4" height="3" fill="#d93025"/><g fill="#fff"><rect x="5.6" y="5" width="2.2" height="3"/><rect x="10" y="5" width="2.2" height="3"/></g></svg>' };
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
-const SPOT_COL = { "道": "#188038", "車止め": "#d93025", "こまったとき": "#d01884", "休けい・自転車": "#1a73e8", "食べ歩き": "#e8710a", "ランチ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
-const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_COL[g]]])));
+const SPOT_COL = { "道": "#188038", "休けい・自転車": "#1a73e8", "ごはん・おやつ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
+const SPOT_KCOL = { cbar: "#d93025", bollard: "#d93025", gate: "#d93025", police: "#d01884", aed: "#d01884", hospital: "#d01884" };   // まとめる前のジャンルの色を のこす物（車止め＝赤・こまったとき＝ピンク）
+const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_KCOL[k] || SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
 let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
@@ -6272,7 +6273,7 @@ function spotTile(key) {   // 1回読んだマスはおぼえておく（ない�
 // どちらも、画面を指1本分（48px・引いたときは64px）のマスに分けて、マスごとに1個だけ（有名なもの → 近いもの の順にえらぶ）
 // 道・車止めのマーク（横断歩道・信号・階段・柵…）は、ズーム16より拡大したときだけ、見えている所に間引かずぜんぶ出す
 // （引いたときに間引くと、出たり消えたりしてかえってわかりにくいので）
-const ROAD_GROUPS = ["道", "車止め"], SPOT_ROAD_Z = 16, SPOT_MIN_Z = 14;   // SPOT_MIN_Z より引いたらマークは出さない（全体図がごちゃごちゃしないように）
+const ROAD_GROUPS = ["道"], SPOT_ROAD_Z = 16, SPOT_MIN_Z = 14;   // SPOT_MIN_Z より引いたらマークは出さない（全体図がごちゃごちゃしないように）
 const SPOT_ROAD = new Set(SPOT_KINDS.filter(g => ROAD_GROUPS.includes(g[0])).flatMap(g => g[1].map(x => x[0])));
 async function spotUpdate(force) {
   if (spotHide) return;   // かくし中は読みも描きもしない
