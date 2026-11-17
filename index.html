@@ -192,7 +192,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1903</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.1910</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -1889,7 +1889,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
           if (d >= half) { const t = d ? half / d : 0; mla = G.lat[p0] + (G.lat[p1] - G.lat[p0]) * t; mlo = G.lon[p0] + (G.lon[p1] - G.lon[p0]) * t; break; }
           half -= d; mla = G.lat[p1]; mlo = G.lon[p1];
         }
-        marks.push([+mla.toFixed(6), +mlo.toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L), why]); }
+        if (!fix) marks.push([+mla.toFixed(6), +mlo.toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L), why]); }   // 階段じゃない／階段だった の印がある道は マークを出さない（印と同じ所に かさなるので）
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
         if (stair) { e.c *= stK === "no" ? 1e4 : (+stK || 1); e.k = "階段？"; }
@@ -2858,7 +2858,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1903", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.1910", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });

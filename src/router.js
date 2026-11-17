@@ -1499,7 +1499,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
           if (d >= half) { const t = d ? half / d : 0; mla = G.lat[p0] + (G.lat[p1] - G.lat[p0]) * t; mlo = G.lon[p0] + (G.lon[p1] - G.lon[p0]) * t; break; }
           half -= d; mla = G.lat[p1]; mlo = G.lon[p1];
         }
-        marks.push([+mla.toFixed(6), +mlo.toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L), why]); }
+        if (!fix) marks.push([+mla.toFixed(6), +mlo.toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L), why]); }   // 階段じゃない／階段だった の印がある道は マークを出さない（印と同じ所に かさなるので）
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
         if (stair) { e.c *= stK === "no" ? 1e4 : (+stK || 1); e.k = "階段？"; }
