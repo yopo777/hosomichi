@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.2036</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.2042</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2957,7 +2957,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.2036", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1117.2042", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4328,11 +4328,16 @@ function simStrip(R) {   // 🧪 ためしの点（4つ目が1）と、その間
   const inR = t => rg.some(([x, y]) => t >= x - 5000 && t <= y + 5000);
   return { ...R, pts: R.pts.filter(q => !q[3]), ev: (R.ev || []).filter(e => !(e.k !== "start" && inR(e.t))) };
 }
+// 走ったことにする きょり：家でアプリを開いていただけの GPSのゆれ（数十m）は 走ったことにしない
+const RIDE_MIN = 300;
+const rideReal = R => !!(R && R.pts && R.pts.length > 1 && trkStats(R.pts).dist >= RIDE_MIN);
 async function histPut(R) {
   try {
     R = R && simStrip(R);   // 🧪 0時に🗓過去へ入れるときは ためしの分を自動で消す
     if (!R || R.pts.length < 2) return;
-    const { dist, move } = trkStats(R.pts), db = await histOpen();
+    const { dist, move } = trkStats(R.pts);
+    if (dist < RIDE_MIN) return;   // ほとんど動いていない日は 🗓過去に入れない
+    const db = await histOpen();
     await new Promise((ok, ng) => { const tx = db.transaction("days", "readwrite"); tx.objectStore("days").put({ d: dkey(R.t0), t0: R.t0, pts: R.pts, ev: R.ev || [], dist, move }); tx.oncomplete = ok; tx.onerror = () => ng(tx.error); });
   } catch (e) { addLog("過去の記録を保存できなかったよ: " + e, "warn"); }
 }
@@ -4884,7 +4889,7 @@ async function trkPast() {
   const T = $("trkBody"); if (!T) return; trkLayer.clearLayers();
   const now = new Date(); if (!trkYM) trkYM = [now.getFullYear(), now.getMonth()];
   const [y, m] = trkYM, ym = `${y}-${String(m + 1).padStart(2, "0")}`, days = await histMonth(ym);
-  if (ride && ride.pts.length > 1 && dkey(ride.t0).startsWith(ym)) days[dkey(ride.t0)] = trkStats(ride.pts).dist;   // 今日の分も
+  if (rideReal(ride) && dkey(ride.t0).startsWith(ym)) days[dkey(ride.t0)] = trkStats(ride.pts).dist;   // 今日の分も（ほとんど動いていなければ 出さない）
   const first = new Date(y, m, 1).getDay(), n = new Date(y, m + 1, 0).getDate(), today = dkey(Date.now());
   let total = 0, cnt = 0; for (const k in days) { total += days[k]; cnt++; }
   let cells = "日月火水木金土".split("").map((w, i) => `<div class="calW" style="color:${i === 0 ? "#d93025" : i === 6 ? "#1a73e8" : "#666"}">${w}</div>`).join("");
