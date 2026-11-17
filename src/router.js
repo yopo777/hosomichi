@@ -435,7 +435,7 @@ function buildGraph(osm, cfg, onProg) {
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
-let blockPts = [], avoidPts = [], preferPts = [], okPts = [];   // okPts：[緯度, 経度, 種類]　k＝✅ 通れる（🪜⛰を取り消す）・g＝⛰ 坂だった（🪜を ⛰急坂？にする）   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）／ 👍 通りたい（その道を ×PREFER_K）
+let blockPts = [], avoidPts = [], preferPts = [], okPts = [];   // okPts：[緯度, 経度, 種類]　n＝🪜✕ 階段じゃない（🪜を ⛰急坂？にする）・y＝🪜✓ 階段だった（⛰を 🪜階段？にする）   // 🚫 通れない（道を切る）／ ⚠ 通りたくない（その道を ×AVOID_PEN）／ 👍 通りたい（その道を ×PREFER_K）
 let PREFER_K = 0.5;   // 👍 通りたい道の重み（設定 preferK：0.7・0.5・0.3）
 let AVOID_PEN = 5;   // ⚠ 通りたくない道の重み（設定 avoidPen：2・5・10・30）
 let paintedSet = null, PAINT_PEN = 1;   // 👣 もう塗った道（区間の名前「小さい点の番号-大きい点の番号」）と、その道の重み（設定 paintPen：1＝気にしない）
@@ -1440,10 +1440,10 @@ function okMins(G) {   // 印ごとの いちばん近い道までのきょり
   });
   return out;
 }
-function okNear(G, path, mins) {   // ✅／⛰ の印が、この道（点のならび）に かかっていれば その種類（k・g）
+function okNear(G, path, mins) {   // 🪜✕／🪜✓ の印が、この道（点のならび）に かかっていれば その種類（n・y）
   for (let k = 0; k < okPts.length; k++) {
     if (!(mins[k] < BLOCK_R)) continue;
-    for (let i = 1; i < path.length; i++) { const d = okSegD(G, okPts[k], path[i - 1], path[i]); if (d < BLOCK_R && d <= mins[k] + 4) return okPts[k][2] || "k"; }
+    for (let i = 1; i < path.length; i++) { const d = okSegD(G, okPts[k], path[i - 1], path[i]); if (d < BLOCK_R && d <= mins[k] + 4) return okPts[k][2] || "n"; }
   }
   return null;
 }
@@ -1489,8 +1489,8 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
       }
       if (!stair && !steep) continue;
       const fix = okPts.length ? okNear(G, path, okM || (okM = okMins(G))) : null;
-      if (fix === "k") continue;   // ✅ 通れる：取り消し（マークも出さない）
-      if (fix === "g") { stair = false; steep = true; why = "⛰ 坂だった の印"; }   // ⛰ 坂だった：🪜階段？ → ⛰急坂？   // ✅ 通れる の印がある道は 取り消し（マークも出さない）
+      if (fix === "n") { stair = false; steep = true; why = "🪜✕ 階段じゃない の印"; }   // 🪜階段？ → ⛰急坂？
+      if (fix === "y") { stair = true; steep = false; why = "🪜✓ 階段だった の印"; }   // ⛰急坂？ → 🪜階段？   // ✅ 通れる の印がある道は 取り消し（マークも出さない）
       if (stair) st++; else sl++;
       { // マークは 道の線にそって ちょうど まん中の所（点の番号のまん中だと、点が2つしかない道では はしの交差点に出て、となりの道の印に見えるので）
         let half = L / 2, mla = G.lat[path[0]], mlo = G.lon[path[0]];
