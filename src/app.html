@@ -1111,7 +1111,7 @@ worker.onmessage = ev => {
   if (m.type === "slope") { slopeAdd(m.marks); return; }
   if (m.type === "slopeView") {
     if (slopeQuiet) { slopeQuiet = false; return; }
-    setMsg(m.tooWide ? "🪜⛰ 広すぎるよ。もう少し近づいて（ズーム14より近く）長押ししてね" : m.noDem ? "🪜⛰ 標高のデータが取れなかったよ（電波かな？）"
+    setMsg(m.tooWide ? "🪜⛰ 広すぎるよ。もう少し近づいて（ズーム16より近く）長押ししてね" : m.noDem ? "🪜⛰ 標高のデータが取れなかったよ（電波かな？）"
       : `🪜⛰ このあたり：階段？ ${m.st}か所・急坂？ ${m.sl}か所${m.miss ? `（道のデータがない所 ${m.miss}マスは見てないよ）` : ""}`, !!(m.tooWide || m.noDem));
     return;
   }
@@ -3249,7 +3249,7 @@ function renderCfg() {
     '<div class="note">道路データがない所は、地図が少し暗くなるよ<span class="hq">?</span><div class="hd">道路データがない所（ルートを作るときにダウンロードが必要な所）は、地図が少し暗くなるよ。右の🗺ボタンでも切りかえられるよ</div></div>';
   h += "<h4>ルートの色</h4>" + [["kind", "道の種類"], ["slope", "坂"]].map(([k, t]) =>
     `<label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="radio" name="rcol" value="${k}"${k === colorMode ? " checked" : ""}>${t}</label>`).join("");
-  h += '<h4>階段？・急坂？</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="slopeAuto"' + (lsGet("hosomichi_slopeauto", false) ? " checked" : "") + '>地図を動かしたら、見ている所を 自動でしらべる<span class="pw u">⚡小</span></label><div class="note">ズーム15より近いとき・ナビで固定していないときだけ<span class="hq">?</span><div class="hd">地図をスクロールして止まると、見えている所の 階段？・急坂？ を しらべてマークを出すよ（📍ボタンの長押しと同じ）。標高のデータを取るので、少し通信するよ。一度しらべた所は しらべないよ。ナビで走っているあいだは 電池のために しらべないよ</div></div>';
+  h += '<h4>階段？・急坂？</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="slopeAuto"' + (lsGet("hosomichi_slopeauto", false) ? " checked" : "") + '>地図を動かしたら、見ている所を 自動でしらべる<span class="pw u">⚡小</span></label><div class="note">ズーム16より近いとき・ナビで固定していないときだけ<span class="hq">?</span><div class="hd">地図をスクロールして止まると、見えている所の 階段？・急坂？ を しらべてマークを出すよ（📍ボタンの長押しと同じ）。標高のデータを取るので、少し通信するよ。一度しらべた所は しらべないよ。ナビで走っているあいだは 電池のために しらべないよ</div></div>';
   h += '<h4>進行方向</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="flow"' + (lsGet("hosomichi_flowmode", "fwd") !== "off" ? " checked" : "") + '>➤ ルートの上に 進む向きの矢印を出す</label>';
   $("cfgMap").innerHTML = h; h = "";
   h += "<h4>計算</h4>" + get(["mode", "alts", "area", "turn"]);
@@ -3919,6 +3919,8 @@ document.addEventListener("visibilitychange", () => { if (wid !== null && docume
 const ISSUES = [
   ["🪜 階段に案内されることがある", "地図データに「階段」と書いてない階段に、ルートが通っちゃうことがあるよ（例：県道に降りる石段）。いまは「階段・石段」の名前や、坂がすごく急なことから見分けてるけど、ぜんぶはわからないの。",
     "見つけたら、地図を長おし →「🚫 通れない」をつけてね。OpenStreetMap に階段（highway=steps）と書きたせば、みんなのルートからも消えるよ"],
+  ["💡（検討）Googleマップのタイムラインを 👣足あとに読みこむ", "ブラウザのアプリは 画面を消すと位置がとれないので、ナビを開いていない日は 記録が残らないよ。Googleマップのタイムラインは スマホの設定から 書き出せる（JSON）ので、通った道の点を読みこんで 👣足あとに足せそう。",
+    "まだ作っていないよ。作るなら：タイムラインの書き出し → 📦データで読みこみ → 自転車っぽい所だけ 👣に入れる"],
   ["🔄 パソコンで作ったルートを スマホに送れない", "スマホ → パソコンは 📦データの「バックアップ」でできるけど、その逆ができないよ。🔗共有URL・📷QR は SNSを作るときに かくしたままなの。",
     "いまはスマホで直接ルートを作る。共有URL・QR のボタンを もどせば送れるよ"],
   ["⛰ 電波のない所で 地図の絵が出ない", "地図の絵は その場でネットから取るだけで、端末にためていないよ。山岳道路などでは灰色になるの（ルートの線・現在地・曲がる案内は出るよ）。坂の見分け・地名さがし・住所の読み上げも ネットがいるよ。",
@@ -4619,7 +4621,7 @@ function owDraw(m) {
 }
 map.on("moveend", () => owUpdate(false));
 // 🪜 階段？・⛰ 急坂？（ルートを計算したときや 📍長押しで、標高で見つけた所）。タップで くわしく・📷ストビューでたしかめられる
-// 一度しらべた所は この端末におぼえておいて、地図に近づいたら（ズーム14より近く）いつでも出す
+// 一度しらべた所は この端末におぼえておいて、地図に近づいたら（ズーム16より近く）いつでも出す
 const SLOPE_V = 8;   // 見分け方を変えたら上げる（古いマークはすてる）
 const slopeLayer = L.layerGroup().addTo(map);
 let slopeDB = (() => { const d = lsGet("hosomichi_slope", null); return d && d.v === SLOPE_V && d.t ? d : { v: SLOPE_V, t: {} }; })(), slopeSaveT = null;
@@ -4639,7 +4641,7 @@ let slopeAuto = !!lsGet("hosomichi_slopeauto", false), slopeAutoT = 0;
 const slopeSeen = [];   // しらべた範囲（さいきんの30こ）
 function slopeAutoKick() { clearTimeout(slopeAutoT); slopeAutoT = setTimeout(slopeAutoRun, 1200); }
 function slopeAutoRun() {
-  if (!slopeAuto || follow || $("go").disabled || document.hidden || map.getZoom() < 15) return;
+  if (!slopeAuto || follow || $("go").disabled || document.hidden || map.getZoom() < SLOPE_Z) return;
   const b = map.getBounds(); if (slopeSeen.some(x => x.contains(b))) return;
   let B = b.pad(0.3);
   const nT = B2 => (Math.floor(B2.getNorth() / 0.01) - Math.floor(B2.getSouth() / 0.01) + 1) * (Math.floor(B2.getEast() / 0.01) - Math.floor(B2.getWest() / 0.01) + 1);
@@ -4661,9 +4663,10 @@ function slopeFix(la, lo, r) {   // 🪜⛰マークを 🪜✕ 階段じゃな�
   addBlock(L.latLng(la, lo), r);
   slopeRecheck([la, lo]);   // すぐ ⛰／🪜 で出なおす
 }
+const SLOPE_Z = 16;   // 🪜⛰マークを出す ズーム（道のマークと同じ）
 function slopeDraw() {
   slopeLayer.clearLayers();
-  if (spotHide || map.getZoom() < 14) return;
+  if (spotHide || map.getZoom() < SLOPE_Z) return;   // 引いているときは出さない（数が多いと 重いので）
   const b = map.getBounds().pad(0.2);
   for (let i = Math.floor(b.getSouth() / 0.01); i <= Math.floor(b.getNorth() / 0.01); i++)
     for (let j = Math.floor(b.getWest() / 0.01); j <= Math.floor(b.getEast() / 0.01); j++)
@@ -4671,7 +4674,7 @@ function slopeDraw() {
         if (!spotOn.has(st ? "gstep" : "steep")) continue;   // ⚙マークの設定で えらんだものだけ
         const t = `${st ? "🪜 階段？" : "⛰ 急坂？"}（坂${g}%・高さの差${dh}m・長さ${len}m）`, nt = SLOPE_NOTE[st ? 1 : 0] + (why ? "\n🔍 " + why : "");
         L.marker([la, lo], { zIndexOffset: 150, icon: L.divIcon({ className: "", iconSize: [0, 0],
-            html: `<div style="transform:translate(-50%,-50%) scale(${st ? 1.15 : 1});filter:drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff);opacity:${st ? 1 : .85}">${SPOT_SVG[st ? "gstep" : "steep"]}</div>` }) })
+            html: `<div style="transform:translate(-50%,-50%) scale(${st ? 1.15 : 1});background:#ffffffcc;border-radius:4px;padding:1px;opacity:${st ? 1 : .85}">${SPOT_SVG[st ? "gstep" : "steep"]}</div>` }) })
           .bindTooltip(t, { direction: "top", offset: [0, -10] })
           .on("click", () => pinPopup(L.latLng(la, lo), la.toFixed(6) + "," + lo.toFixed(6), t, nt,
           st ? [{ t: "🪜✕ 階段じゃない", col: "#d93025", fn: () => slopeFix(la, lo, "n") }] : [{ t: "🪜✓ 階段だった", col: "#188038", fn: () => slopeFix(la, lo, "y") }], true)).addTo(slopeLayer);
@@ -4690,7 +4693,7 @@ function mkBtn() {
   const up = () => clearTimeout(lpT);
   $("mk").addEventListener("pointerdown", () => { lpDone = false; clearTimeout(lpT); lpT = setTimeout(() => {
     lpDone = true; try { navigator.vibrate?.(30); } catch {}
-    if (map.getZoom() < 14) return setMsg("🪜⛰ もう少し近づいて（ズーム14より近く）長押ししてね", true);
+    if (map.getZoom() < SLOPE_Z) return setMsg(`🪜⛰ もう少し近づいて（ズーム${SLOPE_Z}より近く）長押ししてね`, true);
     if (!spotOn.has("gstep") || !spotOn.has("steep")) { spotOn.add("gstep"); spotOn.add("steep"); lsSet("hosomichi_spots", [...spotOn]); renderSpots(); }   // 長押ししたら 🪜⛰ はオンに
     const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); spotUpdate(true); owUpdate(true); }
     setMsg("🪜⛰ このあたりの 階段？・急坂？ をしらべてるよ…");
