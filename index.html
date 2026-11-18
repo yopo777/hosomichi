@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1118.2024</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1118.2141</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -332,6 +332,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
         <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="simWipe" style="font-size:12px;color:#c5221f">🧪 ためしの軌跡と足あとを消す（本物はのこす）</button></div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="dbgOn">🧪 道のデータを見る（拡大したときだけ）</label>
+        <div id="dbgInfo" style="font-size:11px;color:#666;margin:2px 0 0 22px">線：赤＝4車線・オレンジ＝2車線・灰＝そのほか・点線＝通らない道／四角：緑＝信号・青＝横断歩道／まる：大きい道を渡る判定（緑＝信号・青＝横断歩道・赤＝渡れない・オレンジ＝ペナルティ）。細い線は「どの信号・横断歩道でOKにしたか」。タップでタグを見られるよ</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
 
       </div>
@@ -814,20 +816,20 @@ function buildGraph(osm, cfg, onProg) {
     if (t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes") put(gSig, i);
     else if (t.highway === "crossing" && !["no", "unmarked", "informal"].includes(t.crossing)) put(gXw, i);
   }
-  const near = (g, i, r) => {
-    const a = Math.round(lat[i] * 2000), b = Math.round(lon[i] * 2000);
+  const near = (g, i, r) => {   // r m 以内で いちばん近い点の番号（なければ -1）
+    const a = Math.round(lat[i] * 2000), b = Math.round(lon[i] * 2000); let best = -1, bd = r;
     for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++)
-      for (const j of g.get((a + x) + "," + (b + y)) || []) if (d(i, j) <= r) return true;
-    return false;
+      for (const j of g.get((a + x) + "," + (b + y)) || []) { const dd = d(i, j); if (dd <= bd) { bd = dd; best = j; } }
+    return best;
   };
   // 横断の追加コスト（その点で lvl の道を横切るとき）と種類 1=信号 2=横断歩道 3=なし
-  const xcost = new Float32Array(N), xkind = new Uint8Array(N);
+  const xcost = new Float32Array(N), xkind = new Uint8Array(N), xref = new Int32Array(N).fill(-1);   // xref：渡ってよいことにした 信号・横断歩道の点（🧪 道のデータを見る で出す）
   let nNodes = 0;
   for (let i = 0; i < N; i++) {
     if (inGraph[i]) nNodes++;
     if (!lvl[i] || !inGraph[i]) continue;
-    const sig = near(gSig, i, SIGNAL_RADIUS), xw = near(gXw, i, CROSSWALK_RADIUS);
-    xkind[i] = sig ? 1 : xw ? 2 : 3;
+    const sigJ = near(gSig, i, SIGNAL_RADIUS), xwJ = near(gXw, i, CROSSWALK_RADIUS), sig = sigJ >= 0, xw = xwJ >= 0;
+    xkind[i] = sig ? 1 : xw ? 2 : 3; xref[i] = sig ? sigJ : xwJ;
     if (lvl[i] === 2) xcost[i] = cfg.wideCross === "any" ? 0 : sig ? 0 : (cfg.wideCross === "crosswalk" && xw) ? 0 : HARD;
     else xcost[i] = sig || xw ? 0 : midPen(cfg.midCross);
   }
@@ -839,7 +841,7 @@ function buildGraph(osm, cfg, onProg) {
   }
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
-  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
+  return { lat, lon, adj, lvl, xcost, xkind, xref, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
     hk: Math.min(1, +cfg.kodo || 1) * (preferPts.length ? PREFER_K : 1) };   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
@@ -1366,6 +1368,42 @@ async function slopeView(bb) {
   if (!ok || isNaN(heightAt((S + N) / 2, (W + E) / 2))) return { noDem: true, miss };
   const G = buildGraph({ elements: els }, DEFAULT_CFG), r = applySlope(G, 0, 1, 1, true);
   return { st: r.st, sl: r.sl, miss };
+}
+// 🧪 道のデータを見る：保存してあるデータだけで、いま見ている範囲の 道（線）・信号/横断歩道（点）・大きい道を渡る判定 を返す
+async function dbgView(bb, cfg) {
+  const [S, W, N, E] = bb, T = 0.01, keys = [];
+  for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
+  if (keys.length > 9) return { tooWide: true };
+  const els = [], seen = new Set(); let miss = 0;
+  for (const k of keys) {
+    let el = mem.get(k);
+    if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+    if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+    if (!el) { miss++; continue; }
+    for (const e of el) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); els.push(e); } }
+  }
+  if (!els.length) return { miss, ways: [], pts: [], xs: [] };
+  cfg = { ...DEFAULT_CFG, ...(cfg || {}), pen: { ...DEFAULT_CFG.pen, ...((cfg && cfg.pen) || {}) } };
+  const G = buildGraph({ elements: els }, cfg);
+  const m = 0.0004, inB = (a, o) => a > S - m && a < N + m && o > W - m && o < E + m, r6 = x => +x.toFixed(6);
+  const ways = [], pts = [], xs = [];
+  for (const e of els) {
+    if (e.type !== "way" || !e.tags || !e.tags.highway) continue;
+    const nd = e.nodes.map(id => G.idx.get(id)).filter(x => x !== undefined); if (nd.length < 2 || !nd.some(i => inB(G.lat[i], G.lon[i]))) continue;
+    if (ways.length >= 1500) break;
+    ways.push({ id: e.id, pts: nd.map(i => [r6(G.lat[i]), r6(G.lon[i])]), t: e.tags, lv: levelOf(e.tags, cfg), use: !!(wayCost(e.tags, cfg) && !EXCLUDE.has(e.tags.highway)) });
+  }
+  for (const [i, t] of G.ntags) {
+    if (!inB(G.lat[i], G.lon[i])) continue;
+    const k = t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes" ? "sig" : t.highway === "crossing" ? "xw" : null;
+    if (k && pts.length < 600) pts.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], t, k });
+  }
+  for (let i = 0; i < G.lat.length; i++) {
+    if (!G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || (G.adj[i] || []).length < 3) continue;   // 大きい道の上の 交差点（3方向以上）
+    const j = G.xref[i];
+    if (xs.length < 600) xs.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], lv: G.lvl[i], k: G.xkind[i], c: Math.round(G.xcost[i]), ref: j >= 0 ? [r6(G.lat[j]), r6(G.lon[j])] : null });
+  }
+  return { miss, ways, pts, xs };
 }
 async function onewayIn(bb) {
   const [S, W, N, E] = bb, T = 0.01, keys = [];
@@ -2349,6 +2387,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "painted") { paintedSet = new Set(d.keys || []); return; }   // 👣 もう塗った道（画面から）
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
+      if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
         if (pfRun) return; pfRun = true;
@@ -2393,7 +2432,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     }
   };
 }
-if (typeof module !== "undefined") module.exports = { _setPaint: (k, p) => { paintedSet = new Set(k); PAINT_PEN = p; }, applySlope, demCache, heightAt, demXY, tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
+if (typeof module !== "undefined") module.exports = { dbgView, _mem: () => mem, _setPaint: (k, p) => { paintedSet = new Set(k); PAINT_PEN = p; }, applySlope, demCache, heightAt, demXY, tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
 </script>
 <script>
 "use strict";
@@ -2978,7 +3017,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1118.2024", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1118.2141", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -3108,6 +3147,7 @@ worker.onmessage = ev => {
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
   if (m.type === "pf") { onPf(m); return; }
   if (m.type === "oneway") { owDraw(m); return; }
+  if (m.type === "dbgView") { dbgDraw(m); return; }
   if (m.type === "footLive") { footLiveGot(m.segs || []); return; }
   if (m.type === "footMatch") { const f = footCb.get(m.id); footCb.delete(m.id); if (f) f(m.segs || []); return; }
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
@@ -4930,6 +4970,43 @@ $("evTest").onclick = () => {   // ためしに聞く（10秒）
   const T = window.evTestT = setInterval(() => { k++; evT = Date.now(); const sp = spAt(k); evAcc = (sp - spAt(k - 1)) / 0.25; evSet(sp); if (k > 38) { clearInterval(T); evOn = was; if (!was) evToggle(false); } }, 250);
 };
 $("ft").onclick = () => { footSet(!footOn); if ($("footOn")) $("footOn").checked = footOn; };
+// 🧪 道のデータを見る：保存してある道路データを そのまま地図に描く（点・線・タグ・大きい道を渡る判定）
+const dbgLayer = L.layerGroup(), dbgRend = L.canvas({ padding: 0.3 }); let dbgId = 0, dbgT = null;
+const DBG_Z = 17;
+function dbgTags(kind, id, t, extra) {
+  const osm = id > 0 ? `<a href="https://www.openstreetmap.org/${kind}/${id}" target="_blank">OSMで見る</a>` : "（マスの中だけの点）";
+  return `<div style="font-size:12px;max-height:240px;overflow:auto"><b>${kind === "way" ? "線" : "点"} ${id > 0 ? id : ""}</b> ${osm}${extra ? "<br>" + extra : ""}<table style="border-collapse:collapse;margin-top:4px">`
+    + Object.entries(t || {}).map(([k, v]) => `<tr><td style="color:#666;padding-right:6px">${esc(k)}</td><td>${esc(String(v))}</td></tr>`).join("") + "</table></div>";
+}
+function dbgReq() {
+  clearTimeout(dbgT);
+  if (!$("dbgOn").checked) { map.removeLayer(dbgLayer); return; }
+  dbgLayer.addTo(map);
+  if (map.getZoom() < DBG_Z) { dbgLayer.clearLayers(); setMsg(`🧪 道のデータ：もっと拡大してね（ズーム${DBG_Z}以上）`); return; }
+  dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg) }); }, 300);
+}
+function dbgDraw(m) {
+  if (m.id !== dbgId || !$("dbgOn").checked) return;
+  dbgLayer.clearLayers();
+  if (m.tooWide) { setMsg("🧪 道のデータ：もっと拡大してね"); return; }
+  if (m.err) { setMsg("🧪 道のデータ：" + m.err, true); return; }
+  if (!m.ways.length) { setMsg("🧪 道のデータ：この場所の道路データは まだ保存されていないよ（一度ルートを作ると保存されるよ）"); return; }
+  const LC = { 2: "#d93025", 1: "#f29900", 0: "#777" };
+  for (const w of m.ways) L.polyline(w.pts, { renderer: dbgRend, color: LC[w.lv], weight: w.lv ? 5 : 3, opacity: .85, dashArray: w.use ? null : "4 5" })
+    .bindPopup(() => dbgTags("way", w.id, w.t, `レベル${w.lv}${w.lv === 2 ? "（4車線あつかい）" : w.lv === 1 ? "（2車線）" : ""}・${w.use ? "通る道" : "<b>通らない道</b>"}`)).addTo(dbgLayer);
+  const XC = k => k === 1 ? "#0a0" : k === 2 ? "#1a73e8" : null;
+  for (const x of m.xs) {
+    const col = XC(x.k) || (x.lv === 2 ? "#d93025" : "#f29900");
+    if (x.ref) L.polyline([x.p, x.ref], { renderer: dbgRend, color: col, weight: 2, dashArray: "3 3", interactive: false }).addTo(dbgLayer);
+    const what = x.k === 1 ? "🚦 信号で渡れる" : x.k === 2 ? "🚸 横断歩道で渡れる" : x.lv === 2 ? "⛔ 渡れない（4車線・信号も横断歩道もない）" : `⚠ 渡れるけど ペナルティ ${x.c}m分`;
+    L.circleMarker(x.p, { renderer: dbgRend, radius: 8, color: col, weight: 3, fillColor: col, fillOpacity: .2 })
+      .bindPopup(() => dbgTags("node", x.id, {}, `<b>大きい道（レベル${x.lv}）を渡る判定</b><br>${what}${x.ref ? "<br>点線の先の点を見て OK にしたよ" : ""}`)).addTo(dbgLayer);
+  }
+  for (const q of m.pts) L.marker(q.p, { icon: L.divIcon({ className: "", html: `<div style="width:10px;height:10px;transform:translate(-5px,-5px);background:${q.k === "sig" ? "#0a0" : "#1a73e8"};border:2px solid #fff;box-shadow:0 0 2px #000"></div>`, iconSize: [0, 0] }), zIndexOffset: 500 })
+    .bindPopup(() => dbgTags("node", q.id, q.t, q.k === "sig" ? "🚦 信号" : "🚸 横断歩道")).addTo(dbgLayer);
+  setMsg(`🧪 道のデータ：線 ${m.ways.length}・信号/横断歩道 ${m.pts.length}・渡る判定 ${m.xs.length}${m.miss ? `（保存していないマス ${m.miss}）` : ""}`);
+}
+$("dbgOn").onchange = dbgReq; map.on("moveend zoomend", () => { if ($("dbgOn").checked) dbgReq(); });
 $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす（デバッグ用。ナビはそのまま動く）
   const h = e.target.checked;
   if (h) map.removeLayer(layer); else layer.addTo(map);

@@ -412,20 +412,20 @@ function buildGraph(osm, cfg, onProg) {
     if (t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes") put(gSig, i);
     else if (t.highway === "crossing" && !["no", "unmarked", "informal"].includes(t.crossing)) put(gXw, i);
   }
-  const near = (g, i, r) => {
-    const a = Math.round(lat[i] * 2000), b = Math.round(lon[i] * 2000);
+  const near = (g, i, r) => {   // r m 以内で いちばん近い点の番号（なければ -1）
+    const a = Math.round(lat[i] * 2000), b = Math.round(lon[i] * 2000); let best = -1, bd = r;
     for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++)
-      for (const j of g.get((a + x) + "," + (b + y)) || []) if (d(i, j) <= r) return true;
-    return false;
+      for (const j of g.get((a + x) + "," + (b + y)) || []) { const dd = d(i, j); if (dd <= bd) { bd = dd; best = j; } }
+    return best;
   };
   // 横断の追加コスト（その点で lvl の道を横切るとき）と種類 1=信号 2=横断歩道 3=なし
-  const xcost = new Float32Array(N), xkind = new Uint8Array(N);
+  const xcost = new Float32Array(N), xkind = new Uint8Array(N), xref = new Int32Array(N).fill(-1);   // xref：渡ってよいことにした 信号・横断歩道の点（🧪 道のデータを見る で出す）
   let nNodes = 0;
   for (let i = 0; i < N; i++) {
     if (inGraph[i]) nNodes++;
     if (!lvl[i] || !inGraph[i]) continue;
-    const sig = near(gSig, i, SIGNAL_RADIUS), xw = near(gXw, i, CROSSWALK_RADIUS);
-    xkind[i] = sig ? 1 : xw ? 2 : 3;
+    const sigJ = near(gSig, i, SIGNAL_RADIUS), xwJ = near(gXw, i, CROSSWALK_RADIUS), sig = sigJ >= 0, xw = xwJ >= 0;
+    xkind[i] = sig ? 1 : xw ? 2 : 3; xref[i] = sig ? sigJ : xwJ;
     if (lvl[i] === 2) xcost[i] = cfg.wideCross === "any" ? 0 : sig ? 0 : (cfg.wideCross === "crosswalk" && xw) ? 0 : HARD;
     else xcost[i] = sig || xw ? 0 : midPen(cfg.midCross);
   }
@@ -437,7 +437,7 @@ function buildGraph(osm, cfg, onProg) {
   }
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
-  return { lat, lon, adj, lvl, xcost, xkind, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
+  return { lat, lon, adj, lvl, xcost, xkind, xref, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
     hk: Math.min(1, +cfg.kodo || 1) * (preferPts.length ? PREFER_K : 1) };   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
@@ -964,6 +964,42 @@ async function slopeView(bb) {
   if (!ok || isNaN(heightAt((S + N) / 2, (W + E) / 2))) return { noDem: true, miss };
   const G = buildGraph({ elements: els }, DEFAULT_CFG), r = applySlope(G, 0, 1, 1, true);
   return { st: r.st, sl: r.sl, miss };
+}
+// 🧪 道のデータを見る：保存してあるデータだけで、いま見ている範囲の 道（線）・信号/横断歩道（点）・大きい道を渡る判定 を返す
+async function dbgView(bb, cfg) {
+  const [S, W, N, E] = bb, T = 0.01, keys = [];
+  for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
+  if (keys.length > 9) return { tooWide: true };
+  const els = [], seen = new Set(); let miss = 0;
+  for (const k of keys) {
+    let el = mem.get(k);
+    if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+    if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+    if (!el) { miss++; continue; }
+    for (const e of el) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); els.push(e); } }
+  }
+  if (!els.length) return { miss, ways: [], pts: [], xs: [] };
+  cfg = { ...DEFAULT_CFG, ...(cfg || {}), pen: { ...DEFAULT_CFG.pen, ...((cfg && cfg.pen) || {}) } };
+  const G = buildGraph({ elements: els }, cfg);
+  const m = 0.0004, inB = (a, o) => a > S - m && a < N + m && o > W - m && o < E + m, r6 = x => +x.toFixed(6);
+  const ways = [], pts = [], xs = [];
+  for (const e of els) {
+    if (e.type !== "way" || !e.tags || !e.tags.highway) continue;
+    const nd = e.nodes.map(id => G.idx.get(id)).filter(x => x !== undefined); if (nd.length < 2 || !nd.some(i => inB(G.lat[i], G.lon[i]))) continue;
+    if (ways.length >= 1500) break;
+    ways.push({ id: e.id, pts: nd.map(i => [r6(G.lat[i]), r6(G.lon[i])]), t: e.tags, lv: levelOf(e.tags, cfg), use: !!(wayCost(e.tags, cfg) && !EXCLUDE.has(e.tags.highway)) });
+  }
+  for (const [i, t] of G.ntags) {
+    if (!inB(G.lat[i], G.lon[i])) continue;
+    const k = t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes" ? "sig" : t.highway === "crossing" ? "xw" : null;
+    if (k && pts.length < 600) pts.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], t, k });
+  }
+  for (let i = 0; i < G.lat.length; i++) {
+    if (!G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || (G.adj[i] || []).length < 3) continue;   // 大きい道の上の 交差点（3方向以上）
+    const j = G.xref[i];
+    if (xs.length < 600) xs.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], lv: G.lvl[i], k: G.xkind[i], c: Math.round(G.xcost[i]), ref: j >= 0 ? [r6(G.lat[j]), r6(G.lon[j])] : null });
+  }
+  return { miss, ways, pts, xs };
 }
 async function onewayIn(bb) {
   const [S, W, N, E] = bb, T = 0.01, keys = [];
@@ -1947,6 +1983,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "painted") { paintedSet = new Set(d.keys || []); return; }   // 👣 もう塗った道（画面から）
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
+      if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
         if (pfRun) return; pfRun = true;
@@ -1991,4 +2028,4 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     }
   };
 }
-if (typeof module !== "undefined") module.exports = { _setPaint: (k, p) => { paintedSet = new Set(k); PAINT_PEN = p; }, applySlope, demCache, heightAt, demXY, tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
+if (typeof module !== "undefined") module.exports = { dbgView, _mem: () => mem, _setPaint: (k, p) => { paintedSet = new Set(k); PAINT_PEN = p; }, applySlope, demCache, heightAt, demXY, tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
