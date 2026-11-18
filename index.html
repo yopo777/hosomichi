@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1117.2234</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1118.1111</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2971,7 +2971,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1117.2234", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1118.1111", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5438,9 +5438,16 @@ function ovSet(on, why) {
     ovZoom = map.getZoom();
     const here = me.getLatLng(), bb = cur && cur.nav && cur.nav.length > 1 ? L.latLngBounds(cur.nav).extend(here) : here.toBounds(4000);
     map.fitBounds(bb, { padding: [50, 50], animate: true });
-  } else if (follow && me) map.setView(me.getLatLng(), ovZoom, { animate: true });
+  } else if (follow && me) { const c = me.getLatLng(); map.setView(aheadLL([c.lat, c.lng], ovZoom), ovZoom, { animate: true }); }
 }
 $("addr").onclick = () => { if (follow && me) ovSet(!ovMode, "住所の帯をタップ"); };
+// 走っているときは 進む向きの先を広く見せる：画面のまん中を 少し前にずらす（自分は まん中より少し後ろ＝⭕の中の下のほう）
+function aheadLL(ll, z) {
+  if (heading == null) return ll;
+  const px = Math.min(innerWidth, innerHeight) * 0.12, m = px * 156543.03 * Math.cos(ll[0] * RAD) / 2 ** z;   // 画面のせまいほうの12%
+  const h = heading * RAD;
+  return [ll[0] + m * Math.cos(h) / 111320, ll[1] + m * Math.sin(h) / (111320 * Math.cos(ll[0] * RAD))];
+}
 function applyBearing() {
   const b = headUp && heading != null && !ovOn() ? -heading : 0;
   if (headUp) $("dirL").textContent = heading == null ? "動くと回るよ" : "進む向きが上";
@@ -5536,7 +5543,7 @@ function onPos(p) {
   qCheck(ll, p.coords.accuracy); spotUpdate(false); homeDist();
   setTimeout(() => vcSpotCheck(ll), 0);   // 案内（vcNav）のあとで
   applyBearing();
-  if (follow && !ovOn()) map.setView(ll, first ? Math.max(map.getZoom(), 16) : map.getZoom(), { animate: true });  // 拡大率はそのまま（全体を見ているあいだは動かさない）
+  if (follow && !ovOn()) { const z = first ? Math.max(map.getZoom(), 16) : map.getZoom(); map.setView(aheadLL(ll, z), z, { animate: true }); }  // 拡大率はそのまま（全体を見ているあいだは動かさない）
   if (cur && cur.nav && cur.nav.length > 1) {
     const [off, rest] = nearestOnRoute(ll), nav = $("nav");
     nav.style.display = "block";
@@ -5622,19 +5629,22 @@ function batCheck() {   // 言うことがあれば その文
   return null;
 }
 function rideKmNow() { let d = 0; const P = ride && ride.pts || []; for (let i = 1; i < P.length; i++) d += hav(P[i - 1], P[i]); return d / 1000; }
-function quietNow() {   // いまは案内をじゃましない？
+function quietNow(near = 250) {   // いまは案内をじゃましない？（near：この先 near m 以内に 曲がる所がなければ OK）
   if (vcOff || speechSynthesis.speaking) return false;
-  return !(vcTurns && navAlong != null && vcTurns.some(t => t.s > navAlong - 5 && t.s - navAlong < 250));
+  return !(vcTurns && navAlong != null && vcTurns.some(t => t.s > navAlong - 5 && t.s - navAlong < near));
 }
+// 曲がる所が多い道だと 250m あく所がなかなか来ない → 1分まったら「この先60m に曲がる所がなければ」言う
+let waitSince = {};
+const quietWait = k => { const t = waitSince[k] || (waitSince[k] = Date.now()); const ok = quietNow(Date.now() - t > 60000 ? 60 : 250); if (ok) delete waitSince[k]; return ok; };
 function autoTick() {
   if (wid === null || !follow || !me || document.hidden) { autoOvLast = Date.now(); return; }
   const now = new Date();
   if (vcOn && distVc && ride && ride.pts.length > 1) {   // 📏 5kmごと（曲がる所の近くなら すぎてから）
     const km = rideKmNow(), n = Math.floor(km / distVc);
     if (!distLast || distLast[0] !== ride.t0) distLast = [ride.t0, n];   // 開いたとき・日がかわったときは 今の所から数える
-    else if (n > distLast[1] && quietNow()) { distLast[1] = n; say(`走行距離は、${n * distVc}キロです`); return; }
+    else if (n > distLast[1] && quietWait("dist")) { distLast[1] = n; say(`走行距離は、${n * distVc}キロです`); return; }
   }
-  if (vcOn && batVc && bat && quietNow()) { const t = batCheck(); if (t) { say(t); return; } }   // 🔋 10%ごと
+  if (vcOn && batVc && bat) { const t0 = batLast; const t = batCheck(); if (t) { if (quietWait("bat")) { say(t); return; } batLast = t0; } }   // 言えなかったら つぎにまた   // 🔋 10%ごと
   if (vcOn && jihoOn) {   // 🕐 0分と30分（あとまわしは5分まで）
     const slot = now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0), m = now.getMinutes() % 30;
     if (jihoLast === null) jihoLast = slot;
@@ -5940,7 +5950,7 @@ function setFollow(on) {
   $("gpsL").classList.toggle("on", on); $("gpsL").textContent = on ? "現在地に固定中" : wid !== null ? "押すと固定" : "現在地";
   const z = on ? "center" : true;
   map.options.touchZoom = z; map.options.scrollWheelZoom = z; map.options.doubleClickZoom = z;
-  if (on) { map.dragging.disable(); if (me) map.setView(me.getLatLng(), Math.max(map.getZoom(), 16)); }
+  if (on) { map.dragging.disable(); if (me) { const c = me.getLatLng(), z = Math.max(map.getZoom(), 16); map.setView(aheadLL([c.lat, c.lng], z), z); } }
   else map.dragging.enable();
   $("cdot").style.display = on ? "none" : "";
   try { flowBurstEnd = 0; flowPrep(); } catch {}   // ルートのボール：現在地に固定中は、案内のボール1個だけ   // まん中の黒い点は、現在地に固定中はいらない
