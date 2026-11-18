@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1118.1111</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1118.1118</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2971,7 +2971,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1118.1111", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1118.1118", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5597,8 +5597,9 @@ const FOOD_WORD = { conv: "コンビニ", cafe: "カフェ", ramen: "ラーメ�
   western: "洋食", teishoku: "定食", restaurant: "食べもの屋さん", bakery: "パン屋さん", sweets: "おかし屋さん" };
 // 案内した名所に、むらさきの輪と名前を出す（2分たつか、300m はなれたら消す。出すのは新しい2つまで）
 const vsLayer = L.layerGroup().addTo(map); let vsMk = [];
-function vsMark(s) {
-  const m = L.marker([s[1], s[2]], { icon: L.divIcon({ className: "", html: `<div class="vsHi"><i></i><b>${esc(s[0])}</b></div>`, iconSize: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: 900 }).addTo(vsLayer);
+function vsMark(s, k) {   // 案内した所に 目立つ印＋その所のマーク（📍マークをかくしていても このときだけ出る。2分か 300m はなれたら消える）
+  const inf = SPOT_INFO[k], ic = inf ? `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:32px"><div class="spot" style="border-color:${inf[2]}">${spotIc(k, inf[0])}</div></div>` : "";
+  const m = L.marker([s[1], s[2]], { icon: L.divIcon({ className: "", html: `<div class="vsHi">${ic}<i></i><b>${esc(s[0])}</b></div>`, iconSize: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: 900 }).addTo(vsLayer);
   vsMk.push({ m, p: [s[1], s[2]], t: Date.now() });
   while (vsMk.length > 2) vsLayer.removeLayer(vsMk.shift().m);
 }
@@ -5705,10 +5706,10 @@ async function vcSpotCheck(ll) {
     }
     if (best && FOOD_WORD[best[3]] && !speechSynthesis.speaking) {
       vsDone.add(best[0]); const nm = best[1][0], w = FOOD_WORD[best[3]];
-      say(nm.includes(w) ? `近くに、${nm}があります` : `近くに、${w}の${nm}があります`); vsMark(best[1]);
+      say(nm.includes(w) ? `近くに、${nm}があります` : `近くに、${w}の${nm}があります`); vsMark(best[1], best[3]);
     }
     else if (best && !speechSynthesis.speaking) { vsDone.add(best[0]); vsDone.add(best[1][0]);
-      say(VS_MACHI.has(best[3]) || best[3] === "bridge" || best[3] === "park" ? `これは、${best[1][0]}です` : `近くに、${best[1][0]}があります`); vsMark(best[1]); }
+      say(VS_MACHI.has(best[3]) || best[3] === "bridge" || best[3] === "park" ? `これは、${best[1][0]}です` : `近くに、${best[1][0]}があります`); vsMark(best[1], best[3]); }
   } catch {} finally { vsBusy = false; }
 }
 function vcAt(d) {   // ルートの先頭から d m の点
