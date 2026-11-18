@@ -437,10 +437,10 @@ function buildGraph(osm, cfg, onProg) {
     }
   }
   // 横断の追加コスト（その点で lvl の道を横切るとき）と種類 1=信号 2=横断歩道 3=なし
-  // ・横断歩道は「渡る道の上」にあるものだけ（わき道を渡る横断歩道は数えない）
-  // ・信号も渡る道の上のもの。ただし わき道の信号が 15m 以内なら 信号のある交差点とみて その場でOK
-  // ・12m より遠い所は「そこまで行って渡って もどる」：きょり×2 を足して、その場所を覚える（xdet・音声と地図で案内）
-  const HERE_R = 12, SIDE_SIG_R = 15, DETOUR_R = 50;
+  // ・信号のある交差点（交差点から15m以内に信号の点。どの道の上でも）：車の信号に したがって渡れる → その場でOK
+  // ・信号のない交差点：その大きい道の上の 12m以内の横断歩道だけ（わき道を渡る横断歩道は数えない）
+  // ・はなれた信号・横断歩道までの まわり道は ここでは足さない（大きい道ぞいに走って 信号の交差点で渡るルートは ふつうに計算される）
+  const HERE_R = 12, SIG_R = 15;
   const xcost = new Float32Array(N), xkind = new Uint8Array(N), xref = new Int32Array(N).fill(-1), xdet = new Float32Array(N);   // xref：渡ってよいことにした 信号・横断歩道の点（🧪 道のデータを見る で出す）
   let nNodes = 0, nDiv = 0, nDet = 0;
   for (let i = 0; i < N; i++) {
@@ -454,12 +454,9 @@ function buildGraph(osm, cfg, onProg) {
       const c = dd <= HERE_R ? 0 : 2 * dd;
       if (c < bc || (c === bc && bk === 3)) { bc = c; bk = kind; bj = j; bd = dd <= HERE_R ? 0 : dd; }
     };
-    for (const [j, dd] of cands(gSig, i, DETOUR_R)) {
-      const on = sameRoad(i, j) && lvl[j] >= L;
-      tryJ(j, on ? dd : 0, 1, on || dd <= SIDE_SIG_R);
-    }
+    for (const [j, dd] of cands(gSig, i, SIG_R)) tryJ(j, 0, 1, true);   // 信号のある交差点（車の信号でも 歩行者信号でも）
     if (L === 1 || cfg.wideCross === "crosswalk" || anyOK)
-      for (const [j, dd] of cands(gXw, i, DETOUR_R)) tryJ(j, dd, 2, sameRoad(i, j) && lvl[j] >= L);
+      for (const [j, dd] of cands(gXw, i, HERE_R)) tryJ(j, 0, 2, sameRoad(i, j) && lvl[j] >= L);   // 信号のない交差点：その大きい道の上の横断歩道だけ
     xcost[i] = bc; xkind[i] = bk; xref[i] = bj; xdet[i] = bd;
     if (divided[i]) nDiv++; if (bd) nDet++;
   }
