@@ -2140,22 +2140,34 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
     const X = p => [wx(p[1], z) - ox, wy(p[0], z) - oy];
     // 地図：CyclOSM（自転車用）。読めない（CORSなど）ときは 国土地理院 淡色 にする
     const TILES = [["https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", "地図：© OpenStreetMap contributors / CyclOSM"], ["https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", "地図：国土地理院"]];
-    for (const [url, at, zmax] of TILES.map((t, i) => [...t, i ? 18 : 20])) {
-      const zt = Math.min(Math.ceil(z - 1e-6) + K - 1, zmax), f = 2 ** (zt - z), T = 256 / f, ox2 = ox * f, oy2 = oy * f;   // T：タイル1枚の大きさ（1200のつもりの座標で）
-      const xs = [], ys = []; for (let tx = Math.floor(ox2 / 256); tx <= Math.floor((ox2 + W * f) / 256); tx++) xs.push(tx); for (let ty = Math.floor(oy2 / 256); ty <= Math.floor((oy2 + H * f) / 256); ty++) ys.push(ty);
-      // 1枚ずつ 6秒まで待つ。おそいタイルは あきらめて（そこは地の色のまま）、8割読めたらこの地図を使う
-      const all = xs.flatMap(tx => ys.map(ty => [tx, ty])); let done = 0;
-      const prog = () => { try { snsImage.prog && snsImage.prog(`地図を読んでいるよ… ${done}/${all.length}`); } catch {} };
-      prog();
-      const ims = (await Promise.all(all.map(async ([tx, ty]) => {
-        const u = url.replace("{s}", "abc"[(tx + ty) % 3]).replace("{z}", zt).replace("{x}", tx).replace("{y}", ty), ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
-        try { const r = await fetch(u, { mode: "cors", signal: ac.signal }); if (!r.ok) return null; return [tx, ty, await createImageBitmap(await r.blob())]; }
-        catch { return null; } finally { clearTimeout(tm); done++; prog(); }
-      }))).filter(Boolean);
-      if (ims.length < all.length * 0.8) continue;   // 読めないタイルが多い → つぎの地図（国土地理院）
-      for (const [tx, ty, im] of ims) g.drawImage(im, tx * T - ox, ty * T - oy, T, T);
-      snsImage.attr = at; break;
+    // 電波が弱い所・サーバーがいそがしいときでも 白くならないように：6枚ずつ・1枚10秒まで・読めなかったタイルは2回まで読みなおす。
+    // CyclOSM がそろわなければ 国土地理院も読んで、そろっているほうを使い、足りない所は もう片方でうめる（白い四角が出ないように）
+    const zt = Math.min(Math.ceil(z - 1e-6) + K - 1, 18), f = 2 ** (zt - z), T = 256 / f, ox2 = ox * f, oy2 = oy * f;   // T：タイル1枚の大きさ（1200のつもりの座標で）
+    const xs = [], ys = []; for (let tx = Math.floor(ox2 / 256); tx <= Math.floor((ox2 + W * f) / 256); tx++) xs.push(tx); for (let ty = Math.floor(oy2 / 256); ty <= Math.floor((oy2 + H * f) / 256); ty++) ys.push(ty);
+    const cells = xs.flatMap(tx => ys.map(ty => [tx, ty])), got = TILES.map(() => new Map());
+    const load = async (ti, url) => {
+      let done = 0, todo = cells.filter(([tx, ty]) => !got[ti].has(tx + "," + ty));
+      for (let pass = 0; pass < 3 && todo.length; pass++) {
+        const prog = () => { try { snsImage.prog && snsImage.prog(`地図を読んでいるよ… ${got[ti].size}/${cells.length}${pass ? `（読みなおし${pass}回目）` : ""}${ti ? "（国土地理院）" : ""}`); } catch {} };
+        prog(); let i = 0;
+        const one = async () => { while (i < todo.length) { const [tx, ty] = todo[i++];
+          const u = url.replace("{s}", "abc"[(tx + ty) % 3]).replace("{z}", zt).replace("{x}", tx).replace("{y}", ty), ac = new AbortController(), tm = setTimeout(() => ac.abort(), 10000);
+          try { const r = await fetch(u, { mode: "cors", signal: ac.signal }); if (r.ok) got[ti].set(tx + "," + ty, await createImageBitmap(await r.blob())); } catch {} finally { clearTimeout(tm); done++; prog(); } } };
+        await Promise.all([...Array(6)].map(one));
+        todo = todo.filter(([tx, ty]) => !got[ti].has(tx + "," + ty));
+        if (todo.length && pass < 2) await new Promise(r => setTimeout(r, 1500));
+      }
+    };
+    await load(0, TILES[0][0]);
+    if (got[0].size < cells.length) await load(1, TILES[1][0]);
+    const main = got[1].size > got[0].size ? 1 : 0, sub = 1 - main; let mixed = false;
+    for (const [tx, ty] of cells) {
+      const k = tx + "," + ty, im = got[main].get(k) || got[sub].get(k); if (!im) continue;
+      if (!got[main].has(k)) mixed = true;
+      g.drawImage(im, tx * T - ox, ty * T - oy, T, T);
     }
+    snsImage.attr = mixed ? "地図：© OpenStreetMap contributors / CyclOSM・国土地理院" : TILES[main][1];
+    snsImage.miss = cells.filter(([tx, ty]) => !got[0].has(tx + "," + ty) && !got[1].has(tx + "," + ty)).length;   // それでも読めなかったタイルの数
     g.lineJoin = g.lineCap = "round";
     // 消した所で切れているはしは、だんだん薄く（ぶつっと切れると、そこが出発に見えるので）
     const FADE = 700, STEP = 24;
@@ -2208,7 +2220,15 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
       g.strokeText("イマココ", tx, ty); g.fillStyle = "#1a73e8"; g.fillText("イマココ", tx, ty);
     }
     // 📷 写真：地図の すみっこ（左上・右上・左下）に小さく置いて、撮った所と線でつなぐ
-    const S = 250, corners = [[18, 18], [W - 18, 18], [18, H - 138]];   // 左下は下の帯の上
+    // どのすみを使うか：📍イマココ（と その文字）にかぶるすみは使わない。あとは 走った線がかぶらないすみから
+    const S = 250, C4 = [[18, 18, 0, 0], [W - 18, 18, 1, 0], [18, H - 138, 0, 1], [W - 18, H - 138, 1, 1]];   // [x, y, 右よせ, 下よせ]。下は下の帯の上
+    const boxOf = c => [c[2] ? c[0] - S : c[0], c[3] ? c[1] - S : c[1], c[2] ? c[0] : c[0] + S, c[3] ? c[1] : c[1] + S];
+    const hp = here ? X(here) : null, lp = [];
+    for (const r of runs) for (const q of r) lp.push(X(q));
+    const score = c => { const [x0, y0, x1, y1] = boxOf(c); let n = 0;
+      if (hp && hp[0] > x0 - 240 && hp[0] < x1 + 60 && hp[1] > y0 - 70 && hp[1] < y1 + 70) n += 1e6;   // イマココ：丸と「イマココ」の字（左右どちらかに出る）
+      for (const [x, y] of lp) if (x > x0 - 10 && x < x1 + 10 && y > y0 - 10 && y < y1 + 10) n++; return n; };
+    const corners = C4.map(c => [c, score(c)]).sort((a, b) => a[1] - b[1]).slice(0, Math.min(3, pins.length)).map(a => a[0]);
     // どの写真をどのすみに置くか：線が交差しにくいように、いちばん近いすみから順にわりあてる
     const left = pins.slice(0, 3), placed = [];
     for (let i = 0; i < Math.min(3, left.length); i++) {
@@ -2218,7 +2238,7 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
     }
     placed.forEach((q, i) => {
       const [x, y] = X(q.p), k = S / Math.max(q.bm.width, q.bm.height), w = q.bm.width * k, h = q.bm.height * k;
-      const [cx, cy] = corners[i], bx = i === 1 ? cx - w : cx, by = i === 2 ? cy - h : cy;
+      const [cx, cy, rr, bb] = corners[i], bx = rr ? cx - w : cx, by = bb ? cy - h : cy;
       g.strokeStyle = "#fff"; g.lineWidth = 8; g.beginPath(); g.moveTo(x, y); g.lineTo(bx + w / 2, by + h / 2); g.stroke();
       g.strokeStyle = "#e8710a"; g.lineWidth = 3; g.stroke();
       g.save(); g.shadowColor = "#0007"; g.shadowBlur = 12; g.fillStyle = "#fff"; g.fillRect(bx - 6, by - 6, w + 12, h + 12); g.restore();
@@ -2312,10 +2332,20 @@ function photoPlace(ex, f, d) {
   return near(p) ? p : fail("地図に出していない所");
 }
 async function snsPhoto(f) {   // 写真は描きなおして、位置情報（Exif）を消す・大きすぎるのは小さく
-  const bm = await createImageBitmap(f, { imageOrientation: "from-image" }).catch(() => null); if (!bm) return null;
-  const k = Math.min(1, 2048 / Math.max(bm.width, bm.height)), cv = document.createElement("canvas");
-  cv.width = Math.round(bm.width * k); cv.height = Math.round(bm.height * k); cv.getContext("2d").drawImage(bm, 0, 0, cv.width, cv.height);
-  return new Promise(ok => cv.toBlob(b => ok(b && new File([b], "photo_" + Date.now() + ".jpg", { type: "image/jpeg" })), "image/jpeg", 0.9));
+  // スマホのメモリが足りないと 読めない・作れないことがある → 読みかたを変えて、小さくして やりなおす
+  const dec = async () => { try { return await createImageBitmap(f, { imageOrientation: "from-image" }); } catch {}
+    try { return await createImageBitmap(f); } catch {}
+    return await new Promise(ok => { const im = new Image(), u = URL.createObjectURL(f); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = u; }); };
+  const bm = await dec(); if (!bm) return null;
+  const bw = bm.width || bm.naturalWidth, bh = bm.height || bm.naturalHeight;
+  for (const mx of [2048, 1280, 800]) {
+    const k = Math.min(1, mx / Math.max(bw, bh)), cv = document.createElement("canvas");
+    cv.width = Math.round(bw * k); cv.height = Math.round(bh * k);
+    try { cv.getContext("2d").drawImage(bm, 0, 0, cv.width, cv.height); } catch { continue; }
+    const b = await new Promise(ok => cv.toBlob(ok, "image/jpeg", 0.9)); cv.width = cv.height = 0;
+    if (b && b.size > 1000) { try { bm.close && bm.close(); } catch {} return new File([b], "photo_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".jpg", { type: "image/jpeg" }); }
+  }
+  try { bm.close && bm.close(); } catch {} return null;
 }
 const xLeft = t => { const n = 280 - xLen(t); return n >= 0 ? `Xの文字数：あと${n}（日本語だと${Math.floor(n / 2)}文字くらい）` : `⚠ Xの文字数を ${-n} こえてるよ`; };
 // 🛤 軌跡タブ：今日走った線をぜんぶ地図に出して、通った所と時刻を一覧にする（この端末の中だけ・消す所もそのまま出す）
@@ -3074,11 +3104,11 @@ async function snsOpen() {
   let cmT = null;
   $("snsCm").oninput = () => { clearTimeout(cmT); cmT = setTimeout(async () => { snsCm = $("snsCm").value; if (!made) return; const d = await snsData(); $("snsTxt").value = d.text; $("snsLeft").textContent = xLeft(d.text); }, 400); };
   $("snsTxt").oninput = () => { $("snsLeft").textContent = xLeft($("snsTxt").value); };
-  let lastD = null, pinSrc = [];   // pinSrc：えらんだ写真の { ex, f }
-  const pinsFor = async d => (await Promise.all(pinSrc.map(async ({ ex, f }) => {
-    const p = photoPlace(ex, f, d); if (!p) return null;
-    const bm = await createImageBitmap(f, { imageOrientation: "from-image" }).catch(() => null); return bm && { p, bm };
-  }))).filter(Boolean);
+  let lastD = null, pinSrc = [], phReady = Promise.resolve();   // pinSrc：えらんだ写真の { ex, f, pf（小さくした写真） }・phReady：写真のじゅんびが おわったら
+  const pinsFor = async d => { await phReady; const out = [];   // 地図のすみの写真：小さくした写真から作る（メモリをへらす）
+    for (const { ex, f, pf } of pinSrc) { const p = photoPlace(ex, f, d); if (!p || !pf) continue;
+      const bm = await createImageBitmap(pf).catch(() => null); if (bm) out.push({ p, bm }); }
+    return out; };
   const draw = async d0 => {
     const d = { ...d0, pins: d0.none ? [] : await pinsFor(d0) }; lastD = d0;
     link = d.link;
@@ -3102,9 +3132,15 @@ async function snsOpen() {
   $("snsMake").onclick = async () => { $("snsMake").disabled = true; try { snsCm = $("snsCm").value; await draw(await snsData()); } finally { $("snsMake").disabled = false; } };
   $("snsPh").onchange = async e => {
     const fs = [...e.target.files].filter((f, i, A) => A.findIndex(o => o.name === f.name && o.size === f.size && o.lastModified === f.lastModified) === i).slice(0, 3);   // 同じ写真を2回えらんでも 1まいに
-    pinSrc = await Promise.all(fs.map(async f => ({ f, ex: await exifOf(f) })));
-    photos = (await Promise.all(fs.map(snsPhoto))).filter(Boolean);
-    $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("");
+    // 1枚ずつ じゅんばんに（いっぺんに読むと スマホのメモリが足りなくて 落ちる写真が出る）。おわるまで 共有は待つ
+    let fin; phReady = new Promise(r => fin = r); photos = []; pinSrc = [];
+    $("snsPhs").textContent = `📷 写真をじゅんびしているよ… 0/${fs.length}`;
+    try {
+      for (const f of fs) { const ex = (await exifOf(f).catch(() => null)) || {}, pf = await snsPhoto(f).catch(() => null);
+        pinSrc.push({ f, ex, pf }); if (pf) photos.push(pf); $("snsPhs").textContent = `📷 写真をじゅんびしているよ… ${pinSrc.length}/${fs.length}`; }
+    } finally { fin(); }
+    $("snsPhs").innerHTML = photos.map(f => `<img src="${URL.createObjectURL(f)}">`).join("")
+      + (photos.length < fs.length ? `<div style="color:#d93025;font-size:12px">⚠ ${fs.length - photos.length}枚 読めなかったよ（大きすぎるかも）。もう一度えらんでみてね</div>` : "");
     stale();   // 写真をかえたら作りなおし
   };
   $("snsUrl").onclick = async () => { if (snsTest) return; try { await navigator.clipboard.writeText(link); $("snsUrl").textContent = "✅ コピーしたよ"; setTimeout(() => $("snsUrl") && ($("snsUrl").textContent = "🔗 URLだけコピー"), 2000); } catch { prompt("URL", link); } };
@@ -3113,6 +3149,7 @@ async function snsOpen() {
   $("snsSave").onclick = () => { if (!made) return; if (map0) save(map0); photos.forEach(save); albSave(pinSrc).catch(() => {}); };   // 📷 アルバムは この端末の中だけなので、🧪テスト中ものこす
   $("snsShare").onclick = async () => {
     if (snsTest || !made) return;   // テスト中・作る前は共有できない
+    await phReady;   // 写真のじゅんびが まだなら待つ（とちゅうで押すと 写真がつかない）
     albSave(pinSrc).catch(() => {});   // 📷 写真を小さくして アルバムへ
     const files = [map0, ...photos].filter(Boolean), text = $("snsTxt").value;
     try {
