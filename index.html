@@ -195,7 +195,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1118.1118</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1118.1422</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -2971,7 +2971,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1118.1118", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1118.1422", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5507,6 +5507,10 @@ function rideAdd(ll, accu) {
   if (!L) { ride.pts.push(q); rideEv("start", "", ll); return; }
   if (hav(L, ll) < 20) return;
   ride.pts.push(q);
+  if (ride.done) {   // 🏁 着いたあとも 走りつづけた（つぎのルートへ）：着いた所から200mはなれたら「走っている途中」にもどす（📣SNSの「さいごの◯km」・イマココ が使えるように）
+    const g = [...ride.ev].reverse().find(e => e.k === "goal");
+    if (!g || !g.p || hav(g.p, ll) > 200) ride.done = false;
+  }
   if ((!L[3] && !q[3]) || footDbg) try { footLiveAdd(L, q); } catch {}   // 👣 新しく塗れたら ピッ
   if (ride.pts.length > 6000) ride.pts.splice(1, 1);
   rideSave(false);

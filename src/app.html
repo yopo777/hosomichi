@@ -3513,6 +3513,10 @@ function rideAdd(ll, accu) {
   if (!L) { ride.pts.push(q); rideEv("start", "", ll); return; }
   if (hav(L, ll) < 20) return;
   ride.pts.push(q);
+  if (ride.done) {   // 🏁 着いたあとも 走りつづけた（つぎのルートへ）：着いた所から200mはなれたら「走っている途中」にもどす（📣SNSの「さいごの◯km」・イマココ が使えるように）
+    const g = [...ride.ev].reverse().find(e => e.k === "goal");
+    if (!g || !g.p || hav(g.p, ll) > 200) ride.done = false;
+  }
   if ((!L[3] && !q[3]) || footDbg) try { footLiveAdd(L, q); } catch {}   // 👣 新しく塗れたら ピッ
   if (ride.pts.length > 6000) ride.pts.splice(1, 1);
   rideSave(false);
