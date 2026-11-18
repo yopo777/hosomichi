@@ -2965,7 +2965,7 @@ function dbgDraw(m) {
   if (m.tooWide) { setMsg("🧪 道のデータ：もっと拡大してね"); return; }
   if (m.err) { setMsg("🧪 道のデータ：" + m.err, true); return; }
   if (!m.ways.length) { setMsg("🧪 道のデータ：この場所の道路データは まだ保存されていないよ（一度ルートを作ると保存されるよ）"); return; }
-  const LC = { 2: "#d93025", 1: "#f29900", 0: "#777" };
+  const LC = { 2: "#d93025", 1: "#f29900", 0: "#00c8e8" };   // 細い道はシアン（灰色は航空写真の上で見にくい）
   for (const w of m.ways) L.polyline(w.pts, { renderer: dbgRend, color: LC[w.lv], weight: w.lv ? 5 : 3, opacity: .85, dashArray: w.use ? null : "4 5" })
     .bindPopup(() => dbgTags("way", w.id, w.t, `レベル${w.lv}${w.lv === 2 ? "（4車線あつかい）" : w.lv === 1 ? "（2車線）" : ""}・${w.use ? "通る道" : "<b>通らない道</b>"}`)).addTo(dbgLayer);
   const XC = k => k === 1 ? "#0a0" : k === 2 ? "#1a73e8" : null;
