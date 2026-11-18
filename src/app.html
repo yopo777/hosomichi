@@ -2014,7 +2014,8 @@ async function snsData() {
   const R = snsTest ? 0 : snsR;
   const useRide = ride && ride.pts.length >= 2 && lineLen(ride.pts) > 300;
   // 走っている途中（イマココを出す）：今日の記録なら いつも。さいごの点が 家（🔒秘密の場所・出発地）のそばの消す丸の中なら「おわり」（イマココなし）
-  const riding = useRide && !ride.done && dkey(ride.t0) === dkey(Date.now());
+  // 目的地に着いても（そこで休けい中に投稿）、家に帰るまでは「走っている途中」：さいごの◯km・イマココ を使う。家のそばなら下の atHome で「してきたよ」
+  const riding = useRide && dkey(ride.t0) === dkey(Date.now());
   let pts = useRide ? ride.pts.map(q => [q[0], q[1]]) : [];   // まだ走っていないときは、これから行く所は出さない（待ち伏せされないように）
   // 🔒 消す所：家と、その日の出発地（親せきの家などから出ても、かならず消す）
   const anchors = [...(home ? [home] : []), ...secrets.map(q => q.p)];   // 家と 🔒秘密の場所
