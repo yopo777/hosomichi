@@ -1150,7 +1150,7 @@ worker.onmessage = ev => {
   }
   if (m.type === "partial") {   // スタート側から順番に確定していく途中のルート
     const first = !cur || !cur.partial;
-    showRoute(merged({ route: m.route, ek: m.ek, tent: m.tent, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len,
+    showRoute(merged({ route: m.route, ek: m.ek, tent: m.tent, ok: m.ok, xw: m.xw, ng: m.ng, xvia: m.xvia, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len,
       restAir: m.restAir, partial: true, name: pendingName, resume: { g: job.g, cfg: job.cfg } }), first && !follow && !job.prefix ? "start" : false);
     lsSet(LKEY, packRoute(cur));   // とちゅうでタブを閉じても、あとで続きから計算できるように
     if (first) { $("panel").classList.add("min"); $("tog").textContent = "ひらく"; }   // 地図を見せて、すぐ ◎ を押せるように
@@ -1185,7 +1185,7 @@ worker.onmessage = ev => {
   setMsg(`できた！ ${fmtKm(m.len || 0)}（${(m.sec + paintWait).toFixed(1)}秒）\n` + (paintWait ? `👣 足あと ${paintWait.toFixed(1)}秒\n` : "") +
     `取得 ${m.tLoad.toFixed(1)}秒（${m.tiles}マス中 ${m.saved}マスは保存データ` + (m.bytes ? `・受信 ${(m.bytes / 1048576).toFixed(1)}MB` : "") + `）\n` +
     `計算 ${(m.tBuild + m.tSearch).toFixed(1)}秒（つながり ${m.tBuild.toFixed(1)} / 探索 ${m.tSearch.toFixed(1)}・道の点 ${m.nNodes.toLocaleString()} 個）`);
-  const R = merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: midStops(m.stops),
+  const R = merged({ route: m.route, ek: m.ek, short: m.short, ok: m.ok, xw: m.xw, ng: m.ng, xvia: m.xvia, tp: m.tp, kinds: m.kinds, turns: m.turns, len: m.len, slen: m.slen, stops: midStops(m.stops),
     name: pendingName, savedId: job && job.prefix ? job.prefix.savedId : undefined, redo: job && job.redo || null });
   if (!(job && job.next)) {   // できあがり：探索したルートを おぼえておく（🔢 別のルートを選ぶ で じゅんばんに出せる）
     const e = { ...R }; delete e.name; delete e.savedId; delete e.redo;
@@ -1221,7 +1221,7 @@ function merged(m) {
   return { ...m, ek: undefined,
     route: mr.length ? P.route.concat(mr.slice(1)) : P.route.slice(),
     kc: P.kc && m.ek ? P.kc.concat(m.ek.map(catOf)) : null,
-    ok: (P.ok || []).concat(m.ok || []), xw: (P.xw || []).concat(m.xw || []), ng: (P.ng || []).concat(m.ng || []),
+    ok: (P.ok || []).concat(m.ok || []), xw: (P.xw || []).concat(m.xw || []), ng: (P.ng || []).concat(m.ng || []), xvia: (P.xvia || []).concat(m.xvia || []),
     tp: P.tp && m.tp ? P.tp.concat(m.tp) : null,
     kinds: sumKinds(P.kinds, m.kinds), turns: P.turns != null && m.turns != null ? P.turns + m.turns : undefined,
     len: (P.len || 0) + (m.len || 0), short: null, slen: 0 };
@@ -1552,6 +1552,7 @@ function legend(r) {
   if ((r.ok || []).length) h += dot("#0a0", "#0a03", 16, "信号で横断");
   if ((r.xw || []).length) h += dot("#1a73e8", "#1a73e840", 15, "横断歩道で横断");
   if ((r.ng || []).length) h += dot("#f00", "#ff09", 18, "設定どおりに渡れなかった所");
+  if ((r.xvia || []).length) h += `<div><span style="display:inline-block;width:22px;text-align:center;margin:0 2px 0 0">🚦</span>点線の先まで行って渡る</div>`;
   if (colorMode !== "red") h += '<div style="border-top:1px solid #ddd;margin:3px 0"></div>';
   if (colorMode === "kind") {
     if (!r.kc) h += "灰色の線：このルートには道の種類の情報がないよ";
@@ -1754,7 +1755,11 @@ function showRoute(r, fit) {
   // 横断の印（信号・横断歩道・設定どおりに渡れなかった所）は、近づいたときだけ出す（ナビ中は自分から300m・ふだんはズーム15より寄ったとき）
   xMk = [...(r.ok || []).map(p => [L.circleMarker(p, { radius: 9, color: "#0a0", weight: 3, fillOpacity: .25 }).bindTooltip("信号で横断"), p]),
          ...(r.xw || []).map(p => [L.circleMarker(p, { radius: 8, color: "#1a73e8", weight: 3, fillOpacity: .25 }).bindTooltip("横断歩道で横断"), p]),
-         ...(r.ng || []).map(p => [L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).bindTooltip("⚠ 設定どおりに渡れなかった場所"), p])];
+         ...(r.ng || []).map(p => [L.circleMarker(p, { radius: 12, color: "#f00", weight: 4, fillColor: "#ff0", fillOpacity: .6 }).bindTooltip("⚠ 設定どおりに渡れなかった場所"), p]),
+         // 近くの 信号・横断歩道まで行って渡る所：交差点から 渡る所まで 点線と 🚦/🚸
+         ...(r.xvia || []).flatMap(v => { const a = [v[0], v[1]], b = [v[2], v[3]], w = v[4] === 1 ? "信号" : "横断歩道", col = v[4] === 1 ? "#0a0" : "#1a73e8";
+           return [[L.polyline([a, b], { color: col, weight: 4, dashArray: "4 6", opacity: .9, interactive: false }), a],
+                   [L.marker(b, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="font-size:20px;line-height:1;transform:translate(-50%,-50%);text-shadow:0 0 3px #fff">${v[4] === 1 ? "🚦" : "🚸"}</div>` }), zIndexOffset: 450 }).bindTooltip(`ここの${w}で渡ってね（${v[5]}m）`), a]]; })];
   xFor = r; xUpd();
 
   if (fit === "start") map.fitBounds(L.latLngBounds(r.nav), { padding: [40, 40], maxZoom: 16 });
@@ -3925,21 +3930,37 @@ function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルー�
   const kc = old.kc && m.ek ? m.ek.map(catOf).concat([old.kc[ti - 1] ?? old.kc[ti] ?? catOf(m.ek[m.ek.length - 1])], old.kc.slice(ti)) : null;
   const tp = old.tp && m.tp ? m.tp.concat(old.tp.filter(t => rest.some(q => hav(q, t) < 3))) : null;
   const n = { ...old, route: mr.concat(rest), kc, ek: undefined, tp, opts: null, short: null, slen: 0, resume: null, partial: false, tent: null,
-    ok: (m.ok || []).concat(old.ok || []), xw: (m.xw || []).concat(old.xw || []), ng: (m.ng || []).concat(old.ng || []), len: (m.len || 0) + rl };
+    ok: (m.ok || []).concat(old.ok || []), xw: (m.xw || []).concat(old.xw || []), ng: (m.ng || []).concat(old.ng || []), xvia: (m.xvia || []).concat(old.xvia || []), len: (m.len || 0) + rl };
   if (kc && kc.length !== n.route.length - 1) n.kc = null;
   showRoute(n, false); lsSet(LKEY, packRoute(n));
   setMsg(`↩ ルートにもどる道を作ったよ（合流まで ${fmtKm(m.len || 0)}）`); addLog(`↩ 合流まで ${fmtKm(m.len || 0)}`, "ok");
   if (vcOn) say("ルートにもどる道を作ったよ");
 }
+let vcXv = [];
+function vcXvFind() {   // cur.xvia → [{ s: ルートの何m目, t: 言うこと }]
+  const R = cur.nav, out = [];
+  for (const v of cur.xvia || []) {
+    const a = [v[0], v[1]], b = [v[2], v[3]]; let k = -1, bd = Infinity;
+    for (let i = 0; i < R.length; i++) { const d = hav(R[i], a); if (d < bd) { bd = d; k = i; } }
+    if (k < 0 || bd > 15) continue;
+    const sd = cum[k], hd = bearingDeg(vcAt(Math.max(0, sd - 20)), a);   // 交差点に入る向き
+    const d = ((bearingDeg(a, b) - hd + 540) % 360) - 180, ad = Math.abs(d);
+    const where = ad < 50 ? "まっすぐ先" : ad > 130 ? "少し手前" : d > 0 ? "右" : "左";
+    const m = Math.max(10, Math.round(v[5] / 10) * 10), w = v[4] === 1 ? "信号" : "横断歩道";
+    out.push({ s: sd, t: `この先の大きい道は、${where}に${m}メートルの、${w}で渡ってね` });
+  }
+  return out.sort((p, q) => p.s - q.s);
+}
 function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a < 60 ? "ななめ" + lr : a < 150 ? lr : "大きく" + lr; }
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
   const say = (t, hi) => { if (vcOn) window.say(t, hi); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
-  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); try { vcQuiet = vcQuietFind(); } catch { vcQuiet = []; } vcOff = false; vcEnd = false; vcLast = navAlong; }
+  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); try { vcQuiet = vcQuietFind(); } catch { vcQuiet = []; } try { vcXv = vcXvFind(); } catch { vcXv = []; } vcOff = false; vcEnd = false; vcLast = navAlong; }
   // 2周目・3周目：ルートの位置が大きくもどったら（ゴール→スタート）、案内を言ったしるしを消して、もう一回言うようにする
   if (navAlong < vcLast - 300) {
     for (const t of vcTurns) t.a1 = t.a2 = false;
     for (const q of cur.stops || []) q.said = false;
+    for (const x of vcXv) x.said = false;
     vcEnd = false; vsDone.clear(); addLog("🔁 同じルートをもう1周：案内をはじめから言うよ", "m");
   }
   vcLast = navAlong;
@@ -3956,6 +3977,8 @@ function vcNav(off, rest) {
     setTimeout(() => say(`${q.name.replace(/^🎯\s*\S+\s*/, "").replace(/^[^\p{L}\p{N}]+/u, "")}に着きました。休憩です`, true), 900);   // いちばん大事
   }
   if (vcQuiet.some(s => s - navAlong > -5 && s - navAlong <= 35)) blkShowMap(5000);   // 道なりの曲がり：声はなし・地図だけ出す
+  // 🚦 近くの信号・横断歩道まで行って渡る所：70m手前で「この先の交差点は、右に30メートルの信号で渡ってね」
+  for (const x of vcXv) { const dx = x.s - navAlong; if (!x.said && dx > 0 && dx <= 70) { x.said = true; say(x.t); blkShowMap(8000); break; } }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
   const then = nx && nx.s - t.s < 60 ? `、すぐ${vcWord(nx.d)}` : "";
@@ -4338,7 +4361,7 @@ function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return 
 function packRoute(r) {
   const sr = simpRoute(r.route, r.kc, 1);
   return { name: r.name || "", created: r.created || Date.now(), r: encPoly(sr.pts), k: sr.kc ? encK(sr.kc) : "",
-    s: r.short ? encPoly(simplify(r.short, 3)) : "", ok: encPoly(r.ok || []), xw: encPoly(r.xw || []), ng: encPoly(r.ng || []),
+    s: r.short ? encPoly(simplify(r.short, 3)) : "", ok: encPoly(r.ok || []), xw: encPoly(r.xw || []), ng: encPoly(r.ng || []), xv: (r.xvia || []).map(v => [+v[0].toFixed(6), +v[1].toFixed(6), +v[2].toFixed(6), +v[3].toFixed(6), v[4], v[5]]),
     tp: r.tp ? encPoly(r.tp) : undefined, ta: r.tp ? r.tp.map(t => t[2]).join(",") : undefined,
     len: r.len, slen: r.slen || 0, kinds: r.kinds || null, rs: r.resume || null, tn: r.turns ?? null,
     st: r.stops && r.stops.length ? r.stops : undefined, x: (r.cutS ? "s" : "") + (r.cutE ? "e" : "") + (r.here ? "h" : "") || undefined };
@@ -4351,7 +4374,7 @@ function decTp(t, a) {   // 🗣 曲がり角：点の列＋角度の列。古�
 function unpackRoute(o) {
   const route = decPoly(o.r), kc = o.k ? decK(o.k) : null;
   return { name: o.name, created: o.created, route, kc: kc && kc.length === route.length - 1 ? kc : null, short: o.s ? decPoly(o.s) : null,
-    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), tp: decTp(o.tp, o.ta), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st, cutS: (o.x || "").includes("s"), cutE: (o.x || "").includes("e"), here: (o.x || "").includes("h") };
+    ok: decPoly(o.ok || ""), xw: decPoly(o.xw || ""), ng: decPoly(o.ng || ""), xvia: o.xv || [], tp: decTp(o.tp, o.ta), len: o.len, slen: o.slen, kinds: o.kinds, resume: o.rs || null, turns: o.tn ?? undefined, stops: o.st, cutS: (o.x || "").includes("s"), cutE: (o.x || "").includes("e"), here: (o.x || "").includes("h") };
 }
 function renderList() {
   const rs = lsGet(RKEY, []);

@@ -28,7 +28,6 @@ const EXCLUDE = new Set(["motorway", "motorway_link", "construction", "proposed"
   "elevator", "corridor", "platform", "bus_stop"]);
 const UNPAVED = new Set(["gravel", "fine_gravel", "pebblestone", "unpaved", "dirt", "earth", "ground", "grass",
   "sand", "mud", "compacted", "woodchips", "rock", "grass_paver"]);
-const SIGNAL_RADIUS = 35, CROSSWALK_RADIUS = 20;
 const HARD = 3000, SOFT = 500;    // 横断ルールを守れないときの追加コスト(m相当)
 // 2車線の横断コスト。数字(m)か、むかしの設定の文字
 const ONEWAY_OK = new Set(["residential", "living_street", "service", "unclassified", "road", "cycleway", "footway", "path", "pedestrian", "track"]);
@@ -336,7 +335,7 @@ function buildGraph(osm, cfg, onProg) {
     const nd = e.nodes.map(id => idx.get(id)).filter(x => x !== undefined);
     if (nd.length < 2) continue;
     const L0 = levelOf(t, cfg);
-    if (L0) { mainWays.push([nd, L0]); for (const i of nd) if (L0 > lvl[i]) lvl[i] = L0; }   // 通らない道でも「横断する道」としては数える
+    if (L0) { mainWays.push([nd, L0, t.name || t.ref || "w" + e.id, isOneway(t)]); for (const i of nd) if (L0 > lvl[i]) lvl[i] = L0; }   // 通らない道でも「横断する道」としては数える（名前：同じ道かを見る・一方通行：上下線が別の道か）
     const wc = wayCost(t, cfg);
     if (!wc) continue;
     let [pen, name] = wc;
@@ -412,23 +411,59 @@ function buildGraph(osm, cfg, onProg) {
     if (t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes") put(gSig, i);
     else if (t.highway === "crossing" && !["no", "unmarked", "informal"].includes(t.crossing)) put(gXw, i);
   }
-  const near = (g, i, r) => {   // r m 以内で いちばん近い点の番号（なければ -1）
-    const a = Math.round(lat[i] * 2000), b = Math.round(lon[i] * 2000); let best = -1, bd = r;
-    for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++)
-      for (const j of g.get((a + x) + "," + (b + y)) || []) { const dd = d(i, j); if (dd <= bd) { bd = dd; best = j; } }
-    return best;
+  const cands = (g, i, r) => {   // r m 以内の点 [番号, きょり]
+    const a = Math.round(lat[i] * 2000), b = Math.round(lon[i] * 2000), out = [];
+    for (let x = -2; x <= 2; x++) for (let y = -2; y <= 2; y++)
+      for (const j of g.get((a + x) + "," + (b + y)) || []) { const dd = d(i, j); if (dd <= r) out.push([j, dd]); }
+    return out;
   };
+  // 道の名前（同じ道の上の 信号・横断歩道かを見る）
+  const rk = new Map();
+  for (const [nd, , k] of mainWays) for (const i of nd) { let s = rk.get(i); if (!s) rk.set(i, s = new Set()); s.add(k); }
+  const sameRoad = (i, j) => { const a = rk.get(i), b = rk.get(j); if (!a || !b) return false; for (const k of a) if (b.has(k)) return true; return false; };
+  // 上り・下りが別の線になっている道（中央分離帯）：一方通行の大きい道で、同じ名前の反対向きの線が 35m 以内にある
+  const divided = new Uint8Array(N), oseg = new Map(), OG = 0.0005;
+  for (const [nd, , k, ow] of mainWays) if (ow) for (let q = 1; q < nd.length; q++) {
+    const u = nd[q - 1], v = nd[q], c = Math.floor((lat[u] + lat[v]) / 2 / OG) + "," + Math.floor((lon[u] + lon[v]) / 2 / OG);
+    if (!oseg.has(c)) oseg.set(c, []); oseg.get(c).push([u, v, k]);
+  }
+  for (const [nd, , k, ow] of mainWays) if (ow) for (let q = 0; q < nd.length; q++) {
+    const i = nd[q], a = nd[Math.max(0, q - 1)], b = nd[Math.min(nd.length - 1, q + 1)]; if (a === b || divided[i]) continue;
+    const dx = (lon[b] - lon[a]) * cosl0, dy = lat[b] - lat[a], cy = Math.floor(lat[i] / OG), cx = Math.floor(lon[i] / OG);
+    for (let p = -1; p <= 1 && !divided[i]; p++) for (let r = -1; r <= 1 && !divided[i]; r++) for (const [u, v, k2] of oseg.get((cy + p) + "," + (cx + r)) || []) {
+      if (k2 !== k || u === i || v === i) continue;
+      const ex = (lon[v] - lon[u]) * cosl0, ey = lat[v] - lat[u], dot = (dx * ex + dy * ey) / (Math.hypot(dx, dy) * Math.hypot(ex, ey) || 1);
+      if (dot < -0.8 && Math.min(d(i, u), d(i, v)) < 35) { divided[i] = 1; break; }
+    }
+  }
   // 横断の追加コスト（その点で lvl の道を横切るとき）と種類 1=信号 2=横断歩道 3=なし
-  const xcost = new Float32Array(N), xkind = new Uint8Array(N), xref = new Int32Array(N).fill(-1);   // xref：渡ってよいことにした 信号・横断歩道の点（🧪 道のデータを見る で出す）
-  let nNodes = 0;
+  // ・横断歩道は「渡る道の上」にあるものだけ（わき道を渡る横断歩道は数えない）
+  // ・信号も渡る道の上のもの。ただし わき道の信号が 15m 以内なら 信号のある交差点とみて その場でOK
+  // ・12m より遠い所は「そこまで行って渡って もどる」：きょり×2 を足して、その場所を覚える（xdet・音声と地図で案内）
+  const HERE_R = 12, SIDE_SIG_R = 15, DETOUR_R = 50;
+  const xcost = new Float32Array(N), xkind = new Uint8Array(N), xref = new Int32Array(N).fill(-1), xdet = new Float32Array(N);   // xref：渡ってよいことにした 信号・横断歩道の点（🧪 道のデータを見る で出す）
+  let nNodes = 0, nDiv = 0, nDet = 0;
   for (let i = 0; i < N; i++) {
     if (inGraph[i]) nNodes++;
     if (!lvl[i] || !inGraph[i]) continue;
-    const sigJ = near(gSig, i, SIGNAL_RADIUS), xwJ = near(gXw, i, CROSSWALK_RADIUS), sig = sigJ >= 0, xw = xwJ >= 0;
-    xkind[i] = sig ? 1 : xw ? 2 : 3; xref[i] = sig ? sigJ : xwJ;
-    if (lvl[i] === 2) xcost[i] = cfg.wideCross === "any" ? 0 : sig ? 0 : (cfg.wideCross === "crosswalk" && xw) ? 0 : HARD;
-    else xcost[i] = sig || xw ? 0 : midPen(cfg.midCross);
+    const L = lvl[i], anyOK = L === 2 && cfg.wideCross === "any";
+    const none = L === 2 ? HARD : divided[i] ? HARD : midPen(cfg.midCross);
+    let bc = anyOK ? 0 : none, bk = 3, bj = -1, bd = 0;
+    const tryJ = (j, dd, kind, ok) => {
+      if (!ok) return;
+      const c = dd <= HERE_R ? 0 : 2 * dd;
+      if (c < bc || (c === bc && bk === 3)) { bc = c; bk = kind; bj = j; bd = dd <= HERE_R ? 0 : dd; }
+    };
+    for (const [j, dd] of cands(gSig, i, DETOUR_R)) {
+      const on = sameRoad(i, j) && lvl[j] >= L;
+      tryJ(j, on ? dd : 0, 1, on || dd <= SIDE_SIG_R);
+    }
+    if (L === 1 || cfg.wideCross === "crosswalk" || anyOK)
+      for (const [j, dd] of cands(gXw, i, DETOUR_R)) tryJ(j, dd, 2, sameRoad(i, j) && lvl[j] >= L);
+    xcost[i] = bc; xkind[i] = bk; xref[i] = bj; xdet[i] = bd;
+    if (divided[i]) nDiv++; if (bd) nDet++;
   }
+  log(`横断：上下線が別の道の点 ${nDiv}・近くの信号/横断歩道まで行って渡る点 ${nDet}`);
   const nBlk = applyBlocks(lat, lon, adj, N);
   if (paintedSet && paintedSet.size && PAINT_PEN > 1) {   // 👣 まだ塗っていない道を通りたい：もう塗った区間を ×PAINT_PEN
     let np = 0;
@@ -437,7 +472,7 @@ function buildGraph(osm, cfg, onProg) {
   }
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
-  return { lat, lon, adj, lvl, xcost, xkind, xref, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
+  return { lat, lon, adj, lvl, xcost, xkind, xref, xdet, divided, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
     hk: Math.min(1, +cfg.kodo || 1) * (preferPts.length ? PREFER_K : 1) };   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
@@ -603,7 +638,7 @@ async function loopRoute(req, prog) {
 // 区間をつなぐ。つなぎ目の「行ってすぐもどる」ムダはけずる
 function joinLegs(parts, keepSpur) {   // keepSpur：行って同じ道で戻る所も消さない（🏁 ぜんぶ回る は駅の前まで行きたいので）。配列なら つなぎ目ごと（[i-1] が i番目のつなぎ目）
   let route = parts[0].route.slice(), ek = (parts[0].ek || []).slice();
-  const res = { ok: [], xw: [], ng: [], tp: [], kinds: {}, turns: 0, len: 0 };
+  const res = { ok: [], xw: [], ng: [], xvia: [], tp: [], kinds: {}, turns: 0, len: 0 };
   const same = (p, q) => p && q && p[0] === q[0] && p[1] === q[1];
   for (let i = 0; i < parts.length; i++) {
     const P = parts[i];
@@ -615,7 +650,7 @@ function joinLegs(parts, keepSpur) {   // keepSpur：行って同じ道で戻る
       route = route.slice(0, route.length - k).concat(R2.slice(1 + k));
       ek = ek.slice(0, ek.length - k).concat(E2.slice(k));
     }
-    res.ok.push(...(P.ok || [])); res.xw.push(...(P.xw || [])); res.ng.push(...(P.ng || [])); if (res.tp && P.tp) res.tp.push(...P.tp); else res.tp = null;
+    res.ok.push(...(P.ok || [])); res.xw.push(...(P.xw || [])); res.ng.push(...(P.ng || [])); res.xvia.push(...(P.xvia || [])); if (res.tp && P.tp) res.tp.push(...P.tp); else res.tp = null;
     for (const [k, v] of Object.entries(P.kinds || {})) res.kinds[k] = (res.kinds[k] || 0) + v;
     res.turns += P.turns || 0; res.len += P.len || 0;
   }
@@ -799,7 +834,7 @@ function guideAt(G, path, i) {
 }
 
 function analyze(G, path) {
-  const ok = [], xw = [], ng = [], ngIdx = [], kinds = {}, ek = [], tp = []; let len = 0, turns = 0;
+  const ok = [], xw = [], ng = [], ngIdx = [], xvia = [], kinds = {}, ek = [], tp = []; let len = 0, turns = 0;
   for (let i = 1; i < path.length; i++) {
     const e = edge(G, path[i - 1], path[i]); len += e.L; kinds[e.k] = (kinds[e.k] || 0) + e.L; ek.push(e.k);
   }
@@ -811,9 +846,10 @@ function analyze(G, path) {
       const p = [G.lat[u], G.lon[u]], k = G.xkind[u];
       if (k === 1) ok.push(p); else if (k === 2) xw.push(p);
       else if (G.xcost[u] > 0 || L === 2) { ng.push(p); ngIdx.push(i); }   // ルール違反（または4車線を信号なし）
+      if ((k === 1 || k === 2) && G.xdet && G.xdet[u] > 0) { const j = G.xref[u]; xvia.push([G.lat[u], G.lon[u], G.lat[j], G.lon[j], k, Math.round(G.xdet[u])]); }   // 近くの 信号・横断歩道まで行って渡る：[交差点の緯度, 経度, 渡る所の緯度, 経度, 種類 1🚦/2🚸, きょり m]
     }
   }
-  return { ok, xw, ng, ngIdx, kinds, len, ek, turns, tp };
+  return { ok, xw, ng, ngIdx, xvia, kinds, len, ek, turns, tp };
 }
 
 // ==== タイル分割取得 ＋ 保存（メモリ ＋ IndexedDB） ====
@@ -997,7 +1033,7 @@ async function dbgView(bb, cfg) {
   for (let i = 0; i < G.lat.length; i++) {
     if (!G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || (G.adj[i] || []).length < 3) continue;   // 大きい道の上の 交差点（3方向以上）
     const j = G.xref[i];
-    if (xs.length < 600) xs.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], lv: G.lvl[i], k: G.xkind[i], c: Math.round(G.xcost[i]), ref: j >= 0 ? [r6(G.lat[j]), r6(G.lon[j])] : null });
+    if (xs.length < 600) xs.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], lv: G.lvl[i], k: G.xkind[i], c: Math.round(G.xcost[i]), dv: G.divided ? G.divided[i] : 0, det: G.xdet ? Math.round(G.xdet[i]) : 0, ref: j >= 0 ? [r6(G.lat[j]), r6(G.lon[j])] : null });
   }
   return { miss, ways, pts, xs };
 }
@@ -1760,7 +1796,7 @@ async function routeOnce(req, prog, partial) {
   };
 
   // --- 順番に確定 ---
-  const conf = [], kinds = {}, ok = [], xw = [], ng = [], ek = [], tp = [];
+  const conf = [], kinds = {}, ok = [], xw = [], ng = [], xvia = [], ek = [], tp = [];
   let turns = 0, confLen = 0, confEnd = null /* OSMの点id */, tConf = 0, tBuild = 0, tSearch = 0, nNodes = 0;
   // mode "full"：ぜんぶ取ってから一度に計算（いちばん良いルート）／ それ以外：スタートから順番に確定（すぐ走り出せる）
   let bandEnd = cfg && cfg.mode === "full" ? D : Math.min(D, FIRST_BAND), lastGraph = null;
@@ -1853,7 +1889,7 @@ async function routeOnce(req, prog, partial) {
       const confPart = path.slice(0, k + 1), tent = path.slice(k);
       if (confPart.length > 1) {
         const a = analyze(G, confPart);
-        addKinds(a.kinds); ok.push(...a.ok); xw.push(...a.xw); ng.push(...a.ng); ek.push(...a.ek); tp.push(...a.tp); turns += a.turns; confLen += a.len;
+        addKinds(a.kinds); ok.push(...a.ok); xw.push(...a.xw); ng.push(...a.ng); xvia.push(...a.xvia); ek.push(...a.ek); tp.push(...a.tp); turns += a.turns; confLen += a.len;
         const pts = confPart.map(i => [G.lat[i], G.lon[i]]);
         conf.push(...(conf.length ? pts.slice(1) : pts));
         confEnd = G.ids[confPart[confPart.length - 1]];
@@ -1863,7 +1899,7 @@ async function routeOnce(req, prog, partial) {
       lastGraph = { G, sn: G.idx.get(G.ids[path[0]]) };
       if (final) break;
       const tentPts = tent.map(i => [G.lat[i], G.lon[i]]);
-      partial({ route: conf.slice(), ek: ek.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), tp: tp.slice(), kinds: { ...kinds }, turns, len: confLen,
+      partial({ route: conf.slice(), ek: ek.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), xvia: xvia.slice(), tp: tp.slice(), kinds: { ...kinds }, turns, len: confLen,
         progress: Math.min(1, tConf / D), restAir: hav(tentPts[tentPts.length - 1][0], tentPts[tentPts.length - 1][1], g[0], g[1]) });
       bandEnd = Math.min(D, bandEnd + BAND);
     }
@@ -1948,7 +1984,7 @@ async function routeOnce(req, prog, partial) {
           }
           cands.sort((a, b) => (a.ov - b.ov) || (a.a.len - b.a.len));   // いちばんのルートと 重なりが少ないものから（遠くてもOK）
           for (const { p, a } of cands.slice(0, 2))
-            alts.push({ route: p.map(u => [G.lat[u], G.lon[u]]), ek: a.ek, ok: a.ok, xw: a.xw, ng: a.ng, tp: a.tp, kinds: a.kinds, turns: a.turns, len: a.len });
+            alts.push({ route: p.map(u => [G.lat[u], G.lon[u]]), ek: a.ek, ok: a.ok, xw: a.xw, ng: a.ng, xvia: a.xvia, tp: a.tp, kinds: a.kinds, turns: a.turns, len: a.len });
           log(`ほかのルート: 候補 ${cands.length}本（${cands.map(c => c.how + " " + (c.a.len / 1000).toFixed(1) + "km").join("・") || "なし"}）`);
         }
       }
@@ -1957,7 +1993,7 @@ async function routeOnce(req, prog, partial) {
   }
   const T = (Date.now() - T0) / 1000;
   log(`==== 完了 ${(confLen / 1000).toFixed(2)}km・${T.toFixed(1)}秒（ダウンロード ${done}マス ${kb(bytes)}・つながり ${tBuild.toFixed(1)}秒・探索 ${tSearch.toFixed(1)}秒） ====`, "ok");
-  return { route: conf, ek, ok, xw, ng, tp, kinds, turns, len: confLen, nNodes, sec: T, tiles: N, saved, bytes, alts,
+  return { route: conf, ek, ok, xw, ng, xvia, tp, kinds, turns, len: confLen, nNodes, sec: T, tiles: N, saved, bytes, alts,
     tLoad: Math.max(0, T - tBuild - tSearch), tBuild, tSearch };
 }
 // 「ただの最短」はくらべる用。順番に確定する方式では出さない
