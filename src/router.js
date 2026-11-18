@@ -9,6 +9,7 @@ const DEFAULT_CFG = {
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
   bridge: 3,             // 歩道橋・地下道（歩行者用）: 倍率 or "no"
   unpaved: "no",         // 砂利・土の道: 倍率 or "no"（1=気にしない）
+  crossRule: "off",      // 大きい道を渡るルール: "off"=使わない（どこでも渡る） / "on"=下の wideCross・bigCross・midCross を使う
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
   park: 5,               // 公園の中の道（園路など）："no"=通らない / 倍率 / 1=気にしない
@@ -445,7 +446,7 @@ function buildGraph(osm, cfg, onProg) {
   let nNodes = 0, nDiv = 0, nDet = 0;
   for (let i = 0; i < N; i++) {
     if (inGraph[i]) nNodes++;
-    if (!lvl[i] || !inGraph[i]) continue;
+    if (!lvl[i] || !inGraph[i] || cfg.crossRule !== "on") continue;   // ルールを使わないときは どこでも渡る（コスト0）
     const L = lvl[i], anyOK = L === 2 && cfg.wideCross === "any";
     const none = L === 2 ? HARD : divided[i] ? HARD : midPen(cfg.midCross);
     let bc = anyOK ? 0 : none, bk = 3, bj = -1, bd = 0;
@@ -838,7 +839,7 @@ function analyze(G, path) {
   for (let i = 1; i < path.length - 1; i++) {
     if (edge(G, path[i - 1], path[i]).w !== edge(G, path[i], path[i + 1]).w && isTurn(G, path[i - 1], path[i], path[i + 1])) turns++;
     { const g = guideAt(G, path, i); if (g) tp.push(g); }
-    const u = path[i], L = G.lvl[u]; if (!L) continue;
+    const u = path[i], L = G.lvl[u]; if (!L || G.cfg.crossRule !== "on") continue;   // 渡るルールを使わないときは 横断の印も出さない
     if (isCrossing(G, path[i - 1], u, path[i + 1], edge(G, path[i - 1], u).l, edge(G, u, path[i + 1]).l, L)) {
       const p = [G.lat[u], G.lon[u]], k = G.xkind[u];
       if (k === 1) ok.push(p); else if (k === 2) xw.push(p);
@@ -1029,7 +1030,7 @@ async function dbgView(bb, cfg) {
     if (k && pts.length < 600) pts.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], t, k });
   }
   for (let i = 0; i < G.lat.length; i++) {
-    if (!G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || (G.adj[i] || []).length < 3) continue;   // 大きい道の上の 交差点（3方向以上）
+    if (G.cfg.crossRule !== "on" || !G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || (G.adj[i] || []).length < 3) continue;   // 大きい道の上の 交差点（3方向以上）
     const j = G.xref[i];
     if (xs.length < 600) xs.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], lv: G.lvl[i], k: G.xkind[i], c: Math.round(G.xcost[i]), dv: G.divided ? G.divided[i] : 0, det: G.xdet ? Math.round(G.xdet[i]) : 0, ref: j >= 0 ? [r6(G.lat[j]), r6(G.lon[j])] : null });
   }
