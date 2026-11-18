@@ -2976,7 +2976,7 @@ function dbgDraw(m) {
     L.circleMarker(x.p, { renderer: dbgRend, radius: 8, color: col, weight: 3, fillColor: col, fillOpacity: .2 })
       .bindPopup(() => dbgTags("node", x.id, {}, `<b>大きい道（レベル${x.lv}）を渡る判定</b><br>${what}${x.ref ? (x.det ? `<br>点線の先（${x.det}m）まで行って渡る（まわり道 ${x.det * 2}m分）` : "<br>点線の先の点を見て その場で OK にしたよ") : ""}${x.dv ? "<br>上り・下りが別の線の道（中央分離帯）" : ""}`)).addTo(dbgLayer);
   }
-  for (const q of m.pts) L.marker(q.p, { icon: L.divIcon({ className: "", html: `<div style="width:10px;height:10px;transform:translate(-5px,-5px);background:${q.k === "both" ? "linear-gradient(135deg,#0a0 50%,#1a73e8 50%)" : q.k === "sig" ? "#0a0" : "#1a73e8"};border:2px solid #fff;box-shadow:0 0 2px #000"></div>`, iconSize: [0, 0] }), zIndexOffset: 500 })
+  for (const q of m.pts) L.marker(q.p, { icon: L.divIcon({ className: "", html: `<div style="width:14px;height:14px;transform:translate(-7px,-7px);background:${q.k === "both" ? "linear-gradient(135deg,#0a0 50%,#1a73e8 50%)" : q.k === "sig" ? "#0a0" : "#1a73e8"};border:2px solid #fff;box-shadow:0 0 2px #000"></div>`, iconSize: [0, 0] }), zIndexOffset: 500 })
     .bindPopup(() => dbgTags("node", q.id, q.t, q.k === "both" ? "🚦🚸 信号つきの横断歩道" : q.k === "sig" ? "🚦 信号" : "🚸 横断歩道")).addTo(dbgLayer);
   setMsg(`🧪 道のデータ：線 ${m.ways.length}・信号/横断歩道 ${m.pts.length}・渡る判定 ${m.xs.length}${m.miss ? `（保存していないマス ${m.miss}）` : ""}`);
 }
