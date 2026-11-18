@@ -1026,7 +1026,8 @@ async function dbgView(bb, cfg) {
   for (const [i, t] of G.ntags) {
     if (!inB(G.lat[i], G.lon[i])) continue;
     const sg = t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes", cw = t.highway === "crossing";
-    const k = sg && cw ? "both" : sg ? "sig" : cw ? "xw" : null;   // both：信号つきの横断歩道（半分緑・半分青で描く）
+    const um = cw && ["unmarked", "informal", "no"].includes(t.crossing);   // しま模様のない渡る所（unmarked・informal）・渡れない所（no）：横断歩道としては数えない
+    const k = um ? "um" : sg && cw ? "both" : sg ? "sig" : cw ? "xw" : null;   // both：信号つきの横断歩道（半分緑・半分青で描く）
     if (k && pts.length < 600) pts.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], t, k });
   }
   for (let i = 0; i < G.lat.length; i++) {
