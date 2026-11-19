@@ -202,7 +202,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1119.2303</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.0009</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -438,6 +438,7 @@ const DEFAULT_CFG = {
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
   midCross: 100,         // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
   allWide: "off",        // 2車線の道も4車線としてあつかう: "off"（デフォルト）/ "on"（信号・横断歩道でしか渡らない）
+  jarUse: "on",          // 警察の交通規制（JARTIC）を使う: "on"（デフォルト）/ "off"。いまは 歩行者等横断禁止の道を4車線あつかいにするだけ
   fastCross: "wide",     // 最高速度50km以上の2車線道路: "wide"=4車線と同じ / "mid"=2車線と同じ
   xDet: 60,              // 4車線の道：この m 以内の（同じ道の上の）信号・横断歩道まで行って渡る。0＝しない（交差点の その場で渡れる所だけ）
 };
@@ -492,7 +493,7 @@ function levelOf(t, cfg) {
   if (isWide(t)) return 2;
   const b = BASE[t.highway] || t.highway;
   if (cfg && cfg.bigCross === "wide" && ["primary", "secondary", "trunk"].includes(b)) return 2;   // 県道・国道は4車線と同じ扱い
-  if (MID_ROADS.has(b) || lanesOf(t) >= 2) return (cfg && cfg.allWide === "on") || ((!cfg || cfg.fastCross !== "mid") && parseInt(t.maxspeed) >= 50) ? 2 : 1;   // allWide="on"：2車線の道も4車線と同じ（より安全に）   // 最高速度50km以上は 車が速くて危ないので 4車線と同じ扱い（設定 fastCross="mid" なら2車線と同じ）
+  if (MID_ROADS.has(b) || lanesOf(t) >= 2) return (cfg && cfg.allWide === "on") || (t["jar:nx"] && (!cfg || cfg.jarUse !== "off")) || ((!cfg || cfg.fastCross !== "mid") && parseInt(t.maxspeed) >= 50) ? 2 : 1;   // allWide="on"：2車線の道も4車線と同じ（より安全に）   // 最高速度50km以上は 車が速くて危ないので 4車線と同じ扱い（設定 fastCross="mid" なら2車線と同じ）
   return 0;
 }
 function isUnpaved(t) {
@@ -1360,6 +1361,64 @@ async function getTileAny(key) {
   }
   return r;
 }
+// ==== 🚓 警察の交通規制（JARTIC オープンデータ・hosomichi-data/j/。tools/jartic_pack.py で作る） ====
+// いまは「歩行者等横断禁止」の線だけ使う：その線にそって走る 2車線の道を 4車線あつかいにする（信号・横断歩道でしか渡らない）
+// 端末には保存しない（メモリだけ）。取れないとき（オフラインなど）は 使わない＝前と同じ動き
+const jarMem = new Map();   // マスの名前 → 横断禁止の線 [[[lat, lon], …], …]
+async function jarPrep(bigs, cfg) {   // → そのはんいの 横断禁止の線
+  const jarLines = [];
+  if (!packBase || (cfg && cfg.jarUse === "off")) return jarLines;
+  const names = [...new Set(bigs.map(packName))], miss = names.filter(n => !jarMem.has(n));
+  let bad = 0;
+  await Promise.all(miss.map(async n => {
+    try {
+      const res = await fetch(`${packBase}j/${n}.json.gz`);
+      if (res.status === 404) { jarMem.set(n, []); return; }
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const b = await res.blob(), h = new Uint8Array(await b.slice(0, 2).arrayBuffer());
+      const t = h[0] === 0x1f && h[1] === 0x8b ? await new Response(b.stream().pipeThrough(new DecompressionStream("gzip"))).text() : await b.text();
+      jarMem.set(n, JSON.parse(t).nx || []);
+    } catch { bad++; }
+  }));
+  const seen = new Set();
+  for (const n of names) for (const l of jarMem.get(n) || []) { const k = JSON.stringify(l[0].concat(l[l.length - 1])); if (!seen.has(k)) { seen.add(k); jarLines.push(l); } }
+  if (jarLines.length || bad) log(`🚓 警察の交通規制：歩行者等横断禁止 ${jarLines.length}本${bad ? `（取れなかったマス ${bad}）` : ""}`, bad ? "w" : "ok");
+  return jarLines;
+}
+// 横断禁止の線にそって走る 2車線（レベル1）の道に "jar:nx" の印（もとの道は書きかえない。印をつけた道だけ 新しく作る）
+function jarApply(osm, cfg, jarLines) {
+  if (!jarLines || !jarLines.length || (cfg && cfg.jarUse === "off")) return osm;
+  const c0 = Math.cos((jarLines[0][0][0] || 35) * RAD), XY = (la, lo) => [lo * c0 * 111320, la * 111320], GS = 25, grid = new Map();
+  for (const l of jarLines) for (let k = 1; k < l.length; k++) {
+    const A = XY(l[k - 1][0], l[k - 1][1]), B = XY(l[k][0], l[k][1]), sg = [A, B];
+    for (let x = Math.floor(Math.min(A[0], B[0]) / GS) - 1; x <= Math.floor(Math.max(A[0], B[0]) / GS) + 1; x++)
+      for (let y = Math.floor(Math.min(A[1], B[1]) / GS) - 1; y <= Math.floor(Math.max(A[1], B[1]) / GS) + 1; y++) { const key = x + "," + y; if (!grid.has(key)) grid.set(key, []); grid.get(key).push(sg); }
+  }
+  const hit = (x, y, ang) => {
+    for (const [A, B] of grid.get(Math.floor(x / GS) + "," + Math.floor(y / GS)) || []) {
+      const dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - A[0]) * dx + (y - A[1]) * dy) / L));
+      if (Math.hypot(A[0] + t * dx - x, A[1] + t * dy - y) > 15) continue;
+      const da = Math.abs(((ang - Math.atan2(dy, dx)) / RAD + 540) % 360 - 180);
+      if (da < 30 || da > 150) return true;   // 同じ向き（そっている）
+    }
+    return false;
+  };
+  const pos = new Map(); for (const e of osm.elements) if (e.type === "node") pos.set(e.id, e);
+  let n = 0;
+  const els = osm.elements.map(e => {
+    if (e.type !== "way" || !e.tags || !e.tags.highway || e.tags["jar:nx"] || levelOf(e.tags, { ...cfg, jarUse: "off" }) !== 1) return e;
+    let all = 0, ok = 0;
+    for (let k = 1; k < e.nodes.length; k++) {
+      const a = pos.get(e.nodes[k - 1]), b = pos.get(e.nodes[k]); if (!a || !b) continue;
+      const A = XY(a.lat, a.lon), B = XY(b.lat, b.lon), len = Math.hypot(B[0] - A[0], B[1] - A[1]), ang = Math.atan2(B[1] - A[1], B[0] - A[0]);
+      for (let dd = Math.min(5, len / 2); dd < len; dd += 10) { const u = dd / len; all++; if (hit(A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u, ang)) ok++; }
+    }
+    if (!all || ok < all * 0.5) return e;
+    n++; return { ...e, tags: { ...e.tags, "jar:nx": "1" } };
+  });
+  if (n) log(`🚓 横断禁止の道を 4車線あつかいに: ${n}本`);
+  return { ...osm, elements: els };
+}
 // ==== 配布データ（GitHub Pages に置いた道路データ。Overpass にアクセスしないですむ） ====
 // 形式: <base>index.json（{v:日付, keys:["緯度番号_経度番号", ...]}）と <base>t/緯度番号_経度番号.json.gz（大きいマス 0.01°）
 let packBase = null, packIdx = null, packV = 0, packAt = 0, packBytes = 0, packId = "", packEmpty = null, packAreas = [], packAreaE = [];
@@ -1439,6 +1498,7 @@ async function dbgView(bb, cfg) {
   }
   if (!els.length) return { miss, ways: [], pts: [], xs: [] };
   cfg = { ...DEFAULT_CFG, ...(cfg || {}), pen: { ...DEFAULT_CFG.pen, ...((cfg && cfg.pen) || {}) } };
+  try { const J = jarApply({ elements: els }, cfg, await jarPrep(keys, cfg)).elements; if (J !== els) { els.length = 0; for (const e of J) els.push(e); } } catch {}   // 🚓 横断禁止の道に印（印がないときは そのまま）
   const G = buildGraph({ elements: els }, cfg);
   const m = 0.0004, inB = (a, o) => a > S - m && a < N + m && o > W - m && o < E + m, r6 = x => +x.toFixed(6);
   const ways = [], pts = [], xs = [];
@@ -2137,7 +2197,8 @@ async function routeOnce(req, prog, partial) {
     }
   }
   const demOK = await demP;   // 坂道のデータ（あとで道に坂の重みをつける）
-  const BG = (osm, c, p) => { const G0 = buildGraph(osm, c, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
+  let jarL = []; try { jarL = await jarPrep(tiles.map(t => bigOf(t.key)), cfg); } catch {}   // 🚓 横断禁止の線（取れなければ使わない）
+  const BG = (osm, c, p) => { const G0 = buildGraph(jarApply(osm, c, jarL), c, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   if (oldPack) log(`配布データが新しくなったので、${oldPack}マスを配布データから取りなおすよ`);
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
@@ -3074,7 +3135,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1119.2303", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1120.0009", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
