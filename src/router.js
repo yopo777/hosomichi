@@ -9,9 +9,9 @@ const DEFAULT_CFG = {
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
   bridge: 3,             // 歩道橋・地下道（歩行者用）: 倍率 or "no"
   unpaved: "no",         // 砂利・土の道: 倍率 or "no"（1=気にしない）
-  crossRule: "on",       // 大きい道を渡るルール: "off"=使わない（どこでも渡る） / "on"=下の wideCross・bigCross・midCross を使う
+  crossRule: "on",       // 大きい道を渡るルール: いつも "on"（安全のため、アプリから「使わない」はえらべない。"off" は分析用だけ）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
-  bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ
+  bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ（アプリではえらべない・分析用）
   park: 5,               // 公園の中の道（園路など）："no"=通らない / 倍率 / 1=気にしない
   cemetery: 5,           // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
@@ -22,6 +22,7 @@ const DEFAULT_CFG = {
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
   midCross: 100,         // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
+  fastCross: "wide",     // 最高速度50km以上の2車線道路: "wide"=4車線と同じ / "mid"=2車線と同じ
   xDet: 60,              // 4車線の道：この m 以内の（同じ道の上の）信号・横断歩道まで行って渡る。0＝しない（交差点の その場で渡れる所だけ）
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
@@ -75,7 +76,7 @@ function levelOf(t, cfg) {
   if (isWide(t)) return 2;
   const b = BASE[t.highway] || t.highway;
   if (cfg && cfg.bigCross === "wide" && ["primary", "secondary", "trunk"].includes(b)) return 2;   // 県道・国道は4車線と同じ扱い
-  if (MID_ROADS.has(b) || lanesOf(t) >= 2) return parseInt(t.maxspeed) >= 50 ? 2 : 1;   // 最高速度50km以上は 車が速くて危ないので 4車線と同じ扱い
+  if (MID_ROADS.has(b) || lanesOf(t) >= 2) return (!cfg || cfg.fastCross !== "mid") && parseInt(t.maxspeed) >= 50 ? 2 : 1;   // 最高速度50km以上は 車が速くて危ないので 4車線と同じ扱い（設定 fastCross="mid" なら2車線と同じ）
   return 0;
 }
 function isUnpaved(t) {
@@ -448,7 +449,7 @@ function buildGraph(osm, cfg, onProg) {
   let nNodes = 0, nDiv = 0, nDet = 0;
   for (let i = 0; i < N; i++) {
     if (inGraph[i]) nNodes++;
-    if (!lvl[i] || !inGraph[i] || cfg.crossRule !== "on") continue;   // ルールを使わないときは どこでも渡る（コスト0）
+    if (!lvl[i] || !inGraph[i] || cfg.crossRule === "off") continue;   // ルールを使わないときは どこでも渡る（コスト0）
     const L = lvl[i], anyOK = L === 2 && cfg.wideCross === "any";
     const none = L === 2 ? HARD : divided[i] ? HARD : midPen(cfg.midCross);
     let bc = anyOK ? 0 : none, bk = 3, bj = -1, bd = 0;
@@ -847,7 +848,7 @@ function analyze(G, path) {
   for (let i = 1; i < path.length - 1; i++) {
     if (edge(G, path[i - 1], path[i]).w !== edge(G, path[i], path[i + 1]).w && isTurn(G, path[i - 1], path[i], path[i + 1])) turns++;
     { const g = guideAt(G, path, i); if (g) tp.push(g); }
-    const u = path[i], L = G.lvl[u]; if (!L || G.cfg.crossRule !== "on") continue;   // 渡るルールを使わないときは 横断の印も出さない
+    const u = path[i], L = G.lvl[u]; if (!L || G.cfg.crossRule === "off") continue;   // 渡るルールを使わないときは 横断の印も出さない
     if (isCrossing(G, path[i - 1], u, path[i + 1], edge(G, path[i - 1], u).l, edge(G, u, path[i + 1]).l, L)) {
       const p = [G.lat[u], G.lon[u]], k = G.xkind[u];
       if (k === 1) ok.push(p); else if (k === 2) xw.push(p);
@@ -1039,7 +1040,7 @@ async function dbgView(bb, cfg) {
     if (k && pts.length < 600) pts.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], t, k });
   }
   for (let i = 0; i < G.lat.length; i++) {
-    if (G.cfg.crossRule !== "on" || !G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || new Set((G.adj[i] || []).map(e => e.v)).size < 3) continue;   // 大きい道の上の 交差点（ちがう3方向以上。同じ区間が重なった線は1つに数える）
+    if (G.cfg.crossRule === "off" || !G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || new Set((G.adj[i] || []).map(e => e.v)).size < 3) continue;   // 大きい道の上の 交差点（ちがう3方向以上。同じ区間が重なった線は1つに数える）
     const j = G.xref[i];
     if (xs.length < 600) xs.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], lv: G.lvl[i], k: G.xkind[i], c: Math.round(G.xcost[i]), dv: G.divided ? G.divided[i] : 0, det: G.xdet ? Math.round(G.xdet[i]) : 0, ref: j >= 0 ? [r6(G.lat[j]), r6(G.lon[j])] : null });
   }
