@@ -343,6 +343,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div id="dbgInfo" style="font-size:11px;color:#666;margin:2px 0 0 22px">OSMの地図データ：線＝道（車線で色分け：赤＝4車線・オレンジ＝2車線・シアン＝そのほか）／四角：緑＝信号・青＝横断歩道・半分ずつ＝信号つきの横断歩道・白に青わく＝しま模様のない渡る所（横断歩道ではない）。タップでタグを見られるよ</div>
         <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="dbgJudge">アプリの判定も出す（加工したもの）</label>
         <div style="font-size:11px;color:#666;margin:2px 0 0 44px">点線＝ルートで通らない道／まる：大きい道を渡る判定（緑＝信号・青＝横断歩道・赤＝渡れない・オレンジ＝ペナルティ）。細い点線は「どの信号・横断歩道でOKにしたか」</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="jarOn">🚓 警察の交通規制（JARTIC）を見る（拡大したときだけ）</label>
+        <div style="font-size:11px;color:#666;margin:2px 0 0 22px">各都道府県警察の交通規制データ（観察用・ルートの計算には まだ使っていないよ）／四角：白＝横断歩道・青＝自転車横断帯・緑＝信号／線：赤＝一方通行（自転車も）・緑の点線＝一方通行（自転車は除く）・矢印＝通ってよい向き・むらさき＝歩行者等横断禁止・灰色＝車両通行帯。タップで中身が出るよ。出典：JARTIC 交通規制情報オープンデータ</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
 
       </div>
@@ -2991,6 +2993,67 @@ function dbgDraw(m) {
   setMsg(`🧪 道のデータ：線 ${m.ways.length}・信号/横断歩道 ${m.pts.length}${J ? `・渡る判定 ${m.xs.length}` : ""}${m.miss ? `（保存していないマス ${m.miss}）` : ""}`);
 }
 $("dbgOn").onchange = dbgReq; $("dbgJudge").onchange = () => { if ($("dbgOn").checked) dbgReq(); }; map.on("moveend zoomend", () => { if ($("dbgOn").checked) dbgReq(); });
+// 🚓 警察の交通規制（JARTIC オープンデータ）を見る：hosomichi-data/j/{緯度×100}_{経度×100}.json.gz（tools/jartic_pack.py で作る）。観察用（ルートには使わない）
+const jarLayer = L.layerGroup(), jarRend = L.canvas({ padding: 0.3 }), jarTiles = new Map(), JAR_Z = 16; let jarId = 0, jarT = null;
+function jarTile(k) {
+  if (!jarTiles.has(k)) jarTiles.set(k, (async () => {
+    const r = await tfetch(new URL(`../hosomichi-data/j/${k}.json.gz`, location.href), {}, 15000);
+    if (r.status === 404) return null; if (!r.ok) throw new Error("HTTP " + r.status);
+    const b = await r.blob(), h = new Uint8Array(await b.slice(0, 2).arrayBuffer());
+    const t = h[0] === 0x1f && h[1] === 0x8b ? await new Response(b.stream().pipeThrough(new DecompressionStream("gzip"))).text() : await b.text();
+    return JSON.parse(t);
+  })().catch(e => { jarTiles.delete(k); throw e; }));
+  return jarTiles.get(k);
+}
+function jarArrows(p, col) {   // 線の上に 通ってよい向きの矢印（地図の上の線で描くので、地図が回っても向きが合う）
+  const out = [], c = Math.cos(p[0][0] * Math.PI / 180);
+  let acc = 0;
+  for (let i = 1; i < p.length; i++) {
+    const a = p[i - 1], b = p[i], dx = (b[1] - a[1]) * c, dy = b[0] - a[0], L0 = Math.hypot(dx, dy) * 111320; if (!L0) continue;
+    for (let d = 15 - acc; d < L0; d += 30) {
+      const t = d / L0, m = [a[0] + dy * t, a[1] + (b[1] - a[1]) * t], ux = dx / Math.hypot(dx, dy), uy = dy / Math.hypot(dx, dy), s = 4 / 111320;
+      const w1 = [m[0] - uy * s - ux * s * 0.8, m[1] + (-ux * s + uy * s * 0.8) / c], w2 = [m[0] - uy * s + ux * s * 0.8, m[1] + (-ux * s - uy * s * 0.8) / c];
+      out.push(L.polyline([w1, m, w2], { renderer: jarRend, color: col, weight: 3, interactive: false }));
+    }
+    acc = (acc + L0) % 30;
+  }
+  return out;
+}
+function jarReq() {
+  clearTimeout(jarT);
+  if (!$("jarOn").checked) { map.removeLayer(jarLayer); return; }
+  jarLayer.addTo(map);
+  if (map.getZoom() < JAR_Z) { jarLayer.clearLayers(); setMsg(`🚓 警察の交通規制：もっと拡大してね（ズーム${JAR_Z}以上）`); return; }
+  jarT = setTimeout(jarDraw, 300);
+}
+async function jarDraw() {
+  const id = ++jarId, b = map.getBounds(), keys = [];
+  for (let i = Math.floor(b.getSouth() * 100); i <= Math.floor(b.getNorth() * 100); i++) for (let j = Math.floor(b.getWest() * 100); j <= Math.floor(b.getEast() * 100); j++) keys.push(`${i}_${j}`);
+  if (keys.length > 30) { jarLayer.clearLayers(); setMsg("🚓 警察の交通規制：もっと拡大してね"); return; }
+  let ds;
+  try { ds = (await Promise.all(keys.map(jarTile))).filter(Boolean); } catch (e) { if (id === jarId) setMsg("🚓 警察の交通規制が読めなかった：" + e.message, true); return; }
+  if (id !== jarId || !$("jarOn").checked) return;
+  jarLayer.clearLayers();
+  if (!ds.length) { setMsg("🚓 警察の交通規制：この場所のデータは まだないよ（いまは東京・千葉だけ）"); return; }
+  const seen = new Set(), once = o => { const k = JSON.stringify(o.p ? o.p[0].concat(o.p[o.p.length - 1]) : o); if (seen.has(k)) return false; seen.add(k); return true; };
+  const inV = p => b.pad(0.2).contains(p), n = { xw: 0, bx: 0, sig: 0, ow: 0, nx: 0, ln: 0 }, src = new Set();
+  const pop = (t, extra) => `<div style="font-size:12px"><b>${t}</b>${extra ? "<br>" + extra : ""}<br><span style="color:#888;font-size:11px">出典：JARTIC 交通規制情報</span></div>`;
+  for (const d of ds) {
+    (d.src || []).forEach(x => src.add(x));
+    for (const l of d.ln || []) if (once(l) && l.some(inV)) { n.ln++; L.polyline(l, { renderer: jarRend, color: "#777", weight: 2, dashArray: "2 4" }).bindPopup(pop("🛣 車両通行帯")).addTo(jarLayer); }
+    for (const l of d.nx || []) if (once(l) && l.some(inV)) { n.nx++; L.polyline(l, { renderer: jarRend, color: "#8e24aa", weight: 8, opacity: .55 }).bindPopup(pop("🚫 歩行者等横断禁止", "この区間は 歩いて渡ってはいけない（柵があることも）")).addTo(jarLayer); }
+    for (const o of d.ow || []) if (once(o) && o.p.some(inV)) {
+      n.ow++; const col = o.b ? "#188038" : "#d93025";
+      L.polyline(o.p, { renderer: jarRend, color: col, weight: 4, opacity: .85, dashArray: o.b ? "6 5" : null })
+        .bindPopup(pop(o.b ? "⬆ 一方通行（自転車は除く）" : "⬆ 一方通行（自転車も）", (o.b ? "自転車は 逆向きも通れるよ" : "自転車も 矢印の向きだけ") + (o.h ? `<br>⏰ ${o.h.slice(0, 2)}:${o.h.slice(2, 4)}〜${o.h.slice(5, 7)}:${o.h.slice(7)} だけ` : ""))).addTo(jarLayer);
+      jarArrows(o.p, col).forEach(x => x.addTo(jarLayer));
+    }
+    for (const [k, t, fill] of [["xw", "🚸 横断歩道", "#fff"], ["bx", "🚲 自転車横断帯", "#1a73e8"], ["sig", "🚦 信号機", "#0a0"]])
+      for (const p of d[k] || []) if (inV(p) && once(p)) { n[k]++; L.circleMarker(p, { renderer: jarRend, radius: k === "sig" ? 6 : 5, color: "#222", weight: 2, fillColor: fill, fillOpacity: 1 }).bindPopup(pop(t)).addTo(jarLayer); }
+  }
+  setMsg(`🚓 警察の交通規制：横断歩道 ${n.xw}・信号 ${n.sig}・一方通行 ${n.ow}・横断禁止 ${n.nx}・車両通行帯 ${n.ln}（${[...src].map(x => x.replace(/_k_?2[._]1\.csv$/, "")).join("・")}）`);
+}
+$("jarOn").onchange = jarReq; map.on("moveend zoomend", () => { if ($("jarOn").checked) jarReq(); });
 $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす（デバッグ用。ナビはそのまま動く）
   const h = e.target.checked;
   if (h) map.removeLayer(layer); else layer.addTo(map);
