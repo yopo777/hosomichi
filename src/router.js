@@ -74,7 +74,7 @@ function levelOf(t, cfg) {
   if (isWide(t)) return 2;
   const b = BASE[t.highway] || t.highway;
   if (cfg && cfg.bigCross === "wide" && ["primary", "secondary", "trunk"].includes(b)) return 2;   // 県道・国道は4車線と同じ扱い
-  if (MID_ROADS.has(b) || lanesOf(t) >= 2) return 1;
+  if (MID_ROADS.has(b) || lanesOf(t) >= 2) return parseInt(t.maxspeed) >= 50 ? 2 : 1;   // 最高速度50km以上は 車が速くて危ないので 4車線と同じ扱い
   return 0;
 }
 function isUnpaved(t) {
