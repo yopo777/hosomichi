@@ -3161,7 +3161,7 @@ async function snsOpen() {
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:15px">📣 SNSに出す</b> <span style="font-size:11px;color:#666">消しかた・写真を決めてから「🖼 作る」を押してね</span>
     <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="1000">さいごの1km</option><option value="3000">さいごの3km</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地もかならず消すよ。とちゅうで長くいた所は、ただ通りすぎたように見せるよ）。投稿はXなどで自分でしてね</span></div>
-    <div style="background:#fff4e5;color:#b45309;border:1px solid #f6c38b;font-size:12px;line-height:1.55;padding:6px 8px;border-radius:8px;margin-bottom:6px"><b>⚠ 待ちぶせに注意</b>：これから行く場所（到着地）の予告や、行き先が予想できるルート（サイクリングロード（CR）や橋など、この先 通る道がほぼ決まっている所）を投稿すると、待ちぶせなどのトラブルにあうおそれがあるよ。走っているとちゅうの投稿は とくに気をつけてね</div>
+    <div style="background:#fff4e5;color:#b45309;border:1px solid #f6c38b;font-size:12px;line-height:1.55;padding:6px 8px;border-radius:8px;margin-bottom:6px"><b>⚠ 待ちぶせに注意</b>：これから行く場所（到着地）の予告や、行き先が予想できるルート（サイクリングロード（CR）や橋など、この先 通る道がほぼ決まっている所）を投稿すると、待ちぶせなどのトラブルにあうおそれがあるよ。走っているとちゅうの投稿は とくに気をつけてね。自転車や自分の姿がわかる写真の投稿をさけるなど、対策を考えてね</div>
     <div id="snsWarn" style="display:none;background:#fde7e9;color:#c5221f;font-weight:bold;font-size:13px;padding:6px 8px;border-radius:8px;margin-bottom:6px">🧪 テスト中：家のまわりも出発地も消していないよ。共有・文やURLのコピーはできないよ（画像の保存だけできるよ。画像にも「テスト」と入るよ。画面をとじるともどるよ）</div>
     <div style="margin-top:2px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
       <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ。撮った所に小さく置くよ</span></div>
@@ -3175,7 +3175,7 @@ async function snsOpen() {
 </div>`;
   $("trkBody").innerHTML = ""; $("trkBody").appendChild(box);
   let map0 = null, photos = [], link = "", made = false, warned = false;
-  const snsAsk = () => warned || (warned = confirm("⚠ 投稿する前にたしかめてね\n\nこれから行く場所（到着地）の予告や、行き先が予想できるルート（サイクリングロード（CR）や橋など、この先 通る道がほぼ決まっている所）を投稿すると、待ちぶせなどのトラブルにあうおそれがあるよ。\n\n大丈夫なら OK を押してね"));
+  const snsAsk = () => warned || (warned = confirm("⚠ 投稿する前にたしかめてね\n\nこれから行く場所（到着地）の予告や、行き先が予想できるルート（サイクリングロード（CR）や橋など、この先 通る道がほぼ決まっている所）を投稿すると、待ちぶせなどのトラブルにあうおそれがあるよ。\n自転車や自分の姿がわかる写真の投稿をさけるなど、対策を考えてね。\n\n大丈夫なら OK を押してね"));
   const lock = () => { for (const id of ["snsShare", "snsCopy", "snsUrl", "snsSave"]) { const off = !made || (snsTest && id !== "snsSave"); $(id).disabled = off; $(id).style.opacity = off ? .35 : 1; } };   // 作るまでは共有・保存できない。テスト中は保存だけ
   const stale = () => { if (made) { made = false; $("snsMake").textContent = "🖼 作りなおす"; lock(); } };   // 設定を変えたら作りなおし
   let cmT = null;
@@ -3238,7 +3238,7 @@ async function snsOpen() {
   // 共有したら まっさらにもどす（次に開いたとき 前の写真・ひとこと・画像がのこっていないように）
   const snsDone = () => setTimeout(() => { if ($("snsBox") && trkV === "sns") { snsOpen(); setMsg("📣 共有したよ。SNSの画面は まっさらにもどしたよ"); } }, 300);
 };
-{ const d = $("discl"); requestAnimationFrame(() => d.classList.add("on")); setTimeout(() => d.classList.remove("on"), 5000); setTimeout(() => d.remove(), 5800); }   // ⚠ 起動時の免責を5秒
+{ const d = $("discl"); requestAnimationFrame(() => d.classList.add("on")); setTimeout(() => d.classList.remove("on"), 10000); setTimeout(() => d.remove(), 10800); }   // ⚠ 起動時の免責を10秒
 $("bGpx").onclick = () => {
   const x = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="hosomichi" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>細道ルート</name><trkseg>\n'
     + cur.route.map(([a, o]) => `<trkpt lat="${a.toFixed(6)}" lon="${o.toFixed(6)}"/>`).join("\n") + "\n</trkseg></trk></gpx>\n";
