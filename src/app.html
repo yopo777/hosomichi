@@ -3034,7 +3034,7 @@ async function jarDraw() {
   try { ds = (await Promise.all(keys.map(jarTile))).filter(Boolean); } catch (e) { if (id === jarId) setMsg("🚓 警察の交通規制が読めなかった：" + e.message, true); return; }
   if (id !== jarId || !$("jarOn").checked) return;
   jarLayer.clearLayers();
-  if (!ds.length) { setMsg("🚓 警察の交通規制：この場所のデータは まだないよ（いまは東京・千葉だけ）"); return; }
+  if (!ds.length) { setMsg("🚓 警察の交通規制：この場所のデータは ないよ（関東・中京・関西の18都府県だけ）"); return; }
   const seen = new Set(), once = o => { const k = JSON.stringify(o.p ? o.p[0].concat(o.p[o.p.length - 1]) : o); if (seen.has(k)) return false; seen.add(k); return true; };
   const inV = p => b.pad(0.2).contains(p), n = { xw: 0, bx: 0, sig: 0, ow: 0, nx: 0, ln: 0 }, src = new Set();
   const pop = (t, extra) => `<div style="font-size:12px"><b>${t}</b>${extra ? "<br>" + extra : ""}<br><span style="color:#888;font-size:11px">出典：JARTIC 交通規制情報</span></div>`;

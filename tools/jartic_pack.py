@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""JARTIC 交通規制情報（拡張版標準フォーマット k_2.1 の CSV）→ ほそみちナビ用の小さいファイル（タイルと同じ 0.01° マス）
+r"""JARTIC 交通規制情報（拡張版標準フォーマット k_2.1 の CSV）→ ほそみちナビ用の小さいファイル（タイルと同じ 0.01° マス）
 
 つかいかた:
   python3 tools/jartic_pack.py 出力フォルダ 千葉県警_202609_k_2_1.csv [警視庁_....csv ...]
+  python3 tools/jartic_pack.py 出力フォルダ D:\Python\jartic\jartic_202611      ← フォルダの中の typeD_*.zip・*.csv をぜんぶ
+  （zip のままでも読めるよ）
 
 出力: 出力フォルダ/j/{緯度×100}_{経度×100}.json.gz（タイル t/ と同じ名前）
   { "v": 1, "src": [...],
@@ -16,7 +18,7 @@
   }
 出典：公益財団法人 日本道路交通情報センター（JARTIC）交通規制情報オープンデータ
 """
-import csv, gzip, json, math, os, sys
+import csv, glob, gzip, io, json, math, os, sys, zipfile
 from collections import defaultdict
 
 KEEP = {"85": "xw", "87": "bx", "98": "sig", "11": "ow", "14": "nx", "20": "ln"}
@@ -46,36 +48,79 @@ def pts_of(s):
         if len(a) == 2:
             try:
                 lon, lat = float(a[0]), float(a[1])
-                out.append([round(lat, 6), round(lon, 6)])
+                out.append([round(lat, 5), round(lon, 5)])   # 約1m（もともと そこまで正確ではない）
             except ValueError:
                 pass
     return out
 
 
-def tiles_of(pts):   # 線が通るマスぜんぶ（はしの点の四角＋点ごと）
-    la = [p[0] for p in pts]; lo = [p[1] for p in pts]
-    i0, i1 = math.floor(min(la) * 100), math.floor(max(la) * 100)
-    j0, j1 = math.floor(min(lo) * 100), math.floor(max(lo) * 100)
-    return [(i, j) for i in range(i0, i1 + 1) for j in range(j0, j1 + 1)]
+M = 0.0003   # マスのふち（約30m）。さかい目の近くの線も となりのマスに入れる
 
 
-def read_csv(path):
-    raw = open(path, "rb").read()
+def clip(pts):   # 線を マスごとに 切る → {(i, j): [切れはし…]}（マスにかかる線分だけ。ふち M までのばす）
+    out = defaultdict(list)
+    for k in range(1, len(pts)):
+        a, b = pts[k - 1], pts[k]
+        i0, i1 = math.floor((min(a[0], b[0]) - M) * 100), math.floor((max(a[0], b[0]) + M) * 100)
+        j0, j1 = math.floor((min(a[1], b[1]) - M) * 100), math.floor((max(a[1], b[1]) + M) * 100)
+        for i in range(i0, i1 + 1):
+            for j in range(j0, j1 + 1):
+                S, W, N, E = i / 100 - M, j / 100 - M, (i + 1) / 100 + M, (j + 1) / 100 + M
+                t0, t1, ok = 0.0, 1.0, True   # 線分を 四角で切る（Liang–Barsky）
+                for p_, q_ in ((-(b[0] - a[0]), a[0] - S), (b[0] - a[0], N - a[0]), (-(b[1] - a[1]), a[1] - W), (b[1] - a[1], E - a[1])):
+                    if p_ == 0:
+                        if q_ < 0: ok = False
+                    else:
+                        r = q_ / p_
+                        if p_ < 0: t0 = max(t0, r)
+                        else: t1 = min(t1, r)
+                if not ok or t0 > t1:
+                    continue
+                runs = out[(i, j)]
+                pa = [round(a[0] + (b[0] - a[0]) * t0, 5), round(a[1] + (b[1] - a[1]) * t0, 5)]
+                pb = [round(a[0] + (b[0] - a[0]) * t1, 5), round(a[1] + (b[1] - a[1]) * t1, 5)]
+                if runs and runs[-1][1] == k - 1 and runs[-1][0][-1] == pa: runs[-1][0].append(pb); runs[-1][1] = k
+                else: runs.append([[pa, pb], k])
+    return {t: [r[0] for r in rs if len(r[0]) > 1] for t, rs in out.items()}
+
+
+def zname(i):   # zip の中のファイル名（日本語の名前が cp437 で入っていることがある）
+    n = i.filename
+    if not (i.flag_bits & 0x800):
+        try: n = n.encode("cp437").decode("cp932")
+        except (UnicodeEncodeError, UnicodeDecodeError): pass
+    return os.path.basename(n)
+
+
+def sources(args):   # [(名前, CSVのバイト列)]。フォルダ・zip・csv をうけつける
+    for a in args:
+        if os.path.isdir(a):
+            yield from sources(sorted(glob.glob(os.path.join(a, "*.zip")) + glob.glob(os.path.join(a, "*.csv"))))
+        elif a.lower().endswith(".zip"):
+            with zipfile.ZipFile(a) as z:
+                for i in z.infolist():
+                    if i.filename.lower().endswith(".csv"):
+                        yield zname(i), z.read(i)
+        else:
+            yield os.path.basename(a), open(a, "rb").read()
+
+
+def read_csv(name, raw):
     for enc in ("utf-8-sig", "cp932"):
         try:
-            return list(csv.DictReader(raw.decode(enc).splitlines()))
+            return list(csv.DictReader(io.StringIO(raw.decode(enc))))
         except UnicodeDecodeError:
             continue
-    raise SystemExit("文字コードがわからない: " + path)
+    raise SystemExit("文字コードがわからない: " + name)
 
 
 def main():
     out, files = sys.argv[1], sys.argv[2:]
-    T = defaultdict(lambda: defaultdict(list))
+    T = defaultdict(lambda: defaultdict(list)); TS = defaultdict(set)   # TS：そのマスに入っている 県警の名前
     src, stat = [], defaultdict(int)
-    for f in files:
-        rows = read_csv(f)
-        src.append(os.path.basename(f))
+    for name, raw in sources(files):
+        rows = read_csv(name, raw); del raw
+        src.append(name); print("  読んだ:", name, len(rows), "件")
         for r in rows:
             k = KEEP.get(r.get("共通規制種別コード"))
             if not k or r.get("意思決定廃止日"):
@@ -84,8 +129,8 @@ def main():
             if not pts:
                 continue
             if k in ("xw", "bx", "sig"):
-                p = pts[0]
-                T[(math.floor(p[0] * 100), math.floor(p[1] * 100))][k].append(p)
+                p = pts[0]; t = (math.floor(p[0] * 100), math.floor(p[1] * 100))
+                T[t][k].append(p); TS[t].add(name)
                 stat[k] += 1
                 continue
             if len(pts) < 2:
@@ -103,12 +148,14 @@ def main():
             else:
                 item = pts
             stat[k] += 1
-            for t in tiles_of(pts):
-                T[t][k].append(item)
+            for t, parts in clip(pts).items():
+                TS[t].add(name)
+                for q in parts:
+                    T[t][k].append({**item, "p": q} if k == "ow" else q)
     os.makedirs(os.path.join(out, "j"), exist_ok=True)
     size = 0
     for (i, j), d in T.items():
-        d = {"v": 1, "src": src, **d}
+        d = {"v": 1, "src": sorted(TS[(i, j)]), **d}
         b = gzip.compress(json.dumps(d, ensure_ascii=False, separators=(",", ":")).encode(), 9)
         open(os.path.join(out, "j", f"{i}_{j}.json.gz"), "wb").write(b)
         size += len(b)
