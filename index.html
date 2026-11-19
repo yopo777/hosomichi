@@ -147,6 +147,10 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
 #dir svg{display:block;margin:auto;transition:transform .3s}
 #dir small{position:absolute;right:0;bottom:-16px;text-align:right;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 .me-ic svg{display:block}
+#xvIc{position:absolute;z-index:650;display:none;transform:translate(-50%,-50%);pointer-events:none;font-size:54px;line-height:1;text-align:center;background:#fff;border-radius:18px;padding:6px 8px 4px;box-shadow:0 2px 10px #0006;border:4px solid #1a73e8;animation:xvPulse 1s ease-in-out infinite alternate}
+#xvIc.sig{border-color:#0a0}
+#xvIc b{display:block;font-size:15px;color:#333}
+@keyframes xvPulse{from{transform:translate(-50%,-50%) scale(1)}to{transform:translate(-50%,-50%) scale(1.08)}}
 #nav{position:absolute;bottom:calc(22px + env(safe-area-inset-bottom));right:10px;max-width:calc(40% - 10px);z-index:999;background:#fffe;border-radius:10px;
   box-shadow:0 2px 8px #0003;padding:4px 10px;font-size:14px;font-weight:bold;display:none;pointer-events:none;text-align:right}   /* 一番下・見えなくてもいい */
 #nav.off{color:#c00}
@@ -195,7 +199,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1119.0934</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1119.1103</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -428,6 +432,7 @@ const DEFAULT_CFG = {
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
   midCross: 100,         // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
+  xDet: 60,              // 4車線の道：この m 以内の（同じ道の上の）信号・横断歩道まで行って渡る。0＝しない（交差点の その場で渡れる所だけ）
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
 const OTHER_PENALTY = 2.0;
@@ -820,7 +825,8 @@ function buildGraph(osm, cfg, onProg) {
   }
   const cands = (g, i, r) => {   // r m 以内の点 [番号, きょり]
     const a = Math.round(lat[i] * 2000), b = Math.round(lon[i] * 2000), out = [];
-    for (let x = -2; x <= 2; x++) for (let y = -2; y <= 2; y++)
+    const K = Math.max(2, Math.ceil(r / 45));   // 1マス 約55m（たて）× 約45m（よこ）
+    for (let x = -K; x <= K; x++) for (let y = -K; y <= K; y++)
       for (const j of g.get((a + x) + "," + (b + y)) || []) { const dd = d(i, j); if (dd <= r) out.push([j, dd]); }
     return out;
   };
@@ -846,8 +852,8 @@ function buildGraph(osm, cfg, onProg) {
   // 横断の追加コスト（その点で lvl の道を横切るとき）と種類 1=信号 2=横断歩道 3=なし
   // ・信号のある交差点（交差点から15m以内に信号の点。どの道の上でも）：車の信号に したがって渡れる → その場でOK
   // ・信号のない交差点：その大きい道の上の 12m以内の横断歩道だけ（わき道を渡る横断歩道は数えない）
-  // ・はなれた信号・横断歩道までの まわり道は ここでは足さない（大きい道ぞいに走って 信号の交差点で渡るルートは ふつうに計算される）
-  const HERE_R = 12, SIG_R = 15;
+  // ・どちらもない 4車線・上下別の道：cfg.xDet m 以内の、その大きい道の上の 信号・横断歩道まで行って渡る（2×きょり を足す。0＝しない）
+  const HERE_R = 12, SIG_R = 15, DET_R = +cfg.xDet || 0;   // DET_R：はなれた信号・横断歩道まで行って渡る（m・0＝しない）
   const xcost = new Float32Array(N), xkind = new Uint8Array(N), xref = new Int32Array(N).fill(-1), xdet = new Float32Array(N);   // xref：渡ってよいことにした 信号・横断歩道の点（🧪 道のデータを見る で出す）
   let nNodes = 0, nDiv = 0, nDet = 0;
   for (let i = 0; i < N; i++) {
@@ -864,6 +870,12 @@ function buildGraph(osm, cfg, onProg) {
     for (const [j, dd] of cands(gSig, i, SIG_R)) tryJ(j, 0, 1, true);   // 信号のある交差点（車の信号でも 歩行者信号でも）
     if (L === 1 || cfg.wideCross === "crosswalk" || anyOK)
       for (const [j, dd] of cands(gXw, i, HERE_R)) tryJ(j, 0, 2, sameRoad(i, j) && lvl[j] >= L);   // 信号のない交差点：その大きい道の上の横断歩道だけ
+    // 🚸 渡れない交差点（4車線・上下別の道）：その大きい道の上の DET_R m 以内の 信号・横断歩道まで行って渡る（行って もどる分 2×きょり）。
+    //    ルートの線は交差点でまたぐ形のまま。アプリが「左の横断歩道で道路を横断してください」と言って、自機の横に 🚸/🚦 を出す
+    if (DET_R > 0 && bk === 3 && (L === 2 || divided[i])) {
+      for (const [j, dd] of cands(gSig, i, DET_R)) if (dd > SIG_R) tryJ(j, dd, 1, sameRoad(i, j) && lvl[j] >= L);
+      if (cfg.wideCross === "crosswalk" || L === 1) for (const [j, dd] of cands(gXw, i, DET_R)) if (dd > HERE_R) tryJ(j, dd, 2, sameRoad(i, j) && lvl[j] >= L);
+    }
     xcost[i] = bc; xkind[i] = bk; xref[i] = bj; xdet[i] = bd;
     if (divided[i]) nDiv++; if (bd) nDet++;
   }
@@ -3055,7 +3067,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1119.0934", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1119.1103", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5425,7 +5437,7 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: 5, privy: 5, station: 5, cemetery: 5, park: 5 };
+  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: 5, privy: 5, station: 5, cemetery: 5, park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（×2）"], [5, "避ける（×5）"], [10, "かなり避ける（×10・はじめ）"], [30, "ほぼ通らない（×30）"]]],
@@ -5449,6 +5461,7 @@ const OTHER_ROWS = [
   ["unpaved", "砂利・土の道", [[1, "気にしない"], [3, "少し避ける"], [20, "かなり避ける"], ["no", "通らない"]]],
   ["crossRule", "大きい道を渡るルール", [["on", "使う（下の3つの設定）"], ["off", "使わない（どこでも渡る）"]]],
   ["wideCross", "4車線以上の道を渡る", [["signal", "信号のある所だけ"], ["crosswalk", "信号か横断歩道"], ["any", "どこでも"]]],
+  ["xDet", "4車線の道を 交差点で渡れないとき", [[0, "大回りして 渡れる交差点をさがす"], [60, "60m以内の信号・横断歩道まで行って渡る（はじめ）"], [100, "100m以内の信号・横断歩道まで行って渡る"], [150, "150m以内の信号・横断歩道まで行って渡る"]]],
   ["bigCross", "県道・国道を渡る（2車線でも）", [["mid", "2車線の道と同じ"], ["wide", "4車線と同じ（車が多い・坂が多いなら）"]]],
   ["midCross", "2車線の道を信号・横断歩道のない所で渡る", [[0, "ペナルティなし（どこでも渡る）"], [100, "ペナルティ 100m"], [300, "ペナルティ 300m"], [500, "ペナルティ 500m"], [1000, "ペナルティ 1km"], [3000, "ペナルティ 3km（ほぼ渡らない）"]]],
 ];
@@ -5471,7 +5484,7 @@ function renderCfg() {
   h += '<h4>進行方向</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="flow"' + (lsGet("hosomichi_flowmode", "fwd") !== "off" ? " checked" : "") + '>➤ ルートの上に 進む向きの矢印を出す</label>';
   $("cfgMap").innerHTML = h; h = "";
   h += "<h4>計算</h4>" + get(["mode", "area", "turn"]);
-  h += "<h4>道を渡るとき</h4>" + get(["crossRule", "wideCross", "bigCross", "midCross"]) + '<div class="note">ペナルティ＝ルートの長さに足して計算するきょり（じっさいに走るきょりは ふえないよ）<span class="hq">?</span><div class="hd">たとえば ペナルティ100m なら、信号・横断歩道のある所を通るルートの遠回りが 100mより短ければ そっちを選ぶよ。4車線の道は 3km（ほぼ渡らない）に決まってるよ。右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
+  h += "<h4>道を渡るとき</h4>" + get(["crossRule", "wideCross", "xDet", "bigCross", "midCross"]) + '<div class="note">ペナルティ＝ルートの長さに足して計算するきょり（じっさいに走るきょりは ふえないよ）<span class="hq">?</span><div class="hd">たとえば ペナルティ100m なら、信号・横断歩道のある所を通るルートの遠回りが 100mより短ければ そっちを選ぶよ。4車線の道は 3km（ほぼ渡らない）に決まってるよ。右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">細い道なら 一方通行の逆向きも走るよ（少し避ける）<span class="hq">?</span><div class="hd">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div></div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか<span class="hq">?</span><div class="hd">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div></div>'
     + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）<span class="hq">?</span><div class="hd">交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。⛰急坂？の中でも、高さの差のほとんどが 15mの間に まとまっていて 25%より急な所（長い道の まん中だけ階段、みたいな所）は 🪜階段？にするよ。長い階段（15mの間で3m以上・30%より急）も 🪜階段？だよ（とちゅうで はしとはしの高さから飛び出した点は、崖や擁壁のずれとして すてるよ）。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div></div>';
@@ -5733,7 +5746,8 @@ function onPos(p) {
   applyBearing();
   if (follow && !ovOn() && !blkFull()) { const z = first ? Math.max(map.getZoom(), 16) : map.getZoom(); map.setView(aheadLL(ll, z), z, { animate: true }); }  // 拡大率はそのまま（全体を見ているあいだは動かさない）
   if (cur && cur.nav && cur.nav.length > 1) {
-    const [off, rest] = nearestOnRoute(ll), nav = $("nav");
+    let [off, rest] = nearestOnRoute(ll); const nav = $("nav");
+    if (off > 30 && xvHold(ll)) off = 0;   // 🚸 横断歩道・信号まで行って渡っている とちゅうは「外れています」と言わない
     nav.style.display = "block";
     nav.className = off > 60 ? "off" : "";
     nav.textContent = (rest < 30 && !cur.partial ? "🎉 とうちゃく！" : `のこり ${cur.partial ? "約" : ""}${fmtKm(rest)}` + (cur.partial ? "（計算中）" : ""))
@@ -5742,6 +5756,7 @@ function onPos(p) {
     if (!vcJoined && off < 60) { vcJoined = true; vcJoinAt = navAlong; }
     try { vcNav(off, rest); } catch {}
     tripBar(rest); try { backHint(off); } catch {}
+    try { xvIcUpd(); } catch {}
   }
 }
 // ---------- 🗣 音声ナビ（ルートの線の曲がりぐあいから「曲がる所」を見つけて、近づいたらしゃべる） ----------
@@ -6009,20 +6024,36 @@ function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルー�
   if (vcOn) say("ルートにもどる道を作ったよ");
 }
 let vcXv = [];
-function vcXvFind() {   // cur.xvia → [{ s: ルートの何m目, t: 言うこと }]
+function vcXvFind() {   // cur.xvia → [{ s: ルートの何m目, t: 言うこと, a: 交差点, b: 渡る所, k: 1🚦/2🚸, m: きょり }]
   const R = cur.nav, out = [];
   for (const v of cur.xvia || []) {
     const a = [v[0], v[1]], b = [v[2], v[3]]; let k = -1, bd = Infinity;
     for (let i = 0; i < R.length; i++) { const d = hav(R[i], a); if (d < bd) { bd = d; k = i; } }
     if (k < 0 || bd > 15) continue;
     const sd = cum[k], hd = bearingDeg(vcAt(Math.max(0, sd - 20)), a);   // 交差点に入る向き
-    const d = ((bearingDeg(a, b) - hd + 540) % 360) - 180, ad = Math.abs(d);
-    const where = ad < 50 ? "まっすぐ先" : ad > 130 ? "少し手前" : d > 0 ? "右" : "左";
-    const m = Math.max(10, Math.round(v[5] / 10) * 10), w = v[4] === 1 ? "信号" : "横断歩道";
-    out.push({ s: sd, t: `この先の大きい道は、${where}に${m}メートルの、${w}で渡ってね` });
+    const d = ((bearingDeg(a, b) - hd + 540) % 360) - 180, ad = Math.abs(d), w = v[4] === 1 ? "信号" : "横断歩道";
+    const t = ad < 50 ? `この先の${w}で道路を横断してください` : ad > 130 ? `少しもどって、${w}で道路を横断してください` : `${d > 0 ? "右" : "左"}の${w}で道路を横断してください`;
+    out.push({ s: sd, t, a, b, k: v[4], m: v[5] });
   }
   return out.sort((p, q) => p.s - q.s);
 }
+// 🚸 はなれた 信号・横断歩道まで行って渡る所：交差点の手前90m〜すぎて25m のあいだ（交差点から そこまでの きょり＋40m 以内にいるとき）
+function xvHold(ll) {
+  if (vcFor !== cur || navAlong == null || !ll) return null;
+  for (const x of vcXv) if (navAlong > x.s - 90 && navAlong < x.s + 25 && hav(ll, x.a) < x.m + 40) return x;
+  return null;
+}
+// 自機の横（渡る所の方向）に 大きな 🚦/🚸 を出す（地図が回っていても、画面の上での向きにする）
+const xvIc = document.createElement("div"); xvIc.id = "xvIc"; map.getContainer().appendChild(xvIc);
+function xvIcUpd() {
+  const x = me && follow && cur ? xvHold([me.getLatLng().lat, me.getLatLng().lng]) : null;
+  if (!x) { xvIc.style.display = "none"; return; }
+  const p = map.latLngToContainerPoint(me.getLatLng()), bb = map.getBearing ? map.getBearing() : 0;
+  const ang = (bearingDeg(x.a, x.b) + bb) * Math.PI / 180, R = 95;
+  xvIc.className = x.k === 1 ? "sig" : "xw"; xvIc.innerHTML = (x.k === 1 ? "🚦" : "🚸") + `<b>${Math.max(10, Math.round(x.m / 10) * 10)}m</b>`;
+  xvIc.style.display = "block"; xvIc.style.left = (p.x + Math.sin(ang) * R) + "px"; xvIc.style.top = (p.y - Math.cos(ang) * R) + "px";
+}
+map.on("move zoom rotate viewreset", () => { try { xvIcUpd(); } catch {} });
 function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a < 60 ? "ななめ" + lr : a < 150 ? lr : "大きく" + lr; }
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;

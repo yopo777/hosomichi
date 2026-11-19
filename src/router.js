@@ -22,6 +22,7 @@ const DEFAULT_CFG = {
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
   oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
   midCross: 100,         // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
+  xDet: 60,              // 4車線の道：この m 以内の（同じ道の上の）信号・横断歩道まで行って渡る。0＝しない（交差点の その場で渡れる所だけ）
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
 const OTHER_PENALTY = 2.0;
@@ -414,7 +415,8 @@ function buildGraph(osm, cfg, onProg) {
   }
   const cands = (g, i, r) => {   // r m 以内の点 [番号, きょり]
     const a = Math.round(lat[i] * 2000), b = Math.round(lon[i] * 2000), out = [];
-    for (let x = -2; x <= 2; x++) for (let y = -2; y <= 2; y++)
+    const K = Math.max(2, Math.ceil(r / 45));   // 1マス 約55m（たて）× 約45m（よこ）
+    for (let x = -K; x <= K; x++) for (let y = -K; y <= K; y++)
       for (const j of g.get((a + x) + "," + (b + y)) || []) { const dd = d(i, j); if (dd <= r) out.push([j, dd]); }
     return out;
   };
@@ -440,8 +442,8 @@ function buildGraph(osm, cfg, onProg) {
   // 横断の追加コスト（その点で lvl の道を横切るとき）と種類 1=信号 2=横断歩道 3=なし
   // ・信号のある交差点（交差点から15m以内に信号の点。どの道の上でも）：車の信号に したがって渡れる → その場でOK
   // ・信号のない交差点：その大きい道の上の 12m以内の横断歩道だけ（わき道を渡る横断歩道は数えない）
-  // ・はなれた信号・横断歩道までの まわり道は ここでは足さない（大きい道ぞいに走って 信号の交差点で渡るルートは ふつうに計算される）
-  const HERE_R = 12, SIG_R = 15;
+  // ・どちらもない 4車線・上下別の道：cfg.xDet m 以内の、その大きい道の上の 信号・横断歩道まで行って渡る（2×きょり を足す。0＝しない）
+  const HERE_R = 12, SIG_R = 15, DET_R = +cfg.xDet || 0;   // DET_R：はなれた信号・横断歩道まで行って渡る（m・0＝しない）
   const xcost = new Float32Array(N), xkind = new Uint8Array(N), xref = new Int32Array(N).fill(-1), xdet = new Float32Array(N);   // xref：渡ってよいことにした 信号・横断歩道の点（🧪 道のデータを見る で出す）
   let nNodes = 0, nDiv = 0, nDet = 0;
   for (let i = 0; i < N; i++) {
@@ -458,6 +460,12 @@ function buildGraph(osm, cfg, onProg) {
     for (const [j, dd] of cands(gSig, i, SIG_R)) tryJ(j, 0, 1, true);   // 信号のある交差点（車の信号でも 歩行者信号でも）
     if (L === 1 || cfg.wideCross === "crosswalk" || anyOK)
       for (const [j, dd] of cands(gXw, i, HERE_R)) tryJ(j, 0, 2, sameRoad(i, j) && lvl[j] >= L);   // 信号のない交差点：その大きい道の上の横断歩道だけ
+    // 🚸 渡れない交差点（4車線・上下別の道）：その大きい道の上の DET_R m 以内の 信号・横断歩道まで行って渡る（行って もどる分 2×きょり）。
+    //    ルートの線は交差点でまたぐ形のまま。アプリが「左の横断歩道で道路を横断してください」と言って、自機の横に 🚸/🚦 を出す
+    if (DET_R > 0 && bk === 3 && (L === 2 || divided[i])) {
+      for (const [j, dd] of cands(gSig, i, DET_R)) if (dd > SIG_R) tryJ(j, dd, 1, sameRoad(i, j) && lvl[j] >= L);
+      if (cfg.wideCross === "crosswalk" || L === 1) for (const [j, dd] of cands(gXw, i, DET_R)) if (dd > HERE_R) tryJ(j, dd, 2, sameRoad(i, j) && lvl[j] >= L);
+    }
     xcost[i] = bc; xkind[i] = bk; xref[i] = bj; xdet[i] = bd;
     if (divided[i]) nDiv++; if (bd) nDet++;
   }
