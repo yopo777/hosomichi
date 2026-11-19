@@ -1031,7 +1031,7 @@ async function dbgView(bb, cfg) {
     if (k && pts.length < 600) pts.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], t, k });
   }
   for (let i = 0; i < G.lat.length; i++) {
-    if (G.cfg.crossRule !== "on" || !G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || (G.adj[i] || []).length < 3) continue;   // 大きい道の上の 交差点（3方向以上）
+    if (G.cfg.crossRule !== "on" || !G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || new Set((G.adj[i] || []).map(e => e.v)).size < 3) continue;   // 大きい道の上の 交差点（ちがう3方向以上。同じ区間が重なった線は1つに数える）
     const j = G.xref[i];
     if (xs.length < 600) xs.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], lv: G.lvl[i], k: G.xkind[i], c: Math.round(G.xcost[i]), dv: G.divided ? G.divided[i] : 0, det: G.xdet ? Math.round(G.xdet[i]) : 0, ref: j >= 0 ? [r6(G.lat[j]), r6(G.lon[j])] : null });
   }
