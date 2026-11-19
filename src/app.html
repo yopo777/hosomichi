@@ -3368,7 +3368,7 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, fastCross: "wide", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: 5, privy: 5, station: 5, cemetery: 5, park: 5 };
+  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "wide", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: 5, privy: 5, station: 5, cemetery: 5, park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（×2）"], [5, "避ける（×5）"], [10, "かなり避ける（×10・デフォルト）"], [30, "ほぼ通らない（×30）"]]],
@@ -3391,6 +3391,7 @@ const OTHER_ROWS = [
   ["bridge", "歩道橋・地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
   ["unpaved", "砂利・土の道", [[1, "気にしない"], [3, "少し避ける"], [20, "かなり避ける"], ["no", "通らない"]]],
   ["xDet", "4車線の道を 交差点で渡れないとき、信号・横断歩道まで 行ってよい距離", [[0, "行かない（大回りして 渡れる交差点をさがす）"], [60, "60mまで（デフォルト）"], [100, "100mまで"], [150, "150mまで"]]],
+  ["allWide", "2車線の道路も 4車線としてあつかう（より安全に）", [["off", "あつかわない（デフォルト）"], ["on", "あつかう"]]],
   ["fastCross", "最高速度50km以上の2車線道路を 4車線としてあつかう", [["wide", "あつかう（デフォルト）"], ["mid", "あつかわない（車が少ない所なら）"]]],
   ["midCross", "2車線の道を信号・横断歩道のない所で渡る", [[0, "ペナルティなし（どこでも渡る）"], [100, "ペナルティ 100m"], [300, "ペナルティ 300m"], [500, "ペナルティ 500m"], [1000, "ペナルティ 1km"], [3000, "ペナルティ 3km（ほぼ渡らない）"]]],
 ];
@@ -3413,7 +3414,7 @@ function renderCfg() {
   h += '<h4>進行方向</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="flow"' + (lsGet("hosomichi_flowmode", "fwd") !== "off" ? " checked" : "") + '>➤ ルートの上に 進む向きの矢印を出す</label>';
   $("cfgMap").innerHTML = h; h = "";
   h += "<h4>計算</h4>" + get(["mode", "area", "turn"]);
-  h += "<h4>道を渡るとき</h4>" + get(["xDet", "fastCross", "midCross"]) + '<div class="note">ペナルティ＝ルートの長さに足して計算するきょり（じっさいに走るきょりは ふえないよ）<span class="hq">?</span><div class="hd">たとえば ペナルティ100m なら、信号・横断歩道のある所を通るルートの遠回りが 100mより短ければ そっちを選ぶよ。4車線以上の道は、安全のため 信号か横断歩道のある所でしか渡らないよ（それ以外は 3km＝ほぼ渡らない）。右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
+  h += "<h4>道を渡るとき</h4>" + get(["xDet", "allWide", "fastCross", "midCross"]) + '<div class="note">ペナルティ＝ルートの長さに足して計算するきょり（じっさいに走るきょりは ふえないよ）<span class="hq">?</span><div class="hd">たとえば ペナルティ100m なら、信号・横断歩道のある所を通るルートの遠回りが 100mより短ければ そっちを選ぶよ。4車線以上の道は、安全のため 信号か横断歩道のある所でしか渡らないよ（それ以外は 3km＝ほぼ渡らない）。右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">細い道なら 一方通行の逆向きも走るよ（少し避ける）<span class="hq">?</span><div class="hd">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div></div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか<span class="hq">?</span><div class="hd">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div></div>'
     + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）<span class="hq">?</span><div class="hd">交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。⛰急坂？の中でも、高さの差のほとんどが 15mの間に まとまっていて 25%より急な所（長い道の まん中だけ階段、みたいな所）は 🪜階段？にするよ。長い階段（15mの間で3m以上・30%より急）も 🪜階段？だよ（とちゅうで はしとはしの高さから飛び出した点は、崖や擁壁のずれとして すてるよ）。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div></div>';
@@ -3427,7 +3428,7 @@ function renderCfg() {
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
   h += '<div class="note" style="margin-top:6px">設定はこの端末におぼえておくよ。変えたらもう一度「ルートを作る」を押してね</div>';
-  $("cfgBox").innerHTML = h;
+  $("cfgBox").innerHTML = h; cfgDeps();
 }
 // 設定の中の小さいタブ（最後に開いたものをおぼえておく）
 function showStab(k) { for (const el of document.querySelectorAll("#stabs button,.spane")) el.classList.toggle("on", el.dataset.s === k); lsSet("hosomichi_stab", k); }
@@ -3446,8 +3447,16 @@ $("cfgBox").onchange = e => {
   if (e.target.name === "rcol") return setColorMode(e.target.value);
   const el = e.target, v = isNaN(+el.value) ? el.value : +el.value;
   if (el.dataset.pen) cfg.pen[el.dataset.pen] = v; else cfg[el.dataset.k] = v;
-  saveCfg();
+  saveCfg(); cfgDeps();
 };
+// 「2車線の道路も4車線としてあつかう」が あつかう のときは、2車線だけの設定（50km以上・信号なしで渡る）は使わないので えらべなくする
+function cfgDeps() {
+  const on = cfg.allWide === "on";
+  for (const k of ["fastCross", "midCross"]) {
+    const sel = document.querySelector(`#cfgBox select[data-k="${k}"]`); if (!sel) continue;
+    sel.disabled = on; sel.closest(".c").style.opacity = on ? .4 : 1; sel.title = on ? "2車線の道路も4車線としてあつかうので、使わないよ" : "";
+  }
+}
 renderCfg();
 $("cfgReset").onclick = () => { if (!confirm("設定をはじめの状態にもどす？")) return; cfg = structuredClone(CFG_DEF); saveCfg(); renderCfg(); };
 // 📷 その場所のストリートビューを Google マップで開く（見るだけ。ルートの近くなら、進む向きを向く）
@@ -3953,6 +3962,18 @@ function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルー�
   if (vcOn) say("ルートにもどる道を作ったよ");
 }
 let vcXv = [];
+let vcNg = [];
+function vcNgFind() {   // cur.ng（信号も横断歩道もない所で渡る）→ [{ s: ルートの何m目 }]。曲がる所と同じ（20m以内）なら その曲がりに「道路を横断します」をつける
+  const R = cur.nav, out = [];
+  for (const p of cur.ng || []) {
+    let k = -1, bd = Infinity;
+    for (let i = 0; i < R.length; i++) { const d = hav(R[i], p); if (d < bd) { bd = d; k = i; } }
+    if (k < 0 || bd > 15) continue;
+    const sd = cum[k], t = vcTurns.find(t => Math.abs(t.s - sd) < 20);
+    if (t) t.cross = true; else out.push({ s: sd });
+  }
+  return out.sort((p, q) => p.s - q.s);
+}
 function vcXvFind() {   // cur.xvia → [{ s: ルートの何m目, t: 言うこと, a: 交差点, b: 渡る所, k: 1🚦/2🚸, m: きょり }]
   const R = cur.nav, out = [];
   for (const v of cur.xvia || []) {
@@ -3987,12 +4008,13 @@ function vcWord(d) { const lr = d > 0 ? "右" : "左", a = Math.abs(d); return a
 function vcNav(off, rest) {
   if (!(vcOn || blkScr) || !follow || navAlong == null) return;
   const say = (t, hi) => { if (vcOn) window.say(t, hi); };   // 音声オフでも、まっ黒画面の「曲がる手前で地図を出す」は動かす
-  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); try { vcQuiet = vcQuietFind(); } catch { vcQuiet = []; } try { vcXv = vcXvFind(); } catch { vcXv = []; } vcOff = false; vcEnd = false; vcLast = navAlong; }
+  if (vcFor !== cur) { vcFor = cur; vcTurns = vcFind(); try { vcQuiet = vcQuietFind(); } catch { vcQuiet = []; } try { vcXv = vcXvFind(); } catch { vcXv = []; } try { vcNg = vcNgFind(); } catch { vcNg = []; } vcOff = false; vcEnd = false; vcLast = navAlong; }
   // 2周目・3周目：ルートの位置が大きくもどったら（ゴール→スタート）、案内を言ったしるしを消して、もう一回言うようにする
   if (navAlong < vcLast - 300) {
     for (const t of vcTurns) t.a1 = t.a2 = false;
     for (const q of cur.stops || []) q.said = false;
     for (const x of vcXv) x.said = false;
+    for (const x of vcNg) x.said = false;
     vcEnd = false; vsDone.clear(); addLog("🔁 同じルートをもう1周：案内をはじめから言うよ", "m");
   }
   vcLast = navAlong;
@@ -4011,10 +4033,12 @@ function vcNav(off, rest) {
   if (vcQuiet.some(s => s - navAlong > -5 && s - navAlong <= 35)) blkShowMap(5000);   // 道なりの曲がり：声はなし・地図だけ出す
   // 🚦 近くの信号・横断歩道まで行って渡る所：70m手前で「この先の交差点は、右に30メートルの信号で渡ってね」
   for (const x of vcXv) { const dx = x.s - navAlong; if (!x.said && dx > 0 && dx <= 70) { x.said = true; say(x.t); blkShowMap(8000); break; } }
+  // ⚠ 信号も横断歩道もない所で 道路を渡る：50m手前で「道路を横断します」（曲がる所と同じなら「まもなく右です。道路を横断します」）
+  for (const x of vcNg) { const dx = x.s - navAlong; if (!x.said && dx > 0 && dx <= 50) { x.said = true; say("道路を横断します。車に気をつけてね"); blkShowMap(6000); break; } }
   const i = vcTurns.findIndex(t => t.s > navAlong - 5); if (i < 0) return;
   const t = vcTurns[i], dist = t.s - navAlong, nx = vcTurns[i + 1];
   const then = nx && nx.s - t.s < 60 ? `、すぐ${vcWord(nx.d)}` : "";
-  if (dist <= 35) { if (!t.a2) { t.a2 = t.a1 = true; say(`まもなく${vcWord(t.d)}です${then}`); } blkShowMap(5000); }
+  if (dist <= 35) { if (!t.a2) { t.a2 = t.a1 = true; say(`まもなく${vcWord(t.d)}です${then}${t.cross ? "。道路を横断します。車に気をつけてね" : ""}`); } blkShowMap(5000); }
   else if (dist <= 120) { if (!t.a1) { t.a1 = true; say(`${Math.max(50, Math.round(dist / 50) * 50)}メートル先、${vcWord(t.d)}です${then}`); } }
 }
 // ---------- ⬛ さわらないと画面をまっ黒に（画面はついたままなので、GPS・音声は動く。有機ELなら黒は電池をほぼ使わない） ----------
