@@ -174,6 +174,7 @@ body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font
 .spot{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #888;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;box-shadow:0 1px 4px #0007}
 .flowb{filter:drop-shadow(0 0 1.5px rgba(0,0,0,.6))}   /* ルートのボール：ふちなし（マークとまちがえないように）・白でも見えるように うすい影 */
 .spot.road{width:22px;height:22px;border-width:2px;font-size:12px}
+.spot.jar{position:relative}.spot.jar::after{content:"";position:absolute;right:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#8e24aa;border:1.5px solid #fff;box-shadow:0 0 2px #0008}   /* 🚓 警察のデータから足したマーク */
 .spotS .spot{width:17px;height:17px;border-width:2px;font-size:10px}.spotS .spot.road{width:14px;height:14px;border-width:1.5px;font-size:8px}
 .spotS .spot svg{transform:scale(.62)}.spotS .spot.road svg{transform:scale(.5)}
 .spotL .spot{width:34px;height:34px;border-width:3px;font-size:20px}.spotL .spot.road{width:28px;height:28px;font-size:16px}.spotL .spot svg{transform:scale(1.25)}
@@ -1137,7 +1138,7 @@ worker.onmessage = ev => {
   if (m.type === "pf") { onPf(m); return; }
   if (m.type === "oneway") { owDraw(m); return; }
   if (m.type === "dbgView") { dbgDraw(m); return; }
-  if (m.type === "jarSig") { jarSigDraw(m); return; }
+  if (m.type === "jarSig") { if (m.who === "spot") spotJarDraw(m); else jarSigDraw(m); return; }
   if (m.type === "footLive") { footLiveGot(m.segs || []); return; }
   if (m.type === "footMatch") { const f = footCb.get(m.id); footCb.delete(m.id); if (f) f(m.segs || []); return; }
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
@@ -4860,7 +4861,7 @@ function renderSpots() {
         return `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-weight:bold;font-size:14px"><input type="checkbox" data-sall="1"${on === all.length ? " checked" : ""}>📍 すべてのマーク<span style="font-weight:normal;font-size:11px;color:#888">（${on}/${all.length}）</span></label>`; })()
     + SPOT_KINDS.map(([g, ks], gi) => `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("")
-      + (g === "道" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所</div>' : "") + "</div></div>").join("");
+      + (g === "道" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所<br>🚦🚸 の右上に<span style="color:#8e24aa">●</span>＝地図（OSM）にはなくて、警察のデータ（JARTIC）から足した信号・横断歩道（ルートでも使うよ）</div>' : "") + "</div></div>").join("");
   for (const el of $("spotBox").querySelectorAll("[data-sg]")) { const ks = SPOT_KINDS[+el.dataset.sg][1]; el.indeterminate = !el.checked && ks.some(x => spotOn.has(x[0])); }   // 一部だけオンのときは「－」
   { const el = $("spotBox").querySelector("[data-sall]"); if (el) el.indeterminate = !el.checked && spotOn.size > 0; }
   try { mkKindsShow(); } catch {}   // 🏆 チャレンジの「📍 マークを回る」に、いま回るものを出す
@@ -4967,6 +4968,22 @@ async function spotUpdate(force) {
     if (!isRoad) spotMk.push([m, ll]);   // 道・車止めは点滅させない（たくさんあるので）
   }
   spotShown = shown;
+  // 🚓 警察のデータ（JARTIC）から ルートで使うことにした 信号・横断歩道も出す（右上に赤いぽち）
+  if (roadOn.includes("signal") || roadOn.includes("xing")) { spotJarAt = p; worker.postMessage({ cmd: "jarSig", who: "spot", id: ++spotJarId, bb: [vb.getSouth(), vb.getWest(), vb.getNorth(), vb.getEast()], cfg: structuredClone(cfg) }); }
+}
+let spotJarId = 0, spotJarAt = null;
+function spotJarDraw(m) {
+  if (m.id !== spotJarId || spotAt !== spotJarAt || spotHide || map.getZoom() < SPOT_ROAD_Z || m.err) return;
+  const vb = map.getBounds().pad(0.15), add = [];
+  if (spotOn.has("signal")) for (const x of m.sigs || []) if (x.tag) add.push(["signal", x.p, x.t === "btn" ? "押しボタン信号など" : "信号"]);
+  if (spotOn.has("xing")) for (const x of m.xws || []) if (x.tag) add.push(["xing", x.p, "横断歩道（道のとちゅう）"]);
+  for (const [k, ll, nm] of add) {
+    if (!vb.contains(ll)) continue;
+    const [ic, , col] = SPOT_INFO[k];
+    L.marker(ll, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="transform:translate(-50%,-50%);width:32px"><div class="spot road jar" style="border-color:${col}">${spotIc(k, ic)}</div></div>` }), zIndexOffset: 200 })
+      .bindTooltip(nm + "（警察のデータ）", { direction: "top", offset: [0, -14] })
+      .on("click", () => pinPopup(L.latLng(ll), ll[0].toFixed(6) + "," + ll[1].toFixed(6), ic + " " + nm + "（警察のデータ・OSMにはない）")).addTo(spotLayer);
+  }
 }
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
 map.on("zoomend", () => { if (follow && me) spotUpdate(true); });
