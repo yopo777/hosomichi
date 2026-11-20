@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1121.0008</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1121.0022</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3424,7 +3424,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1121.0008", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1121.0022", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6260,8 +6260,7 @@ function onPos(p) {
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
   qCheck(ll, p.coords.accuracy); if (!blkFull()) spotUpdate(false); homeDist();   // まっ黒のあいだは マークも描かない
   setTimeout(() => vcSpotCheck(ll), 0);   // 案内（vcNav）のあとで
-  setTimeout(() => nbCheck(ll).catch(() => {}), 0);   // 🚳 自転車通行止めに近づいたら
-  setTimeout(() => oxCheck(ll).catch(() => {}), 0);   // ⛔ 一方通行の出口に 逆向きに近づいたら
+  // 🚳🚶⛔ の「近くに〜」の声は 11/21 にやめた（音がふえすぎる）。nbCheck・oxCheck は のこしておく（もどすときは ここでよぶ）
   applyBearing();
   if (follow && !ovOn() && !blkFull()) { const z = first ? Math.max(map.getZoom(), 16) : map.getZoom(); map.setView(aheadLL(ll, z), z, { animate: true }); }  // 拡大率はそのまま（全体を見ているあいだは動かさない）
   if (cur && cur.nav && cur.nav.length > 1) {
@@ -6428,6 +6427,9 @@ async function nbGather(S, W, N, E, now, kinds) {   // → { lines: [{p, h, w, k
       ents.push({ p: [P[1] / 111320, P[0] / c / 111320], h: o.h, w: o.w, k: o.k, xy: P });
     }
   });
+  // 同じ所（15m以内）に 🚶歩行者用道路 と 🚳自転車通行止め の両方の入り口があれば 🚶 だけ（東京は 同じ規制が両方に入っている）。地図も声も これを使う
+  const pwE = ents.filter(e => e.k === 1);
+  for (let i = ents.length - 1; i >= 0; i--) if (ents[i].k !== 1 && pwE.some(q => Math.hypot(q.xy[0] - ents[i].xy[0], q.xy[1] - ents[i].xy[1]) < 15)) ents.splice(i, 1);
   return { lines, ents };
 }
 // 地図に出す（ズーム15以上・設定の「マーク」→「道」の 🚳 でオン・オフ。右はしの📍でまとめて かくせる）
@@ -6450,8 +6452,7 @@ async function nbMapDraw() {
   if (id !== nbMapId || !r) return;
   nbLayer.clearLayers();
   for (const o of r.lines) L.polyline(o.p, { color: o.k === 1 ? "#1565c0" : "#e00000", weight: 8, opacity: .28, interactive: false }).addTo(nbLayer);
-  const pwE = r.ents.filter(e => e.k === 1), ents = r.ents.filter(e => e.k === 1 || !pwE.some(q => Math.hypot(q.xy[0] - e.xy[0], q.xy[1] - e.xy[1]) < 15));   // 同じ所に両方あれば 🚶 だけ（東京は同じ道に 両方入っていることが多い）
-  for (const e of ents) L.marker(e.p, { icon: L.divIcon({ className: "", html: `<div>${e.k === 1 ? PW_SIGN : NB_SIGN}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }), zIndexOffset: 400 })
+  for (const e of r.ents) L.marker(e.p, { icon: L.divIcon({ className: "", html: `<div>${e.k === 1 ? PW_SIGN : NB_SIGN}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }), zIndexOffset: 400 })
     .bindPopup((e.k === 1 ? "🚶 <b>歩行者用道路</b>（自転車も入れない）" : "🚳 <b>自転車通行止め</b>") + (e.h || e.w ? `<br>${nbWhen(e.h, e.w)}` : "") + `<br><small>警察のデータ（JARTIC 交通規制情報）より。じっさいの標識にしたがってね</small>`).addTo(nbLayer);
 }
 map.on("moveend zoomend", nbMapReq); setTimeout(nbMapReq, 1500);
@@ -6538,8 +6539,14 @@ async function nbRouteScan(r) {
     const old = out.find(x => x.h === o.h && x.w === o.w && x.k === o.k && x.s < e + 30 && s < x.e + 30);   // マスの切れ目・県ざかいで 分かれた線は 1つに
     if (old) { old.s = Math.min(old.s, s); old.e = Math.max(old.e, e); } else out.push({ s, e, h: o.h, w: o.w, k: o.k });
   }
+  // 同じ区間（重なっている）に 🚶 と 🚳 があれば 1つにして 🚶（声が2回にならないように。東京は 同じ規制が両方に入っている）
+  out.sort((p, q) => p.s - q.s);
+  for (let i = out.length - 1; i > 0; i--) {
+    const a = out[i - 1], b = out[i];
+    if (b.s < a.e - 10 && (a.k || 0) !== (b.k || 0)) { const keep = a.k === 1 ? a : b, other = keep === a ? b : a; keep.s = Math.min(a.s, b.s); keep.e = Math.max(a.e, b.e); if (!keep.h && other.h) { keep.h = other.h; keep.w = other.w; } out.splice(out.indexOf(other), 1); }
+  }
   for (const x of out) { let k = 1; while (k < cs.length - 1 && cs[k] < x.s) k++; x.a = R[k]; }
-  return out.sort((p, q) => p.s - q.s);
+  return out;
 }
 const nbIc = document.createElement("div"); nbIc.id = "nbIc"; map.getContainer().appendChild(nbIc);
 function nbRouteTick() {
