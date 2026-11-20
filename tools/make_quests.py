@@ -113,6 +113,8 @@ def spot_kind(t, is_way=False):
     if a == "ferry_terminal" or (g("route") == "ferry"): return "ferry"   # 渡し船
     if hi == "milestone" and "一里塚" in n: return "ichiri"
     if sh == "convenience": return "conv"
+    if (sh == "chemist" or a == "pharmacy") and (re.search(DRUG_NM, n, re.I) or (sh == "chemist" and not re.search(r"調剤|薬局|薬店|薬舗|ファーマシー", n))):
+        return "drug"   # 💊 ドラッグストア（エビオスみたいな物を売っている店）。チェーンの名前なら OK・「〇〇薬局」「調剤」みたいな薬局は出さない（スギ薬局はチェーンなので出す）
     if a == "cafe": return "cafe"
     if a in ("restaurant", "fast_food") and "ramen" in (g("cuisine") or ""): return "ramen"
     if a in ("restaurant", "fast_food", "food_court"):   # 🍴 ランチ用（料理の種類 cuisine か、名前で見分ける）
@@ -139,6 +141,7 @@ def spot_kind(t, is_way=False):
     if g("leisure") == "park": return "park"
     if to == "attraction" or hi: return "sight"
     return None
+DRUG_NM = r"ドラッグ|マツモトキヨシ|マツキヨ|ウエルシア|ウェルシア|welcia|ココカラ|クリエイト|ツルハ|サンドラッグ|スギ薬局|スギドラッグ|カワチ|セイムス|福太郎|コスモス|トモズ|サツドラ|クスリのアオキ|キリン堂|ゲンキー|Vドラッグ|ププレ|ザグザグ|レデイ薬局|くすりの|クスリの|薬王堂|petit madoca|プチマドカ|matsumoto ?kiyoshi|sundrug|tsuruha"
 def famous(t): return 1 if (t.get("wikidata") or t.get("wikipedia")) else 0
 QUEST_KINDS = {"jizo", "tree", "spring", "fall", "ichiri", "ferry", "station", "shrine", "temple", "church", "castle", "kofun", "monument", "view", "michi", "sight", "bridge", "bath"}
 

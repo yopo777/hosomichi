@@ -202,7 +202,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.0009</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1149</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3135,7 +3135,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1120.0009", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1149", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6923,7 +6923,7 @@ $("qList").onclick = e => {
 const SPOT_KINDS = [
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"], ["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
-  ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"], ["townhall", "🏛", "役所"], ["library", "📚", "図書館"], ["post", "📮", "郵便局"], ["fire", "🚒", "消防署"],
+  ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"], ["townhall", "🏛", "役所"], ["library", "📚", "図書館"], ["post", "📮", "郵便局"], ["drug", "💊", "ドラッグストア"], ["fire", "🚒", "消防署"],
     ["factory", "🏭", "工場"], ["waterw", "🚰", "浄水場・水道局"], ["power", "⚡", "発電所"], ["ground", "🏟", "グラウンド・球場"], ["danchi", "🏢", "団地"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
