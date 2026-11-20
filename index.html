@@ -203,7 +203,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1610</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1627</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3396,7 +3396,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1610", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1627", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5371,19 +5371,19 @@ function dbgReq() {
   dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg) }); }, 300);
 }
 // 🧪 道のデータの色（細い道を 種類で分ける）。c 色・w 太さ・dash 点線・alt しま模様のもう1色（下に alt、上に c の破線）
-const DBG_K = {
+const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道」のふち）。白い点々・2色のしまで 数をふやす
   road: { n: "車道（細い道）", c: "#00c8e8", w: 3 },
-  service: { n: "車道（駐車場・敷地の道 service）", c: "#7b97a8", w: 2 },
-  sidewalk: { n: "歩道（車道ぞい）", c: "#ff5fa2", w: 2.5 },
-  crossing: { n: "横断歩道の上", c: "#ff5fa2", w: 2.5, dash: "2 3" },
-  foot: { n: "歩行者の道", c: "#ff9bd0", w: 2.5 },
-  fbridge: { n: "歩道橋", c: "#a0006e", w: 5 },
-  ftunnel: { n: "地下道", c: "#6d4c41", w: 4, dash: "8 4" },
+  service: { n: "車道（駐車場・敷地の道 service）", c: "#93abbb", w: 2.5 },
+  sidewalk: { n: "歩道（車道ぞい）", c: "#ff5fa2", w: 3 },
+  crossing: { n: "横断歩道の上", c: "#ff5fa2", w: 3, dash: "3 4", alt: "#fff" },
+  foot: { n: "歩行者の道", c: "#ffa6d6", w: 3 },
+  fbridge: { n: "歩道橋", c: "#c800b4", w: 5 },
+  ftunnel: { n: "地下道", c: "#c47a2c", w: 4, dash: "6 4", alt: "#fff" },
   nbside: { n: "歩道（自転車通行止めの橋の）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
-  path: { n: "小道（path・track）", c: "#b5651d", w: 2.5 },
+  path: { n: "小道（path・track）", c: "#c47a2c", w: 3 },
   cycle: { n: "自転車道", c: "#2e9e3a", w: 3.5 },
-  steps: { n: "階段", c: "#111", w: 4, dash: "3 3" },
-  rsteps: { n: "階段（自転車スロープつき）", c: "#111", w: 4, dash: "3 3", alt: "#2e9e3a" },
+  steps: { n: "階段", c: "#8a4dff", w: 4, dash: "3 3", alt: "#fff" },
+  rsteps: { n: "階段（自転車スロープつき）", c: "#8a4dff", w: 4, dash: "3 3", alt: "#2e9e3a" },
 };
 const dbgYes = v => v && v !== "no";
 function dbgKind(t) {
@@ -5403,9 +5403,9 @@ dbgLeg.onAdd = () => {
   const d = L.DomUtil.create("div"); d.id = "dbgLeg";
   d.style.cssText = "background:#fffe;border-radius:8px;box-shadow:0 1px 5px #0004;padding:4px 8px;font-size:11px;line-height:1.5;max-width:210px;margin-bottom:70px";
   const ln = (c, w, dash, cap) => `<line x1="2" y1="5" x2="30" y2="5" stroke="${c}" stroke-width="${w}" ${dash ? `stroke-dasharray="${dash}"` : ""} ${cap ? 'stroke-linecap="round"' : ""}/>`;
-  const sw = (c, w, dash, alt, top) => `<svg width="32" height="10" style="vertical-align:middle;margin-right:4px">${alt ? ln(alt, w) : ""}${ln(c, w, dash)}${top || ""}</svg>`;
+  const sw = (c, w, dash, alt, top, under) => `<svg width="32" height="12" style="vertical-align:middle;margin-right:4px">${under ? ln(under, w + 5) : ""}${alt ? ln(alt, w) : ""}${ln(c, w, dash)}${top || ""}</svg>`;
   const rows = [sw("#d93025", 5) + "4車線あつかい", sw("#f29900", 5) + "2車線"].concat(Object.values(DBG_K).map(K => sw(K.c, K.w, K.dash, K.alt) + K.n))
-    .concat([sw("#00c8e8", 4, null, null, ln("#fff", 2, "1 6", 1)) + "橋（白い点々）", sw("#b5651d", 3, null, null, ln("#e0a800", 4, "1 4", 1)) + "砂利・土の道（黄色の点々）", sw("#b5651d", 3, null, null, '<g opacity=".55">' + ln("#e0a800", 4, "1 10", 1) + "</g>") + "舗装かわからない（まばらな点々）", sw("#00c8e8", 4, null, null, ln("#e00", 4, "6 6")) + "🚳 自転車通行止め（赤のしま）", '<span style="opacity:.3">' + sw("#00c8e8", 4) + '</span>うすい＝通らない道（アプリの判定）']);
+    .concat([sw("#00c8e8", 4, null, null, ln("#fff", 2, "1 6", 1)) + "橋（白い点々）", sw("#b5651d", 3, null, null, ln("#e0a800", 4, "1 4", 1)) + "砂利・土の道（黄色の点々）", sw("#b5651d", 3, null, null, '<g opacity=".55">' + ln("#e0a800", 4, "1 10", 1) + "</g>") + "舗装かわからない（まばらな点々）", sw("#00c8e8", 4, null, null, ln("#e00", 4, "6 6")) + "🚳 自転車通行止め（赤のしま）", sw("#00c8e8", 3, null, null, "", "#000") + "黒いふち＝通らない道（アプリの判定）"]);
   d.innerHTML = `<b>🧪 色の見本</b> <span style="color:#888">（タップでたたむ）</span><div>${rows.join("<br>")}</div>`;
   L.DomEvent.disableClickPropagation(d);
   d.onclick = () => { const b = d.querySelector("div"); b.style.display = b.style.display === "none" ? "" : "none"; };
@@ -5424,16 +5424,17 @@ function dbgDraw(m) {
   for (const w of m.ways) {
     const k = dbgKind(w.t), K = DBG_K[k], col = w.lv ? LC[w.lv] : K.c, wt = w.lv ? 5 : K.w, t = w.t;
     const br = dbgYes(t.bridge) && k !== "fbridge" && k !== "steps" && k !== "rsteps";
-    const op = J && !w.use ? .28 : .9;   // アプリの判定：通らない道は うすく
+    const op = .95, ng = J && !w.use;   // アプリの判定：通らない道は 黒いふち
+    if (ng) L.polyline(w.pts, { renderer: dbgRend, color: "#000", weight: wt + 5, opacity: .9, interactive: false }).addTo(dbgLayer);
     if (K.alt) L.polyline(w.pts, { renderer: dbgRend, color: K.alt, weight: wt, opacity: op, interactive: false }).addTo(dbgLayer);   // しま模様の下の色
     L.polyline(w.pts, { renderer: dbgRend, color: col, weight: wt, opacity: op, dashArray: K.dash || null })
       .bindPopup(() => dbgTags("way", w.id, w.t, `<b>${K.n}</b>${br ? "（橋）" : dbgYes(t.tunnel) && k !== "ftunnel" ? "（トンネル）" : ""}・レベル${w.lv}${w.lv === 2 ? "（4車線あつかい）" : w.lv === 1 ? "（2車線）" : ""}`
         + (w.up === "sure" ? `<br>🟤 <b>砂利・土の道</b>（${esc(t.surface || t.tracktype || "")}）` : w.up === "maybe" ? "<br>🟤 舗装かわからない（小道・農道で surface がない）" : t.surface ? `<br>路面：${esc(t.surface)}` : "")
         + (t["jar:nb"] ? `<br>🚳 <b>自転車通行止め</b>（警察のデータ${t["jar:nb"] === "t" ? "・時間つき" : ""}）` : "") + (t["jar:nbside"] ? "<br>🚳 自転車通行止めの橋の歩道（歩道橋あつかいにしない）" : "")
         + (J ? (w.use ? `<br>✅ 通る道：${esc(w.why || "")}` : `<br>⛔ <b>通らない道</b>：${esc(w.why || "")}`) : ""))).addTo(dbgLayer);
-    if (t["jar:nb"]) L.polyline(w.pts, { renderer: dbgRend, color: "#e00", weight: wt, opacity: (t["jar:nb"] === "1" ? 1 : .6) * (op < .5 ? .4 : 1), dashArray: "8 8", interactive: false }).addTo(dbgLayer);   // 🚳 自転車通行止め：赤のしま
-    if (w.up) L.polyline(w.pts, { renderer: dbgRend, color: "#e0a800", weight: wt + 1, opacity: (w.up === "sure" ? 1 : .55) * (op < .5 ? .4 : 1), dashArray: w.up === "sure" ? "1 5" : "1 12", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 🟡 砂利・土の道：黄土色の点々（わからないのは まばら）
-    if (br) L.polyline(w.pts, { renderer: dbgRend, color: "#fff", weight: Math.max(2, wt - 2), opacity: op < .5 ? .5 : 1, dashArray: "1 9", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 橋：白い点々
+    if (t["jar:nb"]) L.polyline(w.pts, { renderer: dbgRend, color: "#e00", weight: wt, opacity: t["jar:nb"] === "1" ? 1 : .6, dashArray: "8 8", interactive: false }).addTo(dbgLayer);   // 🚳 自転車通行止め：赤のしま
+    if (w.up) L.polyline(w.pts, { renderer: dbgRend, color: "#e0a800", weight: wt + 1, opacity: w.up === "sure" ? 1 : .55, dashArray: w.up === "sure" ? "1 5" : "1 12", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 🟡 砂利・土の道：黄土色の点々（わからないのは まばら）
+    if (br) L.polyline(w.pts, { renderer: dbgRend, color: "#fff", weight: Math.max(2, wt - 2), opacity: 1, dashArray: "1 9", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 橋：白い点々
   }
   dbgLegend(true);
   const XC = k => k === 1 ? "#0a0" : k === 2 ? "#1a73e8" : null;
