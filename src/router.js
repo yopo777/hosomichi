@@ -983,14 +983,21 @@ function jarDB() {
 }
 async function jarStore(mode) { const db = await jarDB(); return db ? db.transaction("j", mode).objectStore("j") : null; }
 async function jarClear() { try { const st = await jarStore("readwrite"); if (st) await idbReq(st.clear()); } catch {} jarMem.clear(); }
+// JARTIC データの版（hosomichi-data/j/ver.json・jartic_pack.py が作る）。端末に保存したものと版がちがえば 取りなおす（取れなければ ""＝くらべない）
+let jarVerP = null;
+function jarVer() {
+  if (!jarVerP) jarVerP = fetch(`${packBase}j/ver.json`, { cache: "no-cache" }).then(r => r.ok ? r.json() : null).then(j => j && j.v ? String(j.v) : "").catch(() => "");
+  return jarVerP;
+}
 async function jarLoad(names) {   // そのマスたちの JARTIC を読む（メモリ → 端末 → GitHub）→ 取れなかった数
   let bad = 0;
+  const ver = await jarVer();
   await Promise.all(names.filter(n => !jarMem.has(n)).map(async n => {
     let old = null;
     try { const st = await jarStore("readonly"); old = st ? await idbReq(st.get(n)) : null; } catch {}
-    if (old && old.d && old.d.sig && old.d.xw && old.d.nb && Date.now() - old.savedAt < JAR_AGE) { jarMem.set(n, old.d); return; }   // sig・xw・nb がない＝信号・横断歩道・自転車通行止めを保存する前の古い形 → 取りなおす
+    if (old && old.d && old.d.sig && old.d.xw && old.d.nb && Date.now() - old.savedAt < JAR_AGE && (!ver || old.ver === ver)) { jarMem.set(n, old.d); return; }   // sig・xw・nb がない＝信号・横断歩道・自転車通行止めを保存する前の古い形 → 取りなおす
     try {
-      const res = await fetch(`${packBase}j/${n}.json.gz`);
+      const res = await fetch(`${packBase}j/${n}.json.gz`, { cache: "no-cache" });   // ブラウザの古いキャッシュを使わない（変わっていなければ すぐ返る）
       let d;
       if (res.status === 404) d = { nx: [], ow: [], sig: [], xw: [], nb: [] };
       else {
@@ -1000,7 +1007,7 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
         const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [], sig: j.sig || [], xw: j.xw || [], nb: j.nb || [] };
       }
       jarMem.set(n, d);
-      try { const st = await jarStore("readwrite"); if (st) await idbReq(st.put({ key: n, savedAt: Date.now(), d })); } catch {}
+      try { const st = await jarStore("readwrite"); if (st) await idbReq(st.put({ key: n, savedAt: Date.now(), ver, d })); } catch {}
     } catch { if (old) jarMem.set(n, old.d); else bad++; }   // 取れない（オフラインなど）：古いのがあれば それを使う
   }));
   return bad;
