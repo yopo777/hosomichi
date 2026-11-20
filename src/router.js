@@ -354,11 +354,11 @@ function buildGraph(osm, cfg, onProg) {
     if (nd.length < 2) continue;
     const L0 = levelOf(t, cfg);
     if (L0) { mainWays.push([nd, L0, t.name || t.ref || "w" + e.id, isOneway(t)]); for (const i of nd) if (L0 > lvl[i]) lvl[i] = L0; }   // 通らない道でも「横断する道」としては数える（名前：同じ道かを見る・一方通行：上下線が別の道か）
-    if (t["jar:nb"] === "1") { no("🚳 自転車通行止め（警察のデータ）"); continue; }   // 🚳 自転車通行止め（警察のデータ・一日中）：通らない（「横断する道」としては上で数えている）
+    if (t["jar:nb"] === "1" || t["jar:nb"] === "ta") { no(t["jar:nb"] === "ta" ? "🚳 自転車通行止め（警察のデータ・いまは規制の時間）" : "🚳 自転車通行止め（警察のデータ）"); continue; }   // 🚳 自転車通行止め（警察のデータ・一日中）：通らない（「横断する道」としては上で数えている）
     const wc = wayCost(t, cfg);
     if (!wc) { if (DBGW) no(wayNoWhy(t, cfg)); continue; }
     let [pen, name] = wc;
-    if (t["jar:nb"] === "t") { pen *= 5; name += "・自転車通行止め（時間）"; }   // 時間つき：いまの時間は見ないで 避ける
+    if (t["jar:nb"] === "t") name += "・自転車通行止め（いまは時間外）";   // 時間つきで いまは時間外：ふつうに通る
     if (stationGrid && cfg.station !== 1 && isStaPath(t, nd)) {   // 駅の中の通路
       if (stPen === null) { no("駅の中の通路（設定：通らない）"); continue; }
       pen = Math.max(pen, cfg.pen.footway || 1) * stPen; name = "駅の通路";
@@ -983,6 +983,12 @@ function jarDB() {
 }
 async function jarStore(mode) { const db = await jarDB(); return db ? db.transaction("j", mode).objectStore("j") : null; }
 async function jarClear() { try { const st = await jarStore("readwrite"); if (st) await idbReq(st.clear()); } catch {} jarMem.clear(); }
+// 時間つき（"0700-0900"）：いまが その時間か（日をまたぐ "2200-0600" も）
+function jarNbActive(h) {
+  const m = /^(\d{4})-(\d{4})$/.exec(h || ""); if (!m) return true;
+  const d = new Date(), n = d.getHours() * 100 + d.getMinutes(), a = +m[1], b = +m[2];
+  return a <= b ? n >= a && n < b : n >= a || n < b;
+}
 // JARTIC データの版（hosomichi-data/j/ver.json・jartic_pack.py が作る）。端末に保存したものと版がちがえば 取りなおす（取れなければ ""＝くらべない）
 let jarVerP = null;
 function jarVer() {
@@ -1072,9 +1078,10 @@ function jarApply0(osm, cfg, J) {
   if (!J || (!J.nx.length && !J.ow.length && !jnb.length) || (cfg && cfg.jarUse === "off")) return osm;
   const jarLines = J.nx;
   const lat0 = J.nx.length ? J.nx[0][0][0] : J.ow.length ? J.ow[0].p[0][0] : jnb[0].p[0][0], owM = jarOwMatcher(J.ow, lat0);
-  // 🚳 自転車通行止め（JARTIC の 通行止め・車両通行止め で 自転車にかかるもの）：線にそう 車の道に "jar:nb"（"1"＝一日中 → 通らない / "t"＝時間つき → 避ける）。
+  // 🚳 自転車通行止め（JARTIC の 通行止め・車両通行止め で 自転車にかかるもの）：線にそう 車の道に "jar:nb"
+  //    "1"＝一日中・"ta"＝時間つきで いま（ルートを作るとき）規制中 → 通らない / "t"＝時間つきで いまは時間外 → ふつうに通る（走っているあいだにアプリが知らせる）。
   //    歩道（footway・path など）には つけない＝となりの歩道は ふつうに通れる（上葛飾橋など）
-  const nbAll = jarOwMatcher(jnb.filter(o => !o.h), lat0), nbTime = jarOwMatcher(jnb.filter(o => o.h), lat0);
+  const nbAll = jarOwMatcher(jnb.filter(o => !o.h), lat0), nbNow = jarOwMatcher(jnb.filter(o => o.h && jarNbActive(o.h)), lat0), nbTime = jarOwMatcher(jnb.filter(o => o.h && !jarNbActive(o.h)), lat0);
   const c0 = Math.cos((lat0 || 35) * RAD), XY = (la, lo) => [lo * c0 * 111320, la * 111320], GS = 25, grid = new Map();
   for (const l of jarLines) for (let k = 1; k < l.length; k++) {
     const A = XY(l[k - 1][0], l[k - 1][1]), B = XY(l[k][0], l[k][1]), sg = [A, B];
@@ -1101,10 +1108,11 @@ function jarApply0(osm, cfg, J) {
   });
   if (nOw) log(`🚓 一方通行を警察のデータで: ${nOw}本（自転車は除く ${nOwB}本）`);
   let nNb = 0, nNbT = 0;
-  const els1 = !(nbAll || nbTime) ? els0 : els0.map(e => {
+  const els1 = !(nbAll || nbNow || nbTime) ? els0 : els0.map(e => {
     if (e.type !== "way" || !e.tags || !e.tags.highway || e.tags["jar:nb"] || !CAR_ROADS.has(BASE[e.tags.highway] || e.tags.highway)) return e;
     const pts = e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]); if (pts.length < 2) return e;
     if (nbAll && nbAll(pts)) { nNb++; return { ...e, tags: { ...e.tags, "jar:nb": "1" } }; }
+    if (nbNow && nbNow(pts)) { nNb++; return { ...e, tags: { ...e.tags, "jar:nb": "ta" } }; }
     if (nbTime && nbTime(pts)) { nNbT++; return { ...e, tags: { ...e.tags, "jar:nb": "t" } }; }
     return e;
   });
@@ -1117,12 +1125,12 @@ function jarApply0(osm, cfg, J) {
     const near = (P, w) => { for (let k = 1; k < w.p.length; k++) { const A = w.p[k - 1], B = w.p[k], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L)); if (Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 15) return true; } return false; };
     const drop = new Set();
     for (const w of segs) for (const v of segs) if (v.r > w.r && v.e !== w.e && w.p.filter(P => near(P, v)).length * 2 >= w.p.length) { drop.add(w.e); break; }
-    if (drop.size) for (let k = 0; k < els1.length; k++) if (drop.has(els1[k])) { const { "jar:nb": _, ...t } = els1[k].tags; els1[k] = { ...els1[k], tags: t }; if (_ === "1") nNb--; else nNbT--; }
+    if (drop.size) for (let k = 0; k < els1.length; k++) if (drop.has(els1[k])) { const { "jar:nb": _, ...t } = els1[k].tags; els1[k] = { ...els1[k], tags: t }; if (_ === "t") nNbT--; else nNb--; }
   }
   // 🚳 自転車通行止めの橋・トンネルにそった 歩道（footway・path の橋）は「歩道橋」あつかいにしない（そこを通るのが きまり。上葛飾橋など）
   let nSide = 0;
   if (nNb) {
-    const nbW = els1.filter(e => e.type === "way" && e.tags && e.tags["jar:nb"] === "1" && (yes(e.tags.bridge) || yes(e.tags.tunnel)));
+    const nbW = els1.filter(e => e.type === "way" && e.tags && (e.tags["jar:nb"] === "1" || e.tags["jar:nb"] === "ta") && (yes(e.tags.bridge) || yes(e.tags.tunnel)));
     const nbM = nbW.length ? jarOwMatcher(nbW.map(e => ({ p: e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]) })), lat0) : null;
     if (nbM) for (let k = 0; k < els1.length; k++) {
       const e = els1[k];
@@ -1131,7 +1139,7 @@ function jarApply0(osm, cfg, J) {
       if (pts.length > 1 && nbM(pts)) { els1[k] = { ...e, tags: { ...e.tags, "jar:nbside": "1" } }; nSide++; }
     }
   }
-  if (nNb || nNbT) log(`🚳 自転車通行止め（警察のデータ）: ${nNb}本・時間つき ${nNbT}本${nSide ? `（となりの歩道 ${nSide}本）` : ""}`);
+  if (nNb || nNbT) log(`🚳 自転車通行止め（警察のデータ）: ${nNb}本（いま規制中）・時間外 ${nNbT}本${nSide ? `（となりの歩道 ${nSide}本）` : ""}`);
   if (!jarLines.length) return els1 === osm.elements ? osm : { ...osm, elements: els1 };
   const els = els1.map(e => {
     if (e.type !== "way" || !e.tags || !e.tags.highway || e.tags["jar:nx"] || levelOf(e.tags, { ...cfg, jarUse: "off" }) !== 1) return e;

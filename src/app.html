@@ -151,6 +151,11 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
 .me-ic svg{display:block}
 #xvIc{position:absolute;z-index:650;display:none;transform:translate(-50%,-50%);pointer-events:none;font-size:54px;line-height:1;text-align:center;background:#fff;border-radius:18px;padding:6px 8px 4px;box-shadow:0 2px 10px #0006;border:4px solid #1a73e8;animation:xvPulse 1s ease-in-out infinite alternate}
 #xvIc.sig{border-color:#0a0}
+#nbIc{position:absolute;z-index:651;display:none;transform:translate(-50%,-50%);pointer-events:none;text-align:center;background:#fff;border-radius:16px;padding:6px 8px 4px;box-shadow:0 2px 10px #0006;border:4px solid #f29900;line-height:1.15}
+#nbIc.now{border-color:#d40000;animation:xvPulse 1s ease-in-out infinite alternate}
+#nbIc svg{display:block;margin:0 auto}
+#nbIc b{display:block;font-size:15px;color:#222;white-space:nowrap}
+#nbIc small{display:block;font-size:12px;color:#c00;font-weight:bold;white-space:nowrap}
 #xvIc b{display:block;font-size:15px;color:#333}
 @keyframes xvPulse{from{transform:translate(-50%,-50%) scale(1)}to{transform:translate(-50%,-50%) scale(1.08)}}
 #nav{position:absolute;bottom:calc(22px + env(safe-area-inset-bottom));right:10px;max-width:calc(40% - 10px);z-index:999;background:#fffe;border-radius:10px;
@@ -3041,9 +3046,9 @@ function dbgDraw(m) {
     L.polyline(w.pts, { renderer: dbgRend, color: col, weight: wt, opacity: op, dashArray: K.dash || null })
       .bindPopup(() => dbgTags("way", w.id, w.t, `<b>${K.n}</b>${br ? "（橋）" : dbgYes(t.tunnel) && k !== "ftunnel" ? "（トンネル）" : ""}・レベル${w.lv}${w.lv === 2 ? "（4車線あつかい）" : w.lv === 1 ? "（2車線）" : ""}`
         + (w.up === "sure" ? `<br>🟤 <b>砂利・土の道</b>（${esc(t.surface || t.tracktype || "")}）` : w.up === "maybe" ? "<br>🟤 舗装かわからない（小道・農道で surface がない）" : t.surface ? `<br>路面：${esc(t.surface)}` : "")
-        + (t["jar:nb"] ? `<br>🚳 <b>自転車通行止め</b>（警察のデータ${t["jar:nb"] === "t" ? "・時間つき" : ""}）` : "") + (t["jar:nbside"] ? "<br>🚳 自転車通行止めの橋の歩道（歩道橋あつかいにしない）" : "")
+        + (t["jar:nb"] ? `<br>🚳 <b>自転車通行止め</b>（警察のデータ${t["jar:nb"] === "t" ? "・時間つき（いまは時間外）" : t["jar:nb"] === "ta" ? "・時間つき（いまは規制中）" : ""}）` : "") + (t["jar:nbside"] ? "<br>🚳 自転車通行止めの橋の歩道（歩道橋あつかいにしない）" : "")
         + (J ? (w.use ? `<br>✅ 通る道：${esc(w.why || "")}` : `<br>⛔ <b>通らない道</b>：${esc(w.why || "")}`) : ""))).addTo(dbgLayer);
-    if (t["jar:nb"]) L.polyline(w.pts, { renderer: dbgRend, color: "#e00", weight: wt, opacity: t["jar:nb"] === "1" ? 1 : .6, dashArray: "8 8", interactive: false }).addTo(dbgLayer);   // 🚳 自転車通行止め：赤のしま
+    if (t["jar:nb"]) L.polyline(w.pts, { renderer: dbgRend, color: "#e00", weight: wt, opacity: t["jar:nb"] === "t" ? .5 : 1, dashArray: "8 8", interactive: false }).addTo(dbgLayer);   // 🚳 自転車通行止め：赤のしま
     if (w.up) L.polyline(w.pts, { renderer: dbgRend, color: "#e0a800", weight: wt + 1, opacity: w.up === "sure" ? 1 : .55, dashArray: w.up === "sure" ? "1 5" : "1 12", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 🟡 砂利・土の道：黄土色の点々（わからないのは まばら）
     if (br) L.polyline(w.pts, { renderer: dbgRend, color: "#fff", weight: Math.max(2, wt - 2), opacity: 1, dashArray: "1 9", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 橋：白い点々
   }
@@ -3853,6 +3858,7 @@ function onPos(p) {
     try { vcNav(off, rest); } catch {}
     tripBar(rest); try { backHint(off); } catch {}
     try { xvIcUpd(); } catch {}
+    try { nbRouteTick(); } catch {}
   }
 }
 // ---------- 🗣 音声ナビ（ルートの線の曲がりぐあいから「曲がる所」を見つけて、近づいたらしゃべる） ----------
@@ -3983,12 +3989,12 @@ function nbActive(h) {   // 時間つき（"0700-0900"）：いまが その時�
   const d = new Date(), n = d.getHours() * 100 + d.getMinutes(), a = +m[1], b = +m[2];
   return a <= b ? n >= a && n < b : n >= a || n < b;
 }
-async function nbGather(S, W, N, E) {   // → { lines: [{p, h}], ents: [{p, h}] }（はんいの中のマスだけ。広すぎたら空）
+async function nbGather(S, W, N, E, now) {   // → { lines: [{p, h}], ents: [{p, h}] }（はんいの中のマスだけ。広すぎたら空）。now：いま規制中のものだけ
   const ks = [];
   for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let j = Math.floor(W * 100); j <= Math.floor(E * 100); j++) ks.push(i + "_" + j);
   if (ks.length > 16) return { lines: [], ents: [], wide: true };
   const lines = [];
-  for (const k of ks) { let d = null; try { d = await jarTile(k); } catch {} for (const o of (d && d.nb) || []) if (!o.q && o.p.length > 1) lines.push(o); }
+  for (const k of ks) { let d = null; try { d = await jarTile(k); } catch {} for (const o of (d && d.nb) || []) if (!o.q && o.p.length > 1 && (!now || nbActive(o.h))) lines.push(o); }
   const lat0 = (S + N) / 2, c = Math.cos(lat0 * RAD), XY = p => [p[1] * c * 111320, p[0] * 111320];
   const L2 = lines.map(o => { const q = o.p.map(XY); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of q) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } return { q, bb: [x0 - 20, y0 - 20, x1 + 20, y1 + 20] }; });
   const dist = (P, q) => { let m = Infinity; for (let i = 1; i < q.length; i++) { const A = q[i - 1], B = q[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L)); m = Math.min(m, Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1])); } return m; };
@@ -4012,14 +4018,60 @@ function nbMapReq() { clearTimeout(nbMapT); nbMapT = setTimeout(nbMapDraw, 400);
 async function nbMapDraw() {
   const id = ++nbMapId;
   if (!nbMapOn() || map.getZoom() < NB_Z) { nbLayer.clearLayers(); return; }
-  const b = map.getBounds(), r = await nbGather(b.getSouth(), b.getWest(), b.getNorth(), b.getEast()).catch(() => null);
+  const b = map.getBounds(), r = await nbGather(b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), true).catch(() => null);   // 時間外は出さない
   if (id !== nbMapId || !r) return;
   nbLayer.clearLayers();
-  for (const o of r.lines) L.polyline(o.p, { color: "#e00000", weight: 8, opacity: nbActive(o.h) ? .28 : .14, interactive: false }).addTo(nbLayer);
-  for (const e of r.ents) L.marker(e.p, { icon: L.divIcon({ className: "", html: `<div style="opacity:${nbActive(e.h) ? 1 : .55}">${NB_SIGN}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }), zIndexOffset: 400 })
+  for (const o of r.lines) L.polyline(o.p, { color: "#e00000", weight: 8, opacity: .28, interactive: false }).addTo(nbLayer);
+  for (const e of r.ents) L.marker(e.p, { icon: L.divIcon({ className: "", html: `<div>${NB_SIGN}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }), zIndexOffset: 400 })
     .bindPopup(`🚳 <b>自転車通行止め</b>${e.h ? `（${e.h.slice(0, 2)}:${e.h.slice(2, 4)}〜${e.h.slice(5, 7)}:${e.h.slice(7)}）` : ""}<br><small>警察のデータ（JARTIC 交通規制情報）より。じっさいの標識にしたがってね</small>`).addTo(nbLayer);
 }
 map.on("moveend zoomend", nbMapReq); setTimeout(nbMapReq, 1500);
+setInterval(() => { if (!document.hidden) nbMapReq(); }, 60e3);   // 時間つき：時間になったら出す・すぎたら消す
+const nbHm = h => h ? `${+h.slice(0, 2)}:${h.slice(2, 4)}〜${+h.slice(5, 7)}:${h.slice(7)}` : "";
+// 🚳 ルートの先の「時間限定の」自転車通行止め（ルートは いま時間外なら ふつうに通る）：200m手前で声＋自機の横に看板（時刻つき）。通りすぎたら消す
+let nbRt = null;   // { for: ルート, list: [{ s: ルートの何m目から, e: 何m目まで, h: 時刻, a: 入る所 }] }
+async function nbRouteScan(r) {
+  const R = r.nav, cs = [0]; for (let i = 1; i < R.length; i++) cs.push(cs[i - 1] + hav(R[i - 1], R[i]));
+  const ks = new Set(R.map(p => Math.floor(p[0] * 100) + "_" + Math.floor(p[1] * 100))), lines = [];
+  for (const k of ks) { let d = null; try { d = await jarTile(k); } catch {} for (const o of (d && d.nb) || []) if (o.h && !o.q) lines.push(o); }
+  const c = Math.cos(R[0][0] * RAD), XY = p => [p[1] * c * 111320, p[0] * 111320], RX = R.map(XY), out = [];
+  for (const o of lines) {
+    let s = Infinity, e = -Infinity;
+    for (const p of o.p) {   // 線の点ごとに、ルートのいちばん近い所（12m以内）が ルートの何m目か
+      const P = XY(p);
+      for (let i = 1; i < RX.length; i++) {
+        const A = RX[i - 1], B = RX[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L));
+        if (Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 12) { const at = cs[i - 1] + t * (cs[i] - cs[i - 1]); s = Math.min(s, at); e = Math.max(e, at); }
+      }
+    }
+    if (e - s < 15) continue;   // ルートが よこぎるだけ
+    const old = out.find(x => x.h === o.h && x.s < e + 30 && s < x.e + 30);   // マスの切れ目・県ざかいで 分かれた線は 1つに
+    if (old) { old.s = Math.min(old.s, s); old.e = Math.max(old.e, e); } else out.push({ s, e, h: o.h });
+  }
+  for (const x of out) { let k = 1; while (k < cs.length - 1 && cs[k] < x.s) k++; x.a = R[k]; }
+  return out.sort((p, q) => p.s - q.s);
+}
+const nbIc = document.createElement("div"); nbIc.id = "nbIc"; map.getContainer().appendChild(nbIc);
+function nbRouteTick() {
+  const hide = () => { nbIc.style.display = "none"; };
+  if (!cur || !cur.nav || cur.nav.length < 2 || navAlong == null || !follow || !me) return hide();
+  if (!nbRt || nbRt.for !== cur) { const r = cur; nbRt = { for: r, list: [] }; nbRouteScan(r).then(l => { if (nbRt && nbRt.for === r) { nbRt.list = l; if (l.length) addLog(`🚳 ルートに 時間限定の自転車通行止め ${l.length}か所：` + l.map(x => `${fmtKm(x.s)}目（${nbHm(x.h)}）`).join("・")); } }).catch(() => {}); return hide(); }
+  const x = nbRt.list.find(x => navAlong > x.s - 200 && navAlong < x.e + 10);
+  if (!x) return hide();
+  const act = nbActive(x.h), m = Math.max(0, Math.round((x.s - navAlong) / 10) * 10);
+  if (!x.said && navAlong < x.s) {
+    x.said = true;
+    say("この先、時間限定の自転車進入禁止があります" + (act ? "。いまは通れない時間です" : ""), true);
+    try { blkShowMap(12000); } catch {}
+    setMsg(`🚳 この先 時間限定の自転車通行止め（${nbHm(x.h)}）`);
+  }
+  const p = map.latLngToContainerPoint(me.getLatLng()), bb = map.getBearing ? map.getBearing() : 0;
+  const ang = (m > 0 ? bearingDeg([me.getLatLng().lat, me.getLatLng().lng], x.a) : (heading ?? 0)) + bb, Rr = 105;
+  nbIc.className = act ? "now" : "";
+  nbIc.innerHTML = NB_SIGN.replace('width="30" height="30"', 'width="58" height="58"') + `<b>${nbHm(x.h)}</b><small>${act ? "いま 規制中" : m ? `あと ${m}m` : "ここから"}</small>`;
+  nbIc.style.display = "block"; nbIc.style.left = (p.x + Math.sin(ang * RAD) * Rr) + "px"; nbIc.style.top = (p.y - Math.cos(ang * RAD) * Rr) + "px";
+}
+map.on("move zoom rotate viewreset", () => { try { if (nbIc.style.display === "block") nbRouteTick(); } catch {} });
 // 声：入り口が70m以内で、うしろ（進む向きから100°より後ろ）でなければ「近くに、自転車通行止めがあります」（名所の案内と同じ）。
 // 時間つきは いまが その時間のときだけ。ルートの上（30m以内）を走っているときは言わない（ルートは通行止めを避けている）。同じ所は10分に1回・どれでも1分に1回まで
 let nbBusy = false, nbLast = 0, nbSaid = 0; const nbDone = new Map();
