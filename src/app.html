@@ -4044,10 +4044,7 @@ async function oxGather(S, W, N, E) {   // → [{ p, h, dir: 出ていく向き�
     const cont = LX.some((m, j) => { if (j === li) return false;
       for (let i = 1; i < m.length; i++) { const A = m[i - 1], B = m[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L));
         if (Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 8 && (t < 1 || i < m.length - 1) && dif(ang(A, B), dir) < 40) return true; }   // 同じ向きに 続いている
-      if (Math.hypot(m[0][0] - P[0], m[0][1] - P[1]) < 15 && dif(ang(m[0], m[1]), dir) < 110) return true;   // 少しはなれて 次の線が始まる（角を曲がって続く一方通行など）
-      for (let i = 1; i < m.length; i++) { const A = m[i - 1], B = m[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L));
-        if (Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 15 && dif(ang(A, B), dir) > 140) return true; }   // 反対向きの一方通行が ならんでいる＝自転車も両方向に走れる道
-      return false; });
+      return Math.hypot(m[0][0] - P[0], m[0][1] - P[1]) < 15 && dif(ang(m[0], m[1]), dir) < 110; });   // 少しはなれて 次の線が始まる（角を曲がって続く一方通行など）
     if (cont || out.some(x => Math.hypot(x.xy[0] - P[0], x.xy[1] - P[1]) < 8)) return;
     out.push({ p: o.p[o.p.length - 1], h: o.h, dir, xy: P });
   });
