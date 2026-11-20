@@ -24,7 +24,7 @@ const DEFAULT_CFG = {
   midCross: 100,         // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
   allWide: "off",        // 2車線の道も4車線としてあつかう: "off"（デフォルト）/ "on"（信号・横断歩道でしか渡らない）
   jarUse: "on",          // 警察の交通規制（JARTIC）を使う: "on"（デフォルト）/ "off"。いまは 歩行者等横断禁止の道を4車線あつかいにするだけ
-  fastCross: "wide",     // 最高速度50km以上の2車線道路: "wide"=4車線と同じ / "mid"=2車線と同じ
+  fastCross: "mid",      // 最高速度50km以上の2車線道路: "mid"=2車線と同じ（11/20 からいつも。アプリではえらべない）/ "wide"=4車線と同じ（分析用）
   xDet: 60,              // 4車線の道：この m 以内の（同じ道の上の）信号・横断歩道まで行って渡る。0＝しない（交差点の その場で渡れる所だけ）
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
@@ -77,7 +77,7 @@ function levelOf(t, cfg) {
   if (isWide(t)) return 2;
   const b = BASE[t.highway] || t.highway;
   if (cfg && cfg.bigCross === "wide" && ["primary", "secondary", "trunk"].includes(b)) return 2;   // 県道・国道は4車線と同じ扱い
-  if (MID_ROADS.has(b) || lanesOf(t) >= 2) return (cfg && cfg.allWide === "on") || (t["jar:nx"] && (!cfg || cfg.jarUse !== "off")) || ((!cfg || cfg.fastCross !== "mid") && parseInt(t.maxspeed) >= 50) ? 2 : 1;   // allWide="on"：2車線の道も4車線と同じ（より安全に）   // 最高速度50km以上は 車が速くて危ないので 4車線と同じ扱い（設定 fastCross="mid" なら2車線と同じ）
+  if (MID_ROADS.has(b) || lanesOf(t) >= 2) return (cfg && cfg.allWide === "on") || (t["jar:nx"] && (!cfg || cfg.jarUse !== "off")) || (cfg && cfg.fastCross === "wide" && parseInt(t.maxspeed) >= 50) ? 2 : 1;   // allWide="on"：2車線の道も4車線と同じ（より安全に）   // 最高速度50km以上は 車が速くて危ないので 4車線と同じ扱い（設定 fastCross="mid" なら2車線と同じ）
   return 0;
 }
 function isUnpaved(t) {
