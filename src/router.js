@@ -412,7 +412,7 @@ function buildGraph(osm, cfg, onProg) {
   const gSig = mkGrid(), gXw = mkGrid();
   const put = (g, i) => { const k = Math.round(lat[i] * 2000) + "," + Math.round(lon[i] * 2000); if (!g.has(k)) g.set(k, []); g.get(k).push(i); };
   for (const [i, t] of ntags) {
-    if (t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes") put(gSig, i);
+    if (t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes" || t["jar:sig"]) put(gSig, i);
     else if (t.highway === "crossing" && !["no", "unmarked", "informal"].includes(t.crossing)) put(gXw, i);
   }
   const cands = (g, i, r) => {   // r m 以内の点 [番号, きょり]
@@ -989,14 +989,24 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
   return bad;
 }
 async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁止の線, ow: 一方通行 }
-  const jarLines = [], jow = [];
-  if (!packBase || (cfg && cfg.jarUse === "off")) return { nx: jarLines, ow: jow };
+  const jarLines = [], jow = [], jsig = [];
+  if (!packBase || (cfg && cfg.jarUse === "off")) return { nx: jarLines, ow: jow, sig: jsig };
   const names = [...new Set(bigs.map(packName))], bad = await jarLoad(names);
   const seen = new Set();
   for (const n of names) for (const l of (jarMem.get(n) || {}).nx || []) { const k = JSON.stringify(l[0].concat(l[l.length - 1])); if (!seen.has(k)) { seen.add(k); jarLines.push(l); } }
   for (const n of names) for (const o of (jarMem.get(n) || {}).ow || []) { const k = "o" + JSON.stringify(o.p[0].concat(o.p[o.p.length - 1])); if (!seen.has(k)) { seen.add(k); jow.push(o); } }
+  for (const n of names) for (const p of (jarMem.get(n) || {}).sig || []) { const k = "s" + p.join(); if (!seen.has(k)) { seen.add(k); jsig.push(p); } }
   if (jarLines.length || jow.length || bad) log(`🚓 警察の交通規制：歩行者等横断禁止 ${jarLines.length}本・一方通行 ${jow.length}本${bad ? `（取れなかったマス ${bad}）` : ""}`, bad ? "w" : "ok");
-  return { nx: jarLines, ow: jow };
+  return { nx: jarLines, ow: jow, sig: jsig };
+}
+function jarApply(osm, cfg, J) {   // 🚓 警察のデータを道にあてる：横断禁止→4車線・一方通行の向き・信号
+  const o = jarApply0(osm, cfg, J);
+  if (!J || !J.sig || !J.sig.length || (cfg && cfg.jarUse === "off")) return o;
+  const r = jarSigClassify(o.elements, J.sig, cfg), add = new Map(), n = { snap: 0, amb: 0, btn: 0 };
+  for (const x of r) if (x.tag && x.tag.length) { n[x.t]++; for (const id of x.tag) add.set(id, x.t); }
+  if (!add.size) return o;
+  log(`🚦 警察の信号を足す：交差点 ${n.snap + n.amb}（近いほうにつけた ${n.amb}）・押しボタンなど ${n.btn}`);
+  return { ...o, elements: o.elements.map(e => e.type === "node" && add.has(e.id) ? { ...e, tags: { ...(e.tags || {}), "jar:sig": add.get(e.id) } } : e) };
 }
 // 🚓 一方通行の線にあてる関数を作る：pts（道の点）→ { dir: +1 同じ向き / -1 反対, b: 1 自転車は除く } か null
 // 10mおきの点が 12m以内・同じ向き（±30°）か反対向きの線にあたり、長さの半分以上あたれば「この道」
@@ -1029,7 +1039,7 @@ function jarOwMatcher(jow, lat0) {
 }
 // 横断禁止の線にそって走る 2車線（レベル1）の道に "jar:nx" の印（もとの道は書きかえない。印をつけた道だけ 新しく作る）
 // 一方通行の線にあう 車の道に "jar:ow"（"1"＝道の向き / "-1"＝反対の向き）と "jar:owb"（"1"＝自転車は除く）
-function jarApply(osm, cfg, J) {
+function jarApply0(osm, cfg, J) {
   if (!J || (!J.nx.length && !J.ow.length) || (cfg && cfg.jarUse === "off")) return osm;
   const jarLines = J.nx;
   const lat0 = J.nx.length ? J.nx[0][0][0] : J.ow[0].p[0][0], owM = jarOwMatcher(J.ow, lat0);
@@ -1164,7 +1174,7 @@ async function dbgView(bb, cfg) {
   }
   for (const [i, t] of G.ntags) {
     if (!inB(G.lat[i], G.lon[i])) continue;
-    const sg = t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes", cw = t.highway === "crossing";
+    const sg = t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes" || t["jar:sig"], cw = t.highway === "crossing";
     const um = cw && ["unmarked", "informal", "no"].includes(t.crossing);   // しま模様のない渡る所（unmarked・informal）・渡れない所（no）：横断歩道としては数えない
     const k = um ? "um" : sg && cw ? "both" : sg ? "sig" : cw ? "xw" : null;   // both：信号つきの横断歩道（半分緑・半分青で描く）
     if (k && pts.length < 600) pts.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], t, k });
@@ -1217,10 +1227,11 @@ async function onewayIn(bb) {
   }
   return { ways, jar: { n: nJ, add: nAdd, rev: nRev } };
 }
-// 🚓 警察の信号（JARTIC）を OSM の交差点にあてる（ためし・まだルートには使わない）
-// ・30m以内に OSM の信号がある → "osm"（もうある）
-// ・20m以内の 交差点（車の道が2本以上・1本は2車線以上）を 12mでまとめて 1かたまりだけ → "snap"（足す候補。そのかたまりの点に信号をつける）
-// ・2かたまり以上 → "amb"（どの交差点か迷うので足さない）／ なし → "none"
+// 🚦 警察の信号（JARTIC）を OSM の道にあてる（tag の点に "jar:sig" をつける＝ルートで信号として使う）
+// ・30m以内に OSM の信号がある → "osm"（もうある。何もしない）
+// ・20m以内の 交差点（車の道が2本以上・1本は2車線以上）を 12mでまとめて 1かたまり → "snap"（そのかたまりの点につける）
+// ・2かたまり以上 → "amb"（いちばん近いかたまりにつける）
+// ・交差点がない → "btn"（押しボタン信号など。20m以内の 2車線以上の道の いちばん近い点につける）／ 道もない → "none"（使わない）
 const JSIG_OSM = 30, JSIG_SNAP = 20, JSIG_CL = 12;
 const JSIG_ROADS = new Set(["residential", "unclassified", "living_street", "tertiary", "secondary", "primary", "trunk"]);
 function jarSigClassify(els, sigs, cfg) {
@@ -1233,9 +1244,9 @@ function jarSigClassify(els, sigs, cfg) {
     const lv = levelOf(e.tags, cfg);
     for (const n of new Set(e.nodes)) { cnt.set(n, (cnt.get(n) || 0) + 1); if (lv >= 1) big.add(n); }
   }
-  const G = 0.0005, gJ = new Map(), gS = new Map(), K = (la, lo) => Math.floor(la / G) + "," + Math.floor(lo / G);
+  const G = 0.0005, gJ = new Map(), gR = new Map(), gS = new Map(), K = (la, lo) => Math.floor(la / G) + "," + Math.floor(lo / G);
   const put = (m, e) => { const k = K(e.lat, e.lon); if (!m.has(k)) m.set(k, []); m.get(k).push(e); };
-  for (const [n, c] of cnt) if (c >= 2 && big.has(n) && node.has(n)) put(gJ, node.get(n));
+  for (const n of big) if (node.has(n)) { put(gR, node.get(n)); if (cnt.get(n) >= 2) put(gJ, node.get(n)); }
   osmSig.forEach(e => put(gS, e));
   const near = (m, p, r) => { const o = [], a = Math.floor(p[0] / G), b = Math.floor(p[1] / G);
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const e of m.get((a + i) + "," + (b + j)) || []) { const d = hav(p[0], p[1], e.lat, e.lon); if (d <= r) o.push([e, d]); }
@@ -1245,10 +1256,15 @@ function jarSigClassify(els, sigs, cfg) {
     const s = near(gS, p, JSIG_OSM);
     if (s.length) { out.push({ p, t: "osm", d: Math.round(s[0][1]) }); continue; }
     const c = near(gJ, p, JSIG_SNAP);
-    if (!c.length) { out.push({ p, t: "none" }); continue; }
+    if (!c.length) {   // 交差点がない＝押しボタン信号など：いちばん近い 大きい道の点につける（その道を渡る信号）
+      const r = near(gR, p, JSIG_SNAP);
+      if (!r.length) { out.push({ p, t: "none" }); continue; }
+      out.push({ p, t: "btn", d: Math.round(r[0][1]), n: [{ id: r[0][0].id, p: [r[0][0].lat, r[0][0].lon] }], tag: [r[0][0].id] }); continue;
+    }
     const cl = [];
     for (const [e] of c) { const h = cl.find(g => g.some(x => hav(x.lat, x.lon, e.lat, e.lon) <= JSIG_CL)); if (h) h.push(e); else cl.push([e]); }
-    out.push({ p, t: cl.length === 1 ? "snap" : "amb", d: Math.round(c[0][1]), n: c.map(([e]) => ({ id: e.id, p: [e.lat, e.lon] })), k: cl.length });
+    const use = cl.find(g => g.includes(c[0][0]));   // いちばん近い交差点のかたまり
+    out.push({ p, t: cl.length === 1 ? "snap" : "amb", d: Math.round(c[0][1]), n: use.map(e => ({ id: e.id, p: [e.lat, e.lon] })), k: cl.length, tag: use.map(e => e.id) });
   }
   return out;
 }
@@ -1271,7 +1287,7 @@ async function jarSigIn(bb, cfg) {
   }
   const ok = p => have.has(`0.01:${Math.floor(p[0] / T)},${Math.floor(p[1] / T)}`);   // 道のデータがないマスの信号は 判定しない
   const c = { ...DEFAULT_CFG, ...(cfg || {}) };
-  return { sigs: jarSigClassify(jarApply({ elements: els }, c, await jarPrep(keys, c).catch(() => ({ nx: [], ow: [] }))).elements, sigs.filter(ok), c), miss: sigs.filter(p => !ok(p)).length };
+  return { sigs: jarSigClassify(jarApply0({ elements: els }, c, await jarPrep(keys, c).catch(() => ({ nx: [], ow: [] }))).elements, sigs.filter(ok), c), miss: sigs.filter(p => !ok(p)).length };
 }
 // 🎨 足あと：走った線を道にあてはめて「通った道（way の何番目の区間か）」を出す（端末にある道路データか配布データだけ）
 // 道の区間を 8m おきの点で見て、いちばん近い区間（15m 以内）に入れる。区間の6割（短い区間は少しでも）通ったら「通った」
