@@ -15,6 +15,10 @@ r"""JARTIC 交通規制情報（拡張版標準フォーマット k_2.1 の CSV�
             b=1：自転車は除く（自転車は逆向きもOK）。h：時間つき（ないときは一日中）
     "nx":  [[[lat, lon], ...], ...]     歩行者等横断禁止（14）の線
     "ln":  [[[lat, lon], ...], ...]     車両通行帯（20）の線（いまは分析用）
+    "ne":  [{"p": [lat, lon], "b": 1?, "h"?, "w"?}]   車両進入禁止（13）の点（b=1：自転車は除く）。まだアプリでは使わない
+    "cx":  [{"p": [lat, lon], "h"?, "w"?}]   普通自転車の交差点進入禁止（83）の点。まだアプリでは使わない
+    "sw":  [{"p": [[lat, lon], ...], "h"?, "w"?}]   普通自転車歩道通行可（81）の線。まだアプリでは使わない
+    "bl":  [{"p": [[lat, lon], ...], "h"?, "w"?}]   普通自転車専用通行帯（110）の線。まだアプリでは使わない
     "nb":  [{"p": [[lat, lon], ...], "h": "0700-0900", "q": 1}]   自転車が通れない（通行止め 4・車両通行止め 5）の線。
             h：時間つき。q=1：対象車両コードが空っぽで 名前が「車両」など（自転車も入る と思うけど たしかめ中）
   }
@@ -23,7 +27,8 @@ r"""JARTIC 交通規制情報（拡張版標準フォーマット k_2.1 の CSV�
 import csv, glob, gzip, io, json, math, os, re, sys, zipfile
 from collections import defaultdict
 
-KEEP = {"85": "xw", "87": "bx", "98": "sig", "11": "ow", "14": "nx", "20": "ln", "4": "nb", "5": "nb", "1": "nb"}   # 1 歩行者用道路も nb（k=1）
+KEEP = {"85": "xw", "87": "bx", "98": "sig", "11": "ow", "14": "nx", "20": "ln", "4": "nb", "5": "nb", "1": "nb",   # 1 歩行者用道路も nb（k=1）
+        "13": "ne", "83": "cx", "81": "sw", "110": "bl"}   # 車両進入禁止（点）・自転車の交差点進入禁止（点）・自転車歩道通行可（線）・自転車専用通行帯（線）：まだアプリでは使わない（先に入れておく）
 
 
 def digit(code, k):   # 対象・除外車両コード：右から k けた目が 1 か（10の累乗の足し算）
@@ -82,6 +87,16 @@ def week_of(r):
     if x in WEEK: return sorted(set(range(7)) - WEEK[x])
     if a in WEEK and WEEK[a]: return sorted(WEEK[a])
     return None
+
+
+def time_week(r):   # {h?: "0700-0900", w?: "12345"}（一日中・毎日なら空）
+    out = {}
+    h0, h1 = (r.get("規制時間1_開始") or "").strip(), (r.get("規制時間1_終了") or "").strip()
+    if h0 and h1 and h0.isdigit() and h1.isdigit() and not (int(h0) == 0 and int(h1) in (0, 2400)):
+        out["h"] = f"{int(h0):04d}-{int(h1):04d}"
+    w = week_of(r)
+    if w is not None and len(w) < 7: out["w"] = "".join(map(str, w))
+    return out
 
 
 def pts_of(s):
@@ -171,6 +186,22 @@ def main():
             pts = pts_of((r.get("規制場所の経度緯度") or "").split("/")[0] if k == "nb" else r.get("規制場所の経度緯度"))
             if not pts:
                 continue
+            if k in ("ne", "cx"):   # 点＋α：{p, b?（1＝自転車は除く）, h?, w?}
+                if k == "ne" and not bike_target(r) and not any(bike_excluded(r, n) for n in range(1, 6)): continue   # 自転車にかからない（大型だけ など）
+                item = {"p": pts[0]}
+                if any(bike_excluded(r, n) for n in range(1, 6)): item["b"] = 1
+                tw = time_week(r); item.update(tw)
+                p = pts[0]; t = (math.floor(p[0] * 100), math.floor(p[1] * 100))
+                T[t][k].append(item); TS[t].add(name); stat[k] += 1
+                continue
+            if k in ("sw", "bl"):   # 線：{p, h?, w?}
+                if len(pts) < 2: continue
+                tw = time_week(r); stat[k] += 1
+                for sec in [x for x in (pts_of(z) for z in (r.get("規制場所の経度緯度") or "").split("/")) if len(x) >= 2]:
+                    for t, parts in clip(sec).items():
+                        TS[t].add(name)
+                        for pp in parts: T[t][k].append({**tw, "p": pp})
+                continue
             if k in ("xw", "bx", "sig"):
                 p = pts[0]; t = (math.floor(p[0] * 100), math.floor(p[1] * 100))
                 T[t][k].append(p); TS[t].add(name)
@@ -185,6 +216,10 @@ def main():
                 item = {}
                 if q: item["q"] = 1
                 if r.get("共通規制種別コード") == "1": item["k"] = 1; stat["nb_pw"] += 1   # 🚶 歩行者用道路
+                else:   # 標識の絵：t "x"＝通行止め（301）／"v"＝車両通行止め（302・車両ぜんぶ）／なし＝自転車・軽車両通行止め（309）
+                    if r.get("共通規制種別コード") == "4": item["t"] = "x"; stat["nb_x"] += 1
+                    elif not (NB_NAME.search(r.get("県別規制種別名称") or "") or any(digit(r.get(f"対象車両コード{n}_D", ""), 3) or digit(r.get(f"対象車両コード{n}_D", ""), 6) for n in range(1, 6))):
+                        item["t"] = "v"; stat["nb_v"] += 1
                 h0, h1 = (r.get("規制時間1_開始") or "").strip(), (r.get("規制時間1_終了") or "").strip()
                 if h0 and h1 and not (int(h0) == 0 and int(h1) == 2400):
                     item["h"] = f"{int(h0):04d}-{int(h1):04d}"
