@@ -2976,21 +2976,77 @@ function dbgTags(kind, id, t, extra) {
 }
 function dbgReq() {
   clearTimeout(dbgT);
-  if (!$("dbgOn").checked) { map.removeLayer(dbgLayer); return; }
+  if (!$("dbgOn").checked) { map.removeLayer(dbgLayer); dbgLegend(false); return; }
   dbgLayer.addTo(map);
   if (map.getZoom() < DBG_Z) { dbgLayer.clearLayers(); setMsg(`🧪 道のデータ：もっと拡大してね（ズーム${DBG_Z}以上）`); return; }
   dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg) }); }, 300);
 }
+// 🧪 道のデータの色（細い道を 種類で分ける）。c 色・w 太さ・dash 点線・alt しま模様のもう1色（下に alt、上に c の破線）
+const DBG_K = {
+  road: { n: "車道（細い道）", c: "#00c8e8", w: 3 },
+  service: { n: "車道（駐車場・敷地の道 service）", c: "#7b97a8", w: 2 },
+  sidewalk: { n: "歩道（車道ぞい）", c: "#ff5fa2", w: 2.5 },
+  crossing: { n: "横断歩道の上", c: "#ff5fa2", w: 2.5, dash: "2 3" },
+  foot: { n: "歩行者の道", c: "#ff9bd0", w: 2.5 },
+  fbridge: { n: "歩道橋", c: "#a0006e", w: 5 },
+  ftunnel: { n: "地下道", c: "#6d4c41", w: 4, dash: "8 4" },
+  nbside: { n: "歩道（自転車通行止めの橋の）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
+  path: { n: "小道（path・track）", c: "#b5651d", w: 2.5 },
+  cycle: { n: "自転車道", c: "#2e9e3a", w: 3.5 },
+  steps: { n: "階段", c: "#111", w: 4, dash: "3 3" },
+  rsteps: { n: "階段（自転車スロープつき）", c: "#111", w: 4, dash: "3 3", alt: "#2e9e3a" },
+};
+const dbgYes = v => v && v !== "no";
+function dbgKind(t) {
+  const hw = t.highway, FT = ["footway", "pedestrian", "path", "track", "bridleway", "corridor"];
+  if (hw === "steps") return t["ramp:bicycle"] === "yes" ? "rsteps" : "steps";
+  if (t["jar:nbside"]) return "nbside";
+  if (hw === "cycleway" || (FT.includes(hw) && t.bicycle === "designated")) return "cycle";
+  if (["footway", "pedestrian", "path", "corridor"].includes(hw) && (dbgYes(t.bridge) || dbgYes(t.tunnel))) return dbgYes(t.bridge) ? "fbridge" : "ftunnel";
+  if (hw === "footway" || hw === "pedestrian" || hw === "corridor") return t.footway === "sidewalk" ? "sidewalk" : t.footway === "crossing" ? "crossing" : "foot";
+  if (FT.includes(hw)) return "path";
+  if (hw === "service") return "service";
+  return "road";
+}
+// 色の見本（地図の左下・タップでたたむ）
+const dbgLeg = L.control({ position: "bottomleft" });
+dbgLeg.onAdd = () => {
+  const d = L.DomUtil.create("div"); d.id = "dbgLeg";
+  d.style.cssText = "background:#fffe;border-radius:8px;box-shadow:0 1px 5px #0004;padding:4px 8px;font-size:11px;line-height:1.5;max-width:210px;margin-bottom:70px";
+  const ln = (c, w, dash, cap) => `<line x1="2" y1="5" x2="30" y2="5" stroke="${c}" stroke-width="${w}" ${dash ? `stroke-dasharray="${dash}"` : ""} ${cap ? 'stroke-linecap="round"' : ""}/>`;
+  const sw = (c, w, dash, alt, top) => `<svg width="32" height="10" style="vertical-align:middle;margin-right:4px">${alt ? ln(alt, w) : ""}${ln(c, w, dash)}${top || ""}</svg>`;
+  const rows = [sw("#d93025", 5) + "4車線あつかい", sw("#f29900", 5) + "2車線"].concat(Object.values(DBG_K).map(K => sw(K.c, K.w, K.dash, K.alt) + K.n))
+    .concat([sw("#00c8e8", 4, null, null, ln("#fff", 2, "1 6", 1)) + "橋（白い点々）", sw("#b5651d", 3, null, null, ln("#e0a800", 4, "1 4", 1)) + "砂利・土の道（黄色の点々）", sw("#b5651d", 3, null, null, '<g opacity=".55">' + ln("#e0a800", 4, "1 10", 1) + "</g>") + "舗装かわからない（まばらな点々）", sw("#00c8e8", 4, null, null, ln("#e00", 4, "6 6")) + "🚳 自転車通行止め（赤のしま）", '<span style="opacity:.3">' + sw("#00c8e8", 4) + '</span>うすい＝通らない道（アプリの判定）']);
+  d.innerHTML = `<b>🧪 色の見本</b> <span style="color:#888">（タップでたたむ）</span><div>${rows.join("<br>")}</div>`;
+  L.DomEvent.disableClickPropagation(d);
+  d.onclick = () => { const b = d.querySelector("div"); b.style.display = b.style.display === "none" ? "" : "none"; };
+  return d;
+};
+let dbgLegOn = false;
+function dbgLegend(on) { if (on && !dbgLegOn) { dbgLeg.addTo(map); dbgLegOn = true; } else if (!on && dbgLegOn) { dbgLeg.remove(); dbgLegOn = false; } }
 function dbgDraw(m) {
   if (m.id !== dbgId || !$("dbgOn").checked) return;
   dbgLayer.clearLayers();
   if (m.tooWide) { setMsg("🧪 道のデータ：もっと拡大してね"); return; }
   if (m.err) { setMsg("🧪 道のデータ：" + m.err, true); return; }
   if (!m.ways.length) { setMsg("🧪 道のデータ：この場所の道路データは まだ保存されていないよ（一度ルートを作ると保存されるよ）"); return; }
-  const LC = { 2: "#d93025", 1: "#f29900", 0: "#00c8e8" };   // 細い道はシアン（灰色は航空写真の上で見にくい）
+  const LC = { 2: "#d93025", 1: "#f29900" };   // 大きい道（4車線あつかい・2車線）
   const J = $("dbgJudge").checked;   // アプリの判定（加工したもの）も出すか。オフなら OSM のデータそのまま
-  for (const w of m.ways) L.polyline(w.pts, { renderer: dbgRend, color: LC[w.lv], weight: w.lv ? 5 : 3, opacity: .85, dashArray: !J || w.use ? null : "4 5" })
-    .bindPopup(() => dbgTags("way", w.id, w.t, `レベル${w.lv}${w.lv === 2 ? "（4車線あつかい）" : w.lv === 1 ? "（2車線）" : ""}` + (J ? `・${w.use ? "通る道" : "<b>通らない道</b>"}` : ""))).addTo(dbgLayer);
+  for (const w of m.ways) {
+    const k = dbgKind(w.t), K = DBG_K[k], col = w.lv ? LC[w.lv] : K.c, wt = w.lv ? 5 : K.w, t = w.t;
+    const br = dbgYes(t.bridge) && k !== "fbridge" && k !== "steps" && k !== "rsteps";
+    const op = J && !w.use ? .28 : .9;   // アプリの判定：通らない道は うすく
+    if (K.alt) L.polyline(w.pts, { renderer: dbgRend, color: K.alt, weight: wt, opacity: op, interactive: false }).addTo(dbgLayer);   // しま模様の下の色
+    L.polyline(w.pts, { renderer: dbgRend, color: col, weight: wt, opacity: op, dashArray: K.dash || null })
+      .bindPopup(() => dbgTags("way", w.id, w.t, `<b>${K.n}</b>${br ? "（橋）" : dbgYes(t.tunnel) && k !== "ftunnel" ? "（トンネル）" : ""}・レベル${w.lv}${w.lv === 2 ? "（4車線あつかい）" : w.lv === 1 ? "（2車線）" : ""}`
+        + (w.up === "sure" ? `<br>🟤 <b>砂利・土の道</b>（${esc(t.surface || t.tracktype || "")}）` : w.up === "maybe" ? "<br>🟤 舗装かわからない（小道・農道で surface がない）" : t.surface ? `<br>路面：${esc(t.surface)}` : "")
+        + (t["jar:nb"] ? `<br>🚳 <b>自転車通行止め</b>（警察のデータ${t["jar:nb"] === "t" ? "・時間つき" : ""}）` : "") + (t["jar:nbside"] ? "<br>🚳 自転車通行止めの橋の歩道（歩道橋あつかいにしない）" : "")
+        + (J ? (w.use ? `<br>✅ 通る道：${esc(w.why || "")}` : `<br>⛔ <b>通らない道</b>：${esc(w.why || "")}`) : ""))).addTo(dbgLayer);
+    if (t["jar:nb"]) L.polyline(w.pts, { renderer: dbgRend, color: "#e00", weight: wt, opacity: (t["jar:nb"] === "1" ? 1 : .6) * (op < .5 ? .4 : 1), dashArray: "8 8", interactive: false }).addTo(dbgLayer);   // 🚳 自転車通行止め：赤のしま
+    if (w.up) L.polyline(w.pts, { renderer: dbgRend, color: "#e0a800", weight: wt + 1, opacity: (w.up === "sure" ? 1 : .55) * (op < .5 ? .4 : 1), dashArray: w.up === "sure" ? "1 5" : "1 12", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 🟡 砂利・土の道：黄土色の点々（わからないのは まばら）
+    if (br) L.polyline(w.pts, { renderer: dbgRend, color: "#fff", weight: Math.max(2, wt - 2), opacity: op < .5 ? .5 : 1, dashArray: "1 9", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 橋：白い点々
+  }
+  dbgLegend(true);
   const XC = k => k === 1 ? "#0a0" : k === 2 ? "#1a73e8" : null;
   if (J) for (const x of m.xs) {
     const col = XC(x.k) || (x.lv === 2 ? "#d93025" : "#f29900");

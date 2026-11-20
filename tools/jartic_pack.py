@@ -15,13 +15,15 @@ r"""JARTIC 交通規制情報（拡張版標準フォーマット k_2.1 の CSV�
             b=1：自転車は除く（自転車は逆向きもOK）。h：時間つき（ないときは一日中）
     "nx":  [[[lat, lon], ...], ...]     歩行者等横断禁止（14）の線
     "ln":  [[[lat, lon], ...], ...]     車両通行帯（20）の線（いまは分析用）
+    "nb":  [{"p": [[lat, lon], ...], "h": "0700-0900", "q": 1}]   自転車が通れない（通行止め 4・車両通行止め 5）の線。
+            h：時間つき。q=1：対象車両コードが空っぽで 名前が「車両」など（自転車も入る と思うけど たしかめ中）
   }
 出典：公益財団法人 日本道路交通情報センター（JARTIC）交通規制情報オープンデータ
 """
-import csv, glob, gzip, io, json, math, os, sys, zipfile
+import csv, glob, gzip, io, json, math, os, re, sys, zipfile
 from collections import defaultdict
 
-KEEP = {"85": "xw", "87": "bx", "98": "sig", "11": "ow", "14": "nx", "20": "ln"}
+KEEP = {"85": "xw", "87": "bx", "98": "sig", "11": "ow", "14": "nx", "20": "ln", "4": "nb", "5": "nb"}
 
 
 def digit(code, k):   # 対象・除外車両コード：右から k けた目が 1 か（10の累乗の足し算）
@@ -39,6 +41,29 @@ def bike_target(r, n=1):   # その規制が自転車にもかかるか（対象
 def bike_excluded(r, n=1):   # 除外車両に 自転車（D3）か 軽車両（D6）
     D = r.get(f"除外車両コード{n}_D", "")
     return digit(D, 3) or digit(D, 6)
+
+
+NB_NAME = re.compile(r"自転車通行止め|軽車両|軽車[）)]")          # 名前でわかる 自転車の通行止め（コードに自転車のけたがなくても。埼玉の上葛飾橋など）
+NB_NOT = re.compile(r"自動車|大型|二輪|バス|[0-9０-９]+[tｔ]|重量|高さ")   # コードが空っぽのとき：この名前なら 自転車は関係ない
+NB_MAXLEN = 5000   # これより長い線はすてる（警視庁の 30km の「通行禁止」など）
+
+
+def has_codes(r, n=1):
+    return any((r.get(f"対象車両コード{n}_{c}") or "").strip() not in ("", "0") for c in "ABCD")
+
+
+def line_len(pts):
+    return sum(math.hypot((pts[k][0] - pts[k - 1][0]) * 111000, (pts[k][1] - pts[k - 1][1]) * 111000 * math.cos(math.radians(pts[k][0]))) for k in range(1, len(pts)))
+
+
+def nb_kind(r):   # 自転車が通れない通行止めか → None（関係ない）／ 0（たしか）／ 1（たぶん：コードが空っぽ）
+    name = r.get("県別規制種別名称") or ""
+    if any(bike_excluded(r, n) for n in range(1, 6)): return None
+    # 除外が「その他」だけ・時間が空っぽ（警視庁などの「通行禁止」）：災害のときの緊急交通路みたい。ふだんは関係ないので すてる
+    if digit(r.get("除外車両コード1_D", ""), 15) and not (r.get("規制時間1_開始") or "").strip(): return None
+    if NB_NAME.search(name): return 0
+    if not has_codes(r): return None if NB_NOT.search(name) else 1
+    return 0 if any(bike_target(r, n) for n in range(1, 6) if n == 1 or has_codes(r, n)) else None
 
 
 def pts_of(s):
@@ -125,7 +150,7 @@ def main():
             k = KEEP.get(r.get("共通規制種別コード"))
             if not k or r.get("意思決定廃止日"):
                 continue
-            pts = pts_of(r.get("規制場所の経度緯度"))
+            pts = pts_of((r.get("規制場所の経度緯度") or "").split("/")[0] if k == "nb" else r.get("規制場所の経度緯度"))
             if not pts:
                 continue
             if k in ("xw", "bx", "sig"):
@@ -135,7 +160,26 @@ def main():
                 continue
             if len(pts) < 2:
                 continue
-            if k == "ow":
+            if k == "nb":   # 「/」で区間がいくつかに分かれていることがある → 区間ごとに
+                q = nb_kind(r)
+                if q is None:
+                    continue
+                item = {}
+                if q: item["q"] = 1
+                h0, h1 = r.get("規制時間1_開始", ""), r.get("規制時間1_終了", "")
+                if h0 and h1 and not (h0 == "0" and h1 == "2400"):
+                    item["h"] = f"{int(h0):04d}-{int(h1):04d}"
+                secs = [x for x in (pts_of(z) for z in (r.get("規制場所の経度緯度") or "").split("/")) if len(x) >= 2]
+                secs = [x for x in secs if line_len(x) <= NB_MAXLEN]
+                if not secs:
+                    stat["nb_long"] += 1; continue
+                stat["nb"] += 1; stat["nb_q"] += q; stat["nb_time"] += "h" in item
+                for x in secs:
+                    for t, parts in clip(x).items():
+                        TS[t].add(name)
+                        for pp in parts: T[t]["nb"].append({**item, "p": pp})
+                continue
+            elif k == "ow":
                 if r.get("指定・禁止方向の別コード") == "1":
                     pts = pts[::-1]   # 1＝禁止する向きの順 → 通ってよい向きにする
                 if not bike_target(r) or bike_excluded(r):

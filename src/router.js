@@ -102,6 +102,15 @@ function kodoOf(t) {
   return lv;
 }
 // 道1本の倍率と表示名。通らないなら null
+// wayCost が null（通らない）だった理由（🧪 道のデータ用）
+function wayNoWhy(t, cfg) {
+  const hw = t.highway, b = BASE[hw] || hw;
+  const stairy = FOOTLIKE.has(hw) && hw !== "steps" && (t.step_count || t["ramp:bicycle"] || t["ramp:stroller"] || /階段|石段/.test(t.name || ""));
+  if (hw === "steps" || stairy) return cfg.steps === "ramp" ? "スロープのない階段（設定：スロープ付きだけ）" : "階段（設定：通らない）";
+  if (FOOTLIKE.has(hw) && (yes(t.bridge) || yes(t.tunnel)) && cfg.bridge === "no") return "歩道橋・地下道（設定：通らない）";
+  if (isUnpaved(t) && cfg.unpaved === "no") return "砂利・土の道（設定：通らない）";
+  return `${KIND_JA[b] || b}（設定：通らない）`;
+}
 function wayCost(t, cfg) {
   const hw = t.highway, b = BASE[hw] || hw;
   let p, name = KIND_JA[b] || b;
@@ -127,7 +136,7 @@ function wayCost(t, cfg) {
       name += kd === 2 ? "・旧街道" : "・旧道";
     }
   }
-  if (FOOTLIKE.has(hw) && t.bicycle !== "designated" && (yes(t.bridge) || yes(t.tunnel))) {
+  if (FOOTLIKE.has(hw) && t.bicycle !== "designated" && !t["jar:nbside"] && (yes(t.bridge) || yes(t.tunnel))) {   // jar:nbside：自転車通行止めの橋の歩道（歩道橋ではない）
     if (cfg.bridge === "no") return null;
     p *= cfg.bridge; name = yes(t.bridge) ? "歩道橋" : "地下道";
   }
@@ -330,47 +339,54 @@ function buildGraph(osm, cfg, onProg) {
     if (t.footway === "sidewalk" || t.footway === "crossing") return false;
     return ends.every(i => nearSta(lat[i], lon[i], 60));
   };
+  // 🧪 道のデータ（dbgView）用：道ごとに「通る（計算での名前・倍率）／通らない（理由）」をメモ（cfg._dbg のときだけ）
+  const DBGW = cfg._dbg ? new Map() : null;
   for (const e of osm.elements) {
     if (onProg && (++ei & 0x3fff) === 0) onProg(ei / NE * 0.9);
     if (e.type !== "way") continue;
     const t = e.tags || {}, hw = t.highway;
-    if (!hw || EXCLUDE.has(hw)) continue;
-    if (t.access === "no" || t.access === "private" || t.bicycle === "no") continue;
+    const no = r => { if (DBGW) DBGW.set(e.uid || e.id, { use: false, r }); };
+    if (!hw) continue;
+    if (EXCLUDE.has(hw)) { no("自転車が走れない種類の道（高速道路・工事中など）"); continue; }
+    if (t.access === "no" || t.access === "private") { no(`立ち入り禁止・私道（access=${t.access}）`); continue; }
+    if (t.bicycle === "no") { no("自転車禁止（bicycle=no）"); continue; }
     const nd = e.nodes.map(id => idx.get(id)).filter(x => x !== undefined);
     if (nd.length < 2) continue;
     const L0 = levelOf(t, cfg);
     if (L0) { mainWays.push([nd, L0, t.name || t.ref || "w" + e.id, isOneway(t)]); for (const i of nd) if (L0 > lvl[i]) lvl[i] = L0; }   // 通らない道でも「横断する道」としては数える（名前：同じ道かを見る・一方通行：上下線が別の道か）
+    if (t["jar:nb"] === "1") { no("🚳 自転車通行止め（警察のデータ）"); continue; }   // 🚳 自転車通行止め（警察のデータ・一日中）：通らない（「横断する道」としては上で数えている）
     const wc = wayCost(t, cfg);
-    if (!wc) continue;
+    if (!wc) { if (DBGW) no(wayNoWhy(t, cfg)); continue; }
     let [pen, name] = wc;
+    if (t["jar:nb"] === "t") { pen *= 5; name += "・自転車通行止め（時間）"; }   // 時間つき：いまの時間は見ないで 避ける
     if (stationGrid && cfg.station !== 1 && isStaPath(t, nd)) {   // 駅の中の通路
-      if (stPen === null) continue;
+      if (stPen === null) { no("駅の中の通路（設定：通らない）"); continue; }
       pen = Math.max(pen, cfg.pen.footway || 1) * stPen; name = "駅の通路";
     }
     // 🏫 学校・病院・工場などの敷地の中の通路は通らない（ふつうの道路と、自転車OKの印がある道はのぞく）
     if (areaGrids && areaGrids.closed && !BIG_HW.has(hw) && !["residential", "unclassified", "living_street"].includes(hw)
-      && !["yes", "permissive", "designated"].includes(t.access) && !["yes", "permissive", "designated"].includes(t.bicycle) && inArea("closed", nd)) continue;
+      && !["yes", "permissive", "designated"].includes(t.access) && !["yes", "permissive", "designated"].includes(t.bicycle) && inArea("closed", nd)) { no("学校・病院・工場などの敷地の中"); continue; }
     if (areaGrids && cfg.cemetery !== 1 && !BIG_HW.has(hw) && inArea("cemetery", nd)) {   // 霊園・墓地の中の道
-      if (cemPen === null) continue;
+      if (cemPen === null) { no("霊園・墓地の中（設定：通らない）"); continue; }
       pen *= cemPen; name = "霊園の中";
     }
     // 公園の中の道（園路・交通公園のコースなど）。川ぞいのサイクリングロードみたいな
     // 長い（400m以上）自転車道と、ふつうの道（住宅街の道など）は、公園の中でもそのまま通る
     else if (areaGrids && areaGrids.park && cfg.park !== 1 && !BIG_HW.has(hw) && inArea("park", nd)
       && !(["residential", "unclassified", "living_street"].includes(hw) || (hw === "cycleway" && wayLen(nd) >= 400))) {
-      if (parkPen === null) continue;
+      if (parkPen === null) { no("公園の中（設定：通らない）"); continue; }
       pen = Math.max(pen, 1) * parkPen; name = "公園の中";
     }
     // 🏠 私道っぽい道：家の敷地に入る道（service=driveway）・「住んでいる人と用事のある人だけ」（access=destination など）・駐車場の中の道
     if (prvPen !== 1 && !BIG_HW.has(hw) && (t.service === "driveway" || ["destination", "customers", "delivery"].includes(t.access) || ["destination", "customers", "delivery"].includes(t.vehicle)
       || (hw === "service" && areaGrids && areaGrids.parking && inArea("parking", nd)))) {
-      if (prvPen === null) continue;
+      if (prvPen === null) { no("私道・駐車場（設定：通らない）"); continue; }
       pen = Math.max(pen, 1) * prvPen; name = "私道・駐車場";
     }
     // 🏢 団地の中の道（棟のあいだの通路・駐車場の道など）。団地の中を通りぬける ふつうの道路（住宅街の道など）は そのまま
     if (areaGrids && areaGrids.danchi && danPen !== 1 && !BIG_HW.has(hw) && !["residential", "unclassified", "tertiary", "tertiary_link"].includes(hw)
       && !(hw === "cycleway" && wayLen(nd) >= 400) && inArea("danchi", nd)) {
-      if (danPen === null) continue;
+      if (danPen === null) { no("団地の中（設定：通らない）"); continue; }
       pen = Math.max(pen, 1) * danPen; name = "団地の中";
     }
     if (["footway", "path", "pedestrian", "cycleway", "track"].includes(hw) && nd.some(i => ntags.get(i)?.railway === "crossing")) {
@@ -387,6 +403,7 @@ function buildGraph(osm, cfg, onProg) {
     if (fwd !== back && bikeOK && cfg.oneway !== "no") {
       fwd = back = true; rp = pen * (cfg.oneway === "avoid" ? ONEWAY_REV_AVOID : ONEWAY_REV); rname = name + "（一方通行を逆向き）";
     }
+    if (DBGW) DBGW.set(e.uid || e.id, { use: true, r: `${name} ×${+pen.toFixed(2)}` + (fwd !== back ? "・一方通行" : rp !== pen ? "・一方通行（自転車は逆向きOK）" : "") });
     const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
     const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);
     const lift = yes(t.bridge) || yes(t.tunnel) || t.tunnel === "building_passage" || (t.layer && t.layer !== "0") ? 1 : 0;   // 橋・トンネル（標高のデータと高さが合わない）
@@ -480,7 +497,7 @@ function buildGraph(osm, cfg, onProg) {
   }
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
-  return { lat, lon, adj, lvl, xcost, xkind, xref, xdet, divided, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
+  return { dbgW: DBGW, lat, lon, adj, lvl, xcost, xkind, xref, xdet, divided, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
     hk: Math.min(1, +cfg.kodo || 1) * (preferPts.length ? PREFER_K : 1) };   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
@@ -971,16 +988,16 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
   await Promise.all(names.filter(n => !jarMem.has(n)).map(async n => {
     let old = null;
     try { const st = await jarStore("readonly"); old = st ? await idbReq(st.get(n)) : null; } catch {}
-    if (old && old.d && old.d.sig && old.d.xw && Date.now() - old.savedAt < JAR_AGE) { jarMem.set(n, old.d); return; }   // sig・xw がない＝信号・横断歩道を保存する前の古い形 → 取りなおす
+    if (old && old.d && old.d.sig && old.d.xw && old.d.nb && Date.now() - old.savedAt < JAR_AGE) { jarMem.set(n, old.d); return; }   // sig・xw・nb がない＝信号・横断歩道・自転車通行止めを保存する前の古い形 → 取りなおす
     try {
       const res = await fetch(`${packBase}j/${n}.json.gz`);
       let d;
-      if (res.status === 404) d = { nx: [], ow: [], sig: [], xw: [] };
+      if (res.status === 404) d = { nx: [], ow: [], sig: [], xw: [], nb: [] };
       else {
         if (!res.ok) throw new Error("HTTP " + res.status);
         const b = await res.blob(), h = new Uint8Array(await b.slice(0, 2).arrayBuffer());
         const t = h[0] === 0x1f && h[1] === 0x8b ? await new Response(b.stream().pipeThrough(new DecompressionStream("gzip"))).text() : await b.text();
-        const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [], sig: j.sig || [], xw: j.xw || [] };
+        const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [], sig: j.sig || [], xw: j.xw || [], nb: j.nb || [] };
       }
       jarMem.set(n, d);
       try { const st = await jarStore("readwrite"); if (st) await idbReq(st.put({ key: n, savedAt: Date.now(), d })); } catch {}
@@ -989,16 +1006,17 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
   return bad;
 }
 async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁止の線, ow: 一方通行 }
-  const jarLines = [], jow = [], jsig = [], jxw = [];
-  if (!packBase || (cfg && cfg.jarUse === "off")) return { nx: jarLines, ow: jow, sig: jsig, xw: jxw };
+  const jarLines = [], jow = [], jsig = [], jxw = [], jnb = [];
+  if (!packBase || (cfg && cfg.jarUse === "off")) return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb };
   const names = [...new Set(bigs.map(packName))], bad = await jarLoad(names);
   const seen = new Set();
   for (const n of names) for (const l of (jarMem.get(n) || {}).nx || []) { const k = JSON.stringify(l[0].concat(l[l.length - 1])); if (!seen.has(k)) { seen.add(k); jarLines.push(l); } }
   for (const n of names) for (const o of (jarMem.get(n) || {}).ow || []) { const k = "o" + JSON.stringify(o.p[0].concat(o.p[o.p.length - 1])); if (!seen.has(k)) { seen.add(k); jow.push(o); } }
   for (const n of names) for (const p of (jarMem.get(n) || {}).sig || []) { const k = "s" + p.join(); if (!seen.has(k)) { seen.add(k); jsig.push(p); } }
   for (const n of names) for (const p of (jarMem.get(n) || {}).xw || []) { const k = "x" + p.join(); if (!seen.has(k)) { seen.add(k); jxw.push(p); } }
+  for (const n of names) for (const o of (jarMem.get(n) || {}).nb || []) { if (o.q) continue; const k = "b" + JSON.stringify(o.p[0].concat(o.p[o.p.length - 1])); if (!seen.has(k)) { seen.add(k); jnb.push(o); } }   // q＝たぶん（コードが空っぽ）はまだ使わない
   if (jarLines.length || jow.length || bad) log(`🚓 警察の交通規制：歩行者等横断禁止 ${jarLines.length}本・一方通行 ${jow.length}本${bad ? `（取れなかったマス ${bad}）` : ""}`, bad ? "w" : "ok");
-  return { nx: jarLines, ow: jow, sig: jsig, xw: jxw };
+  return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb };
 }
 function jarApply(osm, cfg, J) {   // 🚓 警察のデータを道にあてる：横断禁止→4車線・一方通行の向き・信号
   const o = jarApply0(osm, cfg, J);
@@ -1043,9 +1061,13 @@ function jarOwMatcher(jow, lat0) {
 // 横断禁止の線にそって走る 2車線（レベル1）の道に "jar:nx" の印（もとの道は書きかえない。印をつけた道だけ 新しく作る）
 // 一方通行の線にあう 車の道に "jar:ow"（"1"＝道の向き / "-1"＝反対の向き）と "jar:owb"（"1"＝自転車は除く）
 function jarApply0(osm, cfg, J) {
-  if (!J || (!J.nx.length && !J.ow.length) || (cfg && cfg.jarUse === "off")) return osm;
+  const jnb = J && J.nb || [];
+  if (!J || (!J.nx.length && !J.ow.length && !jnb.length) || (cfg && cfg.jarUse === "off")) return osm;
   const jarLines = J.nx;
-  const lat0 = J.nx.length ? J.nx[0][0][0] : J.ow[0].p[0][0], owM = jarOwMatcher(J.ow, lat0);
+  const lat0 = J.nx.length ? J.nx[0][0][0] : J.ow.length ? J.ow[0].p[0][0] : jnb[0].p[0][0], owM = jarOwMatcher(J.ow, lat0);
+  // 🚳 自転車通行止め（JARTIC の 通行止め・車両通行止め で 自転車にかかるもの）：線にそう 車の道に "jar:nb"（"1"＝一日中 → 通らない / "t"＝時間つき → 避ける）。
+  //    歩道（footway・path など）には つけない＝となりの歩道は ふつうに通れる（上葛飾橋など）
+  const nbAll = jarOwMatcher(jnb.filter(o => !o.h), lat0), nbTime = jarOwMatcher(jnb.filter(o => o.h), lat0);
   const c0 = Math.cos((lat0 || 35) * RAD), XY = (la, lo) => [lo * c0 * 111320, la * 111320], GS = 25, grid = new Map();
   for (const l of jarLines) for (let k = 1; k < l.length; k++) {
     const A = XY(l[k - 1][0], l[k - 1][1]), B = XY(l[k][0], l[k][1]), sg = [A, B];
@@ -1071,8 +1093,40 @@ function jarApply0(osm, cfg, J) {
     return { ...e, tags: { ...e.tags, "jar:ow": m.dir > 0 ? "1" : "-1", "jar:owb": m.b ? "1" : "0" } };
   });
   if (nOw) log(`🚓 一方通行を警察のデータで: ${nOw}本（自転車は除く ${nOwB}本）`);
-  if (!jarLines.length) return els0 === osm.elements ? osm : { ...osm, elements: els0 };
-  const els = els0.map(e => {
+  let nNb = 0, nNbT = 0;
+  const els1 = !(nbAll || nbTime) ? els0 : els0.map(e => {
+    if (e.type !== "way" || !e.tags || !e.tags.highway || e.tags["jar:nb"] || !CAR_ROADS.has(BASE[e.tags.highway] || e.tags.highway)) return e;
+    const pts = e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]); if (pts.length < 2) return e;
+    if (nbAll && nbAll(pts)) { nNb++; return { ...e, tags: { ...e.tags, "jar:nb": "1" } }; }
+    if (nbTime && nbTime(pts)) { nNbT++; return { ...e, tags: { ...e.tags, "jar:nb": "t" } }; }
+    return e;
+  });
+  // 線には高さがないので、橋のすぐ横・下を通る 格の低い道（側道など）にも あたってしまう →
+  // あたった道どうしで、もっと格の高い道が すぐ横（15m以内）に そっていたら、低いほうの印は はずす
+  if (nNb || nNbT) {
+    const RK = { trunk: 5, primary: 4, secondary: 3, tertiary: 2, unclassified: 1, residential: 1 }, rk = t => RK[BASE[t.highway] || t.highway] || 0;
+    const hitW = els1.filter(e => e.type === "way" && e.tags && e.tags["jar:nb"]);
+    const segs = hitW.map(e => ({ e, r: rk(e.tags), p: e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => XY(q.lat, q.lon)) }));
+    const near = (P, w) => { for (let k = 1; k < w.p.length; k++) { const A = w.p[k - 1], B = w.p[k], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L)); if (Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 15) return true; } return false; };
+    const drop = new Set();
+    for (const w of segs) for (const v of segs) if (v.r > w.r && v.e !== w.e && w.p.filter(P => near(P, v)).length * 2 >= w.p.length) { drop.add(w.e); break; }
+    if (drop.size) for (let k = 0; k < els1.length; k++) if (drop.has(els1[k])) { const { "jar:nb": _, ...t } = els1[k].tags; els1[k] = { ...els1[k], tags: t }; if (_ === "1") nNb--; else nNbT--; }
+  }
+  // 🚳 自転車通行止めの橋・トンネルにそった 歩道（footway・path の橋）は「歩道橋」あつかいにしない（そこを通るのが きまり。上葛飾橋など）
+  let nSide = 0;
+  if (nNb) {
+    const nbW = els1.filter(e => e.type === "way" && e.tags && e.tags["jar:nb"] === "1" && (yes(e.tags.bridge) || yes(e.tags.tunnel)));
+    const nbM = nbW.length ? jarOwMatcher(nbW.map(e => ({ p: e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]) })), lat0) : null;
+    if (nbM) for (let k = 0; k < els1.length; k++) {
+      const e = els1[k];
+      if (e.type !== "way" || !e.tags || !FOOTLIKE.has(e.tags.highway) || e.tags.highway === "steps" || !(yes(e.tags.bridge) || yes(e.tags.tunnel))) continue;
+      const pts = e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]);
+      if (pts.length > 1 && nbM(pts)) { els1[k] = { ...e, tags: { ...e.tags, "jar:nbside": "1" } }; nSide++; }
+    }
+  }
+  if (nNb || nNbT) log(`🚳 自転車通行止め（警察のデータ）: ${nNb}本・時間つき ${nNbT}本${nSide ? `（となりの歩道 ${nSide}本）` : ""}`);
+  if (!jarLines.length) return els1 === osm.elements ? osm : { ...osm, elements: els1 };
+  const els = els1.map(e => {
     if (e.type !== "way" || !e.tags || !e.tags.highway || e.tags["jar:nx"] || levelOf(e.tags, { ...cfg, jarUse: "off" }) !== 1) return e;
     let all = 0, ok = 0;
     for (let k = 1; k < e.nodes.length; k++) {
@@ -1166,14 +1220,15 @@ async function dbgView(bb, cfg) {
   if (!els.length) return { miss, ways: [], pts: [], xs: [] };
   cfg = { ...DEFAULT_CFG, ...(cfg || {}), pen: { ...DEFAULT_CFG.pen, ...((cfg && cfg.pen) || {}) } };
   try { const J = jarApply({ elements: els }, cfg, await jarPrep(keys, cfg)).elements; if (J !== els) { els.length = 0; for (const e of J) els.push(e); } } catch {}   // 🚓 横断禁止の道に印（印がないときは そのまま）
-  const G = buildGraph({ elements: els }, cfg);
+  const G = buildGraph({ elements: els }, { ...cfg, _dbg: true });   // _dbg：道ごとの「通る／通らない（理由）」をメモしてもらう（ルートの計算と同じ判定）
   const m = 0.0004, inB = (a, o) => a > S - m && a < N + m && o > W - m && o < E + m, r6 = x => +x.toFixed(6);
   const ways = [], pts = [], xs = [];
   for (const e of els) {
     if (e.type !== "way" || !e.tags || !e.tags.highway) continue;
     const nd = e.nodes.map(id => G.idx.get(id)).filter(x => x !== undefined); if (nd.length < 2 || !nd.some(i => inB(G.lat[i], G.lon[i]))) continue;
     if (ways.length >= 1500) break;
-    ways.push({ id: e.id, pts: nd.map(i => [r6(G.lat[i]), r6(G.lon[i])]), t: e.tags, lv: levelOf(e.tags, cfg), use: !!(wayCost(e.tags, cfg) && !EXCLUDE.has(e.tags.highway)) });
+        const u = G.dbgW && G.dbgW.get(e.uid || e.id) || { use: false, r: "道のつながりがない" };
+    ways.push({ id: e.id, pts: nd.map(i => [r6(G.lat[i]), r6(G.lon[i])]), t: e.tags, lv: levelOf(e.tags, cfg), use: u.use, why: u.r, up: isUnpaved(e.tags) });   // up：砂利・土 "sure"／舗装かわからない "maybe"
   }
   for (const [i, t] of G.ntags) {
     if (!inB(G.lat[i], G.lon[i])) continue;
