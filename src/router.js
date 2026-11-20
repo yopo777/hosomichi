@@ -951,17 +951,42 @@ async function getTileAny(key) {
 // いまは「歩行者等横断禁止」の線だけ使う：その線にそって走る 2車線の道を 4車線あつかいにする（信号・横断歩道でしか渡らない）
 // 端末には保存しない（メモリだけ）。取れないとき（オフラインなど）は 使わない＝前と同じ動き
 const jarMem = new Map();   // マスの名前 → { nx: 横断禁止の線 [[[lat, lon], …], …], ow: 一方通行 [{ p: 通ってよい向きの線, b: 1＝自転車は除く, h: 時間 }] }
-async function jarLoad(names) {   // そのマスたちの JARTIC を読む（メモリに）→ 取れなかった数
+// 端末にも保存する（道路データとは別の保存場所 hosomichi_jar。オフラインでも使える）。30日より古ければ取りなおす（取れなければ古いのを使う）
+const JAR_AGE = 30 * 864e5;
+let jarDbp = null;
+function jarDB() {
+  if (jarDbp) return jarDbp;
+  jarDbp = new Promise(ok => {
+    if (typeof indexedDB === "undefined") return ok(null);
+    try {
+      const r = indexedDB.open("hosomichi_jar", 1);
+      r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains("j")) db.createObjectStore("j", { keyPath: "key" }); };
+      r.onsuccess = () => ok(r.result); r.onerror = () => ok(null);
+    } catch { ok(null); }
+  });
+  return jarDbp;
+}
+async function jarStore(mode) { const db = await jarDB(); return db ? db.transaction("j", mode).objectStore("j") : null; }
+async function jarClear() { try { const st = await jarStore("readwrite"); if (st) await idbReq(st.clear()); } catch {} jarMem.clear(); }
+async function jarLoad(names) {   // そのマスたちの JARTIC を読む（メモリ → 端末 → GitHub）→ 取れなかった数
   let bad = 0;
   await Promise.all(names.filter(n => !jarMem.has(n)).map(async n => {
+    let old = null;
+    try { const st = await jarStore("readonly"); old = st ? await idbReq(st.get(n)) : null; } catch {}
+    if (old && Date.now() - old.savedAt < JAR_AGE) { jarMem.set(n, old.d); return; }
     try {
       const res = await fetch(`${packBase}j/${n}.json.gz`);
-      if (res.status === 404) { jarMem.set(n, { nx: [], ow: [] }); return; }
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const b = await res.blob(), h = new Uint8Array(await b.slice(0, 2).arrayBuffer());
-      const t = h[0] === 0x1f && h[1] === 0x8b ? await new Response(b.stream().pipeThrough(new DecompressionStream("gzip"))).text() : await b.text();
-      const d = JSON.parse(t); jarMem.set(n, { nx: d.nx || [], ow: d.ow || [] });
-    } catch { bad++; }
+      let d;
+      if (res.status === 404) d = { nx: [], ow: [] };
+      else {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const b = await res.blob(), h = new Uint8Array(await b.slice(0, 2).arrayBuffer());
+        const t = h[0] === 0x1f && h[1] === 0x8b ? await new Response(b.stream().pipeThrough(new DecompressionStream("gzip"))).text() : await b.text();
+        const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [] };
+      }
+      jarMem.set(n, d);
+      try { const st = await jarStore("readwrite"); if (st) await idbReq(st.put({ key: n, savedAt: Date.now(), d })); } catch {}
+    } catch { if (old) jarMem.set(n, old.d); else bad++; }   // 取れない（オフラインなど）：古いのがあれば それを使う
   }));
   return bad;
 }
@@ -1418,7 +1443,7 @@ async function stats() {
   const recs = await req(st.getAll());
   return { n: recs.length, bytes: recs.reduce((a, r) => a + (r.size || 0), 0), keys: recs.map(r => r.key) };   // keys＝地図に色をぬる用
 }
-async function clearAll() { const st = await store("readwrite"); if (st) await req(st.clear()); mem.clear(); }
+async function clearAll() { const st = await store("readwrite"); if (st) await req(st.clear()); mem.clear(); await jarClear(); }
 
 // 出発→到着の線のまわり（帯）にかかるマスだけ選ぶ
 function tilesFor(s, g, pad, TILE = tileFor(s, g)) {
