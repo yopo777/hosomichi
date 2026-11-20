@@ -36,7 +36,7 @@ const UNPAVED = new Set(["gravel", "fine_gravel", "pebblestone", "unpaved", "dir
   "sand", "mud", "compacted", "woodchips", "rock", "grass_paver"]);
 const HARD = 3000, SOFT = 500;    // 横断ルールを守れないときの追加コスト(m相当)
 // 2車線の横断コスト。数字(m)か、むかしの設定の文字
-const ONEWAY_REV = 1.3;           // 自転車可の一方通行を逆向きに走るときは少しだけ避ける
+const ONEWAY_REV = 1.3, ONEWAY_REV_AVOID = 3;           // 自転車可の一方通行を逆向きに走るときは少しだけ避ける
 const midPen = v => typeof v === "number" ? v : ({ must: HARD, prefer: SOFT, any: 0 })[v] ?? (isFinite(+v) ? +v : 0);
 const MID_ROADS = new Set(["tertiary", "secondary", "primary", "trunk"]);
 const CYCLE_OK = new Set(["footway", "path", "pedestrian", "track", "bridleway"]);
@@ -385,7 +385,7 @@ function buildGraph(osm, cfg, onProg) {
     // 一方通行の逆向き：自転車可（自転車を除く）とわかっている道だけ（少しだけ避ける）。設定「走らない」なら走らない。自転車も一方通行の道・わからない道は走らない
     let rp = pen, rname = name;
     if (fwd !== back && bikeOK && cfg.oneway !== "no") {
-      fwd = back = true; rp = pen * ONEWAY_REV; rname = name + "（一方通行を逆向き）";
+      fwd = back = true; rp = pen * (cfg.oneway === "avoid" ? ONEWAY_REV_AVOID : ONEWAY_REV); rname = name + "（一方通行を逆向き）";
     }
     const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
     const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);

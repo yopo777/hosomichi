@@ -202,7 +202,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1331</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1334</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -458,7 +458,7 @@ const UNPAVED = new Set(["gravel", "fine_gravel", "pebblestone", "unpaved", "dir
   "sand", "mud", "compacted", "woodchips", "rock", "grass_paver"]);
 const HARD = 3000, SOFT = 500;    // 横断ルールを守れないときの追加コスト(m相当)
 // 2車線の横断コスト。数字(m)か、むかしの設定の文字
-const ONEWAY_REV = 1.3;           // 自転車可の一方通行を逆向きに走るときは少しだけ避ける
+const ONEWAY_REV = 1.3, ONEWAY_REV_AVOID = 3;           // 自転車可の一方通行を逆向きに走るときは少しだけ避ける
 const midPen = v => typeof v === "number" ? v : ({ must: HARD, prefer: SOFT, any: 0 })[v] ?? (isFinite(+v) ? +v : 0);
 const MID_ROADS = new Set(["tertiary", "secondary", "primary", "trunk"]);
 const CYCLE_OK = new Set(["footway", "path", "pedestrian", "track", "bridleway"]);
@@ -807,7 +807,7 @@ function buildGraph(osm, cfg, onProg) {
     // 一方通行の逆向き：自転車可（自転車を除く）とわかっている道だけ（少しだけ避ける）。設定「走らない」なら走らない。自転車も一方通行の道・わからない道は走らない
     let rp = pen, rname = name;
     if (fwd !== back && bikeOK && cfg.oneway !== "no") {
-      fwd = back = true; rp = pen * ONEWAY_REV; rname = name + "（一方通行を逆向き）";
+      fwd = back = true; rp = pen * (cfg.oneway === "avoid" ? ONEWAY_REV_AVOID : ONEWAY_REV); rname = name + "（一方通行を逆向き）";
     }
     const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
     const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);
@@ -3229,7 +3229,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1331", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1334", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5670,7 +5670,7 @@ const OTHER_ROWS = [
   ["alts", "第2・第3のルート", [["yes", "作る（えらべる・少し時間がかかる）"], ["no", "作らない（早い）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["auto", "おまかせ（データが手元にあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（まわり道 2〜4km）"]]],
-  ["oneway", "逆走", [["bike", "逆走する（デフォルト）"], ["no", "逆走しない"]]],
+  ["oneway", "逆走", [["bike", "逆走する（デフォルト）"], ["avoid", "逆走を避ける"], ["no", "逆走しない"]]],
   ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
   ["slope", "坂道（のぼり）", [[0, "気にしない"], [5, "少し避ける（のぼり1m＝5m）"], [10, "避ける（のぼり1m＝10m）"], [20, "かなり避ける（のぼり1m＝20m）"]]],
   ["paintPen", "👣 もう塗った道（足あと）", [[1, "気にしない"], [1.5, "少し避ける（×1.5）"], [2, "避ける（×2）"], [4, "かなり避ける（×4）"]]],
@@ -5711,7 +5711,7 @@ function renderCfg() {
   $("cfgMap").innerHTML = h; h = "";
   h += "<h4>計算</h4>" + get(["mode", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["xDet", "allWide", "fastCross", "midCross"]) + '<div class="note">ペナルティ＝ルートの長さに足して計算するきょり（じっさいに走るきょりは ふえないよ）<span class="hq">?</span><div class="hd">たとえば ペナルティ100m なら、信号・横断歩道のある所を通るルートの遠回りが 100mより短ければ そっちを選ぶよ。4車線以上の道は、安全のため 信号か横断歩道のある所でしか渡らないよ（それ以外は 3km＝ほぼ渡らない）。右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
-  h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」の一方通行だけ 逆走するよ（少し避ける）<span class="hq">?</span><div class="hd">警察の交通規制データ（JARTIC）と地図（OSM）で「自転車を除く」になっている一方通行だけ、逆走するよ（少しだけ避ける）。自転車も一方通行の道や、わからない道は 逆走しないよ。「自転車を除く」の道は 自転車は逆向きに走ってもいい道だから、ほんとうは逆走じゃないよ（ここでは わかりやすく「逆走」って書いてるよ）</div></div>';
+  h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」の一方通行だけ 逆走するよ（少し避ける）<span class="hq">?</span><div class="hd">警察の交通規制データ（JARTIC）と地図（OSM）で「自転車を除く」になっている一方通行だけ、逆走するよ（少しだけ避ける）。自転車も一方通行の道や、わからない道は 逆走しないよ。「逆走を避ける」にすると、逆走の道を3倍の長さとして計算するから、遠回りが短ければ逆走しないよ。「自転車を除く」の道は 自転車は逆向きに走ってもいい道だから、ほんとうは逆走じゃないよ（ここでは わかりやすく「逆走」って書いてるよ）</div></div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか<span class="hq">?</span><div class="hd">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div></div>'
     + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）<span class="hq">?</span><div class="hd">交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。⛰急坂？の中でも、高さの差のほとんどが 15mの間に まとまっていて 25%より急な所（長い道の まん中だけ階段、みたいな所）は 🪜階段？にするよ。長い階段（15mの間で3m以上・30%より急）も 🪜階段？だよ（とちゅうで はしとはしの高さから飛び出した点は、崖や擁壁のずれとして すてるよ）。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div></div>';
   h += "<h4>👣 足あとを広げる</h4>" + get(["paintPen"]) + '<div class="note">まだ塗っていない道を通るルートにするよ<span class="hq">?</span><div class="hd">もう塗った道（👣足あと・今日の分も）を さけて、まだ塗っていない道を通るルートにするよ。行き止まりや遠回りもふえるので、塗りたいときだけ</div></div>';
