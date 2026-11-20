@@ -228,7 +228,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <h4 style="margin:14px 0 2px;border-top:1px solid #eee;padding-top:10px">🏆 チャレンジ <span style="font-size:11px;color:#666;font-weight:normal">ぜんぶ回る</span></h4>
       <div style="font-size:11px;color:#666;margin-top:2px">駅・神社・お寺などを ぜんぶ回るクエストだよ<span class="hq">?</span><div class="hd">市の駅・神社・お寺や、路線の駅をぜんぶ回るクエストだよ。◎ で走っていて近く（80m）に来ると、自動でスタンプがもらえるよ。記録はこの端末の中だけ</div></div>
       <div id="mkTour" style="margin:6px 0;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:12px">
-        <b>📍 えらんでいるマークを ぜんぶ回る</b><span class="hq">?</span><div class="hd">⚙設定 → 📍マーク で チェックしているもの（💊ドラッグストア・🏪コンビニ など）を、出発から○kmの円の中で ぜんぶ回るルートを作るよ。市の境目は関係なし。🚸🚦🪜 みたいな「道」のマークは回らないよ。出発は「🚲 ルート」タブの出発（空なら現在地）。回る順番は自動で決めるよ</div>
+        <b>📍 えらんでいるマークを ぜんぶ回る</b><span class="hq">?</span><div class="hd">⚙設定 → 📍マーク で チェックしているもの（💊ドラッグストア・🏪コンビニ など）を、出発から○kmの円の中で ぜんぶ回るルートを作るよ。いくつチェックしていても、まとめて回るよ（回る順番は種類に関係なく自動）。市の境目は関係なし。<br><b>「道」のカテゴリ（🚸横断歩道・🚦信号・🪜階段・🚃踏切 など）は、チェックしていても回らないよ。</b><br>数が多いと計算に時間がかかるよ（200か所まで）。出発は「🚲 ルート」タブの出発（空なら現在地）だよ</div>
         <div id="mkKinds" style="color:#666;margin:2px 0"></div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:4px">出発から<select id="mkR" style="padding:4px;border:1px solid #ccc;border-radius:8px;font-size:13px"><option value="1">1km</option><option value="2">2km</option><option value="3" selected>3km</option><option value="5">5km</option><option value="7">7km</option><option value="10">10km</option></select>の円の中</div>
         <div style="margin-top:4px"><label><input type="radio" name="mkB" value="1" checked> 出発にもどる</label>　<label><input type="radio" name="mkB" value="0"> 最後の所で終わり</label></div>
@@ -4795,14 +4795,14 @@ $("qList").onclick = e => {
 // ---------- 📍 まわりのスポット（設定でえらんだジャンルだけ、現在地のまわりに出す） ----------
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
-  ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
-    ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"], ["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
-  ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"], ["townhall", "🏛", "役所"], ["library", "📚", "図書館"], ["post", "📮", "郵便局"], ["drug", "💊", "ドラッグストア"], ["fire", "🚒", "消防署"],
-    ["factory", "🏭", "工場"], ["waterw", "🚰", "浄水場・水道局"], ["power", "⚡", "発電所"], ["ground", "🏟", "グラウンド・球場"], ["danchi", "🏢", "団地"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
     ["oneway", "➡", "一方通行"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
     ["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
+  ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
+    ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"], ["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
+  ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"], ["townhall", "🏛", "役所"], ["library", "📚", "図書館"], ["post", "📮", "郵便局"], ["drug", "💊", "ドラッグストア"], ["fire", "🚒", "消防署"],
+    ["factory", "🏭", "工場"], ["waterw", "🚰", "浄水場・水道局"], ["power", "⚡", "発電所"], ["ground", "🏟", "グラウンド・球場"], ["danchi", "🏢", "団地"]]],
   ["ごはん・おやつ", [["ramen", "🍜", "ラーメン"], ["soba", "🥢", "そば・うどん"], ["sushi", "🍣", "寿司"], ["curry", "🍛", "カレー"], ["teishoku", "🍱", "定食・和食"], ["chinese", "🥟", "中華"],
     ["western", "🍝", "洋食・イタリアン"], ["burger", "🍔", "ハンバーガー"], ["restaurant", "🍴", "そのほかの食堂"],
     ["conv", "🏪", "コンビニ"], ["cafe", "☕", "カフェ"], ["bakery", "🍞", "パン屋"], ["sweets", "🍦", "おかし・アイス"], ["liquor", "🍺", "酒屋・酒蔵"], ["bath", "♨", "銭湯・温泉"]]],
@@ -4857,7 +4857,7 @@ function spotTile(key) {   // 1回読んだマスはおぼえておく（ない�
 }
 // 📍 えらんでいるマークを ぜんぶ回る（🏆チャレンジ）：出発から R km の円の中・「道」のマークはのぞく
 const mkKindsOn = () => [...spotOn].filter(k => !SPOT_SELF.has(k) && !SPOT_ROAD.has(k) && SPOT_INFO[k]);
-function mkKindsShow() { const ks = mkKindsOn(); if ($("mkKinds")) $("mkKinds").textContent = ks.length ? "回るもの：" + ks.map(k => SPOT_INFO[k][0] + SPOT_INFO[k][1]).join("・") : "⚙設定 → 📍マーク で、回りたいもの（💊ドラッグストアなど）にチェックしてね"; }
+function mkKindsShow() { const ks = mkKindsOn(); if ($("mkKinds")) $("mkKinds").textContent = ks.length ? "回るもの：" + ks.map(k => SPOT_INFO[k][0] + SPOT_INFO[k][1]).join("・") + "（「道」のマークはのぞく）" : "⚙設定 → 📍マーク で、回りたいもの（💊ドラッグストアなど）にチェックしてね"; }
 async function mkPts(c, R, ks) {   // 円の中のマーク → [[名前, 緯度, 経度, 1, ジャンル], …]（近い順）
   const dla = R / 111000, dlo = R / (111000 * Math.cos(c[0] * RAD)), keys = [];
   for (let i = Math.floor((c[0] - dla) / SPOT_T); i <= Math.floor((c[0] + dla) / SPOT_T); i++)
