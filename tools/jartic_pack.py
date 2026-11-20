@@ -23,7 +23,7 @@ r"""JARTIC 交通規制情報（拡張版標準フォーマット k_2.1 の CSV�
 import csv, glob, gzip, io, json, math, os, re, sys, zipfile
 from collections import defaultdict
 
-KEEP = {"85": "xw", "87": "bx", "98": "sig", "11": "ow", "14": "nx", "20": "ln", "4": "nb", "5": "nb"}
+KEEP = {"85": "xw", "87": "bx", "98": "sig", "11": "ow", "14": "nx", "20": "ln", "4": "nb", "5": "nb", "1": "nb"}   # 1 歩行者用道路も nb（k=1）
 
 
 def digit(code, k):   # 対象・除外車両コード：右から k けた目が 1 か（10の累乗の足し算）
@@ -59,11 +59,29 @@ def line_len(pts):
 def nb_kind(r):   # 自転車が通れない通行止めか → None（関係ない）／ 0（たしか）／ 1（たぶん：コードが空っぽ）
     name = r.get("県別規制種別名称") or ""
     if any(bike_excluded(r, n) for n in range(1, 6)): return None
+    if r.get("共通規制種別コード") == "1": return 0   # 歩行者用道路：自転車を除く でなければ 自転車も入れない（コードが空っぽでも。除外「その他」は 許可車両など）
     # 除外が「その他」だけ・時間が空っぽ（警視庁などの「通行禁止」）：災害のときの緊急交通路みたい。ふだんは関係ないので すてる
     if digit(r.get("除外車両コード1_D", ""), 15) and not (r.get("規制時間1_開始") or "").strip(): return None
     if NB_NAME.search(name): return 0
     if not has_codes(r): return None if NB_NOT.search(name) else 1
     return 0 if any(bike_target(r, n) for n in range(1, 6) if n == 1 or has_codes(r, n)) else None
+
+
+# 曜日：いつ規制するか → 規制する曜日（JS の getDay：0＝日〜6＝土）のリスト、または None（毎日）。休日はわからないので 平日あつかい（規制する側＝安全なほう）
+# 曜日コード：1 土日・2 土日休日・3 日曜休日・4 土・5 日・6 休日・99 その他。データには 説明書にない 9 や、規制と除外に同じコードが入った行もあるので 規制条件の文を先に見る
+WEEK = {"1": {0, 6}, "2": {0, 6}, "3": {0}, "4": {6}, "5": {0}, "6": set()}
+
+
+def week_of(r):
+    cond = r.get("規制条件") or ""
+    if re.search(r"土曜日?、日曜日?、休日を除く", cond): return [1, 2, 3, 4, 5]
+    if re.search(r"日曜日?、休日を除く", cond): return [1, 2, 3, 4, 5, 6]
+    if re.search(r"日曜[^。]*に限る", cond): return [0]
+    a, x = (r.get("規制曜日コード1") or "").strip(), (r.get("除外曜日コード1") or "").strip()
+    if a and x and a == x: return None   # どっちにも同じ → わからない → 毎日
+    if x in WEEK: return sorted(set(range(7)) - WEEK[x])
+    if a in WEEK and WEEK[a]: return sorted(WEEK[a])
+    return None
 
 
 def pts_of(s):
@@ -166,9 +184,12 @@ def main():
                     continue
                 item = {}
                 if q: item["q"] = 1
-                h0, h1 = r.get("規制時間1_開始", ""), r.get("規制時間1_終了", "")
-                if h0 and h1 and not (h0 == "0" and h1 == "2400"):
+                if r.get("共通規制種別コード") == "1": item["k"] = 1; stat["nb_pw"] += 1   # 🚶 歩行者用道路
+                h0, h1 = (r.get("規制時間1_開始") or "").strip(), (r.get("規制時間1_終了") or "").strip()
+                if h0 and h1 and not (int(h0) == 0 and int(h1) == 2400):
                     item["h"] = f"{int(h0):04d}-{int(h1):04d}"
+                w = week_of(r)
+                if w is not None and len(w) < 7: item["w"] = "".join(map(str, w)); stat["nb_week"] += 1   # 規制する曜日（"123456" など）
                 secs = [x for x in (pts_of(z) for z in (r.get("規制場所の経度緯度") or "").split("/")) if len(x) >= 2]
                 secs = [x for x in secs if line_len(x) <= NB_MAXLEN]
                 if not secs:

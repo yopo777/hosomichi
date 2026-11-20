@@ -354,11 +354,11 @@ function buildGraph(osm, cfg, onProg) {
     if (nd.length < 2) continue;
     const L0 = levelOf(t, cfg);
     if (L0) { mainWays.push([nd, L0, t.name || t.ref || "w" + e.id, isOneway(t)]); for (const i of nd) if (L0 > lvl[i]) lvl[i] = L0; }   // 通らない道でも「横断する道」としては数える（名前：同じ道かを見る・一方通行：上下線が別の道か）
-    if (t["jar:nb"] === "1" || t["jar:nb"] === "ta") { no(t["jar:nb"] === "ta" ? "🚳 自転車通行止め（警察のデータ・いまは規制の時間）" : "🚳 自転車通行止め（警察のデータ）"); continue; }   // 🚳 自転車通行止め（警察のデータ・一日中）：通らない（「横断する道」としては上で数えている）
+    if (t["jar:nb"] === "1" || t["jar:nb"] === "ta") { no((t["jar:nbk"] === "pw" ? "🚶 歩行者用道路" : "🚳 自転車通行止め") + (t["jar:nb"] === "ta" ? "（警察のデータ・いまは規制の時間）" : "（警察のデータ）")); continue; }   // 🚳 自転車通行止め（警察のデータ・一日中）：通らない（「横断する道」としては上で数えている）
     const wc = wayCost(t, cfg);
     if (!wc) { if (DBGW) no(wayNoWhy(t, cfg)); continue; }
     let [pen, name] = wc;
-    if (t["jar:nb"] === "t") name += "・自転車通行止め（いまは時間外）";   // 時間つきで いまは時間外：ふつうに通る
+    if (t["jar:nb"] === "t") name += t["jar:nbk"] === "pw" ? "・歩行者用道路（いまは時間外）" : "・自転車通行止め（いまは時間外）";   // 時間つきで いまは時間外：ふつうに通る
     if (stationGrid && cfg.station !== 1 && isStaPath(t, nd)) {   // 駅の中の通路
       if (stPen === null) { no("駅の中の通路（設定：通らない）"); continue; }
       pen = Math.max(pen, cfg.pen.footway || 1) * stPen; name = "駅の通路";
@@ -984,9 +984,12 @@ function jarDB() {
 async function jarStore(mode) { const db = await jarDB(); return db ? db.transaction("j", mode).objectStore("j") : null; }
 async function jarClear() { try { const st = await jarStore("readwrite"); if (st) await idbReq(st.clear()); } catch {} jarMem.clear(); }
 // 時間つき（"0700-0900"）：いまが その時間か（日をまたぐ "2200-0600" も）
-function jarNbActive(h) {
+let jarHol = new Set();   // 🎌 祝日（アプリが holidays.txt を読んで送ってくる）。祝日は日曜あつかい
+function jarNbActive(h, w) {   // w：規制する曜日（"12345" など・getDay の数字）。なければ毎日
+  const d = new Date(), ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  if (w && !w.includes(String(jarHol.has(ymd) ? 0 : d.getDay()))) return false;
   const m = /^(\d{4})-(\d{4})$/.exec(h || ""); if (!m) return true;
-  const d = new Date(), n = d.getHours() * 100 + d.getMinutes(), a = +m[1], b = +m[2];
+  const n = d.getHours() * 100 + d.getMinutes(), a = +m[1], b = +m[2];
   return a <= b ? n >= a && n < b : n >= a || n < b;
 }
 // JARTIC データの版（hosomichi-data/j/ver.json・jartic_pack.py が作る）。端末に保存したものと版がちがえば 取りなおす（取れなければ ""＝くらべない）
@@ -1081,7 +1084,9 @@ function jarApply0(osm, cfg, J) {
   // 🚳 自転車通行止め（JARTIC の 通行止め・車両通行止め で 自転車にかかるもの）：線にそう 車の道に "jar:nb"
   //    "1"＝一日中・"ta"＝時間つきで いま（ルートを作るとき）規制中 → 通らない / "t"＝時間つきで いまは時間外 → ふつうに通る（走っているあいだにアプリが知らせる）。
   //    歩道（footway・path など）には つけない＝となりの歩道は ふつうに通れる（上葛飾橋など）
-  const nbAll = jarOwMatcher(jnb.filter(o => !o.h), lat0), nbNow = jarOwMatcher(jnb.filter(o => o.h && jarNbActive(o.h)), lat0), nbTime = jarOwMatcher(jnb.filter(o => o.h && !jarNbActive(o.h)), lat0);
+  // 🚶 歩行者用道路（k=1）も同じ（自転車も入れない）。b に k を入れて、あたった道に "jar:nbk"="pw"
+  const kb = o => ({ p: o.p, b: o.k === 1 ? 1 : 0 }), tm = o => o.h || o.w;
+  const nbAll = jarOwMatcher(jnb.filter(o => !tm(o)).map(kb), lat0), nbNow = jarOwMatcher(jnb.filter(o => tm(o) && jarNbActive(o.h, o.w)).map(kb), lat0), nbTime = jarOwMatcher(jnb.filter(o => tm(o) && !jarNbActive(o.h, o.w)).map(kb), lat0);
   const c0 = Math.cos((lat0 || 35) * RAD), XY = (la, lo) => [lo * c0 * 111320, la * 111320], GS = 25, grid = new Map();
   for (const l of jarLines) for (let k = 1; k < l.length; k++) {
     const A = XY(l[k - 1][0], l[k - 1][1]), B = XY(l[k][0], l[k][1]), sg = [A, B];
@@ -1111,9 +1116,11 @@ function jarApply0(osm, cfg, J) {
   const els1 = !(nbAll || nbNow || nbTime) ? els0 : els0.map(e => {
     if (e.type !== "way" || !e.tags || !e.tags.highway || e.tags["jar:nb"] || !CAR_ROADS.has(BASE[e.tags.highway] || e.tags.highway)) return e;
     const pts = e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]); if (pts.length < 2) return e;
-    if (nbAll && nbAll(pts)) { nNb++; return { ...e, tags: { ...e.tags, "jar:nb": "1" } }; }
-    if (nbNow && nbNow(pts)) { nNb++; return { ...e, tags: { ...e.tags, "jar:nb": "ta" } }; }
-    if (nbTime && nbTime(pts)) { nNbT++; return { ...e, tags: { ...e.tags, "jar:nb": "t" } }; }
+    const pk = m => m.b ? { "jar:nbk": "pw" } : {};
+    let m;
+    if (nbAll && (m = nbAll(pts))) { nNb++; return { ...e, tags: { ...e.tags, "jar:nb": "1", ...pk(m) } }; }
+    if (nbNow && (m = nbNow(pts))) { nNb++; return { ...e, tags: { ...e.tags, "jar:nb": "ta", ...pk(m) } }; }
+    if (nbTime && (m = nbTime(pts))) { nNbT++; return { ...e, tags: { ...e.tags, "jar:nb": "t", ...pk(m) } }; }
     return e;
   });
   // 線には高さがないので、橋のすぐ横・下を通る 格の低い道（側道など）にも あたってしまう →
@@ -1125,7 +1132,7 @@ function jarApply0(osm, cfg, J) {
     const near = (P, w) => { for (let k = 1; k < w.p.length; k++) { const A = w.p[k - 1], B = w.p[k], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L)); if (Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 15) return true; } return false; };
     const drop = new Set();
     for (const w of segs) for (const v of segs) if (v.r > w.r && v.e !== w.e && w.p.filter(P => near(P, v)).length * 2 >= w.p.length) { drop.add(w.e); break; }
-    if (drop.size) for (let k = 0; k < els1.length; k++) if (drop.has(els1[k])) { const { "jar:nb": _, ...t } = els1[k].tags; els1[k] = { ...els1[k], tags: t }; if (_ === "t") nNbT--; else nNb--; }
+    if (drop.size) for (let k = 0; k < els1.length; k++) if (drop.has(els1[k])) { const { "jar:nb": _, "jar:nbk": _k, ...t } = els1[k].tags; els1[k] = { ...els1[k], tags: t }; if (_ === "t") nNbT--; else nNb--; }
   }
   // 🚳 自転車通行止めの橋・トンネルにそった 歩道（footway・path の橋）は「歩道橋」あつかいにしない（そこを通るのが きまり。上葛飾橋など）
   let nSide = 0;
@@ -2341,6 +2348,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     const d = ev.data;
     try {
       if (d.cmd === "stats") return self.postMessage({ type: "stats", ...(await stats()) });
+      if (d.cmd === "hol") { jarHol = new Set(d.days || []); return; }
       if (d.cmd === "clear") { await clearAll(); return self.postMessage({ type: "stats", ...(await stats()) }); }
       if (d.cmd === "pack") {   // 配布データの場所。一覧を読んで、地図に「すぐ使える所」を出せるように画面に送る
         packBase = d.base; packIdx = null;
