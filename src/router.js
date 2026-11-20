@@ -1053,7 +1053,7 @@ function jarOwMatcher(jow, lat0) {
       for (let y = Math.floor(Math.min(A[1], B[1]) / GS) - 1; y <= Math.floor(Math.max(A[1], B[1]) / GS) + 1; y++) { const q = x + "," + y; if (!jg.has(q)) jg.set(q, []); jg.get(q).push(sg); }
   }
   return pts => {
-    let all = 0, hit = 0, dir = 0, bk = 0, hh = null;
+    let all = 0, hit = 0, dir = 0, bk = 0;
     for (let k = 1; k < pts.length; k++) {
       const A = XY(...pts[k - 1]), B = XY(...pts[k]), len = Math.hypot(B[0] - A[0], B[1] - A[1]), ang = Math.atan2(B[1] - A[1], B[0] - A[0]);
       for (let dd = Math.min(5, len / 2); dd < len; dd += 10) {
@@ -1065,10 +1065,10 @@ function jarOwMatcher(jow, lat0) {
           const da = Math.abs(((ang - Math.atan2(dy, dx)) / RAD + 540) % 360 - 180);
           if (da < 30) { bd = d; best = [1, o]; } else if (da > 150) { bd = d; best = [-1, o]; }
         }
-        if (best) { hit++; dir += best[0]; if (best[1].b) bk++; if (best[1].h) hh = best[1].h; }
+        if (best) { hit++; dir += best[0]; if (best[1].b) bk++; }
       }
     }
-    return all && hit >= all * 0.5 ? { dir: dir >= 0 ? 1 : -1, b: bk * 2 >= hit ? 1 : 0, h: hh } : null;
+    return all && hit >= all * 0.5 ? { dir: dir >= 0 ? 1 : -1, b: bk * 2 >= hit ? 1 : 0 } : null;
   };
 }
 // 横断禁止の線にそって走る 2車線（レベル1）の道に "jar:nx" の印（もとの道は書きかえない。印をつけた道だけ 新しく作る）
@@ -1286,14 +1286,14 @@ async function onewayIn(bb) {
   for (const e of cand) {
     const t = e.tags, ow = t.oneway, osmOw = ["yes", "1", "true", "-1"].includes(ow);
     if (!osmOw && (!jgN || ow === "no" || !CAR_ROADS.has(BASE[t.highway] || t.highway))) continue;   // OSMで一方通行でない道は、車の道だけ JARTIC を見る
-    let ids = e.nodes.filter(n => nodes.has(n)), pts = ids.map(n => nodes.get(n)); if (pts.length < 2) continue;
-    if (ow === "-1") { pts = pts.reverse(); ids = ids.slice().reverse(); }
+    let pts = e.nodes.map(n => nodes.get(n)).filter(Boolean); if (pts.length < 2) continue;
+    if (ow === "-1") pts = pts.reverse();
     if (!pts.some(p => p[0] > S && p[0] < N && p[1] > W && p[1] < E)) continue;
     let free = t["oneway:bicycle"] === "no" ? 1 : 0, src = 0;   // free 1 = 自転車は両方向OK / src 1 = 警察のデータで決めた
     const m = jarMatch(pts);
     if (m) {
       nJ++; src = 1; free = m.b;
-      if (m.dir < 0) { pts = pts.reverse(); ids = ids.slice().reverse(); if (osmOw) nRev++; }   // 向きは 警察のデータを優先
+      if (m.dir < 0) { pts = pts.reverse(); if (osmOw) nRev++; }   // 向きは 警察のデータを優先
       if (!osmOw) nAdd++;
     } else if (!osmOw) continue;
     ways.push([pts.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]), free, src]);   // [線, 1 = 自転車は両方向OK, 1 = 警察のデータ]
@@ -2355,7 +2355,6 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "painted") { paintedSet = new Set(d.keys || []); return; }   // 👣 もう塗った道（画面から）
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
-      if (d.cmd === "owexit") { const r = await onewayIn(d.bb); return self.postMessage({ type: "owexit", id: d.id, ways: r.ways || [] }); }   // ⛔ 一方通行の出口を しぼる用
       if (d.cmd === "jarSig") { const r = await jarSigIn(d.bb, d.cfg).catch(e => ({ err: e.message, sigs: [] })); return self.postMessage({ type: "jarSig", id: d.id, who: d.who, ...r }); }
       if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {

@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.2259</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.2302</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -1483,7 +1483,7 @@ function jarOwMatcher(jow, lat0) {
       for (let y = Math.floor(Math.min(A[1], B[1]) / GS) - 1; y <= Math.floor(Math.max(A[1], B[1]) / GS) + 1; y++) { const q = x + "," + y; if (!jg.has(q)) jg.set(q, []); jg.get(q).push(sg); }
   }
   return pts => {
-    let all = 0, hit = 0, dir = 0, bk = 0, hh = null;
+    let all = 0, hit = 0, dir = 0, bk = 0;
     for (let k = 1; k < pts.length; k++) {
       const A = XY(...pts[k - 1]), B = XY(...pts[k]), len = Math.hypot(B[0] - A[0], B[1] - A[1]), ang = Math.atan2(B[1] - A[1], B[0] - A[0]);
       for (let dd = Math.min(5, len / 2); dd < len; dd += 10) {
@@ -1495,10 +1495,10 @@ function jarOwMatcher(jow, lat0) {
           const da = Math.abs(((ang - Math.atan2(dy, dx)) / RAD + 540) % 360 - 180);
           if (da < 30) { bd = d; best = [1, o]; } else if (da > 150) { bd = d; best = [-1, o]; }
         }
-        if (best) { hit++; dir += best[0]; if (best[1].b) bk++; if (best[1].h) hh = best[1].h; }
+        if (best) { hit++; dir += best[0]; if (best[1].b) bk++; }
       }
     }
-    return all && hit >= all * 0.5 ? { dir: dir >= 0 ? 1 : -1, b: bk * 2 >= hit ? 1 : 0, h: hh } : null;
+    return all && hit >= all * 0.5 ? { dir: dir >= 0 ? 1 : -1, b: bk * 2 >= hit ? 1 : 0 } : null;
   };
 }
 // 横断禁止の線にそって走る 2車線（レベル1）の道に "jar:nx" の印（もとの道は書きかえない。印をつけた道だけ 新しく作る）
@@ -1716,14 +1716,14 @@ async function onewayIn(bb) {
   for (const e of cand) {
     const t = e.tags, ow = t.oneway, osmOw = ["yes", "1", "true", "-1"].includes(ow);
     if (!osmOw && (!jgN || ow === "no" || !CAR_ROADS.has(BASE[t.highway] || t.highway))) continue;   // OSMで一方通行でない道は、車の道だけ JARTIC を見る
-    let ids = e.nodes.filter(n => nodes.has(n)), pts = ids.map(n => nodes.get(n)); if (pts.length < 2) continue;
-    if (ow === "-1") { pts = pts.reverse(); ids = ids.slice().reverse(); }
+    let pts = e.nodes.map(n => nodes.get(n)).filter(Boolean); if (pts.length < 2) continue;
+    if (ow === "-1") pts = pts.reverse();
     if (!pts.some(p => p[0] > S && p[0] < N && p[1] > W && p[1] < E)) continue;
     let free = t["oneway:bicycle"] === "no" ? 1 : 0, src = 0;   // free 1 = 自転車は両方向OK / src 1 = 警察のデータで決めた
     const m = jarMatch(pts);
     if (m) {
       nJ++; src = 1; free = m.b;
-      if (m.dir < 0) { pts = pts.reverse(); ids = ids.slice().reverse(); if (osmOw) nRev++; }   // 向きは 警察のデータを優先
+      if (m.dir < 0) { pts = pts.reverse(); if (osmOw) nRev++; }   // 向きは 警察のデータを優先
       if (!osmOw) nAdd++;
     } else if (!osmOw) continue;
     ways.push([pts.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]), free, src]);   // [線, 1 = 自転車は両方向OK, 1 = 警察のデータ]
@@ -2785,7 +2785,6 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "painted") { paintedSet = new Set(d.keys || []); return; }   // 👣 もう塗った道（画面から）
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
-      if (d.cmd === "owexit") { const r = await onewayIn(d.bb); return self.postMessage({ type: "owexit", id: d.id, ways: r.ways || [] }); }   // ⛔ 一方通行の出口を しぼる用
       if (d.cmd === "jarSig") { const r = await jarSigIn(d.bb, d.cfg).catch(e => ({ err: e.message, sigs: [] })); return self.postMessage({ type: "jarSig", id: d.id, who: d.who, ...r }); }
       if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
@@ -3417,7 +3416,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1120.2259", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1120.2302", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -3547,7 +3546,6 @@ worker.onmessage = ev => {
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
   if (m.type === "pf") { onPf(m); return; }
   if (m.type === "oneway") { owDraw(m); return; }
-  if (m.type === "owexit") { oxReply(m); return; }
   if (m.type === "dbgView") { dbgDraw(m); return; }
   if (m.type === "jarSig") { if (m.who === "spot") spotJarDraw(m); else jarSigDraw(m); return; }
   if (m.type === "footLive") { footLiveGot(m.segs || []); return; }
@@ -6436,7 +6434,7 @@ map.on("moveend zoomend", nbMapReq); setTimeout(nbMapReq, 1500);
 setInterval(() => { if (!document.hidden) nbMapReq(); }, 60e3);   // 時間つき：時間になったら出す・すぎたら消す
 // ==== ⛔ 一方通行の出口（JARTIC の一方通行で「自転車も」のもの：b=0）====
 // 出口＝線の最後の点（線は 通ってよい向きの順）。同じ向きに続く線（マスの切れ目・とちゅうで分かれた所）がある はしは のぞく。時間つきは 時間外なら のぞく
-async function oxJar(S, W, N, E) {   // 警察のデータの線のはし → [{ p, h, dir: 出ていく向き（度） }]
+async function oxGather(S, W, N, E) {   // → [{ p, h, dir: 出ていく向き（度） }]
   const ks = [];
   for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let j = Math.floor(W * 100); j <= Math.floor(E * 100); j++) ks.push(i + "_" + j);
   if (ks.length > 16) return [];
@@ -6450,41 +6448,11 @@ async function oxJar(S, W, N, E) {   // 警察のデータの線のはし → [{
     const cont = LX.some((m, j) => { if (j === li) return false;
       for (let i = 1; i < m.length; i++) { const A = m[i - 1], B = m[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L));
         if (Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 8 && (t < 1 || i < m.length - 1) && dif(ang(A, B), dir) < 40) return true; }   // 同じ向きに 続いている
-      return Math.hypot(m[0][0] - P[0], m[0][1] - P[1]) < 15 && dif(ang(m[0], m[1]), dir) < 110; });   // 少しはなれて 次の線が始まる（角を曲がって続く一方通行など）
+      return false; });
     if (cont || out.some(x => Math.hypot(x.xy[0] - P[0], x.xy[1] - P[1]) < 8)) return;
     out.push({ p: o.p[o.p.length - 1], h: o.h, dir, xy: P });
   });
   return out;
-}
-// その先に OSM の一方通行（自転車も・矢印と同じ）が 同じ向きに続いている はしは のぞく（警察のデータが交差点で切れていても、道は一方通行のまま、の所）
-let oxReqId = 0; const oxWait = new Map();
-function oxWays(S, W, N, E) {   // worker の「矢印」の道 → [[線, free, src]]
-  return new Promise(res => {
-    const id = ++oxReqId; oxWait.set(id, res);
-    worker.postMessage({ cmd: "owexit", id, bb: [S, W, N, E] });
-    setTimeout(() => { if (oxWait.has(id)) { oxWait.delete(id); res([]); } }, 15000);
-  });
-}
-function oxReply(m) { const f = oxWait.get(m.id); if (f) { oxWait.delete(m.id); f(m.ways || []); } }
-async function oxGather(S, W, N, E) {
-  const [ex, ws] = await Promise.all([oxJar(S, W, N, E), oxWays(S, W, N, E).catch(() => [])]);
-  if (!ex.length || !ws.length) return ex;
-  const c = Math.cos((S + N) / 2 * RAD), XY = p => [p[1] * c * 111320, p[0] * 111320], ang = (A, B) => (Math.atan2(B[0] - A[0], B[1] - A[1]) / RAD + 360) % 360;
-  const dif = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
-  const WX = ws.filter(w => !w[1]).map(w => w[0].map(XY));   // 自転車も一方通行の道（通ってよい向きの順）
-  return ex.filter(x => {
-    const P = XY(x.p);
-    for (const q of WX) {   // P から先へ（出ていく向きに）20m 以上 続いている道があるか
-      let along = null;
-      for (let i = 1; i < q.length; i++) {
-        const A = q[i - 1], B = q[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L));
-        if (along == null && Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 12 && dif(ang(A, B), x.dir) < 60) along = (1 - t) * Math.sqrt(L);
-        else if (along != null) along += Math.sqrt(L);
-      }
-      if (along != null && along >= 20) return false;
-    }
-    return true;
-  });
 }
 const OX_SIGN = '<svg viewBox="0 0 40 40" width="26" height="26" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="18" fill="#d40000" stroke="#fff" stroke-width="2"/><rect x="8" y="16.5" width="24" height="7" rx="1" fill="#fff"/></svg>';
 const oxLayer = L.layerGroup().addTo(map), OX_Z = 16; let oxT = null, oxId = 0;

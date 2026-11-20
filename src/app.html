@@ -1142,7 +1142,6 @@ worker.onmessage = ev => {
   if (m.type === "log") { addLog(m.msg, m.lv, m.t); return; }
   if (m.type === "pf") { onPf(m); return; }
   if (m.type === "oneway") { owDraw(m); return; }
-  if (m.type === "owexit") { oxReply(m); return; }
   if (m.type === "dbgView") { dbgDraw(m); return; }
   if (m.type === "jarSig") { if (m.who === "spot") spotJarDraw(m); else jarSigDraw(m); return; }
   if (m.type === "footLive") { footLiveGot(m.segs || []); return; }
@@ -4031,7 +4030,7 @@ map.on("moveend zoomend", nbMapReq); setTimeout(nbMapReq, 1500);
 setInterval(() => { if (!document.hidden) nbMapReq(); }, 60e3);   // 時間つき：時間になったら出す・すぎたら消す
 // ==== ⛔ 一方通行の出口（JARTIC の一方通行で「自転車も」のもの：b=0）====
 // 出口＝線の最後の点（線は 通ってよい向きの順）。同じ向きに続く線（マスの切れ目・とちゅうで分かれた所）がある はしは のぞく。時間つきは 時間外なら のぞく
-async function oxJar(S, W, N, E) {   // 警察のデータの線のはし → [{ p, h, dir: 出ていく向き（度） }]
+async function oxGather(S, W, N, E) {   // → [{ p, h, dir: 出ていく向き（度） }]
   const ks = [];
   for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let j = Math.floor(W * 100); j <= Math.floor(E * 100); j++) ks.push(i + "_" + j);
   if (ks.length > 16) return [];
@@ -4045,41 +4044,11 @@ async function oxJar(S, W, N, E) {   // 警察のデータの線のはし → [{
     const cont = LX.some((m, j) => { if (j === li) return false;
       for (let i = 1; i < m.length; i++) { const A = m[i - 1], B = m[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L));
         if (Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 8 && (t < 1 || i < m.length - 1) && dif(ang(A, B), dir) < 40) return true; }   // 同じ向きに 続いている
-      return Math.hypot(m[0][0] - P[0], m[0][1] - P[1]) < 15 && dif(ang(m[0], m[1]), dir) < 110; });   // 少しはなれて 次の線が始まる（角を曲がって続く一方通行など）
+      return false; });
     if (cont || out.some(x => Math.hypot(x.xy[0] - P[0], x.xy[1] - P[1]) < 8)) return;
     out.push({ p: o.p[o.p.length - 1], h: o.h, dir, xy: P });
   });
   return out;
-}
-// その先に OSM の一方通行（自転車も・矢印と同じ）が 同じ向きに続いている はしは のぞく（警察のデータが交差点で切れていても、道は一方通行のまま、の所）
-let oxReqId = 0; const oxWait = new Map();
-function oxWays(S, W, N, E) {   // worker の「矢印」の道 → [[線, free, src]]
-  return new Promise(res => {
-    const id = ++oxReqId; oxWait.set(id, res);
-    worker.postMessage({ cmd: "owexit", id, bb: [S, W, N, E] });
-    setTimeout(() => { if (oxWait.has(id)) { oxWait.delete(id); res([]); } }, 15000);
-  });
-}
-function oxReply(m) { const f = oxWait.get(m.id); if (f) { oxWait.delete(m.id); f(m.ways || []); } }
-async function oxGather(S, W, N, E) {
-  const [ex, ws] = await Promise.all([oxJar(S, W, N, E), oxWays(S, W, N, E).catch(() => [])]);
-  if (!ex.length || !ws.length) return ex;
-  const c = Math.cos((S + N) / 2 * RAD), XY = p => [p[1] * c * 111320, p[0] * 111320], ang = (A, B) => (Math.atan2(B[0] - A[0], B[1] - A[1]) / RAD + 360) % 360;
-  const dif = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
-  const WX = ws.filter(w => !w[1]).map(w => w[0].map(XY));   // 自転車も一方通行の道（通ってよい向きの順）
-  return ex.filter(x => {
-    const P = XY(x.p);
-    for (const q of WX) {   // P から先へ（出ていく向きに）20m 以上 続いている道があるか
-      let along = null;
-      for (let i = 1; i < q.length; i++) {
-        const A = q[i - 1], B = q[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L));
-        if (along == null && Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 12 && dif(ang(A, B), x.dir) < 60) along = (1 - t) * Math.sqrt(L);
-        else if (along != null) along += Math.sqrt(L);
-      }
-      if (along != null && along >= 20) return false;
-    }
-    return true;
-  });
 }
 const OX_SIGN = '<svg viewBox="0 0 40 40" width="26" height="26" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="18" fill="#d40000" stroke="#fff" stroke-width="2"/><rect x="8" y="16.5" width="24" height="7" rx="1" fill="#fff"/></svg>';
 const oxLayer = L.layerGroup().addTo(map), OX_Z = 16; let oxT = null, oxId = 0;
