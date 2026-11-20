@@ -202,7 +202,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1317</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1331</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -442,7 +442,7 @@ const DEFAULT_CFG = {
   steep: 3,              // ⛰ 急坂？（標高で10%より急な短い道）：倍率（1＝気にしない）
   sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
-  oneway: "small",       // 一方通行の逆向き: "no"=通らない / "small"=細い道だけ通る / "all"=太い道も通る
+  oneway: "bike",        // 一方通行の逆向き: "bike"=自転車可の一方通行（警察のデータ・OSMの oneway:bicycle=no）だけ走る（少し避ける） / "no"=走らない
   midCross: 100,         // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
   allWide: "off",        // 2車線の道も4車線としてあつかう: "off"（デフォルト）/ "on"（信号・横断歩道でしか渡らない）
   jarUse: "on",          // 警察の交通規制（JARTIC）を使う: "on"（デフォルト）/ "off"。いまは 歩行者等横断禁止の道を4車線あつかいにするだけ
@@ -458,9 +458,7 @@ const UNPAVED = new Set(["gravel", "fine_gravel", "pebblestone", "unpaved", "dir
   "sand", "mud", "compacted", "woodchips", "rock", "grass_paver"]);
 const HARD = 3000, SOFT = 500;    // 横断ルールを守れないときの追加コスト(m相当)
 // 2車線の横断コスト。数字(m)か、むかしの設定の文字
-const ONEWAY_OK = new Set(["residential", "living_street", "service", "unclassified", "road", "cycleway", "footway", "path", "pedestrian", "track"]);
-const ONEWAY_REV = 1.3;           // 一方通行を逆向きに走るときは少しだけ避ける
-const ONEWAY_REV_BIG = 2;         // 太い道の逆向き（反対車線の歩道などを走る）はもう少し避ける
+const ONEWAY_REV = 1.3;           // 自転車可の一方通行を逆向きに走るときは少しだけ避ける
 const midPen = v => typeof v === "number" ? v : ({ must: HARD, prefer: SOFT, any: 0 })[v] ?? (isFinite(+v) ? +v : 0);
 const MID_ROADS = new Set(["tertiary", "secondary", "primary", "trunk"]);
 const CYCLE_OK = new Set(["footway", "path", "pedestrian", "track", "bridleway"]);
@@ -801,15 +799,15 @@ function buildGraph(osm, cfg, onProg) {
       let wl = 0; for (let i = 1; i < nd.length; i++) wl += d(nd[i - 1], nd[i]);
       if (wl < 200) { pen = 1.0; name = "歩行者・自転車用踏切"; }
     }
-    let ow = t.oneway; if (t["oneway:bicycle"] === "no") ow = "no";
+    // 一方通行：🚓 警察のデータ（jarApply の jar:ow・jar:owb）があれば それを優先（向き・自転車は除くか）。なければ OSM
+    let ow = t.oneway;
+    if (t["jar:ow"]) ow = t["jar:ow"] === "-1" ? "-1" : "yes";
+    const bikeOK = t["jar:ow"] ? t["jar:owb"] === "1" : t["oneway:bicycle"] === "no";   // 自転車は逆向きも走ってよい（自転車を除く）
     let fwd = ow !== "-1", back = !["yes", "1", "true"].includes(ow);
-    // 一方通行の逆向き：細い道なら自転車はだいたい通れる（「自転車を除く」）。橋・トンネル・大きい道・自転車も一方通行の道はだめ
+    // 一方通行の逆向き：自転車可（自転車を除く）とわかっている道だけ（少しだけ避ける）。設定「走らない」なら走らない。自転車も一方通行の道・わからない道は走らない
     let rp = pen, rname = name;
-    const small = ONEWAY_OK.has(hw) && lanesOf(t) < 2;
-    if (fwd !== back && (cfg.oneway === "small" || cfg.oneway === "all") && t["oneway:bicycle"] !== "yes" && !yes(t.bridge) && !yes(t.tunnel)
-        && (small || cfg.oneway === "all")) {
-      fwd = back = true; rp = pen * (small ? ONEWAY_REV : ONEWAY_REV_BIG);
-      rname = small ? name + "（一方通行を逆向き）" : `歩道（${name}の逆向き）`;   // 太い道の逆向き＝歩道を走る（色も歩道の色）
+    if (fwd !== back && bikeOK && cfg.oneway !== "no") {
+      fwd = back = true; rp = pen * ONEWAY_REV; rname = name + "（一方通行を逆向き）";
     }
     const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
     const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);
@@ -1412,19 +1410,52 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
   }));
   return bad;
 }
-async function jarPrep(bigs, cfg) {   // → そのはんいの 横断禁止の線
-  const jarLines = [];
-  if (!packBase || (cfg && cfg.jarUse === "off")) return jarLines;
+async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁止の線, ow: 一方通行 }
+  const jarLines = [], jow = [];
+  if (!packBase || (cfg && cfg.jarUse === "off")) return { nx: jarLines, ow: jow };
   const names = [...new Set(bigs.map(packName))], bad = await jarLoad(names);
   const seen = new Set();
   for (const n of names) for (const l of (jarMem.get(n) || {}).nx || []) { const k = JSON.stringify(l[0].concat(l[l.length - 1])); if (!seen.has(k)) { seen.add(k); jarLines.push(l); } }
-  if (jarLines.length || bad) log(`🚓 警察の交通規制：歩行者等横断禁止 ${jarLines.length}本${bad ? `（取れなかったマス ${bad}）` : ""}`, bad ? "w" : "ok");
-  return jarLines;
+  for (const n of names) for (const o of (jarMem.get(n) || {}).ow || []) { const k = "o" + JSON.stringify(o.p[0].concat(o.p[o.p.length - 1])); if (!seen.has(k)) { seen.add(k); jow.push(o); } }
+  if (jarLines.length || jow.length || bad) log(`🚓 警察の交通規制：歩行者等横断禁止 ${jarLines.length}本・一方通行 ${jow.length}本${bad ? `（取れなかったマス ${bad}）` : ""}`, bad ? "w" : "ok");
+  return { nx: jarLines, ow: jow };
+}
+// 🚓 一方通行の線にあてる関数を作る：pts（道の点）→ { dir: +1 同じ向き / -1 反対, b: 1 自転車は除く } か null
+// 10mおきの点が 12m以内・同じ向き（±30°）か反対向きの線にあたり、長さの半分以上あたれば「この道」
+function jarOwMatcher(jow, lat0) {
+  if (!jow || !jow.length) return null;
+  const c0 = Math.cos((lat0 || 35) * RAD), XY = (la, lo) => [lo * c0 * 111320, la * 111320], GS = 25, jg = new Map();
+  for (const o of jow) for (let k = 1; k < o.p.length; k++) {
+    const A = XY(...o.p[k - 1]), B = XY(...o.p[k]), sg = [A, B, o];
+    for (let x = Math.floor(Math.min(A[0], B[0]) / GS) - 1; x <= Math.floor(Math.max(A[0], B[0]) / GS) + 1; x++)
+      for (let y = Math.floor(Math.min(A[1], B[1]) / GS) - 1; y <= Math.floor(Math.max(A[1], B[1]) / GS) + 1; y++) { const q = x + "," + y; if (!jg.has(q)) jg.set(q, []); jg.get(q).push(sg); }
+  }
+  return pts => {
+    let all = 0, hit = 0, dir = 0, bk = 0;
+    for (let k = 1; k < pts.length; k++) {
+      const A = XY(...pts[k - 1]), B = XY(...pts[k]), len = Math.hypot(B[0] - A[0], B[1] - A[1]), ang = Math.atan2(B[1] - A[1], B[0] - A[0]);
+      for (let dd = Math.min(5, len / 2); dd < len; dd += 10) {
+        const u = dd / len, x = A[0] + (B[0] - A[0]) * u, y = A[1] + (B[1] - A[1]) * u; all++;
+        let best = null, bd = 12;
+        for (const [P, Q, o] of jg.get(Math.floor(x / GS) + "," + Math.floor(y / GS)) || []) {
+          const dx = Q[0] - P[0], dy = Q[1] - P[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - P[0]) * dx + (y - P[1]) * dy) / L)), d = Math.hypot(P[0] + t * dx - x, P[1] + t * dy - y);
+          if (d > bd) continue;
+          const da = Math.abs(((ang - Math.atan2(dy, dx)) / RAD + 540) % 360 - 180);
+          if (da < 30) { bd = d; best = [1, o]; } else if (da > 150) { bd = d; best = [-1, o]; }
+        }
+        if (best) { hit++; dir += best[0]; if (best[1].b) bk++; }
+      }
+    }
+    return all && hit >= all * 0.5 ? { dir: dir >= 0 ? 1 : -1, b: bk * 2 >= hit ? 1 : 0 } : null;
+  };
 }
 // 横断禁止の線にそって走る 2車線（レベル1）の道に "jar:nx" の印（もとの道は書きかえない。印をつけた道だけ 新しく作る）
-function jarApply(osm, cfg, jarLines) {
-  if (!jarLines || !jarLines.length || (cfg && cfg.jarUse === "off")) return osm;
-  const c0 = Math.cos((jarLines[0][0][0] || 35) * RAD), XY = (la, lo) => [lo * c0 * 111320, la * 111320], GS = 25, grid = new Map();
+// 一方通行の線にあう 車の道に "jar:ow"（"1"＝道の向き / "-1"＝反対の向き）と "jar:owb"（"1"＝自転車は除く）
+function jarApply(osm, cfg, J) {
+  if (!J || (!J.nx.length && !J.ow.length) || (cfg && cfg.jarUse === "off")) return osm;
+  const jarLines = J.nx;
+  const lat0 = J.nx.length ? J.nx[0][0][0] : J.ow[0].p[0][0], owM = jarOwMatcher(J.ow, lat0);
+  const c0 = Math.cos((lat0 || 35) * RAD), XY = (la, lo) => [lo * c0 * 111320, la * 111320], GS = 25, grid = new Map();
   for (const l of jarLines) for (let k = 1; k < l.length; k++) {
     const A = XY(l[k - 1][0], l[k - 1][1]), B = XY(l[k][0], l[k][1]), sg = [A, B];
     for (let x = Math.floor(Math.min(A[0], B[0]) / GS) - 1; x <= Math.floor(Math.max(A[0], B[0]) / GS) + 1; x++)
@@ -1440,8 +1471,17 @@ function jarApply(osm, cfg, jarLines) {
     return false;
   };
   const pos = new Map(); for (const e of osm.elements) if (e.type === "node") pos.set(e.id, e);
-  let n = 0;
-  const els = osm.elements.map(e => {
+  let n = 0, nOw = 0, nOwB = 0;
+  const els0 = !owM ? osm.elements : osm.elements.map(e => {   // 一方通行
+    if (e.type !== "way" || !e.tags || !e.tags.highway || e.tags["jar:ow"] || !CAR_ROADS.has(BASE[e.tags.highway] || e.tags.highway)) return e;
+    const pts = e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]); if (pts.length < 2) return e;
+    const m = owM(pts); if (!m) return e;
+    nOw++; if (m.b) nOwB++;
+    return { ...e, tags: { ...e.tags, "jar:ow": m.dir > 0 ? "1" : "-1", "jar:owb": m.b ? "1" : "0" } };
+  });
+  if (nOw) log(`🚓 一方通行を警察のデータで: ${nOw}本（自転車は除く ${nOwB}本）`);
+  if (!jarLines.length) return els0 === osm.elements ? osm : { ...osm, elements: els0 };
+  const els = els0.map(e => {
     if (e.type !== "way" || !e.tags || !e.tags.highway || e.tags["jar:nx"] || levelOf(e.tags, { ...cfg, jarUse: "off" }) !== 1) return e;
     let all = 0, ok = 0;
     for (let k = 1; k < e.nodes.length; k++) {
@@ -1572,32 +1612,7 @@ async function onewayIn(bb) {
       for (const n of names) for (const o of (jarMem.get(n) || {}).ow || []) { const q = JSON.stringify(o.p[0].concat(o.p[o.p.length - 1])); if (!sk.has(q)) { sk.add(q); jow.push(o); } }
     } catch {}
   }
-  const c0 = Math.cos(((S + N) / 2) * RAD), XY = (la, lo) => [lo * c0 * 111320, la * 111320], GS = 25, jg = new Map();
-  for (const o of jow) for (let k = 1; k < o.p.length; k++) {
-    const A = XY(...o.p[k - 1]), B = XY(...o.p[k]), sg = [A, B, o];
-    for (let x = Math.floor(Math.min(A[0], B[0]) / GS) - 1; x <= Math.floor(Math.max(A[0], B[0]) / GS) + 1; x++)
-      for (let y = Math.floor(Math.min(A[1], B[1]) / GS) - 1; y <= Math.floor(Math.max(A[1], B[1]) / GS) + 1; y++) { const q = x + "," + y; if (!jg.has(q)) jg.set(q, []); jg.get(q).push(sg); }
-  }
-  // OSM の道の線を JARTIC の一方通行にあてる → { dir: +1 同じ向き / -1 反対, b: 1 自転車は除く } か null
-  const jarMatch = pts => {
-    if (!jg.size) return null;
-    let all = 0, hit = 0, dir = 0, bk = 0;
-    for (let k = 1; k < pts.length; k++) {
-      const A = XY(...pts[k - 1]), B = XY(...pts[k]), len = Math.hypot(B[0] - A[0], B[1] - A[1]), ang = Math.atan2(B[1] - A[1], B[0] - A[0]);
-      for (let dd = Math.min(5, len / 2); dd < len; dd += 10) {
-        const u = dd / len, x = A[0] + (B[0] - A[0]) * u, y = A[1] + (B[1] - A[1]) * u; all++;
-        let best = null, bd = 12;
-        for (const [P, Q, o] of jg.get(Math.floor(x / GS) + "," + Math.floor(y / GS)) || []) {
-          const dx = Q[0] - P[0], dy = Q[1] - P[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - P[0]) * dx + (y - P[1]) * dy) / L)), d = Math.hypot(P[0] + t * dx - x, P[1] + t * dy - y);
-          if (d > bd) continue;
-          const da = Math.abs(((ang - Math.atan2(dy, dx)) / RAD + 540) % 360 - 180);
-          if (da < 30) { bd = d; best = [1, o]; } else if (da > 150) { bd = d; best = [-1, o]; }
-        }
-        if (best) { hit++; dir += best[0]; if (best[1].b) bk++; }
-      }
-    }
-    return all && hit >= all * 0.5 ? { dir: dir >= 0 ? 1 : -1, b: bk * 2 >= hit ? 1 : 0 } : null;
-  };
+  const jarMatch = jarOwMatcher(jow, (S + N) / 2) || (() => null), jgN = jow.length;
   for (const k of keys) {
     let el = mem.get(k);
     if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
@@ -1609,7 +1624,7 @@ async function onewayIn(bb) {
   let nJ = 0, nAdd = 0, nRev = 0;
   for (const e of cand) {
     const t = e.tags, ow = t.oneway, osmOw = ["yes", "1", "true", "-1"].includes(ow);
-    if (!osmOw && (!jg.size || ow === "no" || !CAR_ROADS.has(BASE[t.highway] || t.highway))) continue;   // OSMで一方通行でない道は、車の道だけ JARTIC を見る
+    if (!osmOw && (!jgN || ow === "no" || !CAR_ROADS.has(BASE[t.highway] || t.highway))) continue;   // OSMで一方通行でない道は、車の道だけ JARTIC を見る
     let pts = e.nodes.map(n => nodes.get(n)).filter(Boolean); if (pts.length < 2) continue;
     if (ow === "-1") pts = pts.reverse();
     if (!pts.some(p => p[0] > S && p[0] < N && p[1] > W && p[1] < E)) continue;
@@ -3214,7 +3229,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1317", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1331", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5648,14 +5663,14 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "wide", midCross: 100, oneway: "small", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: 5, privy: 5, station: 5, cemetery: 5, park: 5 };
+  primary: 8, trunk: 8, footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "wide", midCross: 100, oneway: "bike", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: 5, privy: 5, station: 5, cemetery: 5, park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（×2）"], [5, "避ける（×5）"], [10, "かなり避ける（×10・デフォルト）"], [30, "ほぼ通らない（×30）"]]],
   ["alts", "第2・第3のルート", [["yes", "作る（えらべる・少し時間がかかる）"], ["no", "作らない（早い）"]]],
   ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
   ["area", "地図データを取る広さ", [["auto", "おまかせ（データが手元にあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（まわり道 2〜4km）"]]],
-  ["oneway", "逆向きに走る", [["small", "細い道なら走る"], ["all", "太い道でも走る"], ["no", "走らない"]]],
+  ["oneway", "逆走", [["bike", "逆走する（デフォルト）"], ["no", "逆走しない"]]],
   ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
   ["slope", "坂道（のぼり）", [[0, "気にしない"], [5, "少し避ける（のぼり1m＝5m）"], [10, "避ける（のぼり1m＝10m）"], [20, "かなり避ける（のぼり1m＝20m）"]]],
   ["paintPen", "👣 もう塗った道（足あと）", [[1, "気にしない"], [1.5, "少し避ける（×1.5）"], [2, "避ける（×2）"], [4, "かなり避ける（×4）"]]],
@@ -5677,7 +5692,8 @@ const OTHER_ROWS = [
 ];
 let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) { const m = { must: 3000, prefer: 500, any: 0 }; if (c.midCross in m) c.midCross = m[c.midCross];   // むかしの設定を数字に
       if (!c.areaV2) { if (c.area === "narrow") c.area = "auto"; c.areaV2 = 1; }
-      c.crossRule = "on"; c.wideCross = "crosswalk"; c.bigCross = "mid";   // 安全のため 4車線以上の道は いつも「信号か横断歩道のある所だけ」で渡る（「ルールを使わない」「どこでも」「信号だけ」の えらぶ所はなくした）
+      c.crossRule = "on"; c.wideCross = "crosswalk"; c.bigCross = "mid";
+      if (c.oneway === "small" || c.oneway === "all") c.oneway = "bike";   // 前の「細い道なら走る」「太い道でも走る」→ 自転車可の一方通行だけ   // 安全のため 4車線以上の道は いつも「信号か横断歩道のある所だけ」で渡る（「ルールを使わない」「どこでも」「信号だけ」の えらぶ所はなくした）
       if (!c.avoidV2) { c.avoidPen = 10; c.avoidV2 = 1; }   // 通りたくない道は、はじめ「かなり避ける（×10）」に   // 「せまい」がはじめの設定だったころの人は「おまかせ」に
       return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } } catch {} return structuredClone(CFG_DEF); })();
 function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} try { paintSend(); } catch {} }
@@ -5695,7 +5711,7 @@ function renderCfg() {
   $("cfgMap").innerHTML = h; h = "";
   h += "<h4>計算</h4>" + get(["mode", "area", "turn"]);
   h += "<h4>道を渡るとき</h4>" + get(["xDet", "allWide", "fastCross", "midCross"]) + '<div class="note">ペナルティ＝ルートの長さに足して計算するきょり（じっさいに走るきょりは ふえないよ）<span class="hq">?</span><div class="hd">たとえば ペナルティ100m なら、信号・横断歩道のある所を通るルートの遠回りが 100mより短ければ そっちを選ぶよ。4車線以上の道は、安全のため 信号か横断歩道のある所でしか渡らないよ（それ以外は 3km＝ほぼ渡らない）。右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
-  h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">細い道なら 一方通行の逆向きも走るよ（少し避ける）<span class="hq">?</span><div class="hd">「自転車を除く」が多いから、細い道なら逆向きも走るよ（少しだけ避ける）。「太い道でも」にすると、中央分離帯のある大きい道も、その歩道を逆向きに走るよ（もう少し避ける・地図では歩道の色で出るよ）。橋・トンネルと「自転車も一方通行」の道は、どれでも逆向きに走らないよ</div></div>';
+  h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」の一方通行だけ 逆走するよ（少し避ける）<span class="hq">?</span><div class="hd">警察の交通規制データ（JARTIC）と地図（OSM）で「自転車を除く」になっている一方通行だけ、逆走するよ（少しだけ避ける）。自転車も一方通行の道や、わからない道は 逆走しないよ。「自転車を除く」の道は 自転車は逆向きに走ってもいい道だから、ほんとうは逆走じゃないよ（ここでは わかりやすく「逆走」って書いてるよ）</div></div>';
   h += "<h4>坂道</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか<span class="hq">?</span><div class="hd">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div></div>'
     + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）<span class="hq">?</span><div class="hd">交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。⛰急坂？の中でも、高さの差のほとんどが 15mの間に まとまっていて 25%より急な所（長い道の まん中だけ階段、みたいな所）は 🪜階段？にするよ。長い階段（15mの間で3m以上・30%より急）も 🪜階段？だよ（とちゅうで はしとはしの高さから飛び出した点は、崖や擁壁のずれとして すてるよ）。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div></div>';
   h += "<h4>👣 足あとを広げる</h4>" + get(["paintPen"]) + '<div class="note">まだ塗っていない道を通るルートにするよ<span class="hq">?</span><div class="hd">もう塗った道（👣足あと・今日の分も）を さけて、まだ塗っていない道を通るルートにするよ。行き止まりや遠回りもふえるので、塗りたいときだけ</div></div>';
