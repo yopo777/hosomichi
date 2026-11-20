@@ -314,7 +314,7 @@ def main():
         if f.endswith(".json"): os.remove(os.path.join(sdir, f))
     nsp = 0
     for key, kinds in tiles.items():
-        d = {k: [list(p) for p in dedup(v, 0.0003)] for k, v in kinds.items()}; nsp += sum(len(v) for v in d.values())
+        d = {k: [list(p) for p in dedup(v, 0.00005 if k in ("xing", "signal") else 0.0003)] for k, v in kinds.items()}; nsp += sum(len(v) for v in d.values())
         with open(os.path.join(sdir, key + ".json"), "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False, separators=(",", ":"))
     print(f"  まわりのスポット {nsp:,}か所 → spots/ {len(tiles)}マス", flush=True)
     # 引いたとき用（ズーム12より引いたとき）：0.1°のマスごと・ジャンルごとに、有名なもの3つまで（なければ1つ）

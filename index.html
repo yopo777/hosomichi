@@ -203,7 +203,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1424</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1433</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3341,7 +3341,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1424", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1433", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6656,18 +6656,18 @@ let blocks = lsGet(BKEY, []).filter(b => b && Array.isArray(b.p));
   const n0 = blocks.length; blocks = blocks.filter(b => !["w", "k", "g"].includes(b.r));
   if (blocks.length < n0) { lsSet(BKEY, blocks); setTimeout(() => addLog(`📌 前の印（👍 通りたい・✅ 通れる・⤴️ 坂だった）を ${n0 - blocks.length}こ 消したよ`, "m"), 1500); }
 }
-const blkLayer = L.layerGroup().addTo(map);
+const blkLayer = L.layerGroup().addTo(map), blkFixLayer = L.layerGroup();   // blkFixLayer：🚫通れない・⚠通りたくない・🪜✕ 階段じゃない・🪜✓ 階段だった の印（🪜⛰マークと同じく ズーム16以上だけ出す）
 const BLK_IC = r => r === "a" ? "⚠️" : r === "n" ? '<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.nost + '</span>' : r === "y" ? '<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.yest + '</span>' : "🚫", BLK_NM = r => r === "a" ? "通りたくない" : r === "n" ? "階段じゃない" : r === "y" ? "階段だった" : "通れない";   // n：🪜✕ 階段じゃない（🪜階段？→⛰急坂？）・y：🪜✓ 階段だった（⛰急坂？→🪜階段？）
 const BLK_TX = r => r === "n" ? "🪜✕" : r === "y" ? "🪜✓" : BLK_IC(r);   // ログ用（文字だけ）
 const BLK_SOFT = r => r === "a" || r === "n" || r === "y";   // 道を切らない印（🚫 いがい）
 const BLK_FIX = r => r === "n" || r === "y";   // 標高の 🪜⛰ を直す印（🪜✕ 階段じゃない・🪜✓ 階段だった）
 function blkIcon(r) { return L.divIcon({ className: "", html: `<div style="font-size:${BLK_SOFT(r) ? 17 : 20}px;line-height:22px;text-align:center;text-shadow:0 0 3px #fff">${BLK_IC(r)}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }); }
 function drawBlocks() {
-  blkLayer.clearLayers();
+  blkLayer.clearLayers(); blkFixLayer.clearLayers();
   blocks.forEach((b, i) => {
-    const av = b.r === "a", wa = false, ok = false, sg = b.r === "n", sy = b.r === "y";
-    L.circle(b.p, { radius: 4, stroke: false, fillColor: av ? "#f90" : sg ? "#8d6e63" : sy ? "#188038" : "#f00", fillOpacity: 0.08, interactive: false }).addTo(blkLayer);   // 印の場所（うすく）
-    const m = L.marker(b.p, { icon: blkIcon(b.r), zIndexOffset: 500 }).addTo(blkLayer);
+    const av = b.r === "a", wa = false, ok = false, sg = b.r === "n", sy = b.r === "y", ly = blkFixLayer;   // 印はぜんぶ ズーム16以上だけ出す
+    L.circle(b.p, { radius: 4, stroke: false, fillColor: av ? "#f90" : sg ? "#8d6e63" : sy ? "#188038" : "#f00", fillOpacity: 0.08, interactive: false }).addTo(ly);   // 印の場所（うすく）
+    const m = L.marker(b.p, { icon: blkIcon(b.r), zIndexOffset: 500 }).addTo(ly);
     const div = document.createElement("div"); div.className = "pin";
     div.innerHTML = `<b>${BLK_IC(b.r)} ${BLK_NM(b.r)}</b>` + (b.name ? `<br>${esc(b.name)}` : "") + (b.t ? `<span style="color:#888;font-size:11px">（${b.t}）</span>` : "")
       + `<div style="font-size:11px;color:#666">${sy ? HQ("近くの道を 🪜階段？にするよ", "標高で ⛰急坂？になったけど ほんとうは階段だった所。いちばん近い道（12m以内）を 🪜階段？として あつかうよ（通るかどうかは ⚙設定 → 🚲道の好み の 🪜階段？）。あとで 見分け方を直すときの 答え合わせにも使うよ") : sg ? HQ("近くの道は 🪜階段？じゃなくて ⛰急坂？にするよ", "標高で 🪜階段？になったけど 階段じゃなかった所。いちばん近い道（12m以内）を ⛰急坂？として、坂の分だけ 少し避けるよ（どれくらいかは ⚙設定 → 🚲道の好み の ⛰急坂？）。あとで 見分け方を直すときの 答え合わせにも使うよ") : ok ? HQ("近くの道の 🪜階段？・⛰急坂？を 取り消すよ", "標高で見つけた 🪜階段？・⛰急坂？は まちがいのこともあるので、印からいちばん近い道（12m以内）だけ、ふつうの道にもどすよ。地図データに 階段と書いてある所は 取り消さないよ") : av ? HQ("近くの道を まるごと避けるよ", "印からいちばん近い道（12m以内）を、その道まるごと 避けるよ（どれくらい避けるかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）") : wa ? HQ("近くの道を まるごと通りやすくするよ", "印からいちばん近い道（12m以内）を、その道まるごと 通りやすくするよ（どれくらいかは、🚲道の好みの「通りたくない・通りたい地点」で決めるよ）") : "近くの道（12m以内）だけ通らないよ"}</div><button>この印を消す</button>`;
@@ -7514,7 +7514,9 @@ drawSecrets();
 // ⭐ お気に入り（よく行く所）：名前は はじめ その場所の住所（市区町村＋町名）。SNSでは消さない。この端末の中だけ
 let favs = lsGet("hosomichi_fav", []).filter(q => q && Array.isArray(q.p));
 const favLayer = L.layerGroup().addTo(map);
-function ptShow() { for (const ly of [homeLayer, secLayer, favLayer, blkLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); } }   // 右はしの📍で かくす／出す
+function ptShow() { for (const ly of [homeLayer, secLayer, favLayer, blkLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }  blkFixShow(); }
+function blkFixShow() { const on = !spotHide && map.getZoom() >= 16; if (!on) map.removeLayer(blkFixLayer); else if (!map.hasLayer(blkFixLayer)) blkFixLayer.addTo(map); }   // 🚫⚠🪜✕🪜✓ の印は 🪜⛰マークと同じく ズーム16以上だけ
+map.on("zoomend", blkFixShow); blkFixShow();   // 右はしの📍で かくす／出す
 function drawFavs() {
   favLayer.clearLayers();
   favs.forEach((q, i) => L.marker(q.p, { zIndexOffset: 300, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">⭐</div>' }) }).on("click", () => ptPop("f" + i)).addTo(favLayer));   // タップで 名前と ボタン
