@@ -3844,6 +3844,7 @@ function onPos(p) {
   qCheck(ll, p.coords.accuracy); if (!blkFull()) spotUpdate(false); homeDist();   // まっ黒のあいだは マークも描かない
   setTimeout(() => vcSpotCheck(ll), 0);   // 案内（vcNav）のあとで
   setTimeout(() => nbCheck(ll).catch(() => {}), 0);   // 🚳 自転車通行止めに近づいたら
+  setTimeout(() => oxCheck(ll).catch(() => {}), 0);   // ⛔ 一方通行の出口に 逆向きに近づいたら
   applyBearing();
   if (follow && !ovOn() && !blkFull()) { const z = first ? Math.max(map.getZoom(), 16) : map.getZoom(); map.setView(aheadLL(ll, z), z, { animate: true }); }  // 拡大率はそのまま（全体を見ているあいだは動かさない）
   if (cur && cur.nav && cur.nav.length > 1) {
@@ -4027,6 +4028,67 @@ async function nbMapDraw() {
 }
 map.on("moveend zoomend", nbMapReq); setTimeout(nbMapReq, 1500);
 setInterval(() => { if (!document.hidden) nbMapReq(); }, 60e3);   // 時間つき：時間になったら出す・すぎたら消す
+// ==== ⛔ 一方通行の出口（JARTIC の一方通行で「自転車も」のもの：b=0）====
+// 出口＝線の最後の点（線は 通ってよい向きの順）。同じ向きに続く線（マスの切れ目・とちゅうで分かれた所）がある はしは のぞく。時間つきは 時間外なら のぞく
+async function oxGather(S, W, N, E) {   // → [{ p, h, dir: 出ていく向き（度） }]
+  const ks = [];
+  for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let j = Math.floor(W * 100); j <= Math.floor(E * 100); j++) ks.push(i + "_" + j);
+  if (ks.length > 16) return [];
+  const lines = [];
+  for (const k of ks) { let d = null; try { d = await jarTile(k); } catch {} for (const o of (d && d.ow) || []) if (o.b === 0 && o.p.length > 1 && nbActive(o.h)) lines.push(o); }
+  const c = Math.cos((S + N) / 2 * RAD), XY = p => [p[1] * c * 111320, p[0] * 111320], ang = (A, B) => (Math.atan2(B[0] - A[0], B[1] - A[1]) / RAD + 360) % 360;
+  const dif = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+  const LX = lines.map(o => o.p.map(XY)), out = [];
+  lines.forEach((o, li) => {
+    const q = LX[li], P = q[q.length - 1], dir = ang(q[q.length - 2], P);
+    const cont = LX.some((m, j) => { if (j === li) return false;
+      for (let i = 1; i < m.length; i++) { const A = m[i - 1], B = m[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L));
+        if (Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]) < 8 && (t < 1 || i < m.length - 1) && dif(ang(A, B), dir) < 40) return true; }   // 同じ向きに 続いている
+      return false; });
+    if (cont || out.some(x => Math.hypot(x.xy[0] - P[0], x.xy[1] - P[1]) < 8)) return;
+    out.push({ p: o.p[o.p.length - 1], h: o.h, dir, xy: P });
+  });
+  return out;
+}
+const OX_SIGN = '<svg viewBox="0 0 40 40" width="26" height="26" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="18" fill="#d40000" stroke="#fff" stroke-width="2"/><rect x="8" y="16.5" width="24" height="7" rx="1" fill="#fff"/></svg>';
+const oxLayer = L.layerGroup().addTo(map), OX_Z = 16; let oxT = null, oxId = 0;
+const oxOn = () => spotOn.has("owexit") && !spotHide;
+function oxReq() { clearTimeout(oxT); oxT = setTimeout(oxDraw, 450); }
+async function oxDraw() {
+  const id = ++oxId;
+  if (!oxOn() || map.getZoom() < OX_Z) { oxLayer.clearLayers(); return; }
+  const b = map.getBounds(), r = await oxGather(b.getSouth(), b.getWest(), b.getNorth(), b.getEast()).catch(() => null);
+  if (id !== oxId || !r) return;
+  oxLayer.clearLayers();
+  for (const x of r) L.marker(x.p, { icon: L.divIcon({ className: "", html: OX_SIGN, iconSize: [26, 26], iconAnchor: [13, 13] }), zIndexOffset: 350 })
+    .bindPopup(`⛔ <b>一方通行の出口</b>（自転車も進入禁止）${x.h ? `<br>${nbHm(x.h)}` : ""}<br><small>警察のデータ（JARTIC 交通規制情報）より。じっさいの標識にしたがってね</small>`).addTo(oxLayer);
+}
+map.on("moveend zoomend", oxReq); setTimeout(oxReq, 1600);
+setInterval(() => { if (!document.hidden) oxReq(); }, 60e3);
+// 声：出口が前方40m以内（±30°）で、このまま行くと 逆向きに入る向き（出ていく向きと反対 ±45°）のときだけ「この先、一方通行の出口です」。
+// ルートの上（30m以内）では言わない（ルートは 自転車もだめな一方通行を逆向きに通らない）。同じ出口は10分に1回・どれでも30秒に1回。音声案内オンのとき
+let oxBusy = false, oxLast = 0, oxSaid = 0; const oxDone = new Map();
+async function oxCheck(ll) {
+  if (!vcOn || !follow || heading == null || oxBusy || Date.now() - oxLast < 1500 || Date.now() - oxSaid < 30e3) return;
+  if (cur && cur.nav && cur.nav.length > 1) { try { if (nearestOnRoute(ll)[0] < 30) return; } catch {} }
+  oxBusy = true; oxLast = Date.now();
+  try {
+    const dla = 60 / 111000, dlo = dla / Math.cos(ll[0] * RAD);
+    const r = await oxGather(ll[0] - dla, ll[1] - dlo, ll[0] + dla, ll[1] + dlo);
+    const dif = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+    let best = null;
+    for (const x of r) {
+      const d = hav(ll, x.p); if (d > 40 || d < 3) continue;
+      if (dif(bearingDeg(ll, x.p), heading) > 30 || dif(heading, x.dir) < 135) continue;   // 前方で、出ていく向きと はんたいに 走っているときだけ
+      if (!best || d < best.d) best = { d, id: x.p.join() };
+    }
+    if (!best || speechSynthesis.speaking) return;
+    const t0 = oxDone.get(best.id); if (t0 && Date.now() - t0 < 10 * 60e3) return;
+    oxDone.set(best.id, Date.now()); oxSaid = Date.now();
+    say("この先、一方通行の出口です");
+    addLog(`⛔ 一方通行の出口の声：${Math.round(best.d)}m`);
+  } finally { oxBusy = false; }
+}
 const nbHm = h => h ? `${+h.slice(0, 2)}:${h.slice(2, 4)}〜${+h.slice(5, 7)}:${h.slice(7)}` : "";
 // 🚳 ルートの先の「時間限定の」自転車通行止め（ルートは いま時間外なら ふつうに通る）：200m手前で声＋自機の横に看板（時刻つき）。通りすぎたら消す
 let nbRt = null;   // { for: ルート, list: [{ s: ルートの何m目から, e: 何m目まで, h: 時刻, a: 入る所 }] }
@@ -5005,7 +5067,7 @@ $("qList").onclick = e => {
 const SPOT_KINDS = [
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
-    ["oneway", "➡", "一方通行"], ["nobike", "🚳", "自転車通行止め"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
+    ["oneway", "➡", "一方通行"], ["nobike", "🚳", "自転車通行止め"], ["owexit", "⛔", "一方通行の出口（自転車も）"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
     ["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"], ["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
@@ -5027,10 +5089,12 @@ let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
 let spotHide = lsGet("hosomichi_spothide", false);   // 右はしの📍ボタンで、えらんだマークをまとめて かくす／出す
 // はじめて使う人は、一方通行の矢印だけオン
-let spotOn = new Set(lsGet("hosomichi_spots", ["oneway", "nobike", "gstep", "steep"])), spotAt = null, spotSz = lsGet("hosomichi_spotsz", "M");
+let spotOn = new Set(lsGet("hosomichi_spots", ["oneway", "nobike", "owexit", "gstep", "steep"])), spotAt = null, spotSz = lsGet("hosomichi_spotsz", "M");
 if (!lsGet("hosomichi_spotsV2", false)) { spotOn.add("gstep"); spotOn.add("steep"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV2", true); }   // 🪜⛰ははじめオン
 if (!lsGet("hosomichi_spotsV3", false)) { spotOn.add("nobike"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV3", true); }   // 🚳 自転車通行止めは はじめオン
-const SPOT_SELF = new Set(["oneway", "nobike", "gstep", "steep"]);   // スポットのデータではなく、アプリが自分で出すマーク
+if (!lsGet("hosomichi_spotsV4", false)) { spotOn.add("owexit"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV4", true); }   // ⛔ 一方通行の出口も はじめオン
+const SPOT_SELF = new Set(["oneway", "nobike", "owexit", "gstep", "steep"]);   // スポットのデータではなく、アプリが自分で出すマーク
+SPOT_SVG.owexit = OX_SIGN.replace('width="26" height="26"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.nobike = NB_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
 spotSize();
@@ -5053,7 +5117,7 @@ $("tabSpot").addEventListener("change", e => {
   else if (sg != null) { for (const [kk] of SPOT_KINDS[+sg][1]) e.target.checked ? spotOn.add(kk) : spotOn.delete(kk); }   // カテゴリぜんぶ
   else if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
   renderSpots();
-  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn(); slopeDraw(); nbMapReq();
+  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn(); slopeDraw(); nbMapReq(); oxReq();
 });
 let spotOv = null;
 function spotOverview() {   // 引いたとき用（配布データぜんぶ・間引いたもの）
@@ -5283,7 +5347,7 @@ function mkBtn() {
     lpDone = true; try { navigator.vibrate?.(30); } catch {}
     if (map.getZoom() < SLOPE_Z) return setMsg(`🪜⛰ もう少し近づいて（ズーム${SLOPE_Z}より近く）長押ししてね`, true);
     if (!spotOn.has("gstep") || !spotOn.has("steep")) { spotOn.add("gstep"); spotOn.add("steep"); lsSet("hosomichi_spots", [...spotOn]); renderSpots(); }   // 長押ししたら 🪜⛰ はオンに
-    const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); spotUpdate(true); owUpdate(true); nbMapReq(); }
+    const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); spotUpdate(true); owUpdate(true); nbMapReq(); oxReq(); }
     setMsg("🪜⛰ このあたりの 階段？・急坂？ をしらべてるよ…");
     worker.postMessage({ cmd: "slopeView", bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]) });
   }, 600); });
@@ -5291,7 +5355,7 @@ function mkBtn() {
   $("mk").addEventListener("click", e => { if (lpDone) { e.stopImmediatePropagation(); lpDone = false; } }, true);
   $("mk").addEventListener("contextmenu", e => e.preventDefault());
 }
-$("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } slopeDraw(); nbMapReq(); };
+$("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } slopeDraw(); nbMapReq(); oxReq(); };
 mkBtn(); slopeDraw();
 
 owUpdate(true);
