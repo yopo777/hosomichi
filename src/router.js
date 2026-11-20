@@ -971,16 +971,16 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
   await Promise.all(names.filter(n => !jarMem.has(n)).map(async n => {
     let old = null;
     try { const st = await jarStore("readonly"); old = st ? await idbReq(st.get(n)) : null; } catch {}
-    if (old && Date.now() - old.savedAt < JAR_AGE) { jarMem.set(n, old.d); return; }
+    if (old && old.d && old.d.sig && Date.now() - old.savedAt < JAR_AGE) { jarMem.set(n, old.d); return; }   // sig がない＝信号を保存する前の古い形 → 取りなおす
     try {
       const res = await fetch(`${packBase}j/${n}.json.gz`);
       let d;
-      if (res.status === 404) d = { nx: [], ow: [] };
+      if (res.status === 404) d = { nx: [], ow: [], sig: [] };
       else {
         if (!res.ok) throw new Error("HTTP " + res.status);
         const b = await res.blob(), h = new Uint8Array(await b.slice(0, 2).arrayBuffer());
         const t = h[0] === 0x1f && h[1] === 0x8b ? await new Response(b.stream().pipeThrough(new DecompressionStream("gzip"))).text() : await b.text();
-        const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [] };
+        const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [], sig: j.sig || [] };
       }
       jarMem.set(n, d);
       try { const st = await jarStore("readwrite"); if (st) await idbReq(st.put({ key: n, savedAt: Date.now(), d })); } catch {}
@@ -1122,7 +1122,7 @@ async function slopeView(bb) {
   const [S, W, N, E] = bb, T = 0.01, keys = [];
   for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
   if (keys.length > 36) return { tooWide: true };
-  const els = [], seen = new Set(); let miss = 0;
+  const els = [], seen = new Set(), have = new Set(); let miss = 0;
   for (const k of keys) {
     let el = mem.get(k);
     if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
@@ -1142,7 +1142,7 @@ async function dbgView(bb, cfg) {
   const [S, W, N, E] = bb, T = 0.01, keys = [];
   for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
   if (keys.length > 9) return { tooWide: true };
-  const els = [], seen = new Set(); let miss = 0;
+  const els = [], seen = new Set(), have = new Set(); let miss = 0;
   for (const k of keys) {
     let el = mem.get(k);
     if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
@@ -1216,6 +1216,62 @@ async function onewayIn(bb) {
     ways.push([pts.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]), free, src]);   // [線, 1 = 自転車は両方向OK, 1 = 警察のデータ]
   }
   return { ways, jar: { n: nJ, add: nAdd, rev: nRev } };
+}
+// 🚓 警察の信号（JARTIC）を OSM の交差点にあてる（ためし・まだルートには使わない）
+// ・30m以内に OSM の信号がある → "osm"（もうある）
+// ・20m以内の 交差点（車の道が2本以上・1本は2車線以上）を 12mでまとめて 1かたまりだけ → "snap"（足す候補。そのかたまりの点に信号をつける）
+// ・2かたまり以上 → "amb"（どの交差点か迷うので足さない）／ なし → "none"
+const JSIG_OSM = 30, JSIG_SNAP = 20, JSIG_CL = 12;
+const JSIG_ROADS = new Set(["residential", "unclassified", "living_street", "tertiary", "secondary", "primary", "trunk"]);
+function jarSigClassify(els, sigs, cfg) {
+  const node = new Map(), cnt = new Map(), big = new Set(), osmSig = [];
+  for (const e of els) if (e.type === "node") {
+    node.set(e.id, e); const t = e.tags || {};
+    if (t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes") osmSig.push(e);
+  }
+  for (const e of els) if (e.type === "way" && e.tags && JSIG_ROADS.has(BASE[e.tags.highway] || e.tags.highway)) {
+    const lv = levelOf(e.tags, cfg);
+    for (const n of new Set(e.nodes)) { cnt.set(n, (cnt.get(n) || 0) + 1); if (lv >= 1) big.add(n); }
+  }
+  const G = 0.0005, gJ = new Map(), gS = new Map(), K = (la, lo) => Math.floor(la / G) + "," + Math.floor(lo / G);
+  const put = (m, e) => { const k = K(e.lat, e.lon); if (!m.has(k)) m.set(k, []); m.get(k).push(e); };
+  for (const [n, c] of cnt) if (c >= 2 && big.has(n) && node.has(n)) put(gJ, node.get(n));
+  osmSig.forEach(e => put(gS, e));
+  const near = (m, p, r) => { const o = [], a = Math.floor(p[0] / G), b = Math.floor(p[1] / G);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const e of m.get((a + i) + "," + (b + j)) || []) { const d = hav(p[0], p[1], e.lat, e.lon); if (d <= r) o.push([e, d]); }
+    return o.sort((x, y) => x[1] - y[1]); };
+  const out = [];
+  for (const p of sigs) {
+    const s = near(gS, p, JSIG_OSM);
+    if (s.length) { out.push({ p, t: "osm", d: Math.round(s[0][1]) }); continue; }
+    const c = near(gJ, p, JSIG_SNAP);
+    if (!c.length) { out.push({ p, t: "none" }); continue; }
+    const cl = [];
+    for (const [e] of c) { const h = cl.find(g => g.some(x => hav(x.lat, x.lon, e.lat, e.lon) <= JSIG_CL)); if (h) h.push(e); else cl.push([e]); }
+    out.push({ p, t: cl.length === 1 ? "snap" : "amb", d: Math.round(c[0][1]), n: c.map(([e]) => ({ id: e.id, p: [e.lat, e.lon] })), k: cl.length });
+  }
+  return out;
+}
+async function jarSigIn(bb, cfg) {
+  const [S, W, N, E] = bb, T = 0.01, pad = 0.0004, keys = [];
+  for (let i = Math.floor((S - pad) / T); i <= Math.floor((N + pad) / T); i++) for (let j = Math.floor((W - pad) / T); j <= Math.floor((E + pad) / T); j++) keys.push(`0.01:${i},${j}`);
+  if (keys.length > 30) return { sigs: [], tooWide: true };
+  if (!packBase) return { sigs: [] };
+  const names = [...new Set(keys.map(packName))]; await jarLoad(names);
+  const sigs = [], sk = new Set();
+  for (const n of names) for (const p of (jarMem.get(n) || {}).sig || []) { const q = p.join(); if (!sk.has(q) && p[0] > S && p[0] < N && p[1] > W && p[1] < E) { sk.add(q); sigs.push(p); } }
+  const els = [], seen = new Set(), have = new Set(); let miss = 0;
+  for (const k of keys) {
+    let el = mem.get(k);
+    if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+    if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+    if (!el) { miss++; continue; }
+    have.add(k);
+    for (const e of el) { const q = e.type[0] + (e.uid || e.id); if (!seen.has(q)) { seen.add(q); els.push(e); } }
+  }
+  const ok = p => have.has(`0.01:${Math.floor(p[0] / T)},${Math.floor(p[1] / T)}`);   // 道のデータがないマスの信号は 判定しない
+  const c = { ...DEFAULT_CFG, ...(cfg || {}) };
+  return { sigs: jarSigClassify(jarApply({ elements: els }, c, await jarPrep(keys, c).catch(() => ({ nx: [], ow: [] }))).elements, sigs.filter(ok), c), miss: sigs.filter(p => !ok(p)).length };
 }
 // 🎨 足あと：走った線を道にあてはめて「通った道（way の何番目の区間か）」を出す（端末にある道路データか配布データだけ）
 // 道の区間を 8m おきの点で見て、いちばん近い区間（15m 以内）に入れる。区間の6割（短い区間は少しでも）通ったら「通った」
@@ -2177,6 +2233,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "painted") { paintedSet = new Set(d.keys || []); return; }   // 👣 もう塗った道（画面から）
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
+      if (d.cmd === "jarSig") { const r = await jarSigIn(d.bb, d.cfg).catch(e => ({ err: e.message, sigs: [] })); return self.postMessage({ type: "jarSig", id: d.id, ...r }); }
       if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;

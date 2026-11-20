@@ -352,6 +352,8 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin:2px 0 0 44px">点線＝ルートで通らない道／まる：大きい道を渡る判定（緑＝信号・青＝横断歩道・赤＝渡れない・オレンジ＝ペナルティ）。細い点線は「どの信号・横断歩道でOKにしたか」</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="jarOn">🚓 警察の交通規制（JARTIC）を見る（拡大したときだけ）</label>
         <div style="font-size:11px;color:#666;margin:2px 0 0 22px">各都道府県警察の交通規制データ（観察用・ルートの計算には まだ使っていないよ）／四角：白＝横断歩道・青＝自転車横断帯・緑＝信号／線：赤＝一方通行（自転車も）・緑の点線＝一方通行（自転車は除く）・矢印＝通ってよい向き・むらさき＝歩行者等横断禁止・灰色＝車両通行帯。タップで中身が出るよ。出典：JARTIC 交通規制情報オープンデータ</div>
+        <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="jarSigOn">🚦 信号を「地図の交差点にあてた結果」で色分け（ためし）</label>
+        <div style="font-size:11px;color:#666;margin:2px 0 0 44px">ルートにはまだ使っていないよ。まる：灰色＝OSMにも信号がある（30m以内）・<b style="color:#0a0">緑</b>＝OSMにないので足す候補（20m以内の交差点が1つだけ。細い線の先の点に信号をつける）・<b style="color:#f29900">オレンジ</b>＝近くに交差点が2つ以上で迷うので足さない・<b style="color:#d93025">赤</b>＝20m以内に交差点がないので足さない</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
 
       </div>
@@ -1135,6 +1137,7 @@ worker.onmessage = ev => {
   if (m.type === "pf") { onPf(m); return; }
   if (m.type === "oneway") { owDraw(m); return; }
   if (m.type === "dbgView") { dbgDraw(m); return; }
+  if (m.type === "jarSig") { jarSigDraw(m); return; }
   if (m.type === "footLive") { footLiveGot(m.segs || []); return; }
   if (m.type === "footMatch") { const f = footCb.get(m.id); footCb.delete(m.id); if (f) f(m.segs || []); return; }
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
@@ -3055,11 +3058,28 @@ async function jarDraw() {
         .bindPopup(pop(o.b ? "⬆ 一方通行（自転車は除く）" : "⬆ 一方通行（自転車も）", (o.b ? "自転車は 逆向きも通れるよ" : "自転車も 矢印の向きだけ") + (o.h ? `<br>⏰ ${o.h.slice(0, 2)}:${o.h.slice(2, 4)}〜${o.h.slice(5, 7)}:${o.h.slice(7)} だけ` : ""))).addTo(jarLayer);
       jarArrows(o.p, col).forEach(x => x.addTo(jarLayer));
     }
-    for (const [k, t, fill] of [["xw", "🚸 横断歩道", "#fff"], ["bx", "🚲 自転車横断帯", "#1a73e8"], ["sig", "🚦 信号機", "#0a0"]])
+    for (const [k, t, fill] of [["xw", "🚸 横断歩道", "#fff"], ["bx", "🚲 自転車横断帯", "#1a73e8"], ["sig", "🚦 信号機", "#0a0"]].filter(x => x[0] !== "sig" || !$("jarSigOn").checked))
       for (const p of d[k] || []) if (inV(p) && once(p)) { n[k]++; L.circleMarker(p, { renderer: jarRend, radius: k === "sig" ? 6 : 5, color: "#222", weight: 2, fillColor: fill, fillOpacity: 1 }).bindPopup(pop(t)).addTo(jarLayer); }
   }
+  if ($("jarSigOn").checked) { const bb = b.pad(0.2); jarSigId = id; worker.postMessage({ cmd: "jarSig", id, bb: [bb.getSouth(), bb.getWest(), bb.getNorth(), bb.getEast()], cfg: structuredClone(cfg) }); }
   setMsg(`🚓 警察の交通規制：横断歩道 ${n.xw}・信号 ${n.sig}・一方通行 ${n.ow}・横断禁止 ${n.nx}・車両通行帯 ${n.ln}（${[...src].map(x => x.replace(/_k_?2[._]1\.csv$/, "")).join("・")}）`);
 }
+let jarSigId = 0;
+function jarSigDraw(m) {   // 🚦 JARTIC の信号を、OSM の交差点にあてた結果で色分け
+  if (m.id !== jarSigId || m.id !== jarId || !$("jarOn").checked || !$("jarSigOn").checked) return;
+  if (m.err) { setMsg("🚦 信号の色分けが できなかった：" + m.err, true); return; }
+  const C = { osm: "#9e9e9e", snap: "#0a0", amb: "#f29900", none: "#d93025" }, n = { osm: 0, snap: 0, amb: 0, none: 0 };
+  const T = { osm: "OSMにも信号がある（足さない）", snap: "OSMにない → 足す候補", amb: "近くに交差点が2つ以上 → 迷うので足さない", none: "20m以内に交差点がない → 足さない" };
+  for (const x of m.sigs) {
+    n[x.t]++; const col = C[x.t];
+    if (x.n && x.t !== "osm") for (const q of x.n) L.polyline([x.p, q.p], { renderer: jarRend, color: col, weight: 2, dashArray: "3 3", interactive: false }).addTo(jarLayer);
+    if (x.t === "snap") for (const q of x.n) L.circleMarker(q.p, { renderer: jarRend, radius: 4, color: "#fff", weight: 1, fillColor: col, fillOpacity: 1, interactive: false }).addTo(jarLayer);
+    L.circleMarker(x.p, { renderer: jarRend, radius: x.t === "osm" ? 5 : 9, color: "#222", weight: 2, fillColor: col, fillOpacity: 1 })
+      .bindPopup(`<div style="font-size:12px"><b>🚦 信号機（警察のデータ）</b><br>${T[x.t]}${x.t === "osm" ? `<br>OSMの信号まで ${x.d}m` : x.d != null ? `<br>いちばん近い交差点まで ${x.d}m${x.k > 1 ? `（交差点のかたまり ${x.k}つ）` : ""}` : ""}<br><span style="color:#888;font-size:11px">${x.p[0].toFixed(5)}, ${x.p[1].toFixed(5)}</span></div>`).addTo(jarLayer);
+  }
+  setMsg(`🚦 信号：OSMにもある ${n.osm}・足す候補 ${n.snap}・迷う ${n.amb}・交差点なし ${n.none}${m.miss ? `（道のデータがない所の信号 ${m.miss}は見ていない）` : ""}`);
+}
+$("jarSigOn").onchange = () => { if ($("jarOn").checked) jarReq(); };
 $("jarOn").onchange = jarReq; map.on("moveend zoomend", () => { if ($("jarOn").checked) jarReq(); });
 $("rtHide").onchange = e => {   // 🙈 ルートの線・ボールをかくす（デバッグ用。ナビはそのまま動く）
   const h = e.target.checked;
