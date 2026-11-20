@@ -202,7 +202,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1149</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1120.1201</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -227,6 +227,13 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <button id="msnGo" style="margin-top:6px">🎯 ミッションを作る</button>
       <h4 style="margin:14px 0 2px;border-top:1px solid #eee;padding-top:10px">🏆 チャレンジ <span style="font-size:11px;color:#666;font-weight:normal">ぜんぶ回る</span></h4>
       <div style="font-size:11px;color:#666;margin-top:2px">駅・神社・お寺などを ぜんぶ回るクエストだよ<span class="hq">?</span><div class="hd">市の駅・神社・お寺や、路線の駅をぜんぶ回るクエストだよ。◎ で走っていて近く（80m）に来ると、自動でスタンプがもらえるよ。記録はこの端末の中だけ</div></div>
+      <div id="mkTour" style="margin:6px 0;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:12px">
+        <b>📍 えらんでいるマークを ぜんぶ回る</b><span class="hq">?</span><div class="hd">⚙設定 → 📍マーク で チェックしているもの（💊ドラッグストア・🏪コンビニ など）を、出発から○kmの円の中で ぜんぶ回るルートを作るよ。市の境目は関係なし。🚸🚦🪜 みたいな「道」のマークは回らないよ。出発は「🚲 ルート」タブの出発（空なら現在地）。回る順番は自動で決めるよ</div>
+        <div id="mkKinds" style="color:#666;margin:2px 0"></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px">出発から<select id="mkR" style="padding:4px;border:1px solid #ccc;border-radius:8px;font-size:13px"><option value="1">1km</option><option value="2">2km</option><option value="3" selected>3km</option><option value="5">5km</option><option value="7">7km</option><option value="10">10km</option></select>の円の中</div>
+        <div style="margin-top:4px"><label><input type="radio" name="mkB" value="1" checked> 出発にもどる</label>　<label><input type="radio" name="mkB" value="0"> 最後の所で終わり</label></div>
+        <button class="ib" id="mkGo" style="margin-top:6px;width:100%;border-color:#188038;color:#188038;font-weight:bold">ルートを作る</button>
+      </div>
       <div class="row"><input type="text" autocomplete="off" id="qLine" enterkeyhint="search" placeholder="例：さいたま市、銀座線"><button class="ib" id="qFind" style="font-size:13px;white-space:nowrap">🔍 さがす</button></div>
       <div id="qCand"></div>
       <div id="qList"></div>
@@ -3135,7 +3142,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1149", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1120.1201", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6791,17 +6798,22 @@ async function qTour(id, back, skipDone) {
   if (pts.length > 200) return alert(`${pts.length}${qUnit(q)}は多すぎるよ。200までにしてね（「行った所はとばす」で減らせるよ）`);
   if (pts.length > 40 && !confirm(`${pts.length}${qUnit(q)}を回るルートは、計算に数分かかるかも（パソコン向け）。\nとちゅうで「■ 止める」もできるよ。作る？`)) return;
   audioUnlock();
+  return tourRun(q.name, qUnit(q), () => pts, back);
+}
+// ぜんぶ回るルートを作る（クエスト・📍マーク 共通）。getPts(出発) → [[名前, 緯度, 経度, 1], …]（出発が決まってから えらぶとき用）
+async function tourRun(name, unit, getPts, back) {
   const fromT = $("from").value.trim();
-  layer.clearLayers(); cur = null; cum = []; navAlong = null;   // 押したらすぐ前のルートを消す
-  try { flowStop(); guideStop(); flowBtns(); } catch {}
-  for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
-  legend(null); $("mini").textContent = "";
   try {
     setMsg("出発の場所をさがしてるよ…");
     const [s, sn] = fromT ? await geocode(fromT) : [await getHere(), "現在地"];
+    const pts = await getPts(s); if (!pts || !pts.length) { setMsg(""); return; }   // やめたときは 前のルートを そのままのこす
+    layer.clearLayers(); cur = null; cum = []; navAlong = null;   // 前のルートを消す
+    try { flowStop(); guideStop(); flowBtns(); } catch {}
+    for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
+    legend(null); $("mini").textContent = "";
     const { order, crow } = qOrder(s, pts, back);
-    addLog(`🔁 ${q.name} ぜんぶ回る: 出発 ${sn} → ${order.map(p => p[0]).join(" → ")}${back ? " → 出発" : ""}（まっすぐで ${fmtKm(crow)}）`, "h");
-    pendingName = `${q.name}（${order.length}${qUnit(q)}）` + (back ? " 1周" : "");
+    addLog(`🔁 ${name} ぜんぶ回る: 出発 ${sn} → ${order.map(p => p[0]).join(" → ")}${back ? " → 出発" : ""}（まっすぐで ${fmtKm(crow)}）`, "h");
+    pendingName = `${name}（${order.length}${unit}）` + (back ? " 1周" : "");
     showTab("route");
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip(back ? "出発・到着" : "出発");
     map.fitBounds([s, ...order.map(p => [p[1], p[2]])], { padding: [40, 40] });
@@ -6960,6 +6972,7 @@ function renderSpots() {
       + (g === "道" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所</div>' : "") + "</div></div>").join("");
   for (const el of $("spotBox").querySelectorAll("[data-sg]")) { const ks = SPOT_KINDS[+el.dataset.sg][1]; el.indeterminate = !el.checked && ks.some(x => spotOn.has(x[0])); }   // 一部だけオンのときは「－」
   { const el = $("spotBox").querySelector("[data-sall]"); if (el) el.indeterminate = !el.checked && spotOn.size > 0; }
+  try { mkKindsShow(); } catch {}   // 🏆 チャレンジの「📍 マークを回る」に、いま回るものを出す
 }
 $("tabSpot").addEventListener("change", e => {
   if (e.target.dataset.sz) { spotSz = e.target.dataset.sz; lsSet("hosomichi_spotsz", spotSz); spotSize(); return; }
@@ -6980,6 +6993,37 @@ function spotTile(key) {   // 1回読んだマスはおぼえておく（ない�
     .then(r => r.ok ? r.json() : {}).catch(() => { spotTiles.delete(key); return {}; }));
   return spotTiles.get(key);
 }
+// 📍 えらんでいるマークを ぜんぶ回る（🏆チャレンジ）：出発から R km の円の中・「道」のマークはのぞく
+const mkKindsOn = () => [...spotOn].filter(k => !SPOT_SELF.has(k) && !SPOT_ROAD.has(k) && SPOT_INFO[k]);
+function mkKindsShow() { const ks = mkKindsOn(); if ($("mkKinds")) $("mkKinds").textContent = ks.length ? "回るもの：" + ks.map(k => SPOT_INFO[k][0] + SPOT_INFO[k][1]).join("・") : "⚙設定 → 📍マーク で、回りたいもの（💊ドラッグストアなど）にチェックしてね"; }
+async function mkPts(c, R, ks) {   // 円の中のマーク → [[名前, 緯度, 経度, 1, ジャンル], …]（近い順）
+  const dla = R / 111000, dlo = R / (111000 * Math.cos(c[0] * RAD)), keys = [];
+  for (let i = Math.floor((c[0] - dla) / SPOT_T); i <= Math.floor((c[0] + dla) / SPOT_T); i++)
+    for (let j = Math.floor((c[1] - dlo) / SPOT_T); j <= Math.floor((c[1] + dlo) / SPOT_T); j++) keys.push(i + "_" + j);
+  const out = [];
+  for (const t of await Promise.all(keys.map(spotTile))) for (const k of ks) for (const s of t[k] || []) {
+    const d = hav(c, [s[1], s[2]]); if (d < R) out.push([d, [s[0] || SPOT_INFO[k][1], s[1], s[2], 1, k]]);
+  }
+  return out.sort((a, b) => a[0] - b[0]).map(x => x[1]);
+}
+async function mkTour() {
+  const ks = mkKindsOn(); mkKindsShow();
+  if (!ks.length) return alert("⚙設定 → 📍マーク で、回りたいもの（💊ドラッグストアなど）にチェックしてね");
+  if ($("go").disabled) return alert("いまルートを計算中だよ");
+  const R = +$("mkR").value * 1000, back = document.querySelector('input[name="mkB"]:checked').value === "1";
+  const kn = ks.map(k => SPOT_INFO[k][1]).join("・");
+  audioUnlock();
+  return tourRun(kn, "か所", async s => {
+    setMsg("円の中のマークをさがしてるよ…");
+    const pts = await mkPts(s, R, ks);
+    const cnt = ks.map(k => [k, pts.filter(p => p[4] === k).length]).filter(x => x[1]).map(([k, n]) => SPOT_INFO[k][0] + SPOT_INFO[k][1] + " " + n).join("・");
+    if (!pts.length) { alert(`${R / 1000}kmの中に ${kn} は見つからなかったよ。円を大きくしてみてね`); return null; }
+    if (pts.length > 200) { alert(`${pts.length}か所は多すぎるよ（${cnt}）。200までにしてね。円を小さくするか、チェックを へらしてね`); return null; }
+    if (!confirm(`${R / 1000}kmの中に ${pts.length}か所あるよ（${cnt}）。\nぜんぶ回るルートを作る？` + (pts.length > 40 ? "\n（多いので 計算に数分かかるかも。とちゅうで「■ 止める」もできるよ）" : ""))) return null;
+    return pts;
+  }, back);
+}
+$("mkGo").onclick = mkTour;
 // 現在地に固定しているとき：現在地から2km・60個まで（500m動いたら入れかえ）
 // 固定していないとき：見えている地図の中に150個まで（ズーム12より引いたら「引いたとき用」の間引いたデータ）
 // どちらも、画面を指1本分（48px・引いたときは64px）のマスに分けて、マスごとに1個だけ（有名なもの → 近いもの の順にえらぶ）
