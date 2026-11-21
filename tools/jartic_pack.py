@@ -262,7 +262,7 @@ def main():
     # データの版（アプリは これが変わったら 端末に保存した JARTIC を取りなおす）。robocopy /MIR で消えないように ここで作る
     import datetime
     ver = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y%m%d%H%M")
-    open(os.path.join(out, "j", "ver.json"), "w").write(json.dumps({"v": ver, "src": src}, ensure_ascii=False))
+    open(os.path.join(out, "j", "ver.json"), "w", encoding="utf-8").write(json.dumps({"v": ver, "src": src}, ensure_ascii=False))
     print("マス", len(T), "ぜんぶで", round(size / 1e6, 2), "MB", dict(stat), "版", ver)
 
 

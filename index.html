@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1121.0030</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1121.0944</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3424,7 +3424,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1121.0030", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1121.0944", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6409,13 +6409,13 @@ function nbActive(h, w) {   // 時間つき（"0700-0900"）・曜日つき（"1
   const n = d.getHours() * 100 + d.getMinutes(), a = +m[1], b = +m[2];
   return a <= b ? n >= a && n < b : n >= a || n < b;
 }
-// k：1＝🚶 歩行者用道路（自転車も入れない）／なし＝🚳 自転車通行止め。kinds：{ nb, pw } 出す種類（なければ両方）
+// k：1＝🚶 歩行者用道路（自転車も入れない）／なし＝通行止めの仲間（t："x" 通行止め・"v" 車両通行止め・なし 自転車通行止め）。kinds：出すマークの Set（nbKey。なければぜんぶ）
 async function nbGather(S, W, N, E, now, kinds) {   // → { lines: [{p, h, w, k}], ents: [{p, h, w, k}] }（はんいの中のマスだけ。広すぎたら空）。now：いま規制中のものだけ
   const ks = [];
   for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let j = Math.floor(W * 100); j <= Math.floor(E * 100); j++) ks.push(i + "_" + j);
   if (ks.length > 16) return { lines: [], ents: [], wide: true };
   const lines = [];
-  for (const k of ks) { let d = null; try { d = await jarTile(k); } catch {} for (const o of (d && d.nb) || []) if (!o.q && o.p.length > 1 && (!now || nbActive(o.h, o.w)) && (!kinds || (o.k === 1 ? kinds.pw : kinds.nb))) lines.push(o); }
+  for (const k of ks) { let d = null; try { d = await jarTile(k); } catch {} for (const o of (d && d.nb) || []) if (!o.q && o.p.length > 1 && (!now || nbActive(o.h, o.w)) && (!kinds || kinds.has(nbKey(o)))) lines.push(o); }
   const lat0 = (S + N) / 2, c = Math.cos(lat0 * RAD), XY = p => [p[1] * c * 111320, p[0] * 111320];
   const L2 = lines.map(o => { const q = o.p.map(XY); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of q) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } return { q, bb: [x0 - 20, y0 - 20, x1 + 20, y1 + 20] }; });
   const dist = (P, q) => { let m = Infinity; for (let i = 1; i < q.length; i++) { const A = q[i - 1], B = q[i], dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L)); m = Math.min(m, Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1])); } return m; };
@@ -6433,7 +6433,8 @@ async function nbGather(S, W, N, E, now, kinds) {   // → { lines: [{p, h, w, k
   return { lines, ents };
 }
 // 地図に出す（ズーム15以上・設定の「マーク」→「道」の 🚳 でオン・オフ。右はしの📍でまとめて かくせる）
-const nbMapOn = () => (spotOn.has("nobike") || spotOn.has("pwalk")) && !spotHide;
+const nbMapOn = () => ["noroad", "nocar", "nobike", "pwalk"].some(k => spotOn.has(k)) && !spotHide;
+const nbKey = o => o.k === 1 ? "pwalk" : o.t === "x" ? "noroad" : o.t === "v" ? "nocar" : "nobike";   // どのマークの設定か
 // 🚶 歩行者用道路の標識（青い丸に 大人と子ども）
 const PW_SIGN = '<svg viewBox="0 0 40 40" width="30" height="30" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="18" fill="#1565c0" stroke="#fff" stroke-width="2"/>'
   + '<g fill="#fff"><circle cx="15" cy="10.5" r="2.6"/><path d="M12.5 14 h5 l1.6 8 -2 .4 -1.2 -5 v5.8 l1.6 7.6 h-2.4 l-1.6 -7 -1.6 7 h-2.4 l1.6 -7.6 v-5.8 l-1.2 5 -2 -.4 z"/>'
@@ -6453,7 +6454,7 @@ function nbMapReq() { clearTimeout(nbMapT); nbMapT = setTimeout(nbMapDraw, 400);
 async function nbMapDraw() {
   const id = ++nbMapId;
   if (!nbMapOn() || map.getZoom() < NB_Z) { nbLayer.clearLayers(); return; }
-  const b = map.getBounds(), r = await nbGather(b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), true, { nb: spotOn.has("nobike"), pw: spotOn.has("pwalk") }).catch(() => null);   // 時間外は出さない
+  const b = map.getBounds(), r = await nbGather(b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), true, spotOn).catch(() => null);   // 時間外は出さない
   if (id !== nbMapId || !r) return;
   nbLayer.clearLayers();
   for (const o of r.lines) L.polyline(o.p, { color: o.k === 1 ? "#1565c0" : "#e00000", weight: 8, opacity: .28, interactive: false }).addTo(nbLayer);
@@ -7507,7 +7508,7 @@ $("qList").onclick = e => {
 const SPOT_KINDS = [
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
-    ["oneway", "➡", "一方通行"], ["nobike", "🚳", "自転車通行止め"], ["pwalk", "🚶", "歩行者用道路（自転車も）"], ["owexit", "⛔", "一方通行の出口（自転車も）"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
+    ["oneway", "➡", "一方通行"], ["noroad", "🚧", "通行止め"], ["nocar", "🚫", "車両通行止め"], ["nobike", "🚳", "自転車通行止め"], ["pwalk", "🚶", "歩行者用道路（自転車も）"], ["owexit", "⛔", "一方通行の出口（自転車も）"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
     ["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"], ["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
@@ -7529,12 +7530,15 @@ let spotShown = new Set(), spotMk = [];
 const SPOT_R = 2000, SPOT_MAX = 60, SPOT_T = 0.05;
 let spotHide = lsGet("hosomichi_spothide", false);   // 右はしの📍ボタンで、えらんだマークをまとめて かくす／出す
 // はじめて使う人は、一方通行の矢印だけオン
-let spotOn = new Set(lsGet("hosomichi_spots", ["oneway", "nobike", "pwalk", "owexit", "gstep", "steep"])), spotAt = null, spotSz = lsGet("hosomichi_spotsz", "M");
+let spotOn = new Set(lsGet("hosomichi_spots", ["oneway", "noroad", "nocar", "nobike", "pwalk", "owexit", "gstep", "steep"])), spotAt = null, spotSz = lsGet("hosomichi_spotsz", "M");
 if (!lsGet("hosomichi_spotsV2", false)) { spotOn.add("gstep"); spotOn.add("steep"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV2", true); }   // 🪜⛰ははじめオン
 if (!lsGet("hosomichi_spotsV3", false)) { spotOn.add("nobike"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV3", true); }   // 🚳 自転車通行止めは はじめオン
 if (!lsGet("hosomichi_spotsV4", false)) { spotOn.add("owexit"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV4", true); }   // ⛔ 一方通行の出口も はじめオン
 if (!lsGet("hosomichi_spotsV5", false)) { spotOn.add("pwalk"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV5", true); }   // 🚶 歩行者用道路も はじめオン
-const SPOT_SELF = new Set(["oneway", "nobike", "pwalk", "owexit", "gstep", "steep"]);
+if (!lsGet("hosomichi_spotsV6", false)) { if (spotOn.has("nobike")) { spotOn.add("noroad"); spotOn.add("nocar"); } lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV6", true); }   // 🚳 を 通行止め・車両通行止め・自転車通行止め に分けた（前の 🚳 と同じオン・オフ）
+const SPOT_SELF = new Set(["oneway", "noroad", "nocar", "nobike", "pwalk", "owexit", "gstep", "steep"]);
+SPOT_SVG.noroad = X_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
+SPOT_SVG.nocar = V_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.pwalk = PW_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");   // スポットのデータではなく、アプリが自分で出すマーク
 SPOT_SVG.owexit = OX_SIGN.replace('width="26" height="26"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.nobike = NB_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
