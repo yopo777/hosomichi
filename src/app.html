@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v__VER__</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v__VER__</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -1315,7 +1315,7 @@ function workerReset() {
 }
 // ⏹ メニューをたたんでいても 止められるように、計算中は 地図の下にも「止める」を出す
 $("fStop").onclick = () => $("stop").click();
-setInterval(() => { const b = $("fStop"), on = $("stop").style.display !== "none" && $("go").disabled && $("panel").classList.contains("min"); if (b.style.display !== (on ? "" : "none")) b.style.display = on ? "" : "none"; }, 400);
+setInterval(() => { const b = $("fStop"), on = $("stop").style.display !== "none" && $("go").disabled && $("panel").classList.contains("min"); if (b.style.display !== (on ? "" : "none")) b.style.display = on ? "" : "none"; }, 1000);
 $("bResume").onclick = () => {
   audioUnlock(); barMax = 0;
   if (!cur || !cur.resume || $("go").disabled) return;
@@ -2702,7 +2702,7 @@ function evPos(ll, gsp, acc) {   // GPS（ためしもふくむ）が来るた�
   if (pt && now - pt < 5000) { const a = (evSp - prev) / Math.max(0.3, (now - pt) / 1000); evAcc = evAcc * 0.6 + a * 0.4; }   // 速さの変わりかた（m/秒²）。マイナス＝へっている
   evSet(evSp);
 }
-setInterval(() => { if (evOn && (evN || evC) && Date.now() - evT > 4000) { evSp = 0; evSet(0); } }, 1000);   // 位置が来なくなったら止める
+setInterval(() => { if (evOn && (evN || evC) && Date.now() - evT > 4000) { evSp = 0; evSet(0); } }, 2000);   // 位置が来なくなったら止める
 function evBtn() { if ($("evOnCb")) $("evOnCb").checked = evOn; }
 function evToggle(on) {
   evOn = on; lsSet("hosomichi_ev", on); evBtn();
@@ -2737,7 +2737,7 @@ function footToday() {   // 今日の分だけ描きなおす（点がふえた�
   footTodayLayer.clearLayers();
   for (const r of footSplit(ride.pts, footDbg)) L.polyline(r, FOOT_STYLE).addTo(footTodayLayer);
 }
-setInterval(footToday, 30000);
+setInterval(footToday, 60000);
 function footSet(on) {
   footOn = on; lsSet("hosomichi_foot", on);
   if (on) footRuns = null;   // ONにするたびに読みなおす（0時に過去へ入った分も入る）
@@ -3413,12 +3413,32 @@ $("bGpx").onclick = () => {
 };
 $("bClear").onclick = () => { if (confirm("端末に保存した道路データを消す？（次は取りなおしになるよ）")) worker.postMessage({ cmd: "clear" }); };
 worker.postMessage({ cmd: "pack", base: new URL("../hosomichi-data/", location.href).href });   // 配布データの場所（同じ GitHub Pages の hosomichi-data）
-// 🎌 祝日・休日（holidays.txt「2026-01-01 元日」）：「日曜・休日を除く」などの交通規制で、祝日は日曜と同じあつかい
-let HOL = new Set();
+// 🎌 祝日・休日（計算＋holidays.txt「2026-01-01 元日」）：「日曜・休日を除く」などの交通規制で、祝日は日曜と同じあつかい
+// 11/21：祝日は 決まりから 自分で計算する（jpHolidays）。holidays.txt は 法律が変わったときなどの 足し分（両方あわせる）
+function jpHolidays(y) {   // その年の 祝日・振替休日・国民の休日（いまの祝日法のきまり。春分・秋分は 1980〜2099年の式）
+  const p = n => String(n).padStart(2, "0"), k = (m, d) => `${y}-${p(m)}-${p(d)}`, H = new Map();
+  const nthMon = (m, n) => { const f = new Date(y, m - 1, 1).getDay(); return 1 + ((8 - f) % 7) + (n - 1) * 7; };
+  const t = y - 1980, sp = Math.floor(20.8431 + 0.242194 * t - Math.floor(t / 4)), au = Math.floor(23.2488 + 0.242194 * t - Math.floor(t / 4));
+  const NM = { "1-1": "元日", "2-11": "建国記念の日", "2-23": "天皇誕生日", "4-29": "昭和の日", "5-3": "憲法記念日", "5-4": "みどりの日", "5-5": "こどもの日", "8-11": "山の日", "11-3": "文化の日", "11-23": "勤労感謝の日" };
+  for (const [m, d, n] of [[1, 1], [1, nthMon(1, 2), "成人の日"], [2, 11], [2, 23], [3, sp, "春分の日"], [4, 29], [5, 3], [5, 4], [5, 5], [7, nthMon(7, 3), "海の日"], [8, 11], [9, nthMon(9, 3), "敬老の日"], [9, au, "秋分の日"], [10, nthMon(10, 2), "スポーツの日"], [11, 3], [11, 23]]) H.set(k(m, d), n || NM[m + "-" + d]);
+  const ymd = d => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, out = new Map(H);
+  for (const h of H.keys()) { const d = new Date(h + "T00:00:00"); if (d.getDay() === 0) { const n = new Date(d); do n.setDate(n.getDate() + 1); while (out.has(ymd(n))); out.set(ymd(n), "振替休日"); } }   // 振替休日
+  for (let m = 0; m < 12; m++) for (let dd = 2; dd <= 30; dd++) { const d = new Date(y, m, dd); if (d.getMonth() !== m || d.getDay() === 0) continue;   // 国民の休日（祝日にはさまれた日）
+    const a = new Date(y, m, dd - 1), b = new Date(y, m, dd + 1); if (H.has(ymd(a)) && H.has(ymd(b)) && !out.has(ymd(d))) out.set(ymd(d), "国民の休日"); }
+  return out;   // Map：日付 → 名前
+}
+let HOL = new Set(); const HOLN = new Map();   // HOLN：日付 → 祝日の名前
+{ const y = new Date().getFullYear(); for (let i = y - 1; i <= y + 2; i++) for (const [d, n] of jpHolidays(i)) { HOL.add(d); HOLN.set(d, n); } }
+worker.postMessage({ cmd: "hol", days: [...HOL] });
 fetch(new URL("holidays.txt", location.href), { cache: "no-cache" }).then(r => r.ok ? r.text() : "").then(t => {
-  HOL = new Set((t.match(/^\d{4}-\d{2}-\d{2}/gm) || []));
-  worker.postMessage({ cmd: "hol", days: [...HOL] });
+  for (const m of t.matchAll(/^(\d{4}-\d{2}-\d{2})[ \t]*(.*)$/gm)) { HOL.add(m[1]); if (!HOLN.has(m[1])) HOLN.set(m[1], m[2].trim() || "休日"); }
+  worker.postMessage({ cmd: "hol", days: [...HOL] }); todayShow();
 }).catch(() => {});
+// 📅 上の帯に 今日の日付・曜日・祝日（交通規制の「日曜・休日を除く」がわかるように）。1分ごとに見なおす
+function todayShow() { const el = $("today"); if (!el) return; const d = new Date(), k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, w = "日月火水木金土"[d.getDay()], hn = HOLN.get(k);
+  el.textContent = `${d.getMonth() + 1}/${d.getDate()}(${w})` + (hn ? ` 🎌${hn}` : "");
+  el.style.color = hn || d.getDay() === 0 ? "#d33" : d.getDay() === 6 ? "#2a6fd6" : "#999"; }
+todayShow(); setInterval(todayShow, 10 * 60e3);   // 10分ごと（11/21 かるくするため）
 worker.postMessage({ cmd: "stats" });
 // 「ルート消去」：今のルートを画面から消して、入力欄を空にして、到着地を入れられるようにする
 let rtDrop = false;   // 🗑ルート消去で計算を止めたあと、おくれて届く結果をすてる
@@ -4057,7 +4077,7 @@ async function nbMapDraw() {
     .bindPopup((e.k === 1 ? "🚶 <b>歩行者用道路</b>（自転車も入れない）" : `🚳 <b>${nbName(e)}</b>${e.t ? "（自転車も通れない）" : ""}`) + (e.h || e.w ? `<br>${nbWhen(e.h, e.w)}` : "") + `<br><small>警察のデータ（JARTIC 交通規制情報）より。じっさいの標識にしたがってね</small>`).addTo(nbLayer);
 }
 map.on("moveend zoomend", nbMapReq); setTimeout(nbMapReq, 1500);
-setInterval(() => { if (!document.hidden) nbMapReq(); }, 60e3);   // 時間つき：時間になったら出す・すぎたら消す
+setInterval(() => { if (!document.hidden) nbMapReq(); }, 10 * 60e3);   // 時間つき：時間になったら出す・すぎたら消す（10分ごと。地図を動かしたときも見なおす）
 // ==== ⛔ 一方通行の出口（JARTIC の一方通行で「自転車も」のもの：b=0）====
 // 出口＝線の最後の点（線は 通ってよい向きの順）。同じ向きに続く線（マスの切れ目・とちゅうで分かれた所）がある はしは のぞく。時間つきは 時間外なら のぞく
 async function oxGather(S, W, N, E) {   // → [{ p, h, dir: 出ていく向き（度） }]
@@ -4094,7 +4114,7 @@ async function oxDraw() {
     .bindPopup(`⛔ <b>一方通行の出口</b>（自転車も進入禁止）${x.h ? `<br>${nbHm(x.h)}` : ""}<br><small>警察のデータ（JARTIC 交通規制情報）より。じっさいの標識にしたがってね</small>`).addTo(oxLayer);
 }
 map.on("moveend zoomend", oxReq); setTimeout(oxReq, 1600);
-setInterval(() => { if (!document.hidden) oxReq(); }, 60e3);
+setInterval(() => { if (!document.hidden) oxReq(); }, 10 * 60e3);
 // ==== 🚓 警察のデータのほかの標識（11/21）：⛔ 車両進入禁止（303・点）・自転車の交差点進入禁止（点）・自転車歩道通行可（線）・自転車専用通行帯（線）====
 // 声はなし。マーク→道 の設定でオン・オフ。ズーム16以上
 const SG = (w, inner) => `<svg viewBox="0 0 40 40" width="${w}" height="${w}" style="display:block;filter:drop-shadow(0 1px 2px #0006)">${inner}</svg>`;
@@ -4146,7 +4166,7 @@ async function jxDraw() {
   }
 }
 map.on("moveend zoomend", jxReq); setTimeout(jxReq, 1700);
-setInterval(() => { if (!document.hidden) jxReq(); }, 60e3);
+setInterval(() => { if (!document.hidden) jxReq(); }, 10 * 60e3);
 // 声：出口が前方40m以内（±30°）で、このまま行くと 逆向きに入る向き（出ていく向きと反対 ±45°）のときだけ「この先、一方通行の出口です」。
 // ルートの上（30m以内）では言わない（ルートは 自転車もだめな一方通行を逆向きに通らない）。同じ出口は10分に1回・どれでも30秒に1回。音声案内オンのとき
 let oxBusy = false, oxLast = 0, oxSaid = 0; const oxDone = new Map();
@@ -4490,7 +4510,7 @@ let autoWake = lsGet("hosomichi_autowake", true) !== false;   // 🔆 自動で�
 $("autoWake").checked = autoWake; $("autoWake").onchange = () => { autoWake = $("autoWake").checked; lsSet("hosomichi_autowake", autoWake); if (!autoWake) blkUntil = 0; blkTick(); };
 const blkFull = () => saving && blkScr >= 100;   // まっ黒で 地図が見えていない：地図を動かさない・マークを描かない
 function blkShowMap(ms) { if (!autoWake) return; blkUntil = Date.now() + ms; blkTick(); }   // 曲がる手前など：しばらく地図を出す
-document.addEventListener("pointerdown", () => { blkTouch = Date.now(); document.body.classList.add("ringOff"); }, true);
+document.addEventListener("pointerdown", () => { blkTouch = Date.now(); document.body.classList.add("ringOff"); try { blkTick(); } catch {} }, true);
 // メニューをさわっている（スクロール・文字入力・えらぶ）ときも「さわっている」とする
 for (const ev of ["pointermove", "wheel", "keydown", "input", "change", "focusin"]) document.addEventListener(ev, e => { if (ev !== "pointermove" || e.buttons || e.pointerType === "touch") blkTouch = Date.now(); }, { capture: true, passive: true });
 document.addEventListener("touchmove", () => { blkTouch = Date.now(); }, { capture: true, passive: true });   // 指でスクロール（scroll は ログの自動スクロールでも出るので 使わない）
@@ -4516,7 +4536,7 @@ function blkTick() {
   saveSet(!!on);   // 暗くしているあいだだけ、マーク・ボールも消す（⭕丸だけのときは出す）
   const d = on ? "flex" : "none"; if ($("blk").style.display !== d) $("blk").style.display = d;
 }
-setInterval(blkTick, 1000);
+setInterval(blkTick, 2000);   // 2秒ごと（さわったときは すぐ見なおす）
 let ringLv = (v => v === true ? 1 : +v || 0)(lsGet("hosomichi_ring", 0));   // 0=しない 1=小さい丸 2=もっと小さい丸（前の on は 1 に）
 function ringApply() { const b = document.body.classList; b.toggle("ring", ringLv > 0); b.toggle("ring1", ringLv === 1); b.toggle("ring2", ringLv === 2); }
 for (const r of document.querySelectorAll("[name=ringLv]")) {
