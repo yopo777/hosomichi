@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1121.1020</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1121.1038</small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3427,7 +3427,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1121.1020", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1121.1038", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5413,8 +5413,8 @@ const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道�
   nbside: { n: "歩道（自転車通行止めの橋の）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
   path: { n: "小道（path・track）", c: "#c47a2c", w: 3 },
   cycle: { n: "自転車道", c: "#2e9e3a", w: 3.5 },
-  steps: { n: "階段", c: "#8a4dff", w: 4, dash: "3 3", alt: "#fff" },
-  rsteps: { n: "階段（自転車スロープつき）", c: "#8a4dff", w: 4, dash: "3 3", alt: "#2e9e3a" },
+  steps: { n: "階段", c: "#8a4dff", w: 5, dash: "3 3", alt: "#fff" },
+  rsteps: { n: "階段（自転車スロープつき）", c: "#00d26a", w: 6, dash: "10 4", alt: "#8a4dff" },   // 11/21 見分けやすく：緑の長い破線＋すきまに紫
 };
 const dbgYes = v => v && v !== "no";
 function dbgKind(t) {
