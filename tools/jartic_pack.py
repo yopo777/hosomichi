@@ -68,7 +68,9 @@ def nb_kind(r):   # 自転車が通れない通行止めか → None（関係な
     # 除外が「その他」だけ・時間が空っぽ（警視庁などの「通行禁止」）：災害のときの緊急交通路みたい。ふだんは関係ないので すてる
     if digit(r.get("除外車両コード1_D", ""), 15) and not (r.get("規制時間1_開始") or "").strip(): return None
     if NB_NAME.search(name): return 0
-    if not has_codes(r): return None if NB_NOT.search(name) else 1
+    if not has_codes(r):
+        if r.get("共通規制種別コード") == "4": return None if NB_NOT.search(name) else 0   # 11/21：通行止め（4）でコードが空っぽ＝だれも通れない → たしか（🚧・ルートも通らない）
+        return None if NB_NOT.search(name) else 1
     return 0 if any(bike_target(r, n) for n in range(1, 6) if n == 1 or has_codes(r, n)) else None
 
 
@@ -175,6 +177,8 @@ def read_csv(name, raw):
 def main():
     out, files = sys.argv[1], sys.argv[2:]
     T = defaultdict(lambda: defaultdict(list)); TS = defaultdict(set)   # TS：そのマスに入っている 県警の名前
+    IDX = defaultdict(set)   # 🔎 さがす用の目次（数が少ないマークの場所だけ）：種類 → {(緯度, 経度, 時間, 曜日)}
+    def idx(kind, p, tw): IDX[kind].add((round(p[0], 5), round(p[1], 5), tw.get("h", ""), tw.get("w", "")))
     src, stat = [], defaultdict(int)
     for name, raw in sources(files):
         rows = read_csv(name, raw); del raw
@@ -193,11 +197,13 @@ def main():
                 tw = time_week(r); item.update(tw)
                 p = pts[0]; t = (math.floor(p[0] * 100), math.floor(p[1] * 100))
                 T[t][k].append(item); TS[t].add(name); stat[k] += 1
+                idx("cxban" if k == "cx" else "noentb" if item.get("b") else "noent", pts[0], tw)
                 continue
             if k in ("sw", "bl"):   # 線：{p, h?, w?}
                 if len(pts) < 2: continue
                 tw = time_week(r); stat[k] += 1
                 for sec in [x for x in (pts_of(z) for z in (r.get("規制場所の経度緯度") or "").split("/")) if len(x) >= 2]:
+                    if k == "bl": idx("blane", sec[len(sec) // 2], tw)
                     for t, parts in clip(sec).items():
                         TS[t].add(name)
                         for pp in parts: T[t][k].append({**tw, "p": pp})
@@ -234,7 +240,9 @@ def main():
                 if not secs:
                     stat["nb_long"] += 1; continue
                 stat["nb"] += 1; stat["nb_q"] += q; stat["nb_time"] += "h" in item
+                if not q: ik = "pwalk" if item.get("k") == 1 else {"x": "noroad", "v": "nocar"}.get(item.get("t"), "nobike")
                 for x in secs:
+                    if not q: idx(ik, x[0], item)
                     for t, parts in clip(x).items():
                         TS[t].add(name)
                         for pp in parts: T[t]["nb"].append({**item, "p": pp})
@@ -263,6 +271,11 @@ def main():
         b = gzip.compress(json.dumps(d, ensure_ascii=False, separators=(",", ":")).encode(), 9)
         open(os.path.join(out, "j", f"{i}_{j}.json.gz"), "wb").write(b)
         size += len(b)
+    # 🔎 さがす用の目次 j/idx.json.gz：{種類: [[緯度, 経度, "時間"?, "曜日"?], ...]}（時間・曜日は あるときだけ）
+    ix = {kd: [[a, b] + ([h, w] if h or w else []) for a, b, h, w in sorted(v)] for kd, v in IDX.items()}
+    b = gzip.compress(json.dumps(ix, ensure_ascii=False, separators=(",", ":")).encode(), 9)
+    open(os.path.join(out, "j", "idx.json.gz"), "wb").write(b)
+    print("目次", {kd: len(v) for kd, v in ix.items()}, round(len(b) / 1e3), "KB")
     # データの版（アプリは これが変わったら 端末に保存した JARTIC を取りなおす）。robocopy /MIR で消えないように ここで作る
     import datetime
     ver = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y%m%d%H%M")

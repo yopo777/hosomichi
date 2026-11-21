@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1121.1547</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1121.2208</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3432,7 +3432,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1121.1547", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1121.2208", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -7646,7 +7646,13 @@ async function jxFind(k, nm) {
   const c0 = map.getCenter(), i0 = Math.floor(c0.lat * 100), j0 = Math.floor(c0.lng * 100), cs = Math.cos(c0.lat * RAD);
   const dm = (a, b) => Math.hypot((a[0] - b[0]) * 111320, (a[1] - b[1]) * 111320 * cs), seen = jxSeen[k] || (jxSeen[k] = []);
   setMsg(`🔎 ${nm} をさがしているよ…`);
-  let best = null, found = -1;
+  let best = null, found = -1, ix = null;
+  if (k !== "owexit" && k !== "swok") { try { ix = await jarTile("idx"); } catch {} }   // 🔎 目次（j/idx.json.gz）があれば 日本中から いっきに
+  if (ix) {
+    for (const e of ix[k] || []) { const p = [e[0], e[1], nbActive(e[2] || undefined, e[3] || undefined)]; if (seen.some(q => dm(q, p) < 30)) continue; const dd = dm([c0.lat, c0.lng], p); if (!best || dd < best.d) best = { p, d: dd }; }
+    found = 0;
+  }
+  if (!ix)
   for (let r = 0; r <= 30; r++) {
     if (r % 5 === 0 && r) setMsg(`🔎 ${nm} をさがしているよ…（${r}kmくらいまで見た）`);
     const ks = []; for (let i = i0 - r; i <= i0 + r; i++) for (let j = j0 - r; j <= j0 + r; j++) if (Math.max(Math.abs(i - i0), Math.abs(j - j0)) === r) ks.push(i + "_" + j);
@@ -7655,7 +7661,7 @@ async function jxFind(k, nm) {
     if (best && found < 0) found = r;
     if (found >= 0 && r >= found + 1) break;   // 見つけた輪の 次の輪までは見る（角のほうが遠いことがあるので）
   }
-  if (!best) { setMsg(`🔎 ${nm} は 近く（30kmくらい）に見つからなかったよ${seen.length ? "（ぜんぶ見たかも。もう一度おすと はじめから）" : ""}`); jxSeen[k] = []; return; }
+  if (!best) { setMsg(`🔎 ${nm} は ${ix ? "データの中に" : "近く（30kmくらい）に"} 見つからなかったよ${seen.length ? "（ぜんぶ見たかも。もう一度おすと はじめから）" : ""}`); jxSeen[k] = []; return; }
   seen.push(best.p);
   const mk = k === "noentb" ? "noent" : k;
   if (!spotOn.has(mk)) { spotOn.add(mk); lsSet("hosomichi_spots", [...spotOn]); }
