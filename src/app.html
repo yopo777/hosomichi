@@ -346,6 +346,11 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="dbgTool">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
       <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <b>🔎 警察のデータのマークをさがす</b>
+        <div style="font-size:11px;color:#666;margin-top:2px">地図のまん中から いちばん近いものへ動くよ。もう一度おすと 次に近いもの（30kmくらいまで）</div>
+        <div id="jxFind" class="btns" style="margin-top:4px;flex-wrap:wrap;gap:4px"></div>
+      </div>
+      <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>🧪 ためし走行</b>
         <div style="font-size:11px;color:#666;margin-top:2px">作ったルートの上を ためしに自動で走るよ（テスト用）<span class="hq">?</span><div class="hd">🚲ルートタブで作ったルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。一時停止して、つづきから走れるよ。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div></div>
         <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
@@ -5187,6 +5192,40 @@ SPOT_SVG.noent = SPOT_SVG.owexit;
 SPOT_SVG.cxban = CX_SIGN.replace('width="28" height="28"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.swok = SW_SIGN.replace('width="26" height="26"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.blane = BL_SIGN.replace('width="24" height="24"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
+
+// 🔎 デバッグ：マークの種類ごとに 近いものをさがして そこへ動く（もう一度おすと 次に近いもの）
+const JX_FIND = [["noroad", "通行止め"], ["nocar", "車両通行止め"], ["nobike", "自転車通行止め"], ["pwalk", "歩行者用道路"], ["owexit", "一方通行の出口"],
+  ["noent", "車両進入禁止"], ["cxban", "交差点進入禁止"], ["swok", "自転車も通れる歩道"], ["blane", "自転車レーン"]];
+const jxSeen = {};   // 種類ごとに 見に行った所
+function jxPts(k, d) {   // マスの中の その種類の点（[lat, lon, いま規制中か]）
+  const out = [], mid = p => p[Math.floor(p.length / 2)];
+  if (["noroad", "nocar", "nobike", "pwalk"].includes(k)) { for (const o of d.nb || []) if (!o.q && o.p.length > 1 && nbKey(o) === k) out.push([...o.p[0], nbActive(o.h, o.w)]); }
+  else if (k === "owexit") { for (const o of d.ow || []) if (o.b === 0 && o.p.length > 1) out.push([...o.p[o.p.length - 1], nbActive(o.h, o.w)]); }
+  else { const f = JX_K[k][0]; for (const o of d[f] || []) { const p = f === "ne" || f === "cx" ? o.p : mid(o.p); if (p) out.push([...p, nbActive(o.h, o.w)]); } }
+  return out;
+}
+async function jxFind(k, nm) {
+  const c0 = map.getCenter(), i0 = Math.floor(c0.lat * 100), j0 = Math.floor(c0.lng * 100), cs = Math.cos(c0.lat * RAD);
+  const dm = (a, b) => Math.hypot((a[0] - b[0]) * 111320, (a[1] - b[1]) * 111320 * cs), seen = jxSeen[k] || (jxSeen[k] = []);
+  setMsg(`🔎 ${nm} をさがしているよ…`);
+  let best = null, found = -1;
+  for (let r = 0; r <= 15; r++) {
+    const ks = []; for (let i = i0 - r; i <= i0 + r; i++) for (let j = j0 - r; j <= j0 + r; j++) if (Math.max(Math.abs(i - i0), Math.abs(j - j0)) === r) ks.push(i + "_" + j);
+    const ds = await Promise.all(ks.map(q => jarTile(q).catch(() => null)));
+    for (const d of ds) if (d) for (const p of jxPts(k, d)) { if (seen.some(q => dm(q, p) < 30)) continue; const dd = dm([c0.lat, c0.lng], p); if (!best || dd < best.d) best = { p, d: dd }; }
+    if (best && found < 0) found = r;
+    if (found >= 0 && r >= found + 1) break;   // 見つけた輪の 次の輪までは見る（角のほうが遠いことがあるので）
+  }
+  if (!best) { setMsg(`🔎 ${nm} は 近く（30kmくらい）に見つからなかったよ${seen.length ? "（ぜんぶ見たかも。もう一度おすと はじめから）" : ""}`); jxSeen[k] = []; return; }
+  seen.push(best.p);
+  if (!spotOn.has(k)) { spotOn.add(k); lsSet("hosomichi_spots", [...spotOn]); }
+  if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); }
+  map.setView([best.p[0], best.p[1]], Math.max(map.getZoom(), 17));
+  setMsg(`🔎 ${nm}：ここから ${best.d < 1000 ? Math.round(best.d) + "m" : (best.d / 1000).toFixed(1) + "km"}（${seen.length}つ目）${best.p[2] ? "" : "。いまは時間外なので 地図のマークは出ないよ"}`);
+  nbMapReq(); oxReq(); jxReq();
+}
+{ const box = $("jxFind"); if (box) for (const [k, nm] of JX_FIND) { const bt = document.createElement("button"); bt.className = "ib"; bt.style.fontSize = "12px";
+  bt.innerHTML = `<span style="display:inline-block;vertical-align:middle;margin-right:3px">${spotIc(k, SPOT_INFO[k] ? SPOT_INFO[k][0] : "")}</span>${nm}`; bt.onclick = () => jxFind(k, nm); box.appendChild(bt); } }
 SPOT_SVG.nobike = NB_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
 spotSize();
