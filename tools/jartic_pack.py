@@ -217,7 +217,11 @@ def main():
                 if q: item["q"] = 1
                 if r.get("共通規制種別コード") == "1": item["k"] = 1; stat["nb_pw"] += 1   # 🚶 歩行者用道路
                 else:   # 標識の絵：t "x"＝通行止め（301）／"v"＝車両通行止め（302・車両ぜんぶ）／なし＝自転車・軽車両通行止め（309）
-                    if r.get("共通規制種別コード") == "4": item["t"] = "x"; stat["nb_x"] += 1
+                    # 11/21：コード 4（通行禁止）は 対象車両コードで 標識を決める。空っぽ＝だれも通れない（301）／A の車両＝車両ぜんぶ（302）／
+                    #         それ以外（自転車・軽車両 だけ など）＝🚳（309）。前は 4 なら いつも 301 にしていて、自転車だけの所まで 🚧 になっていた
+                    if r.get("共通規制種別コード") == "4" and not any(has_codes(r, n) for n in range(1, 6)): item["t"] = "x"; stat["nb_x"] += 1
+                    elif r.get("共通規制種別コード") == "4":
+                        if any(digit(r.get(f"対象車両コード{n}_A", ""), 1) for n in range(1, 6)): item["t"] = "v"; stat["nb_v"] += 1
                     elif not (NB_NAME.search(r.get("県別規制種別名称") or "") or any(digit(r.get(f"対象車両コード{n}_D", ""), 3) or digit(r.get(f"対象車両コード{n}_D", ""), 6) for n in range(1, 6))):
                         item["t"] = "v"; stat["nb_v"] += 1
                 h0, h1 = (r.get("規制時間1_開始") or "").strip(), (r.get("規制時間1_終了") or "").strip()
