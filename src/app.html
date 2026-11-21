@@ -4210,7 +4210,7 @@ function nbRouteTick() {
   const act = nbActive(x.h, x.w), m = Math.max(0, Math.round((x.s - navAlong) / 10) * 10), nm = x.k === 1 ? "歩行者用道路" : x.t ? nbName(x) : "自転車進入禁止";
   if (!x.said && navAlong < x.s) {
     x.said = true;
-    say(`この先、時間限定の${nm}があります` + (act ? "。いまは通れない時間です" : ""), true);
+    // 🔇 声は 11/21 にやめた（警察のデータの声をいったん ぜんぶ外す）。もどすときは：say(`この先、時間限定の${nm}があります` + (act ? "。いまは通れない時間です" : ""), true);
     try { blkShowMap(12000); } catch {}
     setMsg(`${x.k === 1 ? "🚶" : "🚳"} この先 時間限定の${nbName(x)}（${nbWhen(x.h, x.w)}）`);
   }
