@@ -270,5 +270,18 @@ def main():
     print("マス", len(T), "ぜんぶで", round(size / 1e6, 2), "MB", dict(stat), "版", ver)
 
 
+def done_sound(ok=True):   # おわったら 音で知らせる（Windows は winsound・ほかは ベルの文字）
+    try:
+        import winsound, time
+        for f in ((880, 1320) if ok else (440, 330, 220)):
+            winsound.Beep(f, 250); time.sleep(0.05)
+    except Exception:
+        print("\a", end="", flush=True)
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException:
+        done_sound(False); raise   # しっぱい：低い音3つ
+    done_sound(True)                # できた：ピポッ（高い音2つ）
