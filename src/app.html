@@ -347,7 +347,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
       <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>🔎 警察のデータのマークをさがす</b>
-        <div style="font-size:11px;color:#666;margin-top:2px">地図のまん中から いちばん近いものへ動くよ。もう一度おすと 次に近いもの（30kmくらいまで）</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">地図のまん中から いちばん近いものへ動くよ。もう一度おすと 次に近いもの（30kmくらいまで。遠いと少し時間がかかるよ）</div>
         <div id="jxFind" class="btns" style="margin-top:4px;flex-wrap:wrap;gap:4px"></div>
       </div>
       <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -4099,8 +4099,9 @@ setInterval(() => { if (!document.hidden) oxReq(); }, 60e3);
 // 声はなし。マーク→道 の設定でオン・オフ。ズーム16以上
 const SG = (w, inner) => `<svg viewBox="0 0 40 40" width="${w}" height="${w}" style="display:block;filter:drop-shadow(0 1px 2px #0006)">${inner}</svg>`;
 const BIKE_W = '<g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="24.5" r="5"/><circle cx="27.5" cy="24.5" r="5"/><path d="M12.5 24.5 L17 16.5 H25 L27.5 24.5 M17 16.5 L21 24.5 L25 16.5 M15 14 H19 M25 16.5 L24 12.5 H27"/></g>';
-const NE_SIGN = OX_SIGN;   // 車両進入禁止（303）は 一方通行の出口と同じ標識
-const NEB_SIGN = '<svg viewBox="0 0 40 52" width="26" height="34" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="18" fill="#d40000" stroke="#fff" stroke-width="2"/><rect x="8" y="16.5" width="24" height="7" rx="1" fill="#fff"/><rect x="1" y="40" width="38" height="11" rx="1.5" fill="#fff" stroke="#1b2a4a" stroke-width="1"/><text x="20" y="48.3" text-anchor="middle" font-size="5.8" font-weight="bold" fill="#1b2a4a" textLength="34">自転車を除く</text></svg>';   // 補助標識つき
+// 車両進入禁止（303）は 本物は 一方通行の出口と同じ標識。11/21 デバッグで見分けるため、こちらは 紺の四角のわくに入れる
+const NE_SIGN = '<svg viewBox="0 0 40 40" width="26" height="26" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><rect x="1" y="1" width="38" height="38" rx="6" fill="#1b2a4a" stroke="#fff" stroke-width="2"/><circle cx="20" cy="20" r="14.5" fill="#d40000"/><rect x="10.5" y="17.2" width="19" height="5.6" rx="1" fill="#fff"/></svg>';
+const NEB_SIGN = '<svg viewBox="0 0 40 52" width="26" height="34" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><rect x="1" y="1" width="38" height="38" rx="6" fill="#1b2a4a" stroke="#fff" stroke-width="2"/><circle cx="20" cy="20" r="14.5" fill="#d40000"/><rect x="10.5" y="17.2" width="19" height="5.6" rx="1" fill="#fff"/><rect x="1" y="40" width="38" height="11" rx="1.5" fill="#fff" stroke="#1b2a4a" stroke-width="1"/><text x="20" y="48.3" text-anchor="middle" font-size="5.8" font-weight="bold" fill="#1b2a4a" textLength="34">自転車を除く</text></svg>';   // 補助標識つき
 const CX_SIGN = SG(28, '<rect x="2" y="2" width="36" height="36" rx="5" fill="#4a5058" stroke="#fff" stroke-width="2"/><rect x="5" y="7" width="30" height="4.5" fill="#ffc400"/>'
   + '<path d="M15.5 15 L24.5 23 M24.5 15 L15.5 23" stroke="#ff3030" stroke-width="3.4" stroke-linecap="round"/>'
   + '<g transform="translate(8 19.5) scale(.6)">' + BIKE_W + '</g>');   // 路面の黄色い線（交差点の手前）で 自転車がとまる＝交差点に入れない（道路標示）
@@ -5188,19 +5189,20 @@ SPOT_SVG.noroad = X_SIGN.replace('width="30" height="30"', 'width="16" height="1
 SPOT_SVG.nocar = V_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.pwalk = PW_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");   // スポットのデータではなく、アプリが自分で出すマーク
 SPOT_SVG.owexit = OX_SIGN.replace('width="26" height="26"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
-SPOT_SVG.noent = SPOT_SVG.owexit;
+SPOT_SVG.noent = NE_SIGN.replace('width="26" height="26"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.cxban = CX_SIGN.replace('width="28" height="28"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.swok = SW_SIGN.replace('width="26" height="26"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.blane = BL_SIGN.replace('width="24" height="24"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 
 // 🔎 デバッグ：マークの種類ごとに 近いものをさがして そこへ動く（もう一度おすと 次に近いもの）
 const JX_FIND = [["noroad", "通行止め"], ["nocar", "車両通行止め"], ["nobike", "自転車通行止め"], ["pwalk", "歩行者用道路"], ["owexit", "一方通行の出口"],
-  ["noent", "車両進入禁止"], ["cxban", "交差点進入禁止"], ["swok", "自転車も通れる歩道"], ["blane", "自転車レーン"]];
+  ["noent", "車両進入禁止"], ["noentb", "車両進入禁止（自転車を除く）"], ["cxban", "交差点進入禁止"], ["swok", "自転車も通れる歩道"], ["blane", "自転車レーン"]];
 const jxSeen = {};   // 種類ごとに 見に行った所
 function jxPts(k, d) {   // マスの中の その種類の点（[lat, lon, いま規制中か]）
   const out = [], mid = p => p[Math.floor(p.length / 2)];
   if (["noroad", "nocar", "nobike", "pwalk"].includes(k)) { for (const o of d.nb || []) if (!o.q && o.p.length > 1 && nbKey(o) === k) out.push([...o.p[0], nbActive(o.h, o.w)]); }
   else if (k === "owexit") { for (const o of d.ow || []) if (o.b === 0 && o.p.length > 1) out.push([...o.p[o.p.length - 1], nbActive(o.h, o.w)]); }
+  else if (k === "noentb") { for (const o of d.ne || []) if (o.b === 1) out.push([...o.p, nbActive(o.h, o.w)]); }
   else { const f = JX_K[k][0]; for (const o of d[f] || []) { const p = f === "ne" || f === "cx" ? o.p : mid(o.p); if (p) out.push([...p, nbActive(o.h, o.w)]); } }
   return out;
 }
@@ -5209,7 +5211,8 @@ async function jxFind(k, nm) {
   const dm = (a, b) => Math.hypot((a[0] - b[0]) * 111320, (a[1] - b[1]) * 111320 * cs), seen = jxSeen[k] || (jxSeen[k] = []);
   setMsg(`🔎 ${nm} をさがしているよ…`);
   let best = null, found = -1;
-  for (let r = 0; r <= 15; r++) {
+  for (let r = 0; r <= 30; r++) {
+    if (r % 5 === 0 && r) setMsg(`🔎 ${nm} をさがしているよ…（${r}kmくらいまで見た）`);
     const ks = []; for (let i = i0 - r; i <= i0 + r; i++) for (let j = j0 - r; j <= j0 + r; j++) if (Math.max(Math.abs(i - i0), Math.abs(j - j0)) === r) ks.push(i + "_" + j);
     const ds = await Promise.all(ks.map(q => jarTile(q).catch(() => null)));
     for (const d of ds) if (d) for (const p of jxPts(k, d)) { if (seen.some(q => dm(q, p) < 30)) continue; const dd = dm([c0.lat, c0.lng], p); if (!best || dd < best.d) best = { p, d: dd }; }
@@ -5218,14 +5221,15 @@ async function jxFind(k, nm) {
   }
   if (!best) { setMsg(`🔎 ${nm} は 近く（30kmくらい）に見つからなかったよ${seen.length ? "（ぜんぶ見たかも。もう一度おすと はじめから）" : ""}`); jxSeen[k] = []; return; }
   seen.push(best.p);
-  if (!spotOn.has(k)) { spotOn.add(k); lsSet("hosomichi_spots", [...spotOn]); }
+  const mk = k === "noentb" ? "noent" : k;
+  if (!spotOn.has(mk)) { spotOn.add(mk); lsSet("hosomichi_spots", [...spotOn]); }
   if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); }
   map.setView([best.p[0], best.p[1]], Math.max(map.getZoom(), 17));
   setMsg(`🔎 ${nm}：ここから ${best.d < 1000 ? Math.round(best.d) + "m" : (best.d / 1000).toFixed(1) + "km"}（${seen.length}つ目）${best.p[2] ? "" : "。いまは時間外なので 地図のマークは出ないよ"}`);
   nbMapReq(); oxReq(); jxReq();
 }
 { const box = $("jxFind"); if (box) for (const [k, nm] of JX_FIND) { const bt = document.createElement("button"); bt.className = "ib"; bt.style.fontSize = "12px";
-  bt.innerHTML = `<span style="display:inline-block;vertical-align:middle;margin-right:3px">${spotIc(k, SPOT_INFO[k] ? SPOT_INFO[k][0] : "")}</span>${nm}`; bt.onclick = () => jxFind(k, nm); box.appendChild(bt); } }
+  bt.innerHTML = `<span style="display:inline-block;vertical-align:middle;margin-right:3px">${k === "noentb" ? NEB_SIGN.replace('width="26" height="34"', 'width="13" height="17"').replace("filter:drop-shadow(0 1px 2px #0006)", "") : spotIc(k, SPOT_INFO[k] ? SPOT_INFO[k][0] : "")}</span>${nm}`; bt.onclick = () => jxFind(k, nm); box.appendChild(bt); } }
 SPOT_SVG.nobike = NB_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
 spotSize();
