@@ -4,10 +4,11 @@ const DEFAULT_CFG = {
   pen: {                 // 1m を何m分と数えるか（大きいほど避ける）。"no" は通らない
     living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1,
     tertiary: 5, secondary: 8, primary: 8, trunk: 8,
-    footway: 5, pedestrian: 1.5, path: 1.5, track: 1.5,
+    footway: 3, pedestrian: 3,   // 歩道は 11/21 に ×5→×3、歩行者天国・広場は ×1.5→×3 path: 1.5, track: 1.5,
   },
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
-  bridge: 3,             // 歩道橋・地下道（歩行者用）: 倍率 or "no"
+  bridge: 1.5,           // 歩道橋（歩行者用）: 倍率 or "no"（11/21 に地下道と分けた）
+  tunnel: 3,             // 地下道（歩行者用）: 倍率 or "no"
   unpaved: "no",         // 砂利・土の道: 倍率 or "no"（1=気にしない）
   crossRule: "on",       // 大きい道を渡るルール: いつも "on"（安全のため、アプリから「使わない」はえらべない。"off" は分析用だけ）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
@@ -107,7 +108,8 @@ function wayNoWhy(t, cfg) {
   const hw = t.highway, b = BASE[hw] || hw;
   const stairy = FOOTLIKE.has(hw) && hw !== "steps" && (t.step_count || t["ramp:bicycle"] || t["ramp:stroller"] || /階段|石段/.test(t.name || ""));
   if (hw === "steps" || stairy) return cfg.steps === "ramp" ? "スロープのない階段（設定：スロープ付きだけ）" : "階段（設定：通らない）";
-  if (FOOTLIKE.has(hw) && (yes(t.bridge) || yes(t.tunnel)) && cfg.bridge === "no") return "歩道橋・地下道（設定：通らない）";
+  if (FOOTLIKE.has(hw) && yes(t.bridge) && cfg.bridge === "no") return "歩道橋（設定：通らない）";
+  if (FOOTLIKE.has(hw) && !yes(t.bridge) && yes(t.tunnel) && (cfg.tunnel ?? cfg.bridge) === "no") return "地下道（設定：通らない）";
   if (isUnpaved(t) && cfg.unpaved === "no") return "砂利・土の道（設定：通らない）";
   return `${KIND_JA[b] || b}（設定：通らない）`;
 }
@@ -137,8 +139,9 @@ function wayCost(t, cfg) {
     }
   }
   if (FOOTLIKE.has(hw) && t.bicycle !== "designated" && !t["jar:nbside"] && (yes(t.bridge) || yes(t.tunnel))) {   // jar:nbside：自転車通行止めの橋の歩道（歩道橋ではない）
-    if (cfg.bridge === "no") return null;
-    p *= cfg.bridge; name = yes(t.bridge) ? "歩道橋" : "地下道";
+    const bm = yes(t.bridge) ? cfg.bridge : (cfg.tunnel ?? cfg.bridge);
+    if (bm === "no") return null;
+    p *= bm; name = yes(t.bridge) ? "歩道橋" : "地下道";
   }
   const u = isUnpaved(t);
   if (u) {
