@@ -1788,7 +1788,11 @@ function showRoute(r, fit) {
     const a = bearingDeg(R[k], E);
     L.marker(E, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="position:relative;width:0;height:0"><div style="position:absolute;left:-9px;top:-9px;width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 4px #0006"></div><div style="position:absolute;left:-8px;top:-8px;width:16px;height:16px;transform:rotate(${a}deg) translateY(-17px)"><div style="width:0;height:0;margin:auto;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:12px solid #1a73e8"></div></div></div>` }), zIndexOffset: 500 })
       .addTo(layer).bindTooltip("イマココ（投稿したとき）", { permanent: true, direction: "right", offset: [14, 0], className: "hereTip" });
-  } else if (!r.partial && !r.cutE) L.circleMarker(E, { radius: 8, color: "#fff", weight: 3, fillColor: "#d93025", fillOpacity: 1 }).addTo(layer).bindTooltip("到着");
+  } else if (!r.cutE) {   // 🏁 到着の印（11/22）：赤い点だけだと 赤っぽいルートの線にまぎれるので、ピンを立てる。計算中は 入れた到着地に
+    const G = !r.partial ? E : r === cur && job && !job.loop ? (job.next ? job.next.g : job.g) : null;
+    if (G) L.marker(G, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center"><div style="background:#d93025;color:#fff;font-size:13px;font-weight:bold;border-radius:10px;padding:2px 7px;border:2px solid #fff;box-shadow:0 1px 4px #0006;white-space:nowrap">🏁 到着</div><div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:12px solid #d93025;margin-top:-1px"></div></div>' }), zIndexOffset: 550 })
+      .addTo(layer).bindTooltip(r.partial ? "到着（計算中）" : "到着");
+  }
   if (!r.partial) pulseShow([...(r.cutS ? [] : [[r.nav[0], "s"]]), ...(r.cutE || r.here ? [] : [[E, ""]]), ...(r.stops || []).map(q => [q.p, "m"])]);
   (r.stops || []).forEach(q => L.marker(q.p, { icon: L.divIcon({ className: "", html: '<div style="font-size:24px;line-height:1;transform:translate(-50%,-90%);text-shadow:0 0 3px #fff">📍</div>', iconSize: [0, 0] }), zIndexOffset: 400 }).addTo(layer).bindTooltip(q.name));   // 1周の経由地
   // 横断の印（信号・横断歩道・設定どおりに渡れなかった所）は、近づいたときだけ出す（ナビ中は自分から300m・ふだんはズーム15より寄ったとき）
