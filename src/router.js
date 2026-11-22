@@ -335,6 +335,7 @@ function buildGraph(osm, cfg, onProg) {
   };
   const isStaPath = (t, nd) => {
     if (!["footway", "pedestrian", "path", "corridor"].includes(t.highway)) return false;
+    if (t["br:side"] || t["jar:nbside"]) return false;   // 🌉 車の橋・たもとの坂ぞいの歩道は 駅の通路ではない（船堀橋の中川の上：東大島駅のとなり）
     const inside = yes(t.bridge) || yes(t.tunnel) || t.tunnel === "building_passage" || yes(t.covered) || yes(t.indoor) || t.level != null
       || (t.layer && t.layer !== "0") || /通路|コンコース|改札|駅/.test(t.name || "");
     const m = nd[nd.length >> 1], ends = [nd[0], m, nd[nd.length - 1]];
