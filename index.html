@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1122.1521</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1122.1523</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3504,7 +3504,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1122.1521", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1122.1523", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -3953,7 +3953,7 @@ $("go").onclick = async () => {
   if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
   pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? " 1周" : " → " + shortName(toT));
   // 押したらすぐ前のルートを消す（場所さがしのあいだも前のルートが出ていると、動いていないように見えるので）
-  layer.clearLayers(); cur = null; cum = []; navAlong = null;
+  layer.clearLayers(); cur = null; cum = []; navAlong = null; inPins(true);
   try { flowStop(); guideStop(); flowBtns(); } catch {}
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
   legend(null); $("mini").textContent = "";
@@ -4019,7 +4019,7 @@ $("go").onclick = async () => {
       else startJob(s, g, structuredClone(cfg), null); };
     lastRedo = run; run();
   } catch (e) {
-    const stopped = geoAbort?.signal.aborted; geoAbort = null;
+    const stopped = geoAbort?.signal.aborted; geoAbort = null; setTimeout(() => inPins());
     clearInterval(tickTimer); $("go").disabled = $("msnGo").disabled = false; $("stop").style.display = "none"; setBar(0);
     if (stopped) { setMsg("止めたよ"); addLog("■ 場所さがしを止めたよ", "w"); }
     else { setMsg(e.message, true); addLog("エラー: " + e.message, "e"); }
@@ -4248,9 +4248,30 @@ function xUpd() {
   }
 }
 map.on("zoomend", () => { try { xUpd(); } catch {} });
+// 📍 計算する前の 出発・経由・到着の印（11/22）：入力が「緯度,経度」か、地図の長おしで入れたものなら ピンを立てる。ルートを出したら消す
+var pinLayer;   // var：showRoute が 先に よばれても こわれないように（inPins で作る）
+function pinIc(col, txt) { return L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center"><div style="background:${col};color:#fff;font-size:13px;font-weight:bold;border-radius:10px;padding:2px 7px;border:2px solid #fff;box-shadow:0 1px 4px #0006;white-space:nowrap">${txt}</div><div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:12px solid ${col};margin-top:-1px"></div></div>` }); }
+function inLL(id) {
+  const el = $(id), v = el.value.trim(); if (!v) return null;
+  const m = v.normalize("NFKC").match(/^(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)$/); if (m) return [+m[1], +m[2]];
+  if (el.dataset.ll && el.dataset.v === el.value) return el.dataset.ll.split(",").map(Number);
+  return null;
+}
+function inPins(hide) {
+  if (!pinLayer) pinLayer = L.layerGroup().addTo(map);
+  pinLayer.clearLayers();
+  if (hide || cur || job) return;
+  const lk = (() => { try { return loopKm(); } catch { return 0; } })();
+  for (const [id, col, txt] of [["from", "#188038", "🚲 出発"], ["via", "#1a73e8", "📍 経由"], ["to", "#d93025", "🏁 到着"]]) {
+    if (lk && id !== "from") continue;   // 1周のときは 経由・到着の欄は使わない
+    const p = inLL(id); if (p) L.marker(p, { icon: pinIc(col, txt), zIndexOffset: 540 }).addTo(pinLayer).bindTooltip(txt.slice(txt.indexOf(" ") + 1) + "（まだ計算していないよ）");
+  }
+}
+for (const id of ["from", "via", "to"]) $(id).addEventListener("input", () => inPins());
+setTimeout(() => inPins(), 0);
 function showRoute(r, fit) {
   if (r !== cur) { $("bar").classList.remove("trip"); for (const t of $("bar").querySelectorAll(".tick")) t.remove(); tickFor = null; }
-  cur = r; layer.clearLayers(); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
+  cur = r; layer.clearLayers(); inPins(true); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
   const tent = r.tent || [];
   r.nav = r.route.length ? r.route.concat(tent.slice(1)) : tent.slice();   // ナビで使う線（確定＋仮）
@@ -5950,7 +5971,7 @@ $("bNew").onclick = async () => {
   lsSet(LKEY, null);   // 読みこみなおしても 消したルートが もどってこないように
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
   legend(null);
-  $("from").value = ""; $("via").value = ""; $("to").value = ""; setMsg(""); $("prog").style.display = "none";
+  $("from").value = ""; $("via").value = ""; $("to").value = ""; inPins(); setMsg(""); $("prog").style.display = "none";
   rtLast = "route"; showTab("route");   // どのタブから押しても、🚲シンプルを開く
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   $("to").focus();
@@ -6211,7 +6232,7 @@ function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ス
     if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); return; }
     if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title); map.closePopup(pop); return; }
     const k = ev.target.dataset.k; if (!k) return;
-    $(k).value = v; map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
+    $(k).value = v; $(k).dataset.ll = ll.lat + "," + ll.lng; $(k).dataset.v = v; inPins(); map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
 }
 map.on("contextmenu", e => {   // 長おし（パソコンは右クリック）で「ここを出発・到着にする」。タップでふいに出ないように
   pinPopup(e.latlng, e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6));
