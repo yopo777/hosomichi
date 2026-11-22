@@ -3000,17 +3000,20 @@ const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道�
   foot: { n: "歩行者の道", c: "#ffa6d6", w: 3 },
   fbridge: { n: "歩道橋", c: "#c800b4", w: 5 },
   ftunnel: { n: "地下道", c: "#c47a2c", w: 4, dash: "6 4", alt: "#fff" },
+  bside: { n: "歩道（車の橋にそう）", c: "#ff5fa2", w: 3.5, dash: "2 4", alt: "#c800b4" },
   nbside: { n: "歩道（自転車通行止めの橋の）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
   path: { n: "小道（path・track）", c: "#c47a2c", w: 3 },
   cycle: { n: "自転車道", c: "#2e9e3a", w: 3.5 },
   steps: { n: "階段", c: "#8a4dff", w: 5, dash: "3 3", alt: "#fff" },
-  rsteps: { n: "階段（自転車スロープつき）", c: "#00d26a", w: 6, dash: "10 4", alt: "#8a4dff" },   // 11/21 見分けやすく：緑の長い破線＋すきまに紫
+  rsteps: { n: "階段（自転車スロープつき）", c: "#00d26a", w: 6, dash: "10 4", alt: "#8a4dff" },
+  bsteps: { n: "階段（橋の出入り口・スロープつきとみなす）", c: "#00d26a", w: 6, dash: "4 4", alt: "#8a4dff" },   // 11/21 見分けやすく：緑の長い破線＋すきまに紫
 };
 const dbgYes = v => v && v !== "no";
 function dbgKind(t) {
   const hw = t.highway, FT = ["footway", "pedestrian", "path", "track", "bridleway", "corridor"];
-  if (hw === "steps") return t["ramp:bicycle"] === "yes" ? "rsteps" : "steps";
+  if (hw === "steps") return t["ramp:bicycle"] === "yes" ? "rsteps" : t["br:ramp"] ? "bsteps" : "steps";
   if (t["jar:nbside"]) return "nbside";
+  if (t["br:side"]) return "bside";
   if (hw === "cycleway" || (FT.includes(hw) && t.bicycle === "designated")) return "cycle";
   if (["footway", "pedestrian", "path", "corridor"].includes(hw) && (dbgYes(t.bridge) || dbgYes(t.tunnel))) return dbgYes(t.bridge) ? "fbridge" : "ftunnel";
   if (hw === "footway" || hw === "pedestrian" || hw === "corridor") return t.footway === "sidewalk" ? "sidewalk" : t.footway === "crossing" ? "crossing" : "foot";
@@ -3560,7 +3563,7 @@ const PEN_ROWS = [
 const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
   [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 3, pedestrian: 3, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", bridge: 1.5, tunnel: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "mid", midCross: 100, oneway: "bike", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: 5, privy: 5, station: 5, cemetery: 5, park: 5 };
+  primary: 8, trunk: 8, footway: 3, pedestrian: 3, path: 1.5, track: 1.5 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "mid", midCross: 100, oneway: "bike", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: 5, privy: 5, station: 5, cemetery: 5, park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（×2）"], [5, "避ける（×5）"], [10, "かなり避ける（×10・デフォルト）"], [30, "ほぼ通らない（×30）"]]],
@@ -3580,6 +3583,7 @@ const OTHER_ROWS = [
   ["station", "駅の中の通路", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
   ["sidewalk", "歩道（段差・柵）のある道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [6, "かなり避ける"]]],
   ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ"], ["yes", "通る（かついで上がる）"]]],
+  ["brSteps", "🌉 橋の歩道の出入り口の階段", [["ramp", "自転車スロープつきとみなす（デフォルト）"], ["steps", "ふつうの階段と同じ（上の設定）"]]],
   ["bridge", "歩道橋", [[1, "気にしない"], [1.5, "少し避ける（デフォルト）"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
   ["tunnel", "地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける（デフォルト）"], [10, "かなり避ける"], ["no", "通らない"]]],
   ["unpaved", "砂利・土の道", [[1, "気にしない"], [3, "少し避ける"], [20, "かなり避ける"], ["no", "通らない"]]],
@@ -3617,7 +3621,7 @@ function renderCfg() {
   h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅の自由通路・コンコースのこと（押して歩く所）<span class="hq">?</span><div class="hd">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ</div></div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">すぐ横に歩道がある道（段差や柵が多い）<span class="hq">?</span><div class="hd">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div></div>';
   h += "<h4>旧街道</h4>" + get(["kodo"]) + '<div class="note">旧東海道みたいな旧街道を、遠回りしても通るよ<span class="hq">?</span><div class="hd">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div></div>';
-  h += "<h4>階段・歩道橋・地下道・砂利</h4>" + get(["steps", "bridge", "tunnel", "unpaved"]);
+  h += "<h4>階段・歩道橋・地下道・砂利</h4>" + get(["steps", "brSteps", "bridge", "tunnel", "unpaved"]) + '<div class="note">川の橋の歩道は、出入り口が階段だけに見えても 自転車を押して上がれるスロープつきが多いよ<span class="hq">?</span><div class="hd">車の橋にそった歩道（合わせて50m以上）から 30m以内の階段を「スロープつき」とみなすよ（地図に「スロープなし」と書いてある階段はのぞく）。車の橋にそった歩道は 歩道橋あつかいにしないよ</div></div>';
   h += "<h4>通りたくない地点</h4>" + get(["avoidPen"]) + '<div class="note">印のいちばん近い道を、何倍の長さと数えるか<span class="hq">?</span><div class="hd">地図を長おし →「⚠ 通りたくない」でつけた印の、いちばん近い道（12m以内）を、その道まるごと 何倍の長さと数えるか（×5 なら 100m の道を 500m 分）。「🚫 通れない」の印は、いつも通らないよ</div></div>';
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;

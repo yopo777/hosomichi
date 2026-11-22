@@ -26,6 +26,7 @@ const DEFAULT_CFG = {
   allWide: "off",        // 2車線の道も4車線としてあつかう: "off"（デフォルト）/ "on"（信号・横断歩道でしか渡らない）
   jarUse: "on",          // 警察の交通規制（JARTIC）を使う: "on"（デフォルト）/ "off"。いまは 歩行者等横断禁止の道を4車線あつかいにするだけ
   fastCross: "mid",      // 最高速度50km以上の2車線道路: "mid"=2車線と同じ（11/20 からいつも。アプリではえらべない）/ "wide"=4車線と同じ（分析用）
+  brSteps: "ramp",      // 🌉 橋の歩道の出入り口の階段（br:ramp）: "ramp"=自転車スロープつきとみなす（デフォルト）/ "steps"=ふつうの階段と同じ
   xDet: 60,              // 4車線の道：この m 以内の（同じ道の上の）信号・横断歩道まで行って渡る。0＝しない（交差点の その場で渡れる所だけ）
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
@@ -107,7 +108,7 @@ function kodoOf(t) {
 function wayNoWhy(t, cfg) {
   const hw = t.highway, b = BASE[hw] || hw;
   const stairy = FOOTLIKE.has(hw) && hw !== "steps" && (t.step_count || t["ramp:bicycle"] || t["ramp:stroller"] || /階段|石段/.test(t.name || ""));
-  if (hw === "steps" || stairy) return cfg.steps === "ramp" ? "スロープのない階段（設定：スロープ付きだけ）" : "階段（設定：通らない）";
+  if (hw === "steps" || stairy) return cfg.steps === "ramp" ? "スロープのない階段（設定：スロープ付きだけ）" : t["br:ramp"] ? "橋の出入り口の階段（設定：ふつうの階段と同じ・通らない）" : "階段（設定：通らない）";
   if (FOOTLIKE.has(hw) && yes(t.bridge) && cfg.bridge === "no") return "歩道橋（設定：通らない）";
   if (FOOTLIKE.has(hw) && !yes(t.bridge) && yes(t.tunnel) && (cfg.tunnel ?? cfg.bridge) === "no") return "地下道（設定：通らない）";
   if (isUnpaved(t) && cfg.unpaved === "no") return "砂利・土の道（設定：通らない）";
@@ -119,10 +120,11 @@ function wayCost(t, cfg) {
   // 「歩道」「小道」なのに階段っぽい印（段の数・自転車やベビーカーのスロープ・名前に階段）があるものは階段あつかい
   const stairy = FOOTLIKE.has(hw) && hw !== "steps" && (t.step_count || t["ramp:bicycle"] || t["ramp:stroller"] || /階段|石段/.test(t.name || ""));
   if (hw === "steps" || stairy) {
-    if (cfg.steps === "no") return null;
-    if (cfg.steps === "ramp" && t["ramp:bicycle"] !== "yes") return null;
-    p = cfg.steps === "ramp" ? 8 : 5;
-    name = cfg.steps === "ramp" ? "自転車スロープ付き階段" : "階段";
+    const brR = t["br:ramp"] && t["ramp:bicycle"] !== "no" && (cfg.brSteps ?? "ramp") === "ramp";   // 🌉 橋の歩道の出入り口の階段：スロープつきとみなす
+    if (cfg.steps === "no" && !brR) return null;
+    if (cfg.steps === "ramp" && t["ramp:bicycle"] !== "yes" && !brR) return null;
+    p = cfg.steps === "yes" ? 5 : 8;
+    name = cfg.steps === "yes" ? "階段" : t["ramp:bicycle"] === "yes" ? "自転車スロープ付き階段" : "橋の出入り口の階段（スロープつき？）";
   } else if (CYCLE_OK.has(hw) && t.bicycle === "designated") {
     // 自転車の通行指定がある歩道・小道・農道（川べりのサイクリングロードに多い）＝自転車道あつかい
     p = cfg.pen.cycleway ?? 1; name = "自転車道";
@@ -138,7 +140,7 @@ function wayCost(t, cfg) {
       name += kd === 2 ? "・旧街道" : "・旧道";
     }
   }
-  if (FOOTLIKE.has(hw) && t.bicycle !== "designated" && !t["jar:nbside"] && (yes(t.bridge) || yes(t.tunnel))) {   // jar:nbside：自転車通行止めの橋の歩道（歩道橋ではない）
+  if (FOOTLIKE.has(hw) && t.bicycle !== "designated" && !t["jar:nbside"] && !t["br:side"] && (yes(t.bridge) || yes(t.tunnel))) {   // jar:nbside：自転車通行止めの橋の歩道・br:side：車の橋にそう歩道（どちらも歩道橋ではない）
     const bm = yes(t.bridge) ? cfg.bridge : (cfg.tunnel ?? cfg.bridge);
     if (bm === "no") return null;
     p *= bm; name = yes(t.bridge) ? "歩道橋" : "地下道";
@@ -1037,7 +1039,59 @@ async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁�
   if (jarLines.length || jow.length || bad) log(`🚓 警察の交通規制：歩行者等横断禁止 ${jarLines.length}本・一方通行 ${jow.length}本${bad ? `（取れなかったマス ${bad}）` : ""}`, bad ? "w" : "ok");
   return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb };
 }
-function jarApply(osm, cfg, J) {   // 🚓 警察のデータを道にあてる：横断禁止→4車線・一方通行の向き・信号
+function jarApply(osm, cfg, J) { return brApply(jarApply1(osm, cfg, J)); }   // 🚓 警察のデータ → 🌉 橋の歩道・出入り口の階段
+// 🌉 橋の歩道と、その出入り口の階段（11/22）。OSM では 橋の歩道が「歩道橋」と同じ形で、出入り口の階段に スロープの印がないことが多い
+// ・車の橋（車の道で bridge）に そって走る（20m以内・同じ向き）歩道・小道の橋 → "br:side"＝橋の歩道（歩道橋あつかいにしない）
+// ・つながった 橋の歩道が 合わせて50m以上なら、そこから 歩道・小道・階段を 30m以内で たどって着く 80m以下の階段（土手にそって長いものもある） → "br:ramp"＝自転車スロープつきとみなす（設定 brSteps。ramp:bicycle=no ははずす）
+//   （上葛飾橋・船堀橋・環七の新中川の橋など。じっさいは 自転車を押して上がれるスロープつきが多い）
+const BR_SIDE_R = 20, BR_SIDE_MIN = 50, BR_REACH = 30, BR_STEP_MAX = 80;
+function brApply(osm) {
+  const els = osm.elements, pos = new Map(); for (const e of els) if (e.type === "node") pos.set(e.id, e);
+  const ptsOf = e => e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]);
+  const carBr = els.filter(e => e.type === "way" && e.tags && CAR_ROADS.has(BASE[e.tags.highway] || e.tags.highway) && yes(e.tags.bridge));
+  if (!carBr.length) return osm;
+  const p0 = ptsOf(carBr[0])[0]; if (!p0) return osm;
+  const M = jarOwMatcher(carBr.map(e => ({ p: ptsOf(e) })).filter(o => o.p.length > 1), p0[0], BR_SIDE_R);
+  const isFoot = t => FOOTLIKE.has(t.highway) || t.highway === "cycleway";
+  const side = new Map();   // 要素の番号 → 長さ
+  for (let k = 0; k < els.length; k++) {
+    const e = els[k], t = e.tags;
+    if (e.type !== "way" || !t || !isFoot(t) || t.highway === "steps" || !yes(t.bridge) || t.footway === "crossing" || t.crossing) continue;
+    const pts = ptsOf(e); if (pts.length < 2 || !M(pts)) continue;
+    let L = 0; for (let i = 1; i < pts.length; i++) L += hav(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
+    side.set(k, L);
+  }
+  if (!side.size) return osm;
+  // つながった 橋の歩道の まとまりの長さ
+  const par = new Map(), find = x => { while (par.get(x) !== x) { par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
+  const nodeW = new Map();
+  for (const k of side.keys()) { par.set(k, k); for (const id of els[k].nodes) { if (nodeW.has(id)) par.set(find(k), find(nodeW.get(id))); else nodeW.set(id, k); } }
+  const grpL = new Map(); for (const [k, L] of side) grpL.set(find(k), (grpL.get(find(k)) || 0) + L);
+  // 歩道・小道・階段のつながり（点 → [道の番号]）
+  const adj = new Map();
+  for (let k = 0; k < els.length; k++) { const e = els[k]; if (e.type !== "way" || !e.tags || !isFoot(e.tags) || e.tags.bicycle === "no") continue; for (const id of e.nodes) { if (!adj.has(id)) adj.set(id, []); adj.get(id).push(k); } }
+  const wayLenK = k => { const p = ptsOf(els[k]); let L = 0; for (let i = 1; i < p.length; i++) L += hav(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]); return L; };
+  const dist = new Map(), q = [], ramp = new Set();
+  for (const k of side.keys()) if (grpL.get(find(k)) >= BR_SIDE_MIN) for (const id of els[k].nodes) if (!dist.has(id)) { dist.set(id, 0); q.push(id); }
+  while (q.length) {   // 小さい数なので ふつうの列で（きょりが へったら 入れなおす）
+    const id = q.shift(), d0 = dist.get(id);
+    for (const k of adj.get(id) || []) {
+      if (side.has(k)) continue;
+      const e = els[k], st = e.tags.highway === "steps", L = wayLenK(k);
+      if (st && L > BR_STEP_MAX) continue;
+      if (d0 + L > BR_REACH && !st) continue;
+      if (st) ramp.add(k);
+      if (d0 + L > BR_REACH) continue;
+      for (const j of [e.nodes[0], e.nodes[e.nodes.length - 1]]) if (!dist.has(j) || dist.get(j) > d0 + L) { dist.set(j, d0 + L); q.push(j); }
+    }
+  }
+  const out = els.slice();
+  for (const k of side.keys()) out[k] = { ...out[k], tags: { ...out[k].tags, "br:side": "1" } };
+  for (const k of ramp) if (out[k].tags["ramp:bicycle"] !== "no") out[k] = { ...out[k], tags: { ...out[k].tags, "br:ramp": "1" } };
+  log(`🌉 橋の歩道 ${side.size}本・出入り口の階段 ${ramp.size}本`);
+  return { ...osm, elements: out };
+}
+function jarApply1(osm, cfg, J) {
   const o = jarApply0(osm, cfg, J);
   if (!J || (cfg && cfg.jarUse === "off") || !((J.sig && J.sig.length) || (J.xw && J.xw.length))) return o;
   const add = new Map(), n = { snap: 0, amb: 0, btn: 0, mid: 0 };   // 点の番号 → { "jar:sig": …, "jar:xw": … }
@@ -1050,7 +1104,7 @@ function jarApply(osm, cfg, J) {   // 🚓 警察のデータを道にあてる�
 }
 // 🚓 一方通行の線にあてる関数を作る：pts（道の点）→ { dir: +1 同じ向き / -1 反対, b: 1 自転車は除く } か null
 // 10mおきの点が 12m以内・同じ向き（±30°）か反対向きの線にあたり、長さの半分以上あたれば「この道」
-function jarOwMatcher(jow, lat0) {
+function jarOwMatcher(jow, lat0, RR = 12) {
   if (!jow || !jow.length) return null;
   const c0 = Math.cos((lat0 || 35) * RAD), XY = (la, lo) => [lo * c0 * 111320, la * 111320], GS = 25, jg = new Map();
   for (const o of jow) for (let k = 1; k < o.p.length; k++) {
@@ -1064,7 +1118,7 @@ function jarOwMatcher(jow, lat0) {
       const A = XY(...pts[k - 1]), B = XY(...pts[k]), len = Math.hypot(B[0] - A[0], B[1] - A[1]), ang = Math.atan2(B[1] - A[1], B[0] - A[0]);
       for (let dd = Math.min(5, len / 2); dd < len; dd += 10) {
         const u = dd / len, x = A[0] + (B[0] - A[0]) * u, y = A[1] + (B[1] - A[1]) * u; all++;
-        let best = null, bd = 12;
+        let best = null, bd = RR;
         for (const [P, Q, o] of jg.get(Math.floor(x / GS) + "," + Math.floor(y / GS)) || []) {
           const dx = Q[0] - P[0], dy = Q[1] - P[1], L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - P[0]) * dx + (y - P[1]) * dy) / L)), d = Math.hypot(P[0] + t * dx - x, P[1] + t * dy - y);
           if (d > bd) continue;
