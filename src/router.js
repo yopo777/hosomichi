@@ -1047,9 +1047,9 @@ function jarApply(osm, cfg, J) { return brApply(jarApply1(osm, cfg, J), J); }   
 // ・橋の歩道が 自転車も走れる（OSM の bicycle=yes/designated/permissive・自転車道・警察のデータの「自転車も通れる歩道」に20m以内でそう）→ "br:bike"
 //   自転車可になっていない橋の歩道は、出入り口の階段にスロープがないことが多い（ユーザー）→ 階段のほうは br:bike の歩道からだけ
 //   つながった橋の歩道（橋の上・たもとの坂）は どこかが自転車OKなら ぜんぶ・同じ橋の 反対がわの歩道（br:bike の歩道から 50m以内に そって走る）も br:bike にする（船堀橋：北がわだけ bicycle=yes・船堀がわの階段は南がわ）
-// ・br:bike の橋の歩道が つながって 合わせて50m以上なら、そこから 歩道・小道・階段を 30m以内で たどって着く 80m以下の階段（土手にそって長いものもある） → "br:ramp"＝自転車スロープつきとみなす（設定 brSteps。ramp:bicycle=no ははずす）
+// ・br:bike の橋の歩道が つながって 合わせて50m以上なら、そこから 歩道・小道・階段を 30m以内で たどって着く 150m以下の階段（土手にそって長いもの・折りかえしもある。階段は きょりに数えずに その先も たどる） → "br:ramp"＝自転車スロープつきとみなす（設定 brSteps。ramp:bicycle=no ははずす）
 //   （上葛飾橋・船堀橋・環七の新中川の橋など。じっさいは 自転車を押して上がれるスロープつきが多い）
-const BR_HEAD = 40, BR_APPROACH = 600, BR_SIDE_R = 20, BR_PAIR_R = 50, BR_SIDE_MIN = 50, BR_REACH = 30, BR_STEP_MAX = 80;
+const BR_HEAD = 40, BR_APPROACH = 600, BR_SIDE_R = 20, BR_PAIR_R = 50, BR_SIDE_MIN = 50, BR_REACH = 30, BR_STEP_MAX = 150;
 function brApproach(els, carBr, ptsOf) {   // → 橋のつづきの坂の線 [[緯度,経度]...] の配列
   const car = els.filter(e => e.type === "way" && e.tags && CAR_ROADS.has(BASE[e.tags.highway] || e.tags.highway));
   const at = new Map(); for (const e of car) for (const id of e.nodes) { if (!at.has(id)) at.set(id, []); at.get(id).push(e); }
@@ -1132,10 +1132,11 @@ function brApply(osm, J) {
       if (st && L > BR_STEP_MAX) continue;
       if (d0 + L > BR_REACH && !st) continue;
       if (st) ramp.add(k);
-      if (d0 + L > BR_REACH) continue;
-      for (const j of [e.nodes[0], e.nodes[e.nodes.length - 1]]) if (!dist.has(j) || dist.get(j) > d0 + L) { dist.set(j, d0 + L); q.push(j); }
+      const d1 = st ? d0 : d0 + L;   // 階段は きょりに数えない（折りかえしの階段・マスの さかいで 切れた 階段の つづきも たどれるように：船堀橋の船堀がわ）
+      for (const j of [e.nodes[0], e.nodes[e.nodes.length - 1]]) if (!dist.has(j) || dist.get(j) > d1) { dist.set(j, d1); q.push(j); }
     }
   }
+  { const rid = new Set([...ramp].map(k => els[k].id)); els.forEach((e, k) => { if (e.type === "way" && rid.has(e.id) && e.tags && e.tags.highway === "steps") ramp.add(k); }); }   // マスの さかいで 切れた 同じ階段（同じ番号）は ぜんぶ
   const out = els.slice();
   for (const k of side.keys()) out[k] = { ...out[k], tags: { ...out[k].tags, "br:side": "1", ...(bike.has(k) ? { "br:bike": "1" } : {}) } };
   for (const k of ramp) if (out[k].tags["ramp:bicycle"] !== "no") out[k] = { ...out[k], tags: { ...out[k].tags, "br:ramp": "1" } };
