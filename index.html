@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1122.2322</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1123.0027</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3560,7 +3560,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1122.2322", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1123.0027", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5563,21 +5563,22 @@ function dbgReq() {
 }
 // 🧪 道のデータの色（細い道を 種類で分ける）。c 色・w 太さ・dash 点線・alt しま模様のもう1色（下に alt、上に c の破線）
 const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道」のふち）。白い点々・2色のしまで 数をふやす
-  road: { n: "車道（細い道）", c: "#00c8e8", w: 3 },
-  service: { n: "車道（駐車場・敷地の道 service）", c: "#93abbb", w: 2.5 },
-  sidewalk: { n: "歩道（車道ぞい）", c: "#ff5fa2", w: 3 },
-  crossing: { n: "横断歩道の上", c: "#ff5fa2", w: 3, dash: "3 4", alt: "#fff" },
-  foot: { n: "歩行者の道", c: "#ffa6d6", w: 3 },
-  fbridge: { n: "歩道橋", c: "#c800b4", w: 5 },
-  ftunnel: { n: "地下道", c: "#c47a2c", w: 4, dash: "6 4", alt: "#fff" },
-  bsideb: { n: "歩道（車の橋にそう・自転車も走れる）", c: "#2e9e3a", w: 3.5, dash: "2 4", alt: "#c800b4" },
-  bside: { n: "歩道（車の橋にそう）", c: "#ff5fa2", w: 3.5, dash: "2 4", alt: "#c800b4" },
-  nbside: { n: "歩道（自転車通行止めの橋の）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
-  path: { n: "小道（path・track）", c: "#c47a2c", w: 3 },
-  cycle: { n: "自転車道", c: "#2e9e3a", w: 3.5 },
-  steps: { n: "階段", c: "#8a4dff", w: 5, dash: "3 3", alt: "#fff" },
-  rsteps: { n: "階段（自転車スロープつき）", c: "#00d26a", w: 6, dash: "10 4", alt: "#8a4dff" },
-  bsteps: { n: "階段（橋の出入り口・スロープつきとみなす）", c: "#00d26a", w: 6, dash: "4 4", alt: "#8a4dff" },   // 11/21 見分けやすく：緑の長い破線＋すきまに紫
+  // g：色の見本で まとめる グループ（11/23：にた名前が多くて わからない → グループ分けして 名前を 見分けやすく）
+  road: { g: "car", n: "細い車道（住宅街など）", c: "#00c8e8", w: 3 },
+  service: { g: "car", n: "駐車場・敷地の中の道", c: "#93abbb", w: 2.5 },
+  sidewalk: { g: "walk", n: "車道ぞいの歩道", c: "#ff5fa2", w: 3 },
+  crossing: { g: "walk", n: "横断歩道", c: "#ff5fa2", w: 3, dash: "3 4", alt: "#fff" },
+  foot: { g: "walk", n: "車道からはなれた 歩く道（公園・団地の中など）", c: "#ffa6d6", w: 3 },
+  path: { g: "walk", n: "小道（土手・あぜ道・山道など）", c: "#c47a2c", w: 3 },
+  cycle: { g: "bike", n: "自転車道・自転車歩行者道", c: "#2e9e3a", w: 3.5 },
+  fbridge: { g: "br", n: "歩道橋（道路や線路をまたぐ）", c: "#c800b4", w: 5 },
+  bsideb: { g: "br", n: "橋の歩道（自転車も走れる）", c: "#2e9e3a", w: 3.5, dash: "2 4", alt: "#c800b4" },
+  bside: { g: "br", n: "橋の歩道", c: "#ff5fa2", w: 3.5, dash: "2 4", alt: "#c800b4" },
+  nbside: { g: "br", n: "橋の歩道（車道は 自転車通行止め）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
+  ftunnel: { g: "br", n: "地下道", c: "#c47a2c", w: 4, dash: "6 4", alt: "#fff" },
+  steps: { g: "st", n: "階段", c: "#8a4dff", w: 5, dash: "3 3", alt: "#fff" },
+  rsteps: { g: "st", n: "スロープつき階段（地図に書いてある）", c: "#00d26a", w: 6, dash: "10 4", alt: "#8a4dff" },
+  bsteps: { g: "st", n: "橋の出入り口の階段（スロープつきとみなす）", c: "#00d26a", w: 6, dash: "4 4", alt: "#8a4dff" },   // 11/21 見分けやすく：緑の長い破線＋すきまに紫
 };
 const dbgYes = v => v && v !== "no";
 function dbgKind(t) {
@@ -5599,9 +5600,14 @@ dbgLeg.onAdd = () => {
   d.style.cssText = "background:#fffe;border-radius:8px;box-shadow:0 1px 5px #0004;padding:4px 8px;font-size:11px;line-height:1.5;max-width:210px;margin-bottom:70px";
   const ln = (c, w, dash, cap) => `<line x1="2" y1="5" x2="30" y2="5" stroke="${c}" stroke-width="${w}" ${dash ? `stroke-dasharray="${dash}"` : ""} ${cap ? 'stroke-linecap="round"' : ""}/>`;
   const sw = (c, w, dash, alt, top, under) => `<svg width="32" height="12" style="vertical-align:middle;margin-right:4px">${under ? ln(under, w + 5) : ""}${alt ? ln(alt, w) : ""}${ln(c, w, dash)}${top || ""}</svg>`;
-  const rows = [sw("#d93025", 5) + "4車線あつかい", sw("#f29900", 5) + "2車線"].concat(Object.values(DBG_K).map(K => sw(K.c, K.w, K.dash, K.alt) + K.n))
-    .concat([sw("#00c8e8", 4, null, null, ln("#fff", 2, "1 6", 1)) + "橋（白い点々）", sw("#b5651d", 3, null, null, ln("#e0a800", 4, "1 4", 1)) + "砂利・土の道（黄色の点々）", sw("#b5651d", 3, null, null, '<g opacity=".55">' + ln("#e0a800", 4, "1 10", 1) + "</g>") + "舗装かわからない（まばらな点々）", sw("#00c8e8", 4, null, null, ln("#e00", 4, "6 6")) + "🚳 自転車通行止め（赤のしま）", sw("#00c8e8", 3, null, null, "", "#000") + "黒いふち＝通らない道（アプリの判定）"]);
-  d.innerHTML = `<b>🧪 色の見本</b> <span style="color:#888">（タップでたたむ）</span><div>${rows.join("<br>")}</div>`;
+  const H = t => `<div style="font-weight:bold;margin-top:4px;border-bottom:1px solid #ddd">${t}</div>`, G = g => Object.values(DBG_K).filter(K => K.g === g).map(K => sw(K.c, K.w, K.dash, K.alt) + K.n);
+  const rows = [H("🚗 車の道"), sw("#d93025", 5) + "大きい道（4車線あつかい）", sw("#f29900", 5) + "ふつうの道（2車線）", ...G("car"),
+    H("🚶 歩く道（自転車は ゆっくり・押して）"), ...G("walk"),
+    H("🚲 自転車の道"), ...G("bike"),
+    H("🌉 橋・地下道"), ...G("br"),
+    H("🪜 階段"), ...G("st"),
+    H("✨ 上に重ねる印"), sw("#00c8e8", 4, null, null, ln("#fff", 2, "1 6", 1)) + "橋の上（白い点々）", sw("#b5651d", 3, null, null, ln("#e0a800", 4, "1 4", 1)) + "砂利・土（黄色の点々）", sw("#b5651d", 3, null, null, '<g opacity=".55">' + ln("#e0a800", 4, "1 10", 1) + "</g>") + "舗装かわからない（まばらな点々）", sw("#00c8e8", 4, null, null, ln("#e00", 4, "6 6")) + "🚳 自転車通行止め（赤のしま）", sw("#00c8e8", 3, null, null, "", "#000") + "黒いふち＝通らない（アプリの判定）"];
+  d.innerHTML = `<b>🧪 色の見本</b> <span style="color:#888">（タップでたたむ）</span><div style="max-height:60vh;overflow-y:auto">${rows.map(r => r.startsWith("<div") ? r : `<div>${r}</div>`).join("")}</div>`;
   L.DomEvent.disableClickPropagation(d);
   d.onclick = () => { const b = d.querySelector("div"); b.style.display = b.style.display === "none" ? "" : "none"; };
   return d;
