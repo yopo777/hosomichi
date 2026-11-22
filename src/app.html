@@ -1240,7 +1240,7 @@ worker.onmessage = ev => {
   }
   lsSet(LKEY, packRoute(cur));  // 前回のルートとして自動でおぼえる
   { const r = cur; fixRouteName(r).then(ch => { if (ch && cur === r) { showRoute(r, false); lsSet(LKEY, packRoute(r)); } }); }
-  job = null;
+  job = null; setTimeout(() => inPins());
   // 保存した道路データをブラウザに勝手に消されないようにお願いする（できるブラウザだけ）
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
 };
@@ -1473,7 +1473,7 @@ $("go").onclick = async () => {
   if (!toT && !LK) { setMsg("到着地を入れてね", true); return; }
   pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? " 1周" : " → " + shortName(toT));
   // 押したらすぐ前のルートを消す（場所さがしのあいだも前のルートが出ていると、動いていないように見えるので）
-  layer.clearLayers(); cur = null; cum = []; navAlong = null; inPins(true);
+  layer.clearLayers(); cur = null; cum = []; navAlong = null; pinUsed = { from: $("from").value, via: $("via").value, to: $("to").value }; inPins(true);
   try { flowStop(); guideStop(); flowBtns(); } catch {}
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
   legend(null); $("mini").textContent = "";
@@ -1768,8 +1768,9 @@ function xUpd() {
   }
 }
 map.on("zoomend", () => { try { xUpd(); } catch {} });
-// 📍 計算する前の 出発・経由・到着の印（11/22）：入力が「緯度,経度」か、地図の長おしで入れたものなら ピンを立てる。ルートを出したら消す
-var pinLayer;   // var：showRoute が 先に よばれても こわれないように（inPins で作る）
+// 📍 計算する前の 出発・経由・到着の印（11/22）：入力が「緯度,経度」か、地図の長おしで入れたものなら ピンを立てる。
+//   ルートが出ていても ピンだけ出す（ルートは🚲を押すまで そのまま）。いま出ているルートを作ったときの入力と同じものは出さない（🏁などと かさならないように）
+var pinLayer, pinUsed = null;   // var：showRoute が 先に よばれても こわれないように（inPins で作る）
 function pinIc(col, txt) { return L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center"><div style="background:${col};color:#fff;font-size:13px;font-weight:bold;border-radius:10px;padding:2px 7px;border:2px solid #fff;box-shadow:0 1px 4px #0006;white-space:nowrap">${txt}</div><div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:12px solid ${col};margin-top:-1px"></div></div>` }); }
 function inLL(id) {
   const el = $(id), v = el.value.trim(); if (!v) return null;
@@ -1780,18 +1781,19 @@ function inLL(id) {
 function inPins(hide) {
   if (!pinLayer) pinLayer = L.layerGroup().addTo(map);
   pinLayer.clearLayers();
-  if (hide || cur || job) return;
+  if (hide || job) return;
   const lk = (() => { try { return loopKm(); } catch { return 0; } })();
   for (const [id, col, txt] of [["from", "#188038", "🚲 出発"], ["via", "#1a73e8", "📍 経由"], ["to", "#d93025", "🏁 到着"]]) {
     if (lk && id !== "from") continue;   // 1周のときは 経由・到着の欄は使わない
-    const p = inLL(id); if (p) L.marker(p, { icon: pinIc(col, txt), zIndexOffset: 540 }).addTo(pinLayer).bindTooltip(txt.slice(txt.indexOf(" ") + 1) + "（まだ計算していないよ）");
+    if (cur && pinUsed && pinUsed[id] === $(id).value) continue;   // いまのルートを作った場所（ルートが出ているときは「新しい到着」など：いまのルートの🏁と まちがえないように）
+    const p = inLL(id); if (p) L.marker(p, { icon: pinIc(col, cur ? txt.replace(" ", " 新しい") : txt), zIndexOffset: 540 }).addTo(pinLayer).bindTooltip(txt.slice(txt.indexOf(" ") + 1) + "（まだ計算していないよ）");
   }
 }
 for (const id of ["from", "via", "to"]) $(id).addEventListener("input", () => inPins());
 setTimeout(() => inPins(), 0);
 function showRoute(r, fit) {
   if (r !== cur) { $("bar").classList.remove("trip"); for (const t of $("bar").querySelectorAll(".tick")) t.remove(); tickFor = null; }
-  cur = r; layer.clearLayers(); inPins(true); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
+  cur = r; layer.clearLayers(); setTimeout(() => inPins()); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
   const tent = r.tent || [];
   r.nav = r.route.length ? r.route.concat(tent.slice(1)) : tent.slice();   // ナビで使う線（確定＋仮）
@@ -3480,7 +3482,7 @@ worker.postMessage({ cmd: "stats" });
 let rtDrop = false;   // 🗑ルート消去で計算を止めたあと、おくれて届く結果をすてる
 $("bNew").onclick = async () => {
   if ($("go").disabled || job) {   // 計算中（↩ルートにもどる道 など）なら 止めてから消す
-    worker.postMessage({ cmd: "stop" }); job = null; rtDrop = true; clearInterval(tickTimer);
+    worker.postMessage({ cmd: "stop" }); job = null; setTimeout(() => inPins()); rtDrop = true; clearInterval(tickTimer);
     $("go").disabled = $("msnGo").disabled = false; $("stop").style.display = "none";
     try { drawPreview(null); routeFetch = []; drawFetching(); calcKeys = []; drawArea(); } catch {}
   }
