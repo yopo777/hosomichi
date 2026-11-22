@@ -1009,16 +1009,16 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
   await Promise.all(names.filter(n => !jarMem.has(n)).map(async n => {
     let old = null;
     try { const st = await jarStore("readonly"); old = st ? await idbReq(st.get(n)) : null; } catch {}
-    if (old && old.d && old.d.sig && old.d.xw && old.d.nb && Date.now() - old.savedAt < JAR_AGE && (!ver || old.ver === ver)) { jarMem.set(n, old.d); return; }   // sig・xw・nb がない＝信号・横断歩道・自転車通行止めを保存する前の古い形 → 取りなおす
+    if (old && old.d && old.d.sig && old.d.xw && old.d.nb && old.d.sw && Date.now() - old.savedAt < JAR_AGE && (!ver || old.ver === ver)) { jarMem.set(n, old.d); return; }   // sig・xw・nb がない＝信号・横断歩道・自転車通行止めを保存する前の古い形 → 取りなおす
     try {
       const res = await fetch(`${packBase}j/${n}.json.gz`, { cache: "no-cache" });   // ブラウザの古いキャッシュを使わない（変わっていなければ すぐ返る）
       let d;
-      if (res.status === 404) d = { nx: [], ow: [], sig: [], xw: [], nb: [] };
+      if (res.status === 404) d = { nx: [], ow: [], sig: [], xw: [], nb: [], sw: [] };
       else {
         if (!res.ok) throw new Error("HTTP " + res.status);
         const b = await res.blob(), h = new Uint8Array(await b.slice(0, 2).arrayBuffer());
         const t = h[0] === 0x1f && h[1] === 0x8b ? await new Response(b.stream().pipeThrough(new DecompressionStream("gzip"))).text() : await b.text();
-        const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [], sig: j.sig || [], xw: j.xw || [], nb: j.nb || [] };
+        const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [], sig: j.sig || [], xw: j.xw || [], nb: j.nb || [], sw: j.sw || [] };
       }
       jarMem.set(n, d);
       try { const st = await jarStore("readwrite"); if (st) await idbReq(st.put({ key: n, savedAt: Date.now(), ver, d })); } catch {}
@@ -1027,8 +1027,8 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
   return bad;
 }
 async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁止の線, ow: 一方通行 }
-  const jarLines = [], jow = [], jsig = [], jxw = [], jnb = [];
-  if (!packBase || (cfg && cfg.jarUse === "off")) return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb };
+  const jarLines = [], jow = [], jsig = [], jxw = [], jnb = [], jsw = [];
+  if (!packBase || (cfg && cfg.jarUse === "off")) return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb, sw: jsw };
   const names = [...new Set(bigs.map(packName))], bad = await jarLoad(names);
   const seen = new Set();
   for (const n of names) for (const l of (jarMem.get(n) || {}).nx || []) { const k = JSON.stringify(l[0].concat(l[l.length - 1])); if (!seen.has(k)) { seen.add(k); jarLines.push(l); } }
@@ -1036,16 +1036,20 @@ async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁�
   for (const n of names) for (const p of (jarMem.get(n) || {}).sig || []) { const k = "s" + p.join(); if (!seen.has(k)) { seen.add(k); jsig.push(p); } }
   for (const n of names) for (const p of (jarMem.get(n) || {}).xw || []) { const k = "x" + p.join(); if (!seen.has(k)) { seen.add(k); jxw.push(p); } }
   for (const n of names) for (const o of (jarMem.get(n) || {}).nb || []) { if (o.q) continue; const k = "b" + JSON.stringify(o.p[0].concat(o.p[o.p.length - 1])); if (!seen.has(k)) { seen.add(k); jnb.push(o); } }   // q＝たぶん（コードが空っぽ）はまだ使わない
+  for (const n of names) for (const o of (jarMem.get(n) || {}).sw || []) { const k = "w" + JSON.stringify(o.p[0].concat(o.p[o.p.length - 1])); if (!seen.has(k)) { seen.add(k); jsw.push(o); } }   // 自転車も通れる歩道（🌉 橋の歩道の判定に使う）
   if (jarLines.length || jow.length || bad) log(`🚓 警察の交通規制：歩行者等横断禁止 ${jarLines.length}本・一方通行 ${jow.length}本${bad ? `（取れなかったマス ${bad}）` : ""}`, bad ? "w" : "ok");
-  return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb };
+  return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb, sw: jsw };
 }
-function jarApply(osm, cfg, J) { return brApply(jarApply1(osm, cfg, J)); }   // 🚓 警察のデータ → 🌉 橋の歩道・出入り口の階段
+function jarApply(osm, cfg, J) { return brApply(jarApply1(osm, cfg, J), J); }   // 🚓 警察のデータ → 🌉 橋の歩道・出入り口の階段
 // 🌉 橋の歩道と、その出入り口の階段（11/22）。OSM では 橋の歩道が「歩道橋」と同じ形で、出入り口の階段に スロープの印がないことが多い
 // ・車の橋（車の道で bridge）に そって走る（20m以内・同じ向き）歩道・小道の橋 → "br:side"＝橋の歩道（歩道橋あつかいにしない）
-// ・つながった 橋の歩道が 合わせて50m以上なら、そこから 歩道・小道・階段を 30m以内で たどって着く 80m以下の階段（土手にそって長いものもある） → "br:ramp"＝自転車スロープつきとみなす（設定 brSteps。ramp:bicycle=no ははずす）
+// ・橋の歩道が 自転車も走れる（OSM の bicycle=yes/designated/permissive・自転車道・警察のデータの「自転車も通れる歩道」に20m以内でそう）→ "br:bike"
+//   自転車可になっていない橋の歩道は、出入り口の階段にスロープがないことが多い（ユーザー）→ 階段のほうは br:bike の歩道からだけ
+//   同じ橋の 反対がわの歩道（br:bike の歩道から 50m以内に そって走る）も br:bike にする（船堀橋：北がわだけ bicycle=yes・船堀がわの階段は南がわ）
+// ・br:bike の橋の歩道が つながって 合わせて50m以上なら、そこから 歩道・小道・階段を 30m以内で たどって着く 80m以下の階段（土手にそって長いものもある） → "br:ramp"＝自転車スロープつきとみなす（設定 brSteps。ramp:bicycle=no ははずす）
 //   （上葛飾橋・船堀橋・環七の新中川の橋など。じっさいは 自転車を押して上がれるスロープつきが多い）
-const BR_SIDE_R = 20, BR_SIDE_MIN = 50, BR_REACH = 30, BR_STEP_MAX = 80;
-function brApply(osm) {
+const BR_SIDE_R = 20, BR_PAIR_R = 50, BR_SIDE_MIN = 50, BR_REACH = 30, BR_STEP_MAX = 80;
+function brApply(osm, J) {
   const els = osm.elements, pos = new Map(); for (const e of els) if (e.type === "node") pos.set(e.id, e);
   const ptsOf = e => e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]);
   const carBr = els.filter(e => e.type === "way" && e.tags && CAR_ROADS.has(BASE[e.tags.highway] || e.tags.highway) && yes(e.tags.bridge));
@@ -1062,17 +1066,24 @@ function brApply(osm) {
     side.set(k, L);
   }
   if (!side.size) return osm;
+  const SW = J && J.sw && J.sw.length ? jarOwMatcher(J.sw, p0[0], BR_SIDE_R) : null, bike = new Set();
+  for (const k of side.keys()) { const t = els[k].tags; if (["yes", "designated", "permissive"].includes(t.bicycle) || t.highway === "cycleway" || (SW && SW(ptsOf(els[k])))) bike.add(k); }
+  // 同じ橋の 反対がわの歩道も（標識は たいてい両がわにある）：自転車も走れる 橋の歩道から 50m以内に そって走る 橋の歩道
+  if (bike.size && bike.size < side.size) {
+    const BM = jarOwMatcher([...bike].map(k => ({ p: ptsOf(els[k]) })), p0[0], BR_PAIR_R);
+    for (const k of side.keys()) if (!bike.has(k) && els[k].tags.bicycle !== "no" && BM(ptsOf(els[k]))) bike.add(k);
+  }
   // つながった 橋の歩道の まとまりの長さ
   const par = new Map(), find = x => { while (par.get(x) !== x) { par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
   const nodeW = new Map();
-  for (const k of side.keys()) { par.set(k, k); for (const id of els[k].nodes) { if (nodeW.has(id)) par.set(find(k), find(nodeW.get(id))); else nodeW.set(id, k); } }
-  const grpL = new Map(); for (const [k, L] of side) grpL.set(find(k), (grpL.get(find(k)) || 0) + L);
+  for (const k of bike) { par.set(k, k); for (const id of els[k].nodes) { if (nodeW.has(id)) par.set(find(k), find(nodeW.get(id))); else nodeW.set(id, k); } }
+  const grpL = new Map(); for (const k of bike) { const L = side.get(k); grpL.set(find(k), (grpL.get(find(k)) || 0) + L); }
   // 歩道・小道・階段のつながり（点 → [道の番号]）
   const adj = new Map();
   for (let k = 0; k < els.length; k++) { const e = els[k]; if (e.type !== "way" || !e.tags || !isFoot(e.tags) || e.tags.bicycle === "no") continue; for (const id of e.nodes) { if (!adj.has(id)) adj.set(id, []); adj.get(id).push(k); } }
   const wayLenK = k => { const p = ptsOf(els[k]); let L = 0; for (let i = 1; i < p.length; i++) L += hav(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]); return L; };
   const dist = new Map(), q = [], ramp = new Set();
-  for (const k of side.keys()) if (grpL.get(find(k)) >= BR_SIDE_MIN) for (const id of els[k].nodes) if (!dist.has(id)) { dist.set(id, 0); q.push(id); }
+  for (const k of bike) if (grpL.get(find(k)) >= BR_SIDE_MIN) for (const id of els[k].nodes) if (!dist.has(id)) { dist.set(id, 0); q.push(id); }
   while (q.length) {   // 小さい数なので ふつうの列で（きょりが へったら 入れなおす）
     const id = q.shift(), d0 = dist.get(id);
     for (const k of adj.get(id) || []) {
@@ -1086,9 +1097,9 @@ function brApply(osm) {
     }
   }
   const out = els.slice();
-  for (const k of side.keys()) out[k] = { ...out[k], tags: { ...out[k].tags, "br:side": "1" } };
+  for (const k of side.keys()) out[k] = { ...out[k], tags: { ...out[k].tags, "br:side": "1", ...(bike.has(k) ? { "br:bike": "1" } : {}) } };
   for (const k of ramp) if (out[k].tags["ramp:bicycle"] !== "no") out[k] = { ...out[k], tags: { ...out[k].tags, "br:ramp": "1" } };
-  log(`🌉 橋の歩道 ${side.size}本・出入り口の階段 ${ramp.size}本`);
+  log(`🌉 橋の歩道 ${side.size}本（自転車も走れる ${bike.size}本）・出入り口の階段 ${ramp.size}本`);
   return { ...osm, elements: out };
 }
 function jarApply1(osm, cfg, J) {

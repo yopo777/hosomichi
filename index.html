@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1122.1103</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1122.1501</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -1444,16 +1444,16 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
   await Promise.all(names.filter(n => !jarMem.has(n)).map(async n => {
     let old = null;
     try { const st = await jarStore("readonly"); old = st ? await idbReq(st.get(n)) : null; } catch {}
-    if (old && old.d && old.d.sig && old.d.xw && old.d.nb && Date.now() - old.savedAt < JAR_AGE && (!ver || old.ver === ver)) { jarMem.set(n, old.d); return; }   // sig・xw・nb がない＝信号・横断歩道・自転車通行止めを保存する前の古い形 → 取りなおす
+    if (old && old.d && old.d.sig && old.d.xw && old.d.nb && old.d.sw && Date.now() - old.savedAt < JAR_AGE && (!ver || old.ver === ver)) { jarMem.set(n, old.d); return; }   // sig・xw・nb がない＝信号・横断歩道・自転車通行止めを保存する前の古い形 → 取りなおす
     try {
       const res = await fetch(`${packBase}j/${n}.json.gz`, { cache: "no-cache" });   // ブラウザの古いキャッシュを使わない（変わっていなければ すぐ返る）
       let d;
-      if (res.status === 404) d = { nx: [], ow: [], sig: [], xw: [], nb: [] };
+      if (res.status === 404) d = { nx: [], ow: [], sig: [], xw: [], nb: [], sw: [] };
       else {
         if (!res.ok) throw new Error("HTTP " + res.status);
         const b = await res.blob(), h = new Uint8Array(await b.slice(0, 2).arrayBuffer());
         const t = h[0] === 0x1f && h[1] === 0x8b ? await new Response(b.stream().pipeThrough(new DecompressionStream("gzip"))).text() : await b.text();
-        const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [], sig: j.sig || [], xw: j.xw || [], nb: j.nb || [] };
+        const j = JSON.parse(t); d = { nx: j.nx || [], ow: j.ow || [], sig: j.sig || [], xw: j.xw || [], nb: j.nb || [], sw: j.sw || [] };
       }
       jarMem.set(n, d);
       try { const st = await jarStore("readwrite"); if (st) await idbReq(st.put({ key: n, savedAt: Date.now(), ver, d })); } catch {}
@@ -1462,8 +1462,8 @@ async function jarLoad(names) {   // そのマスたちの JARTIC を読む（�
   return bad;
 }
 async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁止の線, ow: 一方通行 }
-  const jarLines = [], jow = [], jsig = [], jxw = [], jnb = [];
-  if (!packBase || (cfg && cfg.jarUse === "off")) return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb };
+  const jarLines = [], jow = [], jsig = [], jxw = [], jnb = [], jsw = [];
+  if (!packBase || (cfg && cfg.jarUse === "off")) return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb, sw: jsw };
   const names = [...new Set(bigs.map(packName))], bad = await jarLoad(names);
   const seen = new Set();
   for (const n of names) for (const l of (jarMem.get(n) || {}).nx || []) { const k = JSON.stringify(l[0].concat(l[l.length - 1])); if (!seen.has(k)) { seen.add(k); jarLines.push(l); } }
@@ -1471,16 +1471,20 @@ async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁�
   for (const n of names) for (const p of (jarMem.get(n) || {}).sig || []) { const k = "s" + p.join(); if (!seen.has(k)) { seen.add(k); jsig.push(p); } }
   for (const n of names) for (const p of (jarMem.get(n) || {}).xw || []) { const k = "x" + p.join(); if (!seen.has(k)) { seen.add(k); jxw.push(p); } }
   for (const n of names) for (const o of (jarMem.get(n) || {}).nb || []) { if (o.q) continue; const k = "b" + JSON.stringify(o.p[0].concat(o.p[o.p.length - 1])); if (!seen.has(k)) { seen.add(k); jnb.push(o); } }   // q＝たぶん（コードが空っぽ）はまだ使わない
+  for (const n of names) for (const o of (jarMem.get(n) || {}).sw || []) { const k = "w" + JSON.stringify(o.p[0].concat(o.p[o.p.length - 1])); if (!seen.has(k)) { seen.add(k); jsw.push(o); } }   // 自転車も通れる歩道（🌉 橋の歩道の判定に使う）
   if (jarLines.length || jow.length || bad) log(`🚓 警察の交通規制：歩行者等横断禁止 ${jarLines.length}本・一方通行 ${jow.length}本${bad ? `（取れなかったマス ${bad}）` : ""}`, bad ? "w" : "ok");
-  return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb };
+  return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb, sw: jsw };
 }
-function jarApply(osm, cfg, J) { return brApply(jarApply1(osm, cfg, J)); }   // 🚓 警察のデータ → 🌉 橋の歩道・出入り口の階段
+function jarApply(osm, cfg, J) { return brApply(jarApply1(osm, cfg, J), J); }   // 🚓 警察のデータ → 🌉 橋の歩道・出入り口の階段
 // 🌉 橋の歩道と、その出入り口の階段（11/22）。OSM では 橋の歩道が「歩道橋」と同じ形で、出入り口の階段に スロープの印がないことが多い
 // ・車の橋（車の道で bridge）に そって走る（20m以内・同じ向き）歩道・小道の橋 → "br:side"＝橋の歩道（歩道橋あつかいにしない）
-// ・つながった 橋の歩道が 合わせて50m以上なら、そこから 歩道・小道・階段を 30m以内で たどって着く 80m以下の階段（土手にそって長いものもある） → "br:ramp"＝自転車スロープつきとみなす（設定 brSteps。ramp:bicycle=no ははずす）
+// ・橋の歩道が 自転車も走れる（OSM の bicycle=yes/designated/permissive・自転車道・警察のデータの「自転車も通れる歩道」に20m以内でそう）→ "br:bike"
+//   自転車可になっていない橋の歩道は、出入り口の階段にスロープがないことが多い（ユーザー）→ 階段のほうは br:bike の歩道からだけ
+//   同じ橋の 反対がわの歩道（br:bike の歩道から 50m以内に そって走る）も br:bike にする（船堀橋：北がわだけ bicycle=yes・船堀がわの階段は南がわ）
+// ・br:bike の橋の歩道が つながって 合わせて50m以上なら、そこから 歩道・小道・階段を 30m以内で たどって着く 80m以下の階段（土手にそって長いものもある） → "br:ramp"＝自転車スロープつきとみなす（設定 brSteps。ramp:bicycle=no ははずす）
 //   （上葛飾橋・船堀橋・環七の新中川の橋など。じっさいは 自転車を押して上がれるスロープつきが多い）
-const BR_SIDE_R = 20, BR_SIDE_MIN = 50, BR_REACH = 30, BR_STEP_MAX = 80;
-function brApply(osm) {
+const BR_SIDE_R = 20, BR_PAIR_R = 50, BR_SIDE_MIN = 50, BR_REACH = 30, BR_STEP_MAX = 80;
+function brApply(osm, J) {
   const els = osm.elements, pos = new Map(); for (const e of els) if (e.type === "node") pos.set(e.id, e);
   const ptsOf = e => e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]);
   const carBr = els.filter(e => e.type === "way" && e.tags && CAR_ROADS.has(BASE[e.tags.highway] || e.tags.highway) && yes(e.tags.bridge));
@@ -1497,17 +1501,24 @@ function brApply(osm) {
     side.set(k, L);
   }
   if (!side.size) return osm;
+  const SW = J && J.sw && J.sw.length ? jarOwMatcher(J.sw, p0[0], BR_SIDE_R) : null, bike = new Set();
+  for (const k of side.keys()) { const t = els[k].tags; if (["yes", "designated", "permissive"].includes(t.bicycle) || t.highway === "cycleway" || (SW && SW(ptsOf(els[k])))) bike.add(k); }
+  // 同じ橋の 反対がわの歩道も（標識は たいてい両がわにある）：自転車も走れる 橋の歩道から 50m以内に そって走る 橋の歩道
+  if (bike.size && bike.size < side.size) {
+    const BM = jarOwMatcher([...bike].map(k => ({ p: ptsOf(els[k]) })), p0[0], BR_PAIR_R);
+    for (const k of side.keys()) if (!bike.has(k) && els[k].tags.bicycle !== "no" && BM(ptsOf(els[k]))) bike.add(k);
+  }
   // つながった 橋の歩道の まとまりの長さ
   const par = new Map(), find = x => { while (par.get(x) !== x) { par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
   const nodeW = new Map();
-  for (const k of side.keys()) { par.set(k, k); for (const id of els[k].nodes) { if (nodeW.has(id)) par.set(find(k), find(nodeW.get(id))); else nodeW.set(id, k); } }
-  const grpL = new Map(); for (const [k, L] of side) grpL.set(find(k), (grpL.get(find(k)) || 0) + L);
+  for (const k of bike) { par.set(k, k); for (const id of els[k].nodes) { if (nodeW.has(id)) par.set(find(k), find(nodeW.get(id))); else nodeW.set(id, k); } }
+  const grpL = new Map(); for (const k of bike) { const L = side.get(k); grpL.set(find(k), (grpL.get(find(k)) || 0) + L); }
   // 歩道・小道・階段のつながり（点 → [道の番号]）
   const adj = new Map();
   for (let k = 0; k < els.length; k++) { const e = els[k]; if (e.type !== "way" || !e.tags || !isFoot(e.tags) || e.tags.bicycle === "no") continue; for (const id of e.nodes) { if (!adj.has(id)) adj.set(id, []); adj.get(id).push(k); } }
   const wayLenK = k => { const p = ptsOf(els[k]); let L = 0; for (let i = 1; i < p.length; i++) L += hav(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]); return L; };
   const dist = new Map(), q = [], ramp = new Set();
-  for (const k of side.keys()) if (grpL.get(find(k)) >= BR_SIDE_MIN) for (const id of els[k].nodes) if (!dist.has(id)) { dist.set(id, 0); q.push(id); }
+  for (const k of bike) if (grpL.get(find(k)) >= BR_SIDE_MIN) for (const id of els[k].nodes) if (!dist.has(id)) { dist.set(id, 0); q.push(id); }
   while (q.length) {   // 小さい数なので ふつうの列で（きょりが へったら 入れなおす）
     const id = q.shift(), d0 = dist.get(id);
     for (const k of adj.get(id) || []) {
@@ -1521,9 +1532,9 @@ function brApply(osm) {
     }
   }
   const out = els.slice();
-  for (const k of side.keys()) out[k] = { ...out[k], tags: { ...out[k].tags, "br:side": "1" } };
+  for (const k of side.keys()) out[k] = { ...out[k], tags: { ...out[k].tags, "br:side": "1", ...(bike.has(k) ? { "br:bike": "1" } : {}) } };
   for (const k of ramp) if (out[k].tags["ramp:bicycle"] !== "no") out[k] = { ...out[k], tags: { ...out[k].tags, "br:ramp": "1" } };
-  log(`🌉 橋の歩道 ${side.size}本・出入り口の階段 ${ramp.size}本`);
+  log(`🌉 橋の歩道 ${side.size}本（自転車も走れる ${bike.size}本）・出入り口の階段 ${ramp.size}本`);
   return { ...osm, elements: out };
 }
 function jarApply1(osm, cfg, J) {
@@ -3486,7 +3497,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1122.1103", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1122.1501", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5469,6 +5480,7 @@ const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道�
   foot: { n: "歩行者の道", c: "#ffa6d6", w: 3 },
   fbridge: { n: "歩道橋", c: "#c800b4", w: 5 },
   ftunnel: { n: "地下道", c: "#c47a2c", w: 4, dash: "6 4", alt: "#fff" },
+  bsideb: { n: "歩道（車の橋にそう・自転車も走れる）", c: "#2e9e3a", w: 3.5, dash: "2 4", alt: "#c800b4" },
   bside: { n: "歩道（車の橋にそう）", c: "#ff5fa2", w: 3.5, dash: "2 4", alt: "#c800b4" },
   nbside: { n: "歩道（自転車通行止めの橋の）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
   path: { n: "小道（path・track）", c: "#c47a2c", w: 3 },
@@ -5482,7 +5494,7 @@ function dbgKind(t) {
   const hw = t.highway, FT = ["footway", "pedestrian", "path", "track", "bridleway", "corridor"];
   if (hw === "steps") return t["ramp:bicycle"] === "yes" ? "rsteps" : t["br:ramp"] ? "bsteps" : "steps";
   if (t["jar:nbside"]) return "nbside";
-  if (t["br:side"]) return "bside";
+  if (t["br:side"]) return t["br:bike"] ? "bsideb" : "bside";
   if (hw === "cycleway" || (FT.includes(hw) && t.bicycle === "designated")) return "cycle";
   if (["footway", "pedestrian", "path", "corridor"].includes(hw) && (dbgYes(t.bridge) || dbgYes(t.tunnel))) return dbgYes(t.bridge) ? "fbridge" : "ftunnel";
   if (hw === "footway" || hw === "pedestrian" || hw === "corridor") return t.footway === "sidewalk" ? "sidewalk" : t.footway === "crossing" ? "crossing" : "foot";
@@ -5523,7 +5535,7 @@ function dbgDraw(m) {
     L.polyline(w.pts, { renderer: dbgRend, color: col, weight: wt, opacity: op, dashArray: K.dash || null })
       .bindPopup(() => dbgTags("way", w.id, w.t, `<b>${K.n}</b>${br ? "（橋）" : dbgYes(t.tunnel) && k !== "ftunnel" ? "（トンネル）" : ""}・レベル${w.lv}${w.lv === 2 ? "（4車線あつかい）" : w.lv === 1 ? "（2車線）" : ""}`
         + (w.up === "sure" ? `<br>🟤 <b>砂利・土の道</b>（${esc(t.surface || t.tracktype || "")}）` : w.up === "maybe" ? "<br>🟤 舗装かわからない（小道・農道で surface がない）" : t.surface ? `<br>路面：${esc(t.surface)}` : "")
-        + (t["jar:nb"] ? (t["jar:nbk"] === "pw" ? "<br>🚶 <b>歩行者用道路</b>" : "<br>🚳 <b>自転車通行止め</b>") + `（警察のデータ${t["jar:nb"] === "t" ? "・時間つき（いまは時間外）" : t["jar:nb"] === "ta" ? "・時間つき（いまは規制中）" : ""}）` : "") + (t["jar:nbside"] ? "<br>🚳 自転車通行止めの橋の歩道（歩道橋あつかいにしない）" : "")
+        + (t["jar:nb"] ? (t["jar:nbk"] === "pw" ? "<br>🚶 <b>歩行者用道路</b>" : "<br>🚳 <b>自転車通行止め</b>") + `（警察のデータ${t["jar:nb"] === "t" ? "・時間つき（いまは時間外）" : t["jar:nb"] === "ta" ? "・時間つき（いまは規制中）" : ""}）` : "") + (t["jar:nbside"] ? "<br>🚳 自転車通行止めの橋の歩道（歩道橋あつかいにしない）" : "") + (t["br:side"] ? `<br>🌉 車の橋にそう歩道（歩道橋あつかいにしない）${t["br:bike"] ? "・自転車も走れる" : ""}` : "") + (t["br:ramp"] ? "<br>🌉 橋の出入り口の階段（スロープつきとみなす）" : "")
         + (J ? (w.use ? `<br>✅ 通る道：${esc(w.why || "")}` : `<br>⛔ <b>通らない道</b>：${esc(w.why || "")}`) : ""))).addTo(dbgLayer);
     if (t["jar:nb"]) L.polyline(w.pts, { renderer: dbgRend, color: "#e00", weight: wt, opacity: t["jar:nb"] === "t" ? .5 : 1, dashArray: "8 8", interactive: false }).addTo(dbgLayer);   // 🚳 自転車通行止め：赤のしま
     if (w.up) L.polyline(w.pts, { renderer: dbgRend, color: "#e0a800", weight: wt + 1, opacity: w.up === "sure" ? 1 : .55, dashArray: w.up === "sure" ? "1 5" : "1 12", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 🟡 砂利・土の道：黄土色の点々（わからないのは まばら）
@@ -6090,7 +6102,7 @@ function renderCfg() {
   h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅の自由通路・コンコースのこと（押して歩く所）<span class="hq">?</span><div class="hd">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ</div></div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">すぐ横に歩道がある道（段差や柵が多い）<span class="hq">?</span><div class="hd">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div></div>';
   h += "<h4>旧街道</h4>" + get(["kodo"]) + '<div class="note">旧東海道みたいな旧街道を、遠回りしても通るよ<span class="hq">?</span><div class="hd">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div></div>';
-  h += "<h4>階段・歩道橋・地下道・砂利</h4>" + get(["steps", "brSteps", "bridge", "tunnel", "unpaved"]) + '<div class="note">川の橋の歩道は、出入り口が階段だけに見えても 自転車を押して上がれるスロープつきが多いよ<span class="hq">?</span><div class="hd">車の橋にそった歩道（合わせて50m以上）から 30m以内の階段を「スロープつき」とみなすよ（地図に「スロープなし」と書いてある階段はのぞく）。車の橋にそった歩道は 歩道橋あつかいにしないよ</div></div>';
+  h += "<h4>階段・歩道橋・地下道・砂利</h4>" + get(["steps", "brSteps", "bridge", "tunnel", "unpaved"]) + '<div class="note">川の橋の歩道は、出入り口が階段だけに見えても 自転車を押して上がれるスロープつきが多いよ<span class="hq">?</span><div class="hd">車の橋にそった歩道で 自転車も走れる所（地図に自転車OKと書いてある・警察のデータの「自転車も通れる歩道」）が 合わせて50m以上あれば、そこから 30m以内の階段を「スロープつき」とみなすよ（地図に「スロープなし」と書いてある階段はのぞく）。車の橋にそった歩道は 歩道橋あつかいにしないよ</div></div>';
   h += "<h4>通りたくない地点</h4>" + get(["avoidPen"]) + '<div class="note">印のいちばん近い道を、何倍の長さと数えるか<span class="hq">?</span><div class="hd">地図を長おし →「⚠ 通りたくない」でつけた印の、いちばん近い道（12m以内）を、その道まるごと 何倍の長さと数えるか（×5 なら 100m の道を 500m 分）。「🚫 通れない」の印は、いつも通らないよ</div></div>';
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;

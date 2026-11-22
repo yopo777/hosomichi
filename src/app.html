@@ -3000,6 +3000,7 @@ const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道�
   foot: { n: "歩行者の道", c: "#ffa6d6", w: 3 },
   fbridge: { n: "歩道橋", c: "#c800b4", w: 5 },
   ftunnel: { n: "地下道", c: "#c47a2c", w: 4, dash: "6 4", alt: "#fff" },
+  bsideb: { n: "歩道（車の橋にそう・自転車も走れる）", c: "#2e9e3a", w: 3.5, dash: "2 4", alt: "#c800b4" },
   bside: { n: "歩道（車の橋にそう）", c: "#ff5fa2", w: 3.5, dash: "2 4", alt: "#c800b4" },
   nbside: { n: "歩道（自転車通行止めの橋の）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
   path: { n: "小道（path・track）", c: "#c47a2c", w: 3 },
@@ -3013,7 +3014,7 @@ function dbgKind(t) {
   const hw = t.highway, FT = ["footway", "pedestrian", "path", "track", "bridleway", "corridor"];
   if (hw === "steps") return t["ramp:bicycle"] === "yes" ? "rsteps" : t["br:ramp"] ? "bsteps" : "steps";
   if (t["jar:nbside"]) return "nbside";
-  if (t["br:side"]) return "bside";
+  if (t["br:side"]) return t["br:bike"] ? "bsideb" : "bside";
   if (hw === "cycleway" || (FT.includes(hw) && t.bicycle === "designated")) return "cycle";
   if (["footway", "pedestrian", "path", "corridor"].includes(hw) && (dbgYes(t.bridge) || dbgYes(t.tunnel))) return dbgYes(t.bridge) ? "fbridge" : "ftunnel";
   if (hw === "footway" || hw === "pedestrian" || hw === "corridor") return t.footway === "sidewalk" ? "sidewalk" : t.footway === "crossing" ? "crossing" : "foot";
@@ -3054,7 +3055,7 @@ function dbgDraw(m) {
     L.polyline(w.pts, { renderer: dbgRend, color: col, weight: wt, opacity: op, dashArray: K.dash || null })
       .bindPopup(() => dbgTags("way", w.id, w.t, `<b>${K.n}</b>${br ? "（橋）" : dbgYes(t.tunnel) && k !== "ftunnel" ? "（トンネル）" : ""}・レベル${w.lv}${w.lv === 2 ? "（4車線あつかい）" : w.lv === 1 ? "（2車線）" : ""}`
         + (w.up === "sure" ? `<br>🟤 <b>砂利・土の道</b>（${esc(t.surface || t.tracktype || "")}）` : w.up === "maybe" ? "<br>🟤 舗装かわからない（小道・農道で surface がない）" : t.surface ? `<br>路面：${esc(t.surface)}` : "")
-        + (t["jar:nb"] ? (t["jar:nbk"] === "pw" ? "<br>🚶 <b>歩行者用道路</b>" : "<br>🚳 <b>自転車通行止め</b>") + `（警察のデータ${t["jar:nb"] === "t" ? "・時間つき（いまは時間外）" : t["jar:nb"] === "ta" ? "・時間つき（いまは規制中）" : ""}）` : "") + (t["jar:nbside"] ? "<br>🚳 自転車通行止めの橋の歩道（歩道橋あつかいにしない）" : "")
+        + (t["jar:nb"] ? (t["jar:nbk"] === "pw" ? "<br>🚶 <b>歩行者用道路</b>" : "<br>🚳 <b>自転車通行止め</b>") + `（警察のデータ${t["jar:nb"] === "t" ? "・時間つき（いまは時間外）" : t["jar:nb"] === "ta" ? "・時間つき（いまは規制中）" : ""}）` : "") + (t["jar:nbside"] ? "<br>🚳 自転車通行止めの橋の歩道（歩道橋あつかいにしない）" : "") + (t["br:side"] ? `<br>🌉 車の橋にそう歩道（歩道橋あつかいにしない）${t["br:bike"] ? "・自転車も走れる" : ""}` : "") + (t["br:ramp"] ? "<br>🌉 橋の出入り口の階段（スロープつきとみなす）" : "")
         + (J ? (w.use ? `<br>✅ 通る道：${esc(w.why || "")}` : `<br>⛔ <b>通らない道</b>：${esc(w.why || "")}`) : ""))).addTo(dbgLayer);
     if (t["jar:nb"]) L.polyline(w.pts, { renderer: dbgRend, color: "#e00", weight: wt, opacity: t["jar:nb"] === "t" ? .5 : 1, dashArray: "8 8", interactive: false }).addTo(dbgLayer);   // 🚳 自転車通行止め：赤のしま
     if (w.up) L.polyline(w.pts, { renderer: dbgRend, color: "#e0a800", weight: wt + 1, opacity: w.up === "sure" ? 1 : .55, dashArray: w.up === "sure" ? "1 5" : "1 12", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 🟡 砂利・土の道：黄土色の点々（わからないのは まばら）
@@ -3621,7 +3622,7 @@ function renderCfg() {
   h += "<h4>駅</h4>" + get(["station"]) + '<div class="note">駅の自由通路・コンコースのこと（押して歩く所）<span class="hq">?</span><div class="hd">駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ</div></div>';
   h += "<h4>道のようす</h4>" + get(["sidewalk"]) + '<div class="note">すぐ横に歩道がある道（段差や柵が多い）<span class="hq">?</span><div class="hd">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div></div>';
   h += "<h4>旧街道</h4>" + get(["kodo"]) + '<div class="note">旧東海道みたいな旧街道を、遠回りしても通るよ<span class="hq">?</span><div class="hd">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div></div>';
-  h += "<h4>階段・歩道橋・地下道・砂利</h4>" + get(["steps", "brSteps", "bridge", "tunnel", "unpaved"]) + '<div class="note">川の橋の歩道は、出入り口が階段だけに見えても 自転車を押して上がれるスロープつきが多いよ<span class="hq">?</span><div class="hd">車の橋にそった歩道（合わせて50m以上）から 30m以内の階段を「スロープつき」とみなすよ（地図に「スロープなし」と書いてある階段はのぞく）。車の橋にそった歩道は 歩道橋あつかいにしないよ</div></div>';
+  h += "<h4>階段・歩道橋・地下道・砂利</h4>" + get(["steps", "brSteps", "bridge", "tunnel", "unpaved"]) + '<div class="note">川の橋の歩道は、出入り口が階段だけに見えても 自転車を押して上がれるスロープつきが多いよ<span class="hq">?</span><div class="hd">車の橋にそった歩道で 自転車も走れる所（地図に自転車OKと書いてある・警察のデータの「自転車も通れる歩道」）が 合わせて50m以上あれば、そこから 30m以内の階段を「スロープつき」とみなすよ（地図に「スロープなし」と書いてある階段はのぞく）。車の橋にそった歩道は 歩道橋あつかいにしないよ</div></div>';
   h += "<h4>通りたくない地点</h4>" + get(["avoidPen"]) + '<div class="note">印のいちばん近い道を、何倍の長さと数えるか<span class="hq">?</span><div class="hd">地図を長おし →「⚠ 通りたくない」でつけた印の、いちばん近い道（12m以内）を、その道まるごと 何倍の長さと数えるか（×5 なら 100m の道を 500m 分）。「🚫 通れない」の印は、いつも通らないよ</div></div>';
   h += '<h4>道の種類（数字が大きいほど避ける）</h4><div class="note">×3 なら「1mを3m分」と数えるよ。遠回りしても使わなくなる</div>';
   for (const [k, t] of PEN_ROWS) h += `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, cfg.pen[k])}</select></div>`;
