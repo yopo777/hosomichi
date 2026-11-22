@@ -1045,10 +1045,38 @@ function jarApply(osm, cfg, J) { return brApply(jarApply1(osm, cfg, J), J); }   
 // ・車の橋（車の道で bridge）に そって走る（20m以内・同じ向き）歩道・小道の橋 → "br:side"＝橋の歩道（歩道橋あつかいにしない）
 // ・橋の歩道が 自転車も走れる（OSM の bicycle=yes/designated/permissive・自転車道・警察のデータの「自転車も通れる歩道」に20m以内でそう）→ "br:bike"
 //   自転車可になっていない橋の歩道は、出入り口の階段にスロープがないことが多い（ユーザー）→ 階段のほうは br:bike の歩道からだけ
-//   同じ橋の 反対がわの歩道（br:bike の歩道から 50m以内に そって走る）も br:bike にする（船堀橋：北がわだけ bicycle=yes・船堀がわの階段は南がわ）
+//   つながった橋の歩道（橋の上・たもとの坂）は どこかが自転車OKなら ぜんぶ・同じ橋の 反対がわの歩道（br:bike の歩道から 50m以内に そって走る）も br:bike にする（船堀橋：北がわだけ bicycle=yes・船堀がわの階段は南がわ）
 // ・br:bike の橋の歩道が つながって 合わせて50m以上なら、そこから 歩道・小道・階段を 30m以内で たどって着く 80m以下の階段（土手にそって長いものもある） → "br:ramp"＝自転車スロープつきとみなす（設定 brSteps。ramp:bicycle=no ははずす）
 //   （上葛飾橋・船堀橋・環七の新中川の橋など。じっさいは 自転車を押して上がれるスロープつきが多い）
-const BR_SIDE_R = 20, BR_PAIR_R = 50, BR_SIDE_MIN = 50, BR_REACH = 30, BR_STEP_MAX = 80;
+const BR_HEAD = 40, BR_APPROACH = 600, BR_SIDE_R = 20, BR_PAIR_R = 50, BR_SIDE_MIN = 50, BR_REACH = 30, BR_STEP_MAX = 80;
+function brApproach(els, carBr, ptsOf) {   // → 橋のつづきの坂の線 [[緯度,経度]...] の配列
+  const car = els.filter(e => e.type === "way" && e.tags && CAR_ROADS.has(BASE[e.tags.highway] || e.tags.highway));
+  const at = new Map(); for (const e of car) for (const id of e.nodes) { if (!at.has(id)) at.set(id, []); at.get(id).push(e); }
+  const key = t => t.name || t.ref || "#" + (BASE[t.highway] || t.highway), same = (a, b) => a.tags.name && a.tags.name === b.tags.name || a.tags.ref && a.tags.ref === b.tags.ref || (!a.tags.name && !a.tags.ref && key(a.tags) === key(b.tags));
+  const pos = new Map(); for (const e of els) if (e.type === "node") pos.set(e.id, [e.lat, e.lon]);
+  const out = [], done = new Set();
+  for (const b of carBr) for (const end of [b.nodes[0], b.nodes[b.nodes.length - 1]]) {
+    let id = end, L = 0, guard = 0;
+    while (guard++ < 20) {
+      const here = at.get(id) || [];
+      if (L >= BR_HEAD && here.some(w => !same(w, b))) break;   // 交差点（ほかの道とまじわる）。橋のすぐ はし（40m）は 土手の上の道が つながるので 見ない
+      const nx = here.filter(w => !yes(w.tags.bridge) && same(w, b) && !done.has(w.id + ":" + id));
+      if (nx.length !== 1) break;
+      const w = nx[0]; done.add(w.id + ":" + id);
+      const ns = w.nodes[0] === id ? w.nodes : w.nodes[w.nodes.length - 1] === id ? w.nodes.slice().reverse() : null; if (!ns) break;
+      const line = [pos.get(ns[0])]; let stop = false;
+      for (let i = 1; i < ns.length; i++) {
+        const a = pos.get(ns[i - 1]), c = pos.get(ns[i]); if (!a || !c) { stop = true; break; }
+        L += hav(a[0], a[1], c[0], c[1]); line.push(c);
+        if (L > BR_APPROACH || (L >= BR_HEAD && (at.get(ns[i]) || []).some(x => !same(x, b)))) { stop = true; break; }   // 長すぎ・とちゅうの交差点
+      }
+      if (line.length > 1 && line.every(Boolean)) out.push(line);
+      if (stop) break;
+      id = ns[ns.length - 1]; done.add(w.id + ":" + id);
+    }
+  }
+  return out;
+}
 function brApply(osm, J) {
   const els = osm.elements, pos = new Map(); for (const e of els) if (e.type === "node") pos.set(e.id, e);
   const ptsOf = e => e.nodes.map(i => pos.get(i)).filter(Boolean).map(q => [q.lat, q.lon]);
@@ -1057,21 +1085,32 @@ function brApply(osm, J) {
   const p0 = ptsOf(carBr[0])[0]; if (!p0) return osm;
   const M = jarOwMatcher(carBr.map(e => ({ p: ptsOf(e) })).filter(o => o.p.length > 1), p0[0], BR_SIDE_R);
   const isFoot = t => FOOTLIKE.has(t.highway) || t.highway === "cycleway";
-  const side = new Map();   // 要素の番号 → 長さ
+  // 🌉 橋のつづきの坂（たもと・11/22）：橋の はしから 同じ道（名前か番号が同じ。どちらもなければ 同じ種類）を、ほかの車の道と まじわる点（交差点）まで たどる（600mまで）。
+  //   盛り土・高架の坂には bridge の印がないが、交差点がなく 階段・スロープでしか 下の道と つながらないので 実質 橋（ユーザー）
+  const appr = brApproach(els, carBr, ptsOf);
+  const MA = appr.length ? jarOwMatcher(appr.map(p => ({ p })), p0[0], BR_SIDE_R) : null;
+  const side = new Map();   // 要素の番号 → 長さ（橋の歩道：橋の上 ＋ たもとの坂ぞい）
   for (let k = 0; k < els.length; k++) {
     const e = els[k], t = e.tags;
-    if (e.type !== "way" || !t || !isFoot(t) || t.highway === "steps" || !yes(t.bridge) || t.footway === "crossing" || t.crossing) continue;
-    const pts = ptsOf(e); if (pts.length < 2 || !M(pts)) continue;
+    if (e.type !== "way" || !t || !isFoot(t) || t.highway === "steps" || t.footway === "crossing" || t.crossing) continue;
+    const onBr = yes(t.bridge), onAp = !onBr && MA && (t.footway === "sidewalk" || +t.layer > 0);   // 坂ぞいは 歩道の印か 上の階（下の道ぞいの小道を まちがえないように）
+    if (!onBr && !onAp) continue;
+    const pts = ptsOf(e); if (pts.length < 2 || !(onBr ? M(pts) : MA(pts))) continue;
     let L = 0; for (let i = 1; i < pts.length; i++) L += hav(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
     side.set(k, L);
   }
   if (!side.size) return osm;
   const SW = J && J.sw && J.sw.length ? jarOwMatcher(J.sw, p0[0], BR_SIDE_R) : null, bike = new Set();
   for (const k of side.keys()) { const t = els[k].tags; if (["yes", "designated", "permissive"].includes(t.bicycle) || t.highway === "cycleway" || (SW && SW(ptsOf(els[k])))) bike.add(k); }
+  // つながった 橋の歩道（橋の上と たもと）は どこかが 自転車OKなら ぜんぶ（流山橋の南の歩道 28436334 ← たもとの 290530184）
+  const spread = () => { const nb = new Map(); for (const k of side.keys()) for (const id of els[k].nodes) { if (!nb.has(id)) nb.set(id, []); nb.get(id).push(k); }
+    const st = [...bike]; while (st.length) { const k = st.pop(); for (const id of els[k].nodes) for (const j of nb.get(id)) if (!bike.has(j) && els[j].tags.bicycle !== "no") { bike.add(j); st.push(j); } } };
+  spread();
   // 同じ橋の 反対がわの歩道も（標識は たいてい両がわにある）：自転車も走れる 橋の歩道から 50m以内に そって走る 橋の歩道
   if (bike.size && bike.size < side.size) {
     const BM = jarOwMatcher([...bike].map(k => ({ p: ptsOf(els[k]) })), p0[0], BR_PAIR_R);
     for (const k of side.keys()) if (!bike.has(k) && els[k].tags.bicycle !== "no" && BM(ptsOf(els[k]))) bike.add(k);
+    spread();
   }
   // つながった 橋の歩道の まとまりの長さ
   const par = new Map(), find = x => { while (par.get(x) !== x) { par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
