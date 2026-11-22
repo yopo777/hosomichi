@@ -790,7 +790,14 @@ function onGeoErr(e) {
 let hereFix = null;   // [[緯度, 経度], 時刻, 精度m]（onPos で入れる）
 // 🧪 ためしの現在地（デバッグ用・SNSに画面を見せるとき家がばれないように）。地図を長おし →「ここを現在地にする」
 let fakePos = lsGet("hosomichi_fake", null);
-const fakeUi = () => document.body.classList.toggle("fake", !!fakePos);
+// 🧪 ためしの現在地の印（11/22）：◎がオフでも 選んだ場所が わかるように。ピンの先が その場所（◎がオンなら 青い点の上に立つ）
+let fakeMk = null;
+const fakeUi = () => {
+  document.body.classList.toggle("fake", !!fakePos);
+  if (fakeMk) { fakeMk.remove(); fakeMk = null; }
+  if (fakePos) fakeMk = L.marker(fakePos, { icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;pointer-events:auto"><div style="background:#e8710a;color:#fff;font-size:12px;font-weight:bold;border-radius:10px;padding:2px 6px;border:2px solid #fff;box-shadow:0 1px 4px #0006;white-space:nowrap">🧪 ためし</div><div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:12px solid #e8710a;margin-top:-1px"></div></div>' }), zIndexOffset: 600 })
+    .bindTooltip("🧪 ためしの現在地（長おし →「本当の現在地にもどす」でやめる）").addTo(map);
+};
 { // 新しい版を読んだら、🧪ためしの現在地は本当の現在地にもどす（ためしのまま走りに出ないように）
   const v = $("ver").textContent;
   if (lsGet("hosomichi_ver", null) !== v) { if (fakePos) { fakePos = null; lsSet("hosomichi_fake", null); setTimeout(() => addLog("🧪 新しい版なので、ためしの現在地をやめて本当の現在地にもどしたよ", "m")); } lsSet("hosomichi_ver", v); }
@@ -799,10 +806,10 @@ fakeUi();
 function feedFake() { if (fakePos) onPos({ coords: { latitude: fakePos[0], longitude: fakePos[1], accuracy: 5, heading: null, speed: null }, timestamp: Date.now() }); }
 function setFake(p) {
   fakePos = p; lsSet("hosomichi_fake", p); fakeUi();
+  addLog(p ? `🧪 ためしの現在地: ${p[0].toFixed(5)},${p[1].toFixed(5)}` : "🧪 本当の現在地にもどしたよ", "m");
   if (wid === null) return;
   if (p) { if (wid >= 0) navigator.geolocation.clearWatch(wid); wid = -1; feedFake(); }               // 動いていたGPSは止めて、ためしの場所へ
   else { wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 }); }   // 本当のGPSにもどす
-  addLog(p ? `🧪 ためしの現在地: ${p[0].toFixed(5)},${p[1].toFixed(5)}` : "🧪 本当の現在地にもどしたよ", "m");
 }
 async function getHere(timeout = 10000) {
   if (!fakePos && !lsGet("hosomichi_geook", false)) {   // はじめて現在地を使うときは、先に説明
