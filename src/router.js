@@ -726,17 +726,33 @@ function components(G) {
   return (G.comp = { root, size, big });
 }
 // 近い点をえらぶ：ちゃんと外の道とつながっている点（大きいかたまり）だけ
+// 11/22：点だけでなく 線（点と点のあいだ）までの きょりで いちばん近い道を えらび、その線の 近いほうのはしの点を使う
+//   （点の少ない まっすぐな道＝江戸川サイクリングロードなど の上に 出発を置いても、点の多い となりの車道に 吸いよせられていた）
 function nearestGood(G, la, lo, sameAs = -1) {
   const C = components(G), min = Math.min(C.big, Math.max(30, C.big * 0.05));
+  const kx = Math.cos(la * Math.PI / 180) * 111320, ky = 110540, X = i => (G.lon[i] - lo) * kx, Y = i => (G.lat[i] - la) * ky;
+  const okN = i => sameAs >= 0 ? C.root[i] === C.root[sameAs] : C.size.get(C.root[i]) >= min;
   let best = -1, bd = Infinity, any = -1, ad = Infinity;
   for (let i = 0; i < G.lat.length; i++) {
     if (!G.inGraph[i]) continue;
     const d = hav(la, lo, G.lat[i], G.lon[i]);
     if (d < ad) { ad = d; any = i; }
-    const ok = sameAs >= 0 ? C.root[i] === C.root[sameAs] : C.size.get(C.root[i]) >= min;
-    if (ok && d < bd) { bd = d; best = i; }
+    if (okN(i) && d < bd) { bd = d; best = i; }
   }
-  return { n: best, d: bd, nearestAny: any, dAny: ad, size: best >= 0 ? C.size.get(C.root[best]) : 0, anySize: any >= 0 ? C.size.get(C.root[any]) : 0 };
+  // 線までの きょり（点より 近い線があれば、その線の はしの点にする）
+  const R = Math.min(bd, 200); let sb = R, sn = -1;
+  for (let u = 0; u < G.lat.length; u++) {
+    if (!G.inGraph[u] || !okN(u)) continue;
+    const ux = X(u), uy = Y(u); if (Math.abs(ux) > 2000 || Math.abs(uy) > 2000) continue;
+    for (const e of G.adj[u]) {
+      const v = e.v; if (v < u && G.adj[v].some(f => f.v === u)) continue;   // 両向きの線は 1回だけ
+      const vx = X(v), vy = Y(v), dx = vx - ux, dy = vy - uy, L2 = dx * dx + dy * dy; if (!L2) continue;
+      const t = Math.max(0, Math.min(1, -(ux * dx + uy * dy) / L2)), px = ux + dx * t, py = uy + dy * t, d = Math.hypot(px, py);
+      if (d < sb - 3) { sb = d; sn = t < 0.5 ? u : v; }   // 3m 以上 近いときだけ（ほとんど同じなら 点のほう）
+    }
+  }
+  let seg = 0; if (sn >= 0 && sn !== best) { best = sn; bd = hav(la, lo, G.lat[sn], G.lon[sn]); seg = Math.round(sb); }
+  return { seg, n: best, d: bd, nearestAny: any, dAny: ad, size: best >= 0 ? C.size.get(C.root[best]) : 0, anySize: any >= 0 ? C.size.get(C.root[any]) : 0 };
 }
 
 function nearest(G, la, lo) {
@@ -2276,7 +2292,7 @@ async function routeOnce(req, prog, partial) {
         sn = confEnd != null ? G.idx.get(confEnd) : undefined;
         if (sn === undefined) {
           const q = nearestGood(G, s[0], s[1]);
-          log(`出発の点: ${Math.round(q.d)}m先の道（つながり ${q.size}点）` + (q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m はつながり ${q.anySize}点しかないので使わない` : ""));
+          log(`出発の点: ${Math.round(q.d)}m先の道（つながり ${q.size}点）` + (q.seg ? `｜道の線まで ${q.seg}m なので、その道の はしの点を使うよ` : q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m はつながり ${q.anySize}点しかないので使わない` : ""));
           if (q.n < 0 || q.d > 400) throw new Error("出発地のそばに、ほかとつながっている道が見つかりませんでした");
           sn = q.n;
         }
@@ -2285,7 +2301,7 @@ async function routeOnce(req, prog, partial) {
         if (final) {
           // 出発とおなじ「つながりのかたまり」にある点だけをゴールにする（駅の中の通路などをさける）
           const q = nearestGood(G, g[0], g[1], sn);
-          log(`到着の点: ${Math.round(q.d)}m先の道（出発とつながっている）` + (q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m は出発とつながってないので使わない（つながり ${q.anySize}点）` : ""), q.d > 300 ? "w" : "i");
+          log(`到着の点: ${Math.round(q.d)}m先の道（出発とつながっている）` + (q.seg ? `｜道の線まで ${q.seg}m なので、その道の はしの点を使うよ` : q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m は出発とつながってないので使わない（つながり ${q.anySize}点）` : ""), q.d > 300 ? "w" : "i");
           if (q.n < 0 || q.d > 600) {
             if (!wide && lo > 0) { log("到着地のそばにつながる道がないので、範囲を広げて探しなおし", "w"); wide = true; continue; }
             throw noLink("到着地まで道がつながりませんでした。⚙ 設定の「地図データを取る広さ」を「ひろい」にするか、設定で「通らない」にしている道（階段・歩道橋など）をゆるめてみてね");
