@@ -1058,6 +1058,49 @@ async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁�
   return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb, sw: jsw };
 }
 function jarApply(osm, cfg, J) { return brApply(jarApply1(osm, cfg, J), J); }   // 🚓 警察のデータ → 🌉 橋の歩道・出入り口の階段
+// 📍 出発・到着のピンのそばの道の線に、ピンにいちばん近い所の点を足す。
+// 道の線は 交差点や曲がる所にしか点がないので、長くまっすぐな線（橋の歩道 約450m など）だと
+// 「線の はしの点」まで何百mも飛んでいた。ピンから PIN_R m 以内の線ぜんぶに足す（いちばん近い線が 通れない道でも大丈夫なように）
+// 足した点は その道だけの点（ほかの道とは つながらない）なので、ルートの形・交差点は 変わらない
+const PIN_R = 40, PIN_END = 3;
+let pinId = -8e15;
+function addPins(osm, pts) {
+  pts = (pts || []).filter(p => p && isFinite(p[0]) && isFinite(p[1]));
+  if (!pts.length) return osm;
+  const pos = new Map();
+  for (const e of osm.elements) if (e.type === "node") pos.set(e.id, e);
+  const add = [];
+  let changed = false;
+  const els = osm.elements.map(e => {
+    if (e.type !== "way" || !e.tags || !e.tags.highway || !e.nodes || e.nodes.length < 2) return e;
+    let nn = null;
+    for (let i = 1; i < e.nodes.length; i++) {
+      const a = pos.get(e.nodes[i - 1]), b = pos.get(e.nodes[i]);
+      if (a && b) {
+        const ky = 111320, kx = 111320 * Math.cos(a.lat * RAD);
+        const bx = (b.lon - a.lon) * kx, by = (b.lat - a.lat) * ky, L2 = bx * bx + by * by, L = Math.sqrt(L2);
+        const ins = [];
+        if (L > 2 * PIN_END) for (const p of pts) {
+          const px = (p[1] - a.lon) * kx, py = (p[0] - a.lat) * ky;
+          const t = (px * bx + py * by) / L2;
+          if (t * L < PIN_END || (1 - t) * L < PIN_END) continue;               // はしの点のすぐそばなら はしの点でいい
+          if (Math.hypot(px - t * bx, py - t * by) > PIN_R) continue;
+          ins.push(t);
+        }
+        if (ins.length) {
+          if (!nn) nn = e.nodes.slice(0, i);
+          ins.sort((x, y) => x - y);
+          for (const t of ins) { const id = pinId--; add.push({ type: "node", id, lat: a.lat + (b.lat - a.lat) * t, lon: a.lon + (b.lon - a.lon) * t }); nn.push(id); }
+        }
+      }
+      if (nn) nn.push(e.nodes[i]);
+    }
+    if (!nn) return e;
+    changed = true;
+    return { ...e, nodes: nn };
+  });
+  return changed ? { ...osm, elements: add.concat(els) } : osm;
+}
 // 🌉 橋の歩道と、その出入り口の階段（11/22）。OSM では 橋の歩道が「歩道橋」と同じ形で、出入り口の階段に スロープの印がないことが多い
 // ・車の橋（車の道で bridge）に そって走る（20m以内・同じ向き）歩道・小道の橋 → "br:side"＝橋の歩道（歩道橋あつかいにしない）
 // ・橋の歩道が 自転車も走れる（OSM の bicycle=yes/designated/permissive・自転車道・警察のデータの「自転車も通れる歩道」に20m以内でそう）→ "br:bike"
@@ -2179,7 +2222,7 @@ async function routeOnce(req, prog, partial) {
   }
   const demOK = await demP;   // 坂道のデータ（あとで道に坂の重みをつける）
   let jarL = []; try { jarL = await jarPrep(tiles.map(t => bigOf(t.key)), cfg); } catch {}   // 🚓 横断禁止の線（取れなければ使わない）
-  const BG = (osm, c, p) => { const G0 = buildGraph(jarApply(osm, c, jarL), c, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
+  const BG = (osm, c, p) => { const G0 = buildGraph(addPins(jarApply(osm, c, jarL), [s, g]), c, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   if (oldPack) log(`配布データが新しくなったので、${oldPack}マスを配布データから取りなおすよ`);
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
