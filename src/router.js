@@ -1057,13 +1057,81 @@ async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁�
   if (jarLines.length || jow.length || bad) log(`🚓 警察の交通規制：歩行者等横断禁止 ${jarLines.length}本・一方通行 ${jow.length}本${bad ? `（取れなかったマス ${bad}）` : ""}`, bad ? "w" : "ok");
   return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb, sw: jsw };
 }
-function jarApply(osm, cfg, J) { return brApply(jarApply1(osm, cfg, J), J); }   // 🚓 警察のデータ → 🌉 橋の歩道・出入り口の階段
+function jarApply(osm, cfg, J) { return sideGap(brApply(jarApply1(osm, cfg, J), J)); }   // 🚓 警察のデータ → 🌉 橋の歩道・出入り口の階段
 // 📍 出発・到着のピンのそばの道の線に、ピンにいちばん近い所の点を足す。
 // 道の線は 交差点や曲がる所にしか点がないので、長くまっすぐな線（橋の歩道 約450m など）だと
 // 「線の はしの点」まで何百mも飛んでいた。ピンから PIN_R m 以内の線ぜんぶに足す（いちばん近い線が 通れない道でも大丈夫なように）
 // 足した点は その道だけの点（ほかの道とは つながらない）なので、ルートの形・交差点は 変わらない
 const PIN_R = 40, PIN_END = 3;
 let pinId = -8e15;
+// 🚶 とぎれた歩道をつなぐ（手で決めた所だけ）：歩道の線の はしが どこにもつながっていない所から、
+// となり（15m以内・向きがそろう）の車道ぞいに 次の交差点（SWG_MAX m まで）まで「歩道」の線を足す。車道が 🚳 でも 歩道は通れる。
+// 決まりにすると ほかの所のルートも たくさん変わるので、地図に描けない理由がはっきりしている所だけ SWG_AT に書く
+const SWG_NEAR = 15, SWG_MAX = 100, SWG_CAR = /^(primary|secondary|tertiary|trunk|unclassified|residential|living_street|service)(_link)?$/;
+const SWG_AT = [
+  [35.745269, 139.823221],   // 堀切小橋（綾瀬川）の歩道 → 堀切がわの信号（約70m）。首都高の真下で 航空写真にもストリートビューにも写らない（ユーザーがいつも通る・11/23）
+];
+let swgId = -8.5e15;
+function sideGap(osm) {
+  if (!SWG_AT.length) return osm;
+  const pos = new Map(), deg = new Map(), roads = [], grid = new Map();
+  for (const e of osm.elements) if (e.type === "node") pos.set(e.id, e);
+  for (const e of osm.elements) if (e.type === "way" && e.tags && e.tags.highway && e.nodes) {
+    for (const id of e.nodes) deg.set(id, (deg.get(id) || 0) + 1);
+    if (SWG_CAR.test(e.tags.highway)) roads.push(e);
+  }
+  const gk = (la, lo) => Math.floor(la * 2000) + "," + Math.floor(lo * 2000);   // 約55m×45m
+  for (const r of roads) for (let i = 1; i < r.nodes.length; i++) {
+    const a = pos.get(r.nodes[i - 1]), b = pos.get(r.nodes[i]); if (!a || !b) continue;
+    const y0 = Math.floor(Math.min(a.lat, b.lat) * 2000), y1 = Math.floor(Math.max(a.lat, b.lat) * 2000);
+    const x0 = Math.floor(Math.min(a.lon, b.lon) * 2000), x1 = Math.floor(Math.max(a.lon, b.lon) * 2000);
+    if ((y1 - y0 + 1) * (x1 - x0 + 1) > 400) continue;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const k = y + "," + x; if (!grid.has(k)) grid.set(k, []); grid.get(k).push([r, i]); }
+  }
+  const add = [];
+  for (const w of osm.elements) {
+    if (w.type !== "way" || !w.tags || !w.nodes || w.nodes.length < 2) continue;
+    if (!(w.tags.footway === "sidewalk" || w.tags["br:side"])) continue;
+    for (const end of [0, 1]) {
+      const id = end ? w.nodes[w.nodes.length - 1] : w.nodes[0];
+      if ((deg.get(id) || 0) > 1) continue;
+      const p = pos.get(id), q = pos.get(end ? w.nodes[w.nodes.length - 2] : w.nodes[1]); if (!p || !q) continue;
+      if (!SWG_AT.some(a => hav(a[0], a[1], p.lat, p.lon) < 3)) continue;
+      const kx = 111320 * Math.cos(p.lat * RAD), ky = 111320;
+      const dir = Math.atan2((p.lon - q.lon) * kx, (p.lat - q.lat) * ky);   // 歩道が とぎれる向き
+      let best = null;
+      const cy = Math.floor(p.lat * 2000), cx = Math.floor(p.lon * 2000), seen = new Set();
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const [r, i] of grid.get((cy + dy) + "," + (cx + dx)) || []) {
+        const sk = r.id + ":" + i; if (seen.has(sk)) continue; seen.add(sk);
+        const a = pos.get(r.nodes[i - 1]), b = pos.get(r.nodes[i]);
+        const bx = (b.lon - a.lon) * kx, by = (b.lat - a.lat) * ky, px = (p.lon - a.lon) * kx, py = (p.lat - a.lat) * ky, L2 = bx * bx + by * by;
+        if (!L2) continue;
+        const t = (px * bx + py * by) / L2; if (t < 0 || t > 1) continue;
+        const d = Math.hypot(px - t * bx, py - t * by); if (d > SWG_NEAR) continue;
+        const ang = Math.abs(((Math.atan2(bx, by) - dir) * 180 / Math.PI + 540) % 360 - 180);
+        if (ang > 30 && ang < 150) continue;                                            // 車道と 向きがそろっていない
+        if (!best || d < best.d) best = { d, r, i, fw: ang <= 30 };
+      }
+      if (!best) continue;
+      // 車道ぞいに 歩道が進む向きへ たどって、次の交差点（ほかの道とつながる点）まで
+      const r = best.r, step = best.fw ? 1 : -1, nodes = [id];
+      let k = best.fw ? best.i : best.i - 1, prev = p, L = 0, ok = false;
+      while (k >= 0 && k < r.nodes.length) {
+        const n = pos.get(r.nodes[k]); if (!n) break;
+        L += hav(prev.lat, prev.lon, n.lat, n.lon); prev = n;
+        if (L > SWG_MAX) break;
+        if ((deg.get(r.nodes[k]) || 0) > 1) { nodes.push(r.nodes[k]); ok = true; break; }
+        const sid = swgId--; add.push({ type: "node", id: sid, lat: n.lat, lon: n.lon }); nodes.push(sid);   // 車道の点とは つながない
+        k += step;
+      }
+      if (!ok) { add.length -= nodes.length - 1; continue; }
+      const tg = { highway: "footway", footway: "sidewalk", "sw:gap": "1" };
+      if (w.tags["br:side"] && r.tags.bridge) { tg.bridge = r.tags.bridge; tg["br:side"] = "1"; }
+      add.push({ type: "way", id: swgId--, nodes, tags: tg });
+    }
+  }
+  return add.length ? { ...osm, elements: osm.elements.concat(add) } : osm;
+}
 function addPins(osm, pts) {
   pts = (pts || []).filter(p => p && isFinite(p[0]) && isFinite(p[1]));
   if (!pts.length) return osm;
