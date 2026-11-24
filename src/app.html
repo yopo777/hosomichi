@@ -4243,7 +4243,7 @@ function rwDraw(m) {
       if (k && spotOn.has(k)) { const st = RW_ST[k];
         L.polyline(w.pts.slice(i, j + 2), { renderer: rwRend, color: st.c, weight: st.w, opacity: st.o, lineCap: "round" })
           .bindPopup(RW_NM[k] + (v === 1 && w.rn ? `<br>${esc(w.rn)} のそば` : "") + `<br><small>道：${esc(w.t.name || w.t.highway)}</small>`
-            + "<br><small>川の線から20m以内・向きが±30°でそろう、車の来ない道（自転車道・歩道・小道・車は通行止めの道）。自転車が走れない道（自転車通行止め・押して歩く・歩行者天国）はのぞくよ（アプリの見分け。ルートにはまだ使わないよ）</small>").addTo(rwLayer); }
+            + "<br><small>川の線から20m以内・向きが±30°でそろう、車の来ない道（自転車道・歩道・小道・車は通行止めの道）。自転車が走れない道（自転車通行止め・押して歩く・歩行者天国）と 砂利・土の道はのぞくよ（アプリの見分け。ルートにはまだ使わないよ）</small>").addTo(rwLayer); }
       i = j + 1;
     }
   }

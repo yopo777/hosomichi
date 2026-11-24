@@ -2067,7 +2067,7 @@ function areaHas(kind, la, lo) {
 // ==== 〰 小河川の川べりの車の来ない道（配布データの rivers/・0.1度のマス）：見分けるだけ（いまはルートの計算には使わない）====
 // 川・水路・小川の線から 20m 以内で、線と向きが ±30° でそろう 区間（区間＝道の点と点のあいだ。10m おきに しらべて 半分以上あてはまれば その区間）
 // 車の来ない道だけ：自転車道・歩道（車道ぞいの歩道・横断歩道はのぞく）・小道・歩行者天国（自転車OKの印があるときだけ）、または 車は通行止めの印（motor_vehicle=no など）がある道
-// 自転車が走れない道はのぞく：bicycle=no・dismount（押して歩く）・🚓 警察のデータの 自転車通行止め・歩行者用道路
+// 自転車が走れない道はのぞく：bicycle=no・dismount（押して歩く）・🚓 警察のデータの 自転車通行止め・歩行者用道路。🟤 砂利・土の道も のぞく（舗装かわからない小道は 入れる）
 // 大河川のCR は いったん置いておく（ユーザー：大きい川ぞいは 自転車道・自転車歩行者道の印が もともと多い）
 const RIV_NEAR = 20, RIV_COS = Math.cos(30 * Math.PI / 180), RIV_FOOT = new Set(["cycleway", "footway", "path", "pedestrian"]), RIV_NOCAR = ["no", "private", "agricultural", "forestry"];
 let rivIx = null; const rivMem = new Map();
@@ -2113,6 +2113,7 @@ function rivNear(g, G, R, px, py, ux, uy) {
 const rivOK = t => {
   if (EXCLUDE.has(t.highway) || t.highway === "steps" || yes(t.bridge) || yes(t.tunnel) || t.bicycle === "no" || t.bicycle === "dismount") return false;
   if (t["jar:nb"] === "1" || t["jar:nb"] === "ta") return false;   // 🚓 警察のデータで 自転車通行止め・歩行者用道路
+  if (isUnpaved(t) === "sure") return false;   // 🟤 砂利・土の道（いそぐための道なので）
   const bOK = ["yes", "designated", "permissive"].includes(t.bicycle);
   if (t.highway === "pedestrian" && !bOK) return false;   // 🚶 歩行者天国・広場：自転車OKの印がなければ のぞく
   if ((t.access === "no" || t.access === "private") && !bOK) return false;
