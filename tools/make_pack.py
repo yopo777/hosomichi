@@ -12,6 +12,7 @@
      （index.json だけ作りなおすときは: python make_pack.py --index-only 出力フォルダ）
      （駅の一覧 stations.json だけ作るときは: python make_pack.py --stations-only 出力フォルダ）
      （霊園・公園のはんい areas.json だけ作るときは: python make_pack.py --areas-only 出力フォルダ）
+     （川 rivers/ だけ作るときは: python make_pack.py --rivers-only 出力フォルダ）
   3. 出力フォルダの中身を GitHub の hosomichi-data リポジトリに push して GitHub Pages で公開
 
 データ: © OpenStreetMap contributors（ODbL）
@@ -374,6 +375,82 @@ def area_file(src, found, seen):
             if not any(S0 < la < N0 and W0 < lo < E0 for (la, lo) in pts): continue
             polys.append(pts)
 
+# ---- 川（アプリの 📍マーク「〰 川」「🌊 大きい川」と、あとで「川べりの道」をさがす用）----
+# rivers/ フォルダ：0.1度（約10km）のマスごとに「緯度×10_経度×10.json」＝{"line": [[種類, 名前, [[緯度, 経度], …]], …], "water": [[[緯度, 経度], …], …]}
+#   と rivers/index.json（ファイルのあるマスの一覧）。1つにまとめると大きすぎる（70MBこえ）ので、見ているところだけ読む
+#   line：川・水路の線（種類 r=川 waterway=river／c=水路 canal／s=小川 stream（名前のあるものだけ））。10m より近い点は間引く
+#   water：大きい川の水面（natural=water の water=river・canal、waterway=riverbank）の外がわの輪。2万m²より小さいものは入れない
+#   マスをまたぐものは、かかるマス全部に入れる
+RIV_T = 0.1
+RIV_KIND = {"river": "r", "canal": "c", "stream": "s"}
+
+class RivH(osmium.SimpleHandler):
+    def __init__(self, seen):
+        super().__init__(); self.lines = []; self.seen = seen
+    def way(self, w):
+        k = RIV_KIND.get(w.tags.get("waterway"))
+        if not k or w.id in self.seen: return
+        name = w.tags.get("name") or ""
+        if k == "s" and not name: return   # 名前のない小川は 多すぎるので入れない
+        if w.tags.get("tunnel") in ("yes", "culvert") or w.tags.get("layer", "0").startswith("-"): return   # 暗渠（地下）は 川べりの道がない
+        pts = []
+        try:
+            for n in w.nodes:
+                p = (round(n.lat, 5), round(n.lon, 5))
+                if not pts or abs(p[0] - pts[-1][0]) + abs(p[1] - pts[-1][1]) > 0.0001: pts.append(p)
+        except osmium.InvalidLocationError: return
+        if len(pts) < 2: return
+        if not any(S0 < la < N0 and W0 < lo < E0 for (la, lo) in pts): return
+        self.seen.add(w.id); self.lines.append([k, name, pts])
+
+def write_rivers(srcs, out):
+    t0 = time.time(); lines, water, seen, seenA = [], [], set(), set()
+    for src in srcs:
+        print(f"川の線をさがし中: {src}", flush=True)
+        h = RivH(seen); h.apply_file(src, locations=True, idx="flex_mem"); lines += h.lines
+        print(f"川の水面をさがし中: {src}", flush=True)
+        TF = (("natural", "water"), ("waterway", "riverbank"))
+        fp = osmium.FileProcessor(src).with_areas(osmium.filter.TagFilter(*TF)) \
+            .with_filter(osmium.filter.EntityFilter(osmium.osm.AREA)).with_filter(osmium.filter.TagFilter(*TF))
+        for o in fp:
+            if o.id in seenA: continue
+            tg = o.tags
+            if not (tg.get("waterway") == "riverbank" or tg.get("water") in ("river", "canal", "stream_pool")): continue
+            seenA.add(o.id)
+            for ring in o.outer_rings():
+                pts = []
+                for n in ring:
+                    p = (round(n.lat, 5), round(n.lon, 5))
+                    if not pts or abs(p[0] - pts[-1][0]) + abs(p[1] - pts[-1][1]) > 0.0001: pts.append(p)
+                if len(pts) < 4: continue
+                c = math.cos(math.radians(pts[0][0])); A = 0
+                for (y1, x1), (y2, x2) in zip(pts, pts[1:] + pts[:1]): A += (x1 * c * 111320) * (y2 * 110540) - (x2 * c * 111320) * (y1 * 110540)
+                if abs(A) / 2 < 20000: continue
+                if not any(S0 < la < N0 and W0 < lo < E0 for (la, lo) in pts): continue
+                water.append(pts)
+    cells = {}
+    def put(kind, o, pts):
+        las = [p[0] for p in pts]; los = [p[1] for p in pts]
+        for i in range(math.floor(min(las) / RIV_T), math.floor(max(las) / RIV_T) + 1):
+            for k in range(math.floor(min(los) / RIV_T), math.floor(max(los) / RIV_T) + 1):
+                cells.setdefault(f"{i}_{k}", {"line": [], "water": []})[kind].append(o)
+    for o in lines: put("line", o, o[2])
+    for o in water: put("water", o, o)
+    d = os.path.join(out, "rivers"); os.makedirs(d, exist_ok=True)
+    for f in os.listdir(d):
+        if f.endswith(".json"): os.remove(os.path.join(d, f))   # 前のぶんは消す
+    size = 0
+    for key, c in cells.items():
+        fn = os.path.join(d, key + ".json")
+        with open(fn, "w", encoding="utf-8") as f: json.dump(c, f, ensure_ascii=False, separators=(",", ":"))
+        size += os.path.getsize(fn)
+    with open(os.path.join(d, "index.json"), "w", encoding="utf-8") as f: json.dump({"t": RIV_T, "cells": sorted(cells)}, f, separators=(",", ":"))
+    big = max((os.path.getsize(os.path.join(d, k + ".json")) for k in cells), default=0)
+    old = os.path.join(out, "rivers.json")
+    if os.path.exists(old): os.remove(old); print("  前の rivers.json（1ファイル版）は消したよ")
+    n = {k: sum(1 for x in lines if x[0] == k) for k in ("r", "c", "s")}
+    print(f"  川 {n['r']:,}本・水路 {n['c']:,}本・名前のある小川 {n['s']:,}本・大きい川の水面 {len(water):,}か所 → rivers/ {len(cells):,}ファイル（ぜんぶで{size / 1048576:.1f}MB・いちばん大きいの{big / 1024:.0f}KB・{time.time() - t0:.0f}秒）", flush=True)
+
 def write_index(out, src_date, keys, total, built=None):
     empty = empty_tiles(keys) if WANT else None
     idx = {"v": src_date, "built": built or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "T": T, "kodo": 1, "fmt": 2,
@@ -390,6 +467,13 @@ def main():
     if len(sys.argv) in (3, 4) and sys.argv[1] == "--areas-only":   # 霊園のはんい areas.json だけ作る
         src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else (DEF, sys.argv[2])
         write_areas(srcs_of(src), out); return
+    if len(sys.argv) in (3, 4) and sys.argv[1] == "--rivers-only":   # 川 rivers/ だけ作る
+        src, out = (sys.argv[2], sys.argv[3]) if len(sys.argv) == 4 else (DEF, sys.argv[2])
+        if len(sys.argv) == 3:   # 川はあまり変わらないから、古くても手元のpbfがあればそれを使う
+            for x in srcs_of(src):
+                if os.path.exists(x): print(f"手元の {x} を使うよ")
+                else: download(x)
+        write_rivers(srcs_of(src), out); return
     if len(sys.argv) in (3, 4) and sys.argv[1] == "--index-only":   # マスはそのままで index.json だけ作りなおす
         out = sys.argv[2]; tdir = os.path.join(out, "t")
         names = sorted(n for n in os.listdir(tdir) if n.endswith(".json.gz"))
@@ -437,6 +521,7 @@ def main():
     write_index(out, v, keys, total)
     write_stations(srcs, out)
     write_areas(srcs, out)
+    write_rivers(srcs, out)
     open(os.path.join(out, ".nojekyll"), "w").close()   # GitHub Pages でそのまま配る（変換しない）
     with open(os.path.join(out, "README.md"), "w", encoding="utf-8") as f:
         f.write("# hosomichi-data\n\n[ほそみちナビ](https://yopo777.github.io/hosomichi/) 用の道路データ（約1km角のマスごと）です。\n\n"

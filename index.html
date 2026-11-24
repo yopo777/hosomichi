@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1519</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1545</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3724,7 +3724,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1519", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1545", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6937,6 +6937,40 @@ function rwDraw(m) {
   if (m.bikeTooWide) setMsg("🚲 走る道：ひろすぎるよ。もう少し拡大してね");
 }
 map.on("moveend", rwReq);
+// 〰 川・🌊 大きい川の水面（hosomichi-data/rivers/・tools/make_pack.py --rivers-only で作る。0.1度のマスごとのファイル）
+const rivLayer = L.layerGroup().addTo(map), RIV_Z = 12, rivCell = new Map(); let rivSeq = 0, rivIdx = null, rivT = null, rivWarn = false;
+const rivURL = f => new URL("../hosomichi-data/rivers/" + f, location.href);
+function rivIndex() {
+  return rivIdx || (rivIdx = tfetch(rivURL("index.json"), {}, 20000).then(async r => {
+    if (!r.ok) throw new Error("HTTP " + r.status); const j = await r.json(); return { t: j.t || .1, has: new Set(j.cells || []) };
+  }).catch(e => { rivIdx = null; throw e; }));
+}
+function rivGet(key) {
+  if (!rivCell.has(key)) rivCell.set(key, tfetch(rivURL(key + ".json"), {}, 30000).then(r => r.ok ? r.json() : { line: [], water: [] })
+    .then(j => ({ line: (j.line || []).map(([k, nm, pts]) => ({ k, nm, pts })), water: j.water || [] }))
+    .catch(e => { rivCell.delete(key); throw e; }));
+  return rivCell.get(key);
+}
+function rivReq() { clearTimeout(rivT); rivT = setTimeout(rivDraw, 400); }
+async function rivDraw() {
+  const ln = spotOn.has("river") && !spotHide, wt = spotOn.has("bigriver") && !spotHide;
+  if ((!ln && !wt) || map.getZoom() < RIV_Z) { rivLayer.clearLayers(); return; }
+  let ix; try { ix = await rivIndex(); } catch (e) { rivLayer.clearLayers(); if (!rivWarn) { rivWarn = true; setMsg("〰 川のデータ（rivers/）がまだないよ", true); } return; }
+  const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast(), keys = [];
+  for (let i = Math.floor(S / ix.t); i <= Math.floor(N / ix.t); i++) for (let k = Math.floor(W / ix.t); k <= Math.floor(E / ix.t); k++) if (ix.has.has(i + "_" + k)) keys.push(i + "_" + k);
+  if (keys.length > 30) { rivLayer.clearLayers(); return; }
+  const my = ++rivSeq; let cs; try { cs = await Promise.all(keys.map(rivGet)); } catch (e) { return; }
+  if (my !== rivSeq) return;
+  rivLayer.clearLayers(); const got = new Set();
+  for (const c of cs) {
+    if (wt) for (const pts of c.water) { const id = pts[0] + "|" + pts.length; if (got.has(id)) continue; got.add(id);
+      L.polygon(pts, { renderer: rwRend, color: "#0288d1", weight: 1.5, fillColor: "#4fc3f7", fillOpacity: .35, interactive: false }).addTo(rivLayer); }
+    if (ln) for (const o of c.line) { const id = o.pts[0] + "|" + o.pts.length + "|" + o.nm; if (got.has(id)) continue; got.add(id);
+      L.polyline(o.pts, { renderer: rwRend, color: o.k === "s" ? "#4fc3f7" : "#0288d1", weight: o.k === "r" ? 6 : 4, opacity: .85, lineCap: "round" })
+        .bindPopup(`〰 <b>${esc(o.nm || "（名前なし）")}</b><br>${o.k === "r" ? "川" : o.k === "c" ? "水路" : "小川"}<br><small>地図（OSM）のデータ</small>`).addTo(rivLayer); }
+  }
+}
+map.on("moveend", rivReq);
 async function jxDraw() {
   const id = ++jxId;
   if (!jxOn() || map.getZoom() < JX_Z) { jxLayer.clearLayers(); return; }
@@ -7991,7 +8025,7 @@ const SPOT_KINDS = [
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
     ["oneway", "➡", "一方通行"], ["noroad", "🚧", "通行止め"], ["nocar", "🚫", "車両通行止め"], ["nobike", "🚳", "自転車通行止め"], ["pwalk", "🚶", "歩行者用道路（自転車も）"], ["owexit", "⛔", "一方通行の出口（自転車も）"], ["noent", "🔴", "車両進入禁止"], ["cxban", "✖", "自転車の交差点進入禁止"], ["swok", "🔵", "自転車も通れる歩道"], ["blane", "🟦", "自転車レーン（専用通行帯）"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
     ["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
-  ["走る道・はんい", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"],
+  ["走る道・はんい", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"], ["river", "〰", "川・水路"], ["bigriver", "🌊", "大きい川の水面"],
     ["apark", "🌳", "公園のはんい"], ["acem", "🪦", "霊園・墓地のはんい"], ["aclosed", "🏫", "学校・工場などの敷地"], ["adanchi", "🏢", "団地のはんい"], ["aparking", "🅿", "駐車場のはんい"]]],
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"], ["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
@@ -8020,7 +8054,7 @@ if (!lsGet("hosomichi_spotsV4", false)) { spotOn.add("owexit"); lsSet("hosomichi
 if (!lsGet("hosomichi_spotsV5", false)) { spotOn.add("pwalk"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV5", true); }   // 🚶 歩行者用道路も はじめオン
 if (!lsGet("hosomichi_spotsV6", false)) { if (spotOn.has("nobike")) { spotOn.add("noroad"); spotOn.add("nocar"); } lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV6", true); }
 if (!lsGet("hosomichi_spotsV7", false)) { for (const k of ["noent", "cxban", "swok", "blane"]) spotOn.add(k); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV7", true); }   // 11/21 警察のデータの標識4つ（はじめオン）   // 🚳 を 通行止め・車両通行止め・自転車通行止め に分けた（前の 🚳 と同じオン・オフ）
-const SPOT_SELF = new Set(["oneway", "noroad", "nocar", "nobike", "pwalk", "owexit", "noent", "cxban", "swok", "blane", "gstep", "steep", "navi", "blane2", "cway", "swalk", "slow", "apark", "acem", "aclosed", "adanchi", "aparking"]);
+const SPOT_SELF = new Set(["oneway", "noroad", "nocar", "nobike", "pwalk", "owexit", "noent", "cxban", "swok", "blane", "gstep", "steep", "navi", "blane2", "cway", "swalk", "slow", "river", "bigriver", "apark", "acem", "aclosed", "adanchi", "aparking"]);
 SPOT_SVG.noroad = X_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.nocar = V_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.pwalk = PW_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");   // スポットのデータではなく、アプリが自分で出すマーク
@@ -8087,7 +8121,7 @@ function renderSpots() {
   { const el = $("spotBox").querySelector("[data-sall]"); if (el) el.indeterminate = !el.checked && spotOn.size > 0; }
   try { mkKindsShow(); } catch {}   // 🏆 チャレンジの「📍 マークを回る」に、いま回るものを出す
 }
-setTimeout(rwReq, 1500);   // 🚲 走る道・はんい：はじめに1回
+setTimeout(() => { rwReq(); rivReq(); }, 1500);   // 🚲 走る道・はんい・〰 川：はじめに1回
 $("tabSpot").addEventListener("change", e => {
   if (e.target.dataset.sz) { spotSz = e.target.dataset.sz; lsSet("hosomichi_spotsz", spotSz); spotSize(); return; }
   const k = e.target.dataset.sk, sg = e.target.dataset.sg, sall = e.target.dataset.sall; if (!k && sg == null && !sall) return;
@@ -8095,7 +8129,7 @@ $("tabSpot").addEventListener("change", e => {
   else if (sg != null) { for (const [kk] of SPOT_KINDS[+sg][1]) e.target.checked ? spotOn.add(kk) : spotOn.delete(kk); }   // カテゴリぜんぶ
   else if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
   renderSpots();
-  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn(); slopeDraw(); nbMapReq(); oxReq(); jxReq(); rwReq(); if ($("dbgOn").checked) dbgReq();
+  lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn(); slopeDraw(); nbMapReq(); oxReq(); jxReq(); rwReq(); rivReq(); if ($("dbgOn").checked) dbgReq();
 });
 let spotOv = null;
 function spotOverview() {   // 引いたとき用（配布データぜんぶ・間引いたもの）
@@ -8325,7 +8359,7 @@ function mkBtn() {
     lpDone = true; try { navigator.vibrate?.(30); } catch {}
     if (map.getZoom() < SLOPE_Z) return setMsg(`🪜⛰ もう少し近づいて（ズーム${SLOPE_Z}より近く）長押ししてね`, true);
     if (!spotOn.has("gstep") || !spotOn.has("steep")) { spotOn.add("gstep"); spotOn.add("steep"); lsSet("hosomichi_spots", [...spotOn]); renderSpots(); }   // 長押ししたら 🪜⛰ はオンに
-    const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); spotUpdate(true); owUpdate(true); nbMapReq(); oxReq(); jxReq(); rwReq(); }
+    const b = map.getBounds(); if (spotHide) { spotHide = false; lsSet("hosomichi_spothide", false); mkBtn(); spotUpdate(true); owUpdate(true); nbMapReq(); oxReq(); jxReq(); rwReq(); rivReq(); }
     setMsg("🪜⛰ このあたりの 階段？・急坂？ をしらべてるよ…");
     worker.postMessage({ cmd: "slopeView", bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]) });
   }, 600); });
@@ -8333,7 +8367,7 @@ function mkBtn() {
   $("mk").addEventListener("click", e => { if (lpDone) { e.stopImmediatePropagation(); lpDone = false; } }, true);
   $("mk").addEventListener("contextmenu", e => e.preventDefault());
 }
-$("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } slopeDraw(); nbMapReq(); oxReq(); jxReq(); rwReq(); };
+$("mk").onclick = () => { spotHide = !spotHide; lsSet("hosomichi_spothide", spotHide); mkBtn(); if (!spotHide) { spotUpdate(true); owUpdate(true); } slopeDraw(); nbMapReq(); oxReq(); jxReq(); rwReq(); rivReq(); };
 mkBtn(); slopeDraw();
 
 owUpdate(true);
