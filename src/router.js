@@ -1508,7 +1508,8 @@ async function dbgView(bb, cfg, opt) {
       if (!el) { miss++; continue; }
       for (const e of el) {
         if (e.type === "node") nd.set(e.id, e);
-        else if (e.type === "way" && e.tags && BLK.some(x => e.tags[x] && e.tags[x] !== "no" && e.tags[x] !== "separate")) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); ws.push(e); } }
+        else if (e.type === "way" && e.tags && e.tags.highway && (BLK.some(x => e.tags[x] && e.tags[x] !== "no" && e.tags[x] !== "separate")
+          || e.tags.highway === "cycleway" || e.tags.bicycle === "designated" || (+e.tags.maxspeed > 0 && +e.tags.maxspeed <= 30))) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); ws.push(e); } }   // 🚲 自転車レーン・ナビライン・自転車道・30km制限
       }
     }
     const r6 = x => +x.toFixed(6), ways = [];
@@ -2651,7 +2652,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "jarSig") { const r = await jarSigIn(d.bb, d.cfg).catch(e => ({ err: e.message, sigs: [] })); return self.postMessage({ type: "jarSig", id: d.id, who: d.who, ...r }); }
-      if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg, d.opt).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
+      if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg, d.opt).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, tag: d.tag, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
         if (pfRun) return; pfRun = true;
