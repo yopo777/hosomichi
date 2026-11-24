@@ -342,7 +342,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
     <div id="tabTrk" style="display:none"></div>
     <div id="tabLog" style="display:none">
-      <div id="dtabs" class="ttabs"><button data-d="tool" class="on">🛠 ツール</button><button data-d="log">📜 ログ</button><button data-d="issue">📝 課題</button></div>
+      <div id="dtabs" class="ttabs"><button data-d="tool" class="on">🛠 ツール</button><button data-d="log">📜 ログ</button><button data-d="issue">📝 課題</button><button data-d="hl">🎨 ハイライト</button></div>
       <div id="dbgIssue" style="display:none"></div>
       <div id="dbgTool">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
@@ -359,6 +359,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="simWipe" style="font-size:12px;color:#c5221f">🧪 ためしの軌跡と足あとを消す（本物はのこす）</button></div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="dbgOn">🧪 道のデータを見る（拡大したときだけ）<small style="color:#999;margin-left:4px">Ctrl+Alt+Z</small></label>
+        <details style="margin:2px 0 0 22px"><summary style="font-size:12px;color:#1a73e8;cursor:pointer">🎚 道の種類ごとに出す・出さない</summary><div id="dbgKinds" style="margin-top:2px"></div></details>
         <div id="dbgInfo" style="font-size:11px;color:#666;margin:2px 0 0 22px">OSMの地図データ：線＝道（車線で色分け：赤＝4車線・オレンジ＝2車線・シアン＝そのほか）／四角：緑＝信号・青＝横断歩道・半分ずつ＝信号つきの横断歩道・白に青わく＝しま模様のない渡る所（横断歩道ではない）。タップでタグを見られるよ</div>
         <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="dbgJudge">アプリの判定も出す（加工したもの）<small style="color:#999;margin-left:4px">Ctrl+Alt+X</small></label>
         <div style="font-size:11px;color:#666;margin:2px 0 0 44px">点線＝ルートで通らない道／まる：大きい道を渡る判定（緑＝信号・青＝横断歩道・赤＝渡れない・オレンジ＝ペナルティ）。細い点線は「どの信号・横断歩道でOKにしたか」</div>
@@ -371,6 +372,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       </div>
       <div style="font-size:11px;color:#666;margin-bottom:6px">🧪 ためしの現在地は、地図を長おしで決めるよ<span class="hq">?</span><div class="hd">🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）→「ここを現在地にする」で決めるよ。もどすときも長おし →「本当の現在地にもどす」</div></div>
       </div>
+      <div id="dbgHl" style="display:none"><div id="hlBox" style="margin-top:6px;font-size:12px"></div></div>
       <div id="dbgLog" style="display:none">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
         <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="lgAuto" checked>自動スクロール</label></div>
@@ -3094,6 +3096,21 @@ function dbgBikeLane(t) {
   return null;
 }
 const dbgBikeTag = t => BL_KEYS.filter(k => t[k] && t[k] !== "no" && t[k] !== "separate").map(k => k + "=" + t[k]).join("・");
+// 🧪 道のデータの 種類ごとの スイッチ（🎨 でなく 🛠ツールの「道のデータを見る」の下）
+const DBG_LV = { lv2: ["大きい道（4車線あつかい）", "#d93025", 5], lv1: ["ふつうの道（2車線）", "#f29900", 5] };
+let dbgOff = new Set(lsGet("hosomichi_dbgoff", []));
+const dbgKeyOf = w => w.lv ? "lv" + w.lv : dbgKind(w.t);
+function dbgKindsDraw() {
+  const box = $("dbgKinds"); if (!box) return;
+  const sw = (c, w, dash, alt) => `<svg width="32" height="10" style="vertical-align:middle;margin:0 4px"><g>${alt ? `<line x1="2" y1="5" x2="30" y2="5" stroke="${alt}" stroke-width="${w}"/>` : ""}<line x1="2" y1="5" x2="30" y2="5" stroke="${c}" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ""}/></g></svg>`;
+  const G = [["car", "🚗 車の道"], ["walk", "🚶 歩く道"], ["bike", "🚲 自転車の道"], ["br", "🌉 橋・地下道"], ["st", "🪜 階段"]];
+  const item = (key, nm, svg) => `<label style="display:flex;align-items:center;font-size:12px;margin:1px 0"><input type="checkbox" data-dk="${key}"${dbgOff.has(key) ? "" : " checked"}>${svg}${nm}</label>`;
+  box.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:2px"><button class="ib" data-dkall="1" style="font-size:11px">ぜんぶオン</button><button class="ib" data-dkall="0" style="font-size:11px">ぜんぶオフ</button></div>`
+    + `<div style="font-weight:bold;margin-top:4px;border-bottom:1px solid #ddd">🚗 車の道（車線で色分け）</div>` + Object.entries(DBG_LV).map(([k, [n, c, w]]) => item(k, n, sw(c, w))).join("")
+    + G.map(([g, gn]) => `<div style="font-weight:bold;margin-top:4px;border-bottom:1px solid #ddd">${g === "car" ? "🚗 そのほかの車の道" : gn}</div>` + Object.entries(DBG_K).filter(([, K]) => K.g === g).map(([k, K]) => item(k, K.n, sw(K.c, K.w, K.dash, K.alt))).join("")).join("");
+}
+document.addEventListener("change", e => { const k = e.target.dataset && e.target.dataset.dk; if (!k) return; e.target.checked ? dbgOff.delete(k) : dbgOff.add(k); lsSet("hosomichi_dbgoff", [...dbgOff]); if ($("dbgOn").checked) dbgReq(); });
+document.addEventListener("click", e => { const a = e.target.dataset && e.target.dataset.dkall; if (a == null) return; dbgOff = a === "1" ? new Set() : new Set([...Object.keys(DBG_LV), ...Object.keys(DBG_K)]); lsSet("hosomichi_dbgoff", [...dbgOff]); dbgKindsDraw(); if ($("dbgOn").checked) dbgReq(); });
 function dbgDraw(m) {
   if (m.id !== dbgId || !$("dbgOn").checked) return;
   dbgLayer.clearLayers();
@@ -3104,6 +3121,7 @@ function dbgDraw(m) {
   const J = $("dbgJudge").checked;   // アプリの判定（加工したもの）も出すか。オフなら OSM のデータそのまま
   const BK = spotOn.has("navi") || spotOn.has("blane2");   // 🚲 自転車レーン・ナビラインを くっきり（📍マークでオンのとき）
   for (const w of m.ways) {
+    if (dbgOff.has(dbgKeyOf(w))) continue;   // 🧪 種類ごとのスイッチ
     const k = dbgKind(w.t), K = DBG_K[k], col = w.lv ? LC[w.lv] : K.c, wt = w.lv ? 5 : K.w, t = w.t;
     const bl = BK ? dbgBikeLane(t) : null;
     if (bl === "lane") L.polyline(w.pts, { renderer: dbgRend, color: "#0050ff", weight: wt + 9, opacity: .75, interactive: false }).addTo(dbgLayer);   // 自転車レーン：青い太いふち
@@ -3134,7 +3152,7 @@ function dbgDraw(m) {
     .bindPopup(() => dbgTags("node", q.id, q.t, q.k === "both" ? "🚦🚸 信号つきの横断歩道" : q.k === "sig" ? "🚦 信号" : q.k === "um" ? (q.t.crossing === "no" ? "⛔ 渡れない所（crossing=no）" : "しま模様のない 渡る所（横断歩道ではない）") : "🚸 横断歩道")).addTo(dbgLayer);
   setMsg(`🧪 道のデータ：線 ${m.ways.length}・信号/横断歩道 ${m.pts.length}${J ? `・渡る判定 ${m.xs.length}` : ""}${m.miss ? `（保存していないマス ${m.miss}）` : ""}`);
 }
-$("dbgOn").onchange = dbgReq; $("dbgJudge").onchange = () => { if ($("dbgOn").checked) dbgReq(); };  map.on("moveend zoomend", () => { if ($("dbgOn").checked) dbgReq(); });
+dbgKindsDraw(); $("dbgOn").onchange = dbgReq; $("dbgJudge").onchange = () => { if ($("dbgOn").checked) dbgReq(); };  map.on("moveend zoomend", () => { if ($("dbgOn").checked) dbgReq(); });
 // 🚓 警察の交通規制（JARTIC オープンデータ）を見る：hosomichi-data/j/{緯度×100}_{経度×100}.json.gz（tools/jartic_pack.py で作る）。観察用（ルートには使わない）
 const jarLayer = L.layerGroup(), jarRend = L.canvas({ padding: 0.3 }), jarTiles = new Map(); let jarId = 0, jarT = null;
 function jarTile(k) {
@@ -4150,9 +4168,9 @@ const nbWhen = (h, w) => [nbWk(w), nbHm(h)].filter(Boolean).join(" ");
 const MK_FLOOR = { spot: 11, road: 13, ow: 14, nb: 12, ox: 13, jx: 13, rwl: 12, rwa: 9, riv: 9, slope: 13, dbg: 14, jar: 13, pt: 10 };   // これより引いては出さない（道のデータを読む物は 重いので）
 const MK_LV = [["近くだけ", 18], ["ふつう", 16], ["ひろめ", 15], ["もっとひろめ", 14], ["いつも", null]];   // [名前, 出すズーム]。マーク・スポット・デバッグ ぜんぶ同じズーム   // いつも＝ズームでは消さない（読むマスの数の上限まで。重い）
 // 📍マーク（道の線・はんい・川・標識・休けい…・デバッグ）は 📍マークのタブの「マークを表示するレベル」、📌スポット（⭐🏠🔒🚫⚠）は 📌スポットのタブの「スポットを表示するレベル」
-const MK_KEY = k => k === "pt" ? "hosomichi_ptlv" : "hosomichi_mklv";
+const MK_KEY = k => k === "pt" ? "hosomichi_ptlv" : ["rwl", "rwa", "riv"].includes(k) ? "hosomichi_hllv" : "hosomichi_mklv";   // 🎨 ハイライト（道の線・はんい・川）は ハイライトのレベル。はじめは マークのレベルと同じ
 const mkAll = () => lsGet("hosomichi_mklv", 1) === 4, MKCAP = () => mkAll() ? 4 : 1;   // いつも のときは 読むマスの上限を4倍
-function MZ(k) { const lv = lsGet(MK_KEY(k), 1); if (lv === 4) return 0; return Math.min(19, Math.max(MK_FLOOR[k] || 0, (MK_LV[lv] || MK_LV[1])[1])); }
+function MZ(k) { const lv = lsGet(MK_KEY(k), MK_KEY(k) === "hosomichi_hllv" ? lsGet("hosomichi_mklv", 1) : 1); if (lv === 4) return 0; return Math.min(19, Math.max(MK_FLOOR[k] || 0, (MK_LV[lv] || MK_LV[1])[1])); }
 const nbLayer = L.layerGroup().addTo(map); let nbMapT = null, nbMapId = 0;
 const NB_SIGN = '<svg viewBox="0 0 40 40" width="30" height="30" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#d40000" stroke-width="4"/>'
   + '<g fill="none" stroke="#1b2a4a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="24.5" r="5"/><circle cx="27.5" cy="24.5" r="5"/><path d="M12.5 24.5 L17 16.5 H25 L27.5 24.5 M17 16.5 L21 24.5 L25 16.5 M15 14 H19 M25 16.5 L24 12.5 H27"/></g>'
@@ -4298,7 +4316,7 @@ async function rivDraw() {
   let ix; try { ix = await rivIndex(); } catch (e) { rivLayer.clearLayers(); if (!rivWarn) { rivWarn = true; setMsg("〰 川のデータ（rivers/）がまだないよ", true); } return; }
   const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast(), keys = [];
   for (let i = Math.floor(S / ix.t); i <= Math.floor(N / ix.t); i++) for (let k = Math.floor(W / ix.t); k <= Math.floor(E / ix.t); k++) if (ix.has.has(i + "_" + k)) keys.push(i + "_" + k);
-  if (keys.length > (mkAll() ? 300 : 30)) { rivLayer.clearLayers(); return; }
+  if (keys.length > (lsGet("hosomichi_hllv", lsGet("hosomichi_mklv", 1)) === 4 ? 300 : 30)) { rivLayer.clearLayers(); return; }
   const my = ++rivSeq; let cs; try { cs = await Promise.all(keys.map(rivGet)); } catch (e) { return; }
   if (my !== rivSeq) return;
   rivLayer.clearLayers(); const got = new Set();
@@ -4856,7 +4874,7 @@ function dbgIssueDraw() {
 }
 for (const b of document.querySelectorAll("#dtabs button")) b.onclick = () => {
   for (const x of document.querySelectorAll("#dtabs button")) x.classList.toggle("on", x === b);
-  const d = b.dataset.d; for (const [k, id] of [["tool", "dbgTool"], ["log", "dbgLog"], ["issue", "dbgIssue"]]) $(id).style.display = d === k ? "" : "none";
+  const d = b.dataset.d; for (const [k, id] of [["tool", "dbgTool"], ["log", "dbgLog"], ["issue", "dbgIssue"], ["hl", "dbgHl"]]) $(id).style.display = d === k ? "" : "none";
   if (d === "issue") dbgIssueDraw();
   if (d === "log" && $("lgAuto").checked) $("log").scrollTop = $("log").scrollHeight;
 };
@@ -5500,21 +5518,26 @@ function spotSw(k) {   // 線・はんいのマークは、地図での色を �
 const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
 spotSize();
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
+const HL_GROUPS = new Set(["道", "はんい・川"]);   // 🎨 デバッグの「ハイライト」タブに出す グループ
 function renderSpots() {
   const lvRow = (nm, key, help) => { const lv = lsGet(key, 1); return `<div style="margin:2px 0 4px">${nm}：` + MK_LV.map(([t], i) => `<label style="margin-right:8px;white-space:nowrap"><input type="radio" name="${key}" data-lvkey="${key}" data-lv="${i}"${lv === i ? " checked" : ""}> ${t}</label>`).join("") + `<span class="hq">?</span><div class="hd">${help}</div></div>`; };
-  $("spotBox").innerHTML = lvRow("マークを表示するレベル", "hosomichi_mklv", `この📍マークのタブのものと デバッグの表示を、地図をどれくらい引いても出すか まとめて決めるよ。ひろくすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ（スマホだと電池も）。いまのレベルだと：標識 ズーム${MZ("road")}から・休けい／ごはんなど ${MZ("spot")}から・道の線 ${MZ("rwl")}から・はんいと川 ${MZ("rwa")}から${mkAll() ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ。うんと引いたときの休けい／ごはんなどは 有名なものだけに間引いたデータだよ）" : ""}`)
+  $("spotBox").innerHTML = lvRow("マークを表示するレベル", "hosomichi_mklv", `この📍マークのタブのもの（🎨ハイライトは のぞく）と デバッグの表示を、地図をどれくらい引いても出すか まとめて決めるよ。ひろくすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ（スマホだと電池も）。いまのレベルだと：標識 ズーム${MZ("road")}から・休けい／ごはんなど ${MZ("spot")}から${mkAll() ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ。うんと引いたときの休けい／ごはんなどは 有名なものだけに間引いたデータだよ）" : ""}`)
     + `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ 地図に出すよ<span class="hq">?</span><div class="hd">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div></div>`
     + (() => { const all = SPOT_KINDS.flatMap(x => x[1]), on = all.filter(x => spotOn.has(x[0])).length;
         return `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-weight:bold;font-size:14px"><input type="checkbox" data-sall="1"${on === all.length ? " checked" : ""}>📍 すべてのマーク<span style="font-weight:normal;font-size:11px;color:#888">（${on}/${all.length}）</span></label>`; })()
-    + SPOT_KINDS.map(([g, ks], gi) => `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
+    + grp(false);
+  const hlv = lsGet("hosomichi_hllv", lsGet("hosomichi_mklv", 1));
+  $("hlBox").innerHTML = lvRow("ハイライトを表示するレベル", "hosomichi_hllv", `道の線・はんい・川を、地図をどれくらい引いても出すか まとめて決めるよ。ひろくすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ。いまのレベルだと：道の線 ズーム${MZ("rwl")}から・はんいと川 ${MZ("rwa")}から${hlv === 4 ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ）" : ""}`)
+    + `<div style="color:#666;margin:2px 0 4px">道・はんい・川を 地図に色で重ねるよ（走るのに使えるよ）<span class="hq">?</span><div class="hd">チェックしたものだけ 地図に出すよ。線やはんいに 地図のまんなかの＋をかさねるか、タップすると 説明が出るよ</div></div>` + grp(true);
+  function grp(hl) { return SPOT_KINDS.map(([g, ks], gi) => HL_GROUPS.has(g) !== hl ? "" : `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}${spotSw(k)}</label>`).join("")
-      + (g === "標識" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所<br>🚦🚸 の右上に<span style="color:#8e24aa">●</span>＝地図（OSM）にはなくて、警察のデータ（JARTIC）から足した信号・横断歩道（ルートでも使うよ）</div>' : "") + "</div></div>").join("");
-  for (const el of $("spotBox").querySelectorAll("[data-sg]")) { const ks = SPOT_KINDS[+el.dataset.sg][1]; el.indeterminate = !el.checked && ks.some(x => spotOn.has(x[0])); }   // 一部だけオンのときは「－」
+      + (g === "標識" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所<br>🚦🚸 の右上に<span style="color:#8e24aa">●</span>＝地図（OSM）にはなくて、警察のデータ（JARTIC）から足した信号・横断歩道（ルートでも使うよ）</div>' : "") + "</div></div>").join(""); }
+  for (const el of document.querySelectorAll("#spotBox [data-sg], #hlBox [data-sg]")) { const ks = SPOT_KINDS[+el.dataset.sg][1]; el.indeterminate = !el.checked && ks.some(x => spotOn.has(x[0])); }   // 一部だけオンのときは「－」
   { const el = $("spotBox").querySelector("[data-sall]"); if (el) el.indeterminate = !el.checked && spotOn.size > 0; }
   try { mkKindsShow(); } catch {}   // 🏆 チャレンジの「📍 マークを回る」に、いま回るものを出す
 }
 setTimeout(() => { rwReq(); rivReq(); }, 1500);   // 🚲 走る道・はんい・〰 川：はじめに1回
-$("tabSpot").addEventListener("change", e => {
+const spotChange = e => {
   if (e.target.dataset.sz) { spotSz = e.target.dataset.sz; lsSet("hosomichi_spotsz", spotSz); spotSize(); return; }
   if (e.target.dataset.lvkey) { lsSet(e.target.dataset.lvkey, +e.target.dataset.lv); renderSpots(); spotUpdate(true); owUpdate(true); slopeDraw(); blkFixShow(); nbMapReq(); oxReq(); jxReq(); rwReq(); rivReq(); if ($("dbgOn").checked) dbgReq(); if ($("jarOn").checked) jarReq(); return; }
   const k = e.target.dataset.sk, sg = e.target.dataset.sg, sall = e.target.dataset.sall; if (!k && sg == null && !sall) return;
@@ -5523,7 +5546,8 @@ $("tabSpot").addEventListener("change", e => {
   else if (e.target.checked) spotOn.add(k); else spotOn.delete(k);
   renderSpots();
   lsSet("hosomichi_spots", [...spotOn]); spotUpdate(true); owUpdate(true); mkBtn(); slopeDraw(); nbMapReq(); oxReq(); jxReq(); rwReq(); rivReq(); if ($("dbgOn").checked) dbgReq();
-});
+};
+$("tabSpot").addEventListener("change", spotChange); $("dbgHl").addEventListener("change", spotChange);
 let spotOv = null;
 function spotOverview() {   // 引いたとき用（配布データぜんぶ・間引いたもの）
   return spotOv || (spotOv = tfetch(new URL("../hosomichi-data/spots_overview.json", location.href), { cache: "no-cache" }, 30000)
