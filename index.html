@@ -209,7 +209,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.2123</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.2143</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -450,7 +450,7 @@ const DEFAULT_CFG = {
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ（アプリではえらべない・分析用）
   park: 5,               // 公園の中の道（園路など）："no"=通らない / 倍率 / 1=気にしない
-  cemetery: 5,           // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
+  cemetery: "no",         // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
   stepsGuess: 30,        // 🪜 階段？（標高で見つけた、印のない階段かも）：倍率 or "no"（1＝気にしない）
@@ -774,7 +774,7 @@ function buildGraph(osm, cfg, onProg) {
   // 橋・地下・屋根つき・建物の中・階（level）がある・名前に「通路」「コンコース」「改札」「駅」がある道
   const stPen = cfg.station === "no" ? null : (+cfg.station || 1), STA_R = 150;
   const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1), parkPen = cfg.park === "no" ? null : (+cfg.park || 1);
-  const danPen = cfg.danchi === "no" ? null : (+(cfg.danchi ?? 5) || 1);   // 🏢 団地の中の道（はじめは ×5）
+  const danPen = (cfg.danchi ?? "no") === "no" ? null : (+cfg.danchi || 1);   // 🏢 団地の中の道（11/24 から はじめは 通らない）
   const prvPen = (cfg.privy ?? "no") === "no" ? null : (+cfg.privy || 1);     // 🏠 私道・家の前の道・駐車場の中（11/24 から はじめは 通らない）
   const inArea = (kind, nd) => {   // 道のまん中の点（と両はし）が はんいの中か
     const m = nd[nd.length >> 1];
@@ -3843,7 +3843,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1124.2123", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1124.2143", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5898,7 +5898,7 @@ dbgLeg.onAdd = () => {
 };
 let dbgLegOn = false;
 function dbgLegend(on) { if (on && !dbgLegOn) { dbgLeg.addTo(map); dbgLegOn = true; } else if (!on && dbgLegOn) { dbgLeg.remove(); dbgLegOn = false; } }
-const AREA_NOTE = { park: "この中の歩く道・小道は 設定「公園の中の道」の倍率（デフォルト×5）。車の道・橋の歩道・自転車OKの道・長い自転車道は のぞく",
+const AREA_NOTE = { park: "この中の歩く道・小道は 設定「公園の中の道」の倍率。車の道・橋の歩道・自転車OKの道・長い自転車道は のぞく",
   cemetery: "この中の道は 設定「霊園・墓地の中の道」の倍率", closed: "この中の道は 通らない（入っていいと書いてある道は のぞく）",
   danchi: "この中の道は 設定「団地の中の道」の倍率", parking: "駐車場の中の通路（近道に使うことがある）" };
 const AREA_K = { park: ["#2e9d3a", "🌳 公園の中"], cemetery: ["#7b5ea7", "🪦 霊園・墓地の中"], closed: ["#d35400", "🏫 学校・工場などの敷地"], danchi: ["#e91e63", "🏢 団地の中"], parking: ["#607d8b", "🅿 駐車場"] };
@@ -6438,41 +6438,42 @@ $("tog").onclick = () => { const p = $("panel"); p.classList.toggle("min"); $("t
 const PEN_ROWS = [
   ["residential,living_street,unclassified", "細い車道（住宅街・生活道路・細めの一般道）"], ["service", "駐車場・敷地の中の道"],
   ["tertiary", "一般道（2車線くらい）"], ["secondary,primary,trunk", "県道・国道・バイパス"],
-  ["footway,pedestrian", "歩く道（歩道・歩行者天国・広場）"], ["path,track", "小道（土手・あぜ道・農道）"], ["cycleway", "自転車道"],
+  ["footway,pedestrian", "歩く道（車道ぞいの歩道・横断歩道・橋の歩道・遊歩道・公園や団地の中の歩道・歩行者天国・広場）"], ["path,track", "小道（土手・あぜ道・農道）"], ["cycleway", "自転車道"],
 ];
 const PEN_ORD = v => v === "no" ? Infinity : +v;
 const penGet = ks => ks.split(",").map(k => cfg.pen[k]).reduce((a, b) => PEN_ORD(b) > PEN_ORD(a) ? b : a);   // まとめた行は いちばん避けるほう
-const PEN_OPT = [[1, "×1 どんどん使う"], [1.2, "×1.2"], [1.5, "×1.5 少し避ける"], [2, "×2"], [3, "×3 避ける"], [5, "×5"],
-  [8, "×8 かなり避ける"], [12, "×12"], [20, "×20"], [30, "×30 ほぼ使わない"], ["no", "通らない"]];
+// えらぶ所の書きかた（11/24 そろえた）：「〜（距離×◯）」＝その道の長さを ◯倍と数える／「〜（ペナルティ ◯m）」＝そのたびに ◯m 足して数える。デフォルトは書かない（プリセットにするので）
+const PEN_OPT = [[1, "どんどん使う（距離×1）"], [1.2, "（距離×1.2）"], [1.5, "少し避ける（距離×1.5）"], [2, "（距離×2）"], [3, "避ける（距離×3）"], [5, "（距離×5）"],
+  [8, "かなり避ける（距離×8）"], [12, "（距離×12）"], [20, "（距離×20）"], [30, "ほぼ使わない（距離×30）"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 3, pedestrian: 3, path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "mid", midCross: 100, oneway: "bike", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: 5, privy: "no", unkSurf: 1.5, station: 5, cemetery: 5, park: 5 };
+  primary: 8, trunk: 8, footway: 3, pedestrian: 3, path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "mid", midCross: 100, oneway: "bike", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 1.5, station: 5, cemetery: "no", park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
-  ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（×2）"], [5, "避ける（×5）"], [10, "かなり避ける（×10・デフォルト）"], [30, "ほぼ通らない（×30）"]]],
+  ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], [10, "かなり避ける（距離×10）"], [30, "ほぼ通らない（距離×30）"]]],
   ["alts", "第2・第3のルート", [["yes", "作る（えらべる・少し時間がかかる）"], ["no", "作らない（早い）"]]],
-  ["turn", "曲がる回数", [[0, "気にしない"], [100, "少なめ（1回＝100m 遠回りぶん）"], [300, "できるだけ少なく（1回＝300m）"], [600, "とにかく少なく（1回＝600m）"]]],
+  ["turn", "曲がる回数", [[0, "気にしない（ペナルティ 0）"], [100, "少なめ（ペナルティ 1回100m）"], [300, "できるだけ少なく（ペナルティ 1回300m）"], [600, "とにかく少なく（ペナルティ 1回600m）"]]],
   ["area", "地図データを取る広さ", [["auto", "おまかせ（データが手元にあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（まわり道 2〜4km）"]]],
-  ["oneway", "逆走", [["bike", "逆走する（デフォルト）"], ["avoid", "逆走を避ける"], ["no", "逆走しない"]]],
-  ["kodo", "旧街道", [[1, "気にしない"], [0.8, "少し通りたい（×0.8）"], [0.6, "通りたい（×0.6）"], [0.4, "どんどん通る（×0.4）"]]],
-  ["slope", "坂道（のぼり）", [[0, "気にしない"], [5, "少し避ける（のぼり1m＝5m）"], [10, "避ける（のぼり1m＝10m）"], [20, "かなり避ける（のぼり1m＝20m）"]]],
-  ["paintPen", "👣 もう塗った道（足あと）", [[1, "気にしない"], [1.5, "少し避ける（×1.5）"], [2, "避ける（×2）"], [4, "かなり避ける（×4）"]]],
-  ["stepsGuess", "🪜 階段？", [[1, "気にしない"], [3, "少し避ける（×3）"], [30, "ほとんど通らない（×30）"], ["no", "通らない"]]],
-  ["steep", "⛰ 急坂？", [[1, "気にしない"], [1.5, "少し避ける（×1.5）"], [3, "避ける（×3）"], [10, "かなり避ける（×10）"]]],
-  ["park", "公園の中の道", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
-  ["privy", "私道・家の前の道・駐車場の中", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
-  ["danchi", "団地の中の道", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
-  ["cemetery", "霊園・墓地の中の道", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
-  ["station", "駅の中の通路", [[1, "気にしない"], [2, "少し避ける（×2）"], [5, "避ける（×5）"], ["no", "通らない"]]],
-  ["sidewalk", "歩道がとなりにある車道（段差・柵）", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける"], [6, "かなり避ける"]]],
-  ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ"], ["yes", "通る（かついで上がる）"]]],
-  ["brSteps", "🌉 橋の歩道の出入り口の階段", [["ramp", "自転車スロープつきとみなす（デフォルト）"], ["steps", "ふつうの階段と同じ（上の設定）"]]],
-  ["bridge", "歩道橋", [[1, "気にしない"], [1.5, "少し避ける（デフォルト）"], [3, "避ける"], [10, "かなり避ける"], ["no", "通らない"]]],
-  ["tunnel", "地下道", [[1, "気にしない"], [1.5, "少し避ける"], [3, "避ける（デフォルト）"], [10, "かなり避ける"], ["no", "通らない"]]],
-  ["unkSurf", "舗装不明の道（路面が書いてない小道・農道）", [[1, "気にしない"], [1.5, "少し避ける（×1.5・デフォルト）"], [3, "避ける（×3）"], [10, "かなり避ける（×10）"], ["no", "通らない"]]],
-  ["unpaved", "砂利・土の道", [[1, "気にしない"], [3, "少し避ける"], [20, "かなり避ける"], ["no", "通らない"]]],
-  ["xDet", "4車線の道を 交差点で渡れないとき、信号・横断歩道まで 行ってよい距離", [[0, "行かない（大回りして 渡れる交差点をさがす）"], [60, "60mまで（デフォルト）"], [100, "100mまで"], [150, "150mまで"]]],
-  ["allWide", "2車線の道路も 4車線としてあつかう（より安全に）", [["off", "あつかわない（デフォルト）"], ["on", "あつかう"]]],
-  ["midCross", "2車線の道を信号・横断歩道のない所で渡る", [[0, "ペナルティなし（どこでも渡る）"], [100, "ペナルティ 100m"], [300, "ペナルティ 300m"], [500, "ペナルティ 500m"], [1000, "ペナルティ 1km"], [3000, "ペナルティ 3km（ほぼ渡らない）"]]],
+  ["oneway", "逆走", [["bike", "逆走する（距離×1.3）"], ["avoid", "逆走を避ける（距離×3）"], ["no", "逆走しない"]]],
+  ["kodo", "旧街道", [[1, "気にしない（距離×1）"], [0.8, "少し通りたい（距離×0.8）"], [0.6, "通りたい（距離×0.6）"], [0.4, "どんどん通る（距離×0.4）"]]],
+  ["slope", "坂道（のぼり）", [[0, "気にしない（ペナルティ 0）"], [5, "少し避ける（ペナルティ のぼり1mごとに5m）"], [10, "避ける（ペナルティ のぼり1mごとに10m）"], [20, "かなり避ける（ペナルティ のぼり1mごとに20m）"]]],
+  ["paintPen", "👣 もう塗った道（足あと）", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [2, "避ける（距離×2）"], [4, "かなり避ける（距離×4）"]]],
+  ["stepsGuess", "🪜 階段？", [[1, "気にしない（距離×1）"], [3, "少し避ける（距離×3）"], [30, "ほとんど通らない（距離×30）"], ["no", "通らない"]]],
+  ["steep", "⛰ 急坂？", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [10, "かなり避ける（距離×10）"]]],
+  ["park", "公園の中の道", [[1, "気にしない（距離×1）"], [2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], ["no", "通らない"]]],
+  ["privy", "私道・家の前の道・駐車場の中", [[1, "気にしない（距離×1）"], [2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], ["no", "通らない"]]],
+  ["danchi", "団地の中の道", [[1, "気にしない（距離×1）"], [2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], ["no", "通らない"]]],
+  ["cemetery", "霊園・墓地の中の道", [[1, "気にしない（距離×1）"], [2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], ["no", "通らない"]]],
+  ["station", "駅の中の通路", [[1, "気にしない（距離×1）"], [2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], ["no", "通らない"]]],
+  ["sidewalk", "歩道がとなりにある車道（段差・柵）", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [6, "かなり避ける（距離×6）"]]],
+  ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ（距離×8）"], ["yes", "通る（かついで上がる・距離×5）"]]],
+  ["brSteps", "🌉 橋の歩道の出入り口の階段", [["ramp", "自転車スロープつきとみなす"], ["steps", "ふつうの階段と同じ（上の設定）"]]],
+  ["bridge", "歩道橋", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [10, "かなり避ける（距離×10）"], ["no", "通らない"]]],
+  ["tunnel", "地下道", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [10, "かなり避ける（距離×10）"], ["no", "通らない"]]],
+  ["unkSurf", "舗装不明の道（路面が書いてない小道・農道）", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [10, "かなり避ける（距離×10）"], ["no", "通らない"]]],
+  ["unpaved", "砂利・土の道", [[1, "気にしない（距離×1）"], [3, "少し避ける（距離×3）"], [20, "かなり避ける（距離×20）"], ["no", "通らない"]]],
+  ["xDet", "4車線の道を 交差点で渡れないとき、信号・横断歩道まで 行ってよい距離", [[0, "行かない（大回りして 渡れる交差点をさがす）"], [60, "60mまで（ペナルティ 行って帰る分）"], [100, "100mまで（ペナルティ 行って帰る分）"], [150, "150mまで（ペナルティ 行って帰る分）"]]],
+  ["allWide", "2車線の道路も 4車線としてあつかう（より安全に）", [["off", "あつかわない"], ["on", "あつかう"]]],
+  ["midCross", "2車線の道を信号・横断歩道のない所で渡る", [[0, "どこでも渡る（ペナルティ 0）"], [100, "少し避ける（ペナルティ 1回100m）"], [300, "避ける（ペナルティ 1回300m）"], [500, "かなり避ける（ペナルティ 1回500m）"], [1000, "ほとんど渡らない（ペナルティ 1回1km）"], [3000, "ほぼ渡らない（ペナルティ 1回3km）"]]],
 ];
 let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cfg")); if (c) { const m = { must: 3000, prefer: 500, any: 0 }; if (c.midCross in m) c.midCross = m[c.midCross];   // むかしの設定を数字に
       if (!c.areaV2) { if (c.area === "narrow") c.area = "auto"; c.areaV2 = 1; }
@@ -6489,7 +6490,8 @@ let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cf
           const v = a.map(k => c.pen[k]).reduce((x, y) => (y === "no" ? Infinity : +y) > (x === "no" ? Infinity : +x) ? y : x);
           for (const k of ks.split(",")) c.pen[k] = v;
         }
-        c.penV2 = 1; }   // 通りたくない道は、はじめ「かなり避ける（×10）」に   // 「せまい」がはじめの設定だったころの人は「おまかせ」に
+        c.penV2 = 1; }
+      if (!c.cfgV3) { if (c.danchi === 5 || c.danchi == null) c.danchi = "no"; if (c.cemetery === 5 || c.cemetery == null) c.cemetery = "no"; c.cfgV3 = 1; }   // 11/24 団地・霊園の中は 通らない（ユーザー）   // 通りたくない道は、はじめ「かなり避ける（×10）」に   // 「せまい」がはじめの設定だったころの人は「おまかせ」に
       return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } } catch {} return structuredClone(CFG_DEF); })();
 function saveCfg() { try { localStorage.setItem("hosomichi_cfg", JSON.stringify(cfg)); } catch {} try { paintSend(); } catch {} }
 const optHtml = (opts, val) => opts.map(([v, t]) => `<option value="${v}"${String(v) === String(val) ? " selected" : ""}>${t}</option>`).join("");

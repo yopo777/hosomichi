@@ -14,7 +14,7 @@ const DEFAULT_CFG = {
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ（アプリではえらべない・分析用）
   park: 5,               // 公園の中の道（園路など）："no"=通らない / 倍率 / 1=気にしない
-  cemetery: 5,           // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
+  cemetery: "no",         // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
   stepsGuess: 30,        // 🪜 階段？（標高で見つけた、印のない階段かも）：倍率 or "no"（1＝気にしない）
@@ -338,7 +338,7 @@ function buildGraph(osm, cfg, onProg) {
   // 橋・地下・屋根つき・建物の中・階（level）がある・名前に「通路」「コンコース」「改札」「駅」がある道
   const stPen = cfg.station === "no" ? null : (+cfg.station || 1), STA_R = 150;
   const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1), parkPen = cfg.park === "no" ? null : (+cfg.park || 1);
-  const danPen = cfg.danchi === "no" ? null : (+(cfg.danchi ?? 5) || 1);   // 🏢 団地の中の道（はじめは ×5）
+  const danPen = (cfg.danchi ?? "no") === "no" ? null : (+cfg.danchi || 1);   // 🏢 団地の中の道（11/24 から はじめは 通らない）
   const prvPen = (cfg.privy ?? "no") === "no" ? null : (+cfg.privy || 1);     // 🏠 私道・家の前の道・駐車場の中（11/24 から はじめは 通らない）
   const inArea = (kind, nd) => {   // 道のまん中の点（と両はし）が はんいの中か
     const m = nd[nd.length >> 1];
