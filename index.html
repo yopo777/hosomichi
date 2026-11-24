@@ -209,7 +209,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.2301</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.2313</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3859,7 +3859,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1124.2301", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1124.2313", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5931,6 +5931,7 @@ const dbgBikeTag = t => BL_KEYS.filter(k => t[k] && t[k] !== "no" && t[k] !== "s
 // 🧪 道のデータの 種類ごとの スイッチ（🎨 でなく 🛠ツールの「道のデータを見る」の下）
 const DBG_LV = { lv2: ["大きい道（4車線あつかい）", "#d93025", 5], lv1: ["ふつうの道（2車線）", "#f29900", 5] };
 let dbgOff = new Set(lsGet("hosomichi_dbgoff", []));
+if (dbgOff.has("pts")) { dbgOff.delete("pts"); dbgOff.add("psig"); dbgOff.add("pxw"); lsSet("hosomichi_dbgoff", [...dbgOff]); }   // 前の「信号・横断歩道」1つのスイッチ → 2つに分けた
 const dbgKeyOf = w => w.lv ? "lv" + w.lv : dbgKind(w.t);
 function dbgKindsDraw() {
   const box = $("dbgKinds"); if (!box) return;
@@ -5938,12 +5939,13 @@ function dbgKindsDraw() {
   const G = [["car", "🚗 車の道"], ["walk", "🚶 歩く道"], ["bike", "🚲 自転車の道"], ["br", "🌉 橋・地下道"], ["st", "🪜 階段"]];
   const item = (key, nm, svg) => `<label style="display:flex;align-items:center;font-size:12px;margin:1px 0"><input type="checkbox" data-dk="${key}"${dbgOff.has(key) ? "" : " checked"}>${svg}${nm}</label>`;
   box.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:2px"><button class="ib" data-dkall="1" style="font-size:11px">ぜんぶオン</button><button class="ib" data-dkall="0" style="font-size:11px">ぜんぶオフ</button></div>`
-    + `<div style="font-weight:bold;margin-top:4px;border-bottom:1px solid #ddd">🚦🚸 点</div>` + item("pts", "信号・横断歩道（緑・青の四角）", `<span style="display:inline-block;width:10px;height:10px;background:#0a0;margin:0 11px 0 11px;vertical-align:middle"></span>`)
+    + `<div style="font-weight:bold;margin-top:4px;border-bottom:1px solid #ddd">🚦🚸 点</div>` + item("psig", "🚦 信号（緑の四角）", `<span style="display:inline-block;width:10px;height:10px;background:#0a0;margin:0 11px 0 11px;vertical-align:middle"></span>`)
+    + item("pxw", "🚸 横断歩道（青の四角・しま模様のない所も）", `<span style="display:inline-block;width:10px;height:10px;background:#1a73e8;margin:0 11px 0 11px;vertical-align:middle"></span>`)
     + `<div style="font-weight:bold;margin-top:4px;border-bottom:1px solid #ddd">🚗 車の道（車線で色分け）</div>` + Object.entries(DBG_LV).map(([k, [n, c, w]]) => item(k, n, sw(c, w))).join("")
     + G.map(([g, gn]) => `<div style="font-weight:bold;margin-top:4px;border-bottom:1px solid #ddd">${g === "car" ? "🚗 そのほかの車の道" : gn}</div>` + Object.entries(DBG_K).filter(([, K]) => K.g === g).map(([k, K]) => item(k, K.n, sw(K.c, K.w, K.dash, K.alt))).join("")).join("");
 }
 document.addEventListener("change", e => { const k = e.target.dataset && e.target.dataset.dk; if (!k) return; e.target.checked ? dbgOff.delete(k) : dbgOff.add(k); lsSet("hosomichi_dbgoff", [...dbgOff]); if ($("dbgOn").checked) dbgReq(); });
-document.addEventListener("click", e => { const a = e.target.dataset && e.target.dataset.dkall; if (a == null) return; dbgOff = a === "1" ? new Set() : new Set(["pts", ...Object.keys(DBG_LV), ...Object.keys(DBG_K)]); lsSet("hosomichi_dbgoff", [...dbgOff]); dbgKindsDraw(); if ($("dbgOn").checked) dbgReq(); });
+document.addEventListener("click", e => { const a = e.target.dataset && e.target.dataset.dkall; if (a == null) return; dbgOff = a === "1" ? new Set() : new Set(["psig", "pxw", ...Object.keys(DBG_LV), ...Object.keys(DBG_K)]); lsSet("hosomichi_dbgoff", [...dbgOff]); dbgKindsDraw(); if ($("dbgOn").checked) dbgReq(); });
 function dbgDraw(m) {
   if (m.id !== dbgId || !$("dbgOn").checked) return;
   dbgLayer.clearLayers();
@@ -5981,7 +5983,8 @@ function dbgDraw(m) {
     L.circleMarker(x.p, { renderer: dbgRend, radius: 13, color: col, weight: 3, fillColor: col, fillOpacity: .05 })
       .bindPopup(() => dbgTags("node", x.id, {}, `<b>大きい道（レベル${x.lv}）を渡る判定</b><br>${what}${x.ref ? (x.det ? `<br>点線の先（${x.det}m）まで行って渡る（まわり道 ${x.det * 2}m分）` : "<br>点線の先の点を見て その場で OK にしたよ") : ""}${x.dv ? "<br>上り・下りが別の線の道（中央分離帯）" : ""}`)).addTo(dbgLayer);
   }
-  if (!dbgOff.has("pts")) for (const q of m.pts) L.marker(q.p, { icon: L.divIcon({ className: "", html: `<div style="width:14px;height:14px;transform:translate(-7px,-7px);background:${q.k === "both" ? "linear-gradient(135deg,#0a0 50%,#1a73e8 50%)" : q.k === "sig" ? "#0a0" : q.k === "um" ? "#fff" : "#1a73e8"};border:2px solid ${q.k === "um" ? "#1a73e8" : "#fff"};box-shadow:0 0 2px #000"></div>`, iconSize: [0, 0] }), zIndexOffset: 500 })
+  const ptOff = q => q.k === "both" ? dbgOff.has("psig") && dbgOff.has("pxw") : q.k === "sig" ? dbgOff.has("psig") : dbgOff.has("pxw");   // 🚦 信号・🚸 横断歩道（しま模様のない渡る所もふくむ）。信号つきの横断歩道は どちらかがオンなら出す
+  for (const q of m.pts) if (!ptOff(q)) L.marker(q.p, { icon: L.divIcon({ className: "", html: `<div style="width:14px;height:14px;transform:translate(-7px,-7px);background:${q.k === "both" ? "linear-gradient(135deg,#0a0 50%,#1a73e8 50%)" : q.k === "sig" ? "#0a0" : q.k === "um" ? "#fff" : "#1a73e8"};border:2px solid ${q.k === "um" ? "#1a73e8" : "#fff"};box-shadow:0 0 2px #000"></div>`, iconSize: [0, 0] }), zIndexOffset: 500 })
     .bindPopup(() => dbgTags("node", q.id, q.t, q.k === "both" ? "🚦🚸 信号つきの横断歩道" : q.k === "sig" ? "🚦 信号" : q.k === "um" ? (q.t.crossing === "no" ? "⛔ 渡れない所（crossing=no）" : "しま模様のない 渡る所（横断歩道ではない）") : "🚸 横断歩道")).addTo(dbgLayer);
   setMsg(`🧪 道のデータ：線 ${m.ways.length}・信号/横断歩道 ${m.pts.length}${J ? `・渡る判定 ${m.xs.length}` : ""}${m.miss ? `（保存していないマス ${m.miss}）` : ""}`);
 }
