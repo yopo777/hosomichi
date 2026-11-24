@@ -4,7 +4,7 @@ const DEFAULT_CFG = {
   pen: {                 // 1m を何m分と数えるか（大きいほど避ける）。"no" は通らない
     living_street: 1, residential: 1, service: 1.2, unclassified: 1, cycleway: 1,
     tertiary: 5, secondary: 8, primary: 8, trunk: 8,
-    footway: 3, pedestrian: 3, path: 1, track: 1,   // 歩道は 11/21 に ×5→×3、歩行者天国・広場は ×1.5→×3。小道・農道は 11/24 に ×1.5→×1（路面は 🪨砂利・土の設定で見る）
+    footway: 3, pedestrian: "no", path: 1, track: 1,   // 歩道は 11/21 に ×5→×3、歩行者天国・広場は ×1.5→×3。小道・農道は 11/24 に ×1.5→×1（路面は 🪨砂利・土の設定で見る）
   },
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
   bridge: 1.5,           // 歩道橋（歩行者用）: 倍率 or "no"（11/21 に地下道と分けた）
@@ -146,6 +146,7 @@ function wayCost(t, cfg) {
     whyAdd(r, "bik", p);
   } else {
     let p = cfg.pen[b] ?? OTHER_PENALTY;
+    if (p === "no" && b === "pedestrian" && ["yes", "permissive"].includes(t.bicycle)) p = cfg.pen.footway ?? 3;   // 🚶 歩行者天国・広場：自転車OKの印がある所は 歩く道と同じ
     if (p === "no") return null;
     if (lanesOf(t) >= 2 && p > 1) p *= 1.5;
     whyAdd(r, HW_WHY[b] || "car", p);
