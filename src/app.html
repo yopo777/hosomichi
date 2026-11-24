@@ -3069,7 +3069,7 @@ dbgLeg.onAdd = () => {
     H("🚲 自転車の道"), ...G("bike"),
     H("🌉 橋・地下道"), ...G("br"),
     H("🪜 階段"), ...G("st"),
-    H("🚲 くっきり（📍マークでオンのとき）"), sw("#00c8e8", 3, null, null, "", "#0050ff") + "自転車レーン（青い太いふち・cycleway=lane／track）", sw("#00c8e8", 3, null, null, ln("#0050ff", 9, "4 6"), "") + "ナビライン（青い太い点線・cycleway=shared_lane）", 
+    H("🚲 くっきり（📍マークでオンのとき）"), sw("#00c8e8", 3, null, null, "", "#0050ff") + "自転車レーン（青い太いふち・cycleway=lane／track）", sw("#00c8e8", 3, null, null, ln("#d500f9", 9, "4 6"), "") + "ナビライン（紫の太い点線・cycleway=shared_lane）", 
     ...Object.entries(AREA_K).map(([, [c, n]]) => `<svg width="32" height="12" style="vertical-align:middle;margin-right:4px"><rect x="2" y="1" width="28" height="10" fill="${c}" fill-opacity=".35" stroke="${c}" stroke-width="2"/></svg>${n}`),
     H("✨ 上に重ねる印"), sw("#00c8e8", 4, null, null, ln("#fff", 2, "1 6", 1)) + "橋の上（白い点々）", sw("#b5651d", 3, null, null, ln("#e0a800", 4, "1 4", 1)) + "砂利・土（黄色の点々）", sw("#b5651d", 3, null, null, '<g opacity=".55">' + ln("#e0a800", 4, "1 10", 1) + "</g>") + "舗装かわからない（まばらな点々）", sw("#00c8e8", 4, null, null, ln("#e00", 4, "6 6")) + "🚳 自転車通行止め（赤のしま）", sw("#00c8e8", 3, null, null, "", "#000") + "黒いふち＝通らない（アプリの判定）"];
   d.innerHTML = `<b>🧪 色の見本</b> <span style="color:#888">（タップでたたむ）</span><div style="max-height:60vh;overflow-y:auto">${rows.map(r => r.startsWith("<div") ? r : `<div>${r}</div>`).join("")}</div>`;
@@ -3118,7 +3118,7 @@ function dbgDraw(m) {
     if (t["jar:nb"]) L.polyline(w.pts, { renderer: dbgRend, color: "#e00", weight: wt, opacity: t["jar:nb"] === "t" ? .5 : 1, dashArray: "8 8", interactive: false }).addTo(dbgLayer);   // 🚳 自転車通行止め：赤のしま
     if (w.up) L.polyline(w.pts, { renderer: dbgRend, color: "#e0a800", weight: wt + 1, opacity: w.up === "sure" ? 1 : .55, dashArray: w.up === "sure" ? "1 5" : "1 12", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 🟡 砂利・土の道：黄土色の点々（わからないのは まばら）
     if (br) L.polyline(w.pts, { renderer: dbgRend, color: "#fff", weight: Math.max(2, wt - 2), opacity: 1, dashArray: "1 9", lineCap: "round", interactive: false }).addTo(dbgLayer);   // 橋：白い点々
-    if (bl === "navi") L.polyline(w.pts, { renderer: dbgRend, color: "#0050ff", weight: wt + 6, opacity: .85, dashArray: "6 10", interactive: false }).addTo(dbgLayer);   // ナビライン：青い太い点線
+    if (bl === "navi") L.polyline(w.pts, { renderer: dbgRend, color: "#d500f9", weight: wt + 6, opacity: .85, dashArray: "6 10", interactive: false }).addTo(dbgLayer);   // ナビライン：紫の太い点線（📍マークと同じ色）
   }
   dbgLegend(true);
   const XC = k => k === 1 ? "#0a0" : k === 2 ? "#1a73e8" : null;
@@ -4215,7 +4215,7 @@ function rwKind(t) {   // 1本の道 → どの線の種類か（いくつも当
   if (+t.maxspeed > 0 && +t.maxspeed <= 30) return "slow";
   return null;
 }
-const RW_ST = { cway: { c: "#00a651", w: 7, o: .75 }, blane2: { c: "#0050ff", w: 7, o: .8 }, swalk: { c: "#00a651", w: 5, o: .75, d: "8 6" }, navi: { c: "#0050ff", w: 5, o: .9, d: "6 8" }, slow: { c: "#ff9800", w: 6, o: .55 } };
+const RW_ST = { cway: { c: "#00a651", w: 7, o: .8 }, blane2: { c: "#0050ff", w: 7, o: .8 }, swalk: { c: "#00bcd4", w: 5, o: .85, d: "8 6" }, navi: { c: "#d500f9", w: 5, o: .9, d: "6 8" }, slow: { c: "#ff9800", w: 6, o: .6 } };   // 種類ごとに色を変える（緑＝自転車道・青＝専用通行帯・水色点線＝自転車歩行者道・紫点線＝ナビライン・オレンジ＝30km）
 const RW_NM = { cway: "🚲 <b>自転車道・サイクリングロード</b>", blane2: "🟦 <b>自転車専用通行帯</b>（地図のデータ）", swalk: "🚶 <b>自転車歩行者道</b>（自転車の通行の指定がある歩道・小道）", navi: "➡ <b>ナビライン</b>（矢羽根）", slow: "🐢 <b>30km制限の道</b>" };
 function rwReq() { clearTimeout(rwT); rwT = setTimeout(() => {
   const ln = RW_LINE.some(k => spotOn.has(k)) && !spotHide, ar = RW_AREA.some(k => spotOn.has(k)) && !spotHide, z = map.getZoom(), RW_LZ = MZ("rwl"), RW_AZ = MZ("rwa");
@@ -5324,10 +5324,10 @@ $("qList").onclick = e => {
 // ---------- 📍 まわりのスポット（設定でえらんだジャンルだけ、現在地のまわりに出す） ----------
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
-  ["走る道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"]]],
+  ["道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"]]],
   ["はんい・川", [["river", "〰", "川・水路"], ["bigriver", "🌊", "大きい川の水面"],
     ["apark", "🌳", "公園のはんい"], ["acem", "🪦", "霊園・墓地のはんい"], ["aclosed", "🏫", "学校・工場などの敷地"], ["adanchi", "🏢", "団地のはんい"], ["aparking", "🅿", "駐車場のはんい"]]],
-  ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
+  ["標識", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
     ["oneway", "➡", "一方通行"], ["noroad", "🚧", "通行止め"], ["nocar", "🚫", "車両通行止め"], ["nobike", "🚳", "自転車通行止め"], ["pwalk", "🚶", "歩行者用道路（自転車も）"], ["owexit", "⛔", "一方通行の出口（自転車も）"], ["noent", "🔴", "車両進入禁止"], ["cxban", "✖", "自転車の交差点進入禁止"], ["swok", "🔵", "自転車も通れる歩道"], ["blane", "🟦", "自転車レーン（専用通行帯）"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
     ["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
@@ -5343,7 +5343,7 @@ const SPOT_KINDS = [
     ["jizo", "🙏", "お地蔵さん・道祖神"], ["ichiri", "🌲", "一里塚"], ["tree", "🌳", "大きな木"], ["spring", "🫧", "湧き水"], ["fall", "🏞", "滝"], ["ferry", "⛴", "渡し船"]]]];
 // 絵文字にないアイコン（横断歩道＝上から見たしましま）
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
-const SPOT_COL = { "走る道": "#0050ff", "はんい・川": "#0288d1", "道": "#188038", "休けい・自転車": "#1a73e8", "ごはん・おやつ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
+const SPOT_COL = { "道": "#0050ff", "はんい・川": "#0288d1", "標識": "#188038", "休けい・自転車": "#1a73e8", "ごはん・おやつ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
 const SPOT_KCOL = { cbar: "#d93025", bollard: "#d93025", gate: "#d93025", police: "#d01884", aed: "#d01884", hospital: "#d01884" };   // まとめる前のジャンルの色を のこす物（車止め＝赤・こまったとき＝ピンク）
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_KCOL[k] || SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
@@ -5411,6 +5411,15 @@ async function jxFind(k, nm) {
 { const box = $("jxFind"); if (box) for (const [k, nm] of JX_FIND) { const bt = document.createElement("button"); bt.className = "ib"; bt.style.fontSize = "12px";
   bt.innerHTML = `<span style="display:inline-block;vertical-align:middle;margin-right:3px">${k === "noentb" ? NEB_SIGN.replace('width="26" height="34"', 'width="13" height="17"').replace("filter:drop-shadow(0 1px 2px #0006)", "") : spotIc(k, SPOT_INFO[k] ? SPOT_INFO[k][0] : "")}</span>${nm}`; bt.onclick = () => jxFind(k, nm); box.appendChild(bt); } }
 SPOT_SVG.nobike = NB_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
+function spotSw(k) {   // 線・はんいのマークは、地図での色を 名前の横に見本で出す
+  const ln = (c, w, d) => `<svg width="22" height="10" style="margin-left:3px"><line x1="1" y1="5" x2="21" y2="5" stroke="${c}" stroke-width="${Math.min(w, 6)}" stroke-linecap="round"${d ? ` stroke-dasharray="${d.split(" ").map(x => x / 2).join(" ")}"` : ""}/></svg>`;
+  const ar = (c, f) => `<svg width="18" height="12" style="margin-left:3px"><rect x="1" y="1" width="16" height="10" rx="2" fill="${f || c}" fill-opacity=".35" stroke="${c}" stroke-width="1.5"/></svg>`;
+  if (RW_ST[k]) return ln(RW_ST[k].c, RW_ST[k].w, RW_ST[k].d);
+  if (k === "river") return ln("#0288d1", 5);
+  if (k === "bigriver") return ar("#0288d1", "#4fc3f7");
+  const a = Object.keys(RW_AK).find(x => RW_AK[x] === k); if (a && AREA_K[a]) return ar(AREA_K[a][0]);
+  return "";
+}
 const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S"); document.body.classList.toggle("spotL", spotSz === "L"); };
 spotSize();
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
@@ -5422,8 +5431,8 @@ function renderSpots() {
     + (() => { const all = SPOT_KINDS.flatMap(x => x[1]), on = all.filter(x => spotOn.has(x[0])).length;
         return `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-weight:bold;font-size:14px"><input type="checkbox" data-sall="1"${on === all.length ? " checked" : ""}>📍 すべてのマーク<span style="font-weight:normal;font-size:11px;color:#888">（${on}/${all.length}）</span></label>`; })()
     + SPOT_KINDS.map(([g, ks], gi) => `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
-      `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}</label>`).join("")
-      + (g === "道" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所<br>🚦🚸 の右上に<span style="color:#8e24aa">●</span>＝地図（OSM）にはなくて、警察のデータ（JARTIC）から足した信号・横断歩道（ルートでも使うよ）</div>' : "") + "</div></div>").join("");
+      `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}${spotSw(k)}</label>`).join("")
+      + (g === "標識" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所<br>🚦🚸 の右上に<span style="color:#8e24aa">●</span>＝地図（OSM）にはなくて、警察のデータ（JARTIC）から足した信号・横断歩道（ルートでも使うよ）</div>' : "") + "</div></div>").join("");
   for (const el of $("spotBox").querySelectorAll("[data-sg]")) { const ks = SPOT_KINDS[+el.dataset.sg][1]; el.indeterminate = !el.checked && ks.some(x => spotOn.has(x[0])); }   // 一部だけオンのときは「－」
   { const el = $("spotBox").querySelector("[data-sall]"); if (el) el.indeterminate = !el.checked && spotOn.size > 0; }
   try { mkKindsShow(); } catch {}   // 🏆 チャレンジの「📍 マークを回る」に、いま回るものを出す
@@ -5485,7 +5494,7 @@ $("mkGo").onclick = mkTour;
 // どちらも、画面を指1本分（48px・引いたときは64px）のマスに分けて、マスごとに1個だけ（有名なもの → 近いもの の順にえらぶ）
 // 道・車止めのマーク（横断歩道・信号・階段・柵…）は、ズーム16より拡大したときだけ、見えている所に間引かずぜんぶ出す
 // （引いたときに間引くと、出たり消えたりしてかえってわかりにくいので）
-const ROAD_GROUPS = ["道"];   // MZ("spot") より引いたらマークは出さない（全体図がごちゃごちゃしないように）
+const ROAD_GROUPS = ["標識"];   // MZ("spot") より引いたらマークは出さない（全体図がごちゃごちゃしないように）
 const SPOT_ROAD = new Set(SPOT_KINDS.filter(g => ROAD_GROUPS.includes(g[0])).flatMap(g => g[1].map(x => x[0])));
 async function spotUpdate(force) {
   if (spotHide) return;   // かくし中は読みも描きもしない
