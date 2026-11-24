@@ -2,7 +2,7 @@
 // 設定（cfg）はページ側から渡される。DEFAULT_CFG がおすすめ値
 const DEFAULT_CFG = {
   pen: {                 // 1m を何m分と数えるか（大きいほど避ける）。"no" は通らない
-    living_street: 1, residential: 1, service: 1.2, unclassified: 1.2, cycleway: 1,
+    living_street: 1, residential: 1, service: 1.2, unclassified: 1, cycleway: 1,
     tertiary: 5, secondary: 8, primary: 8, trunk: 8,
     footway: 3, pedestrian: 3,   // 歩道は 11/21 に ×5→×3、歩行者天国・広場は ×1.5→×3 path: 1.5, track: 1.5,
   },
@@ -114,45 +114,60 @@ function wayNoWhy(t, cfg) {
   if (isUnpaved(t) && cfg.unpaved === "no") return "砂利・土の道（設定：通らない）";
   return `${KIND_JA[b] || b}（設定：通らない）`;
 }
+// 倍率の数えかた（11/24・ユーザーと決めた）：「なぜいやか」の理由ごとに分けて、
+//   同じ理由の中は いちばん大きいのだけ（Math.max）、ちがう理由どうしは 足し算：倍率 ＝ 1 ＋ Σ（理由ごとの倍率 − 1）
+//   🚶 ppl 人が多い：歩く道（歩道・歩行者天国）・公園の中・駅の通路・霊園・団地
+//   🚗 car 車が多い：車の道（細い車道・駐車場・一般道・県道・国道。4車線以上は ×1.5）
+//   🪨 rgh 走りにくい：小道・農道・階段・砂利・舗装不明・歩道橋・地下道・🪜階段？・⛰急坂？
+//   🚧 krb 段差・柵：歩道がとなりにある車道
+//   🏠 prv 入りにくい：私道・家の前・駐車場の中
+//   🚲 bik 自転車道の倍率
+// （前は かけ算で、歩道×3 × 公園×5 ＝ ×15 みたいに 同じ理由を2回数えて きつすぎた）
+// へらすほう（旧街道・👍通りたい・👣足あと）と ⚠通りたくない・一方通行の逆向きは これまでどおり 最後に かけ算
+const HW_WHY = { footway: "ppl", pedestrian: "ppl", corridor: "ppl", path: "rgh", track: "rgh", bridleway: "rgh", steps: "rgh", cycleway: "bik" };
+const whySum = r => { let s = 1; for (const k in r) s += r[k] - 1; return s; };
+const whyAdd = (r, k, v) => { v = +v || 1; if (!(r[k] >= v)) r[k] = v; return r; };
+// → [倍率, 名前, 理由ごとの倍率 {ppl,car,…}, かけ算の分（旧街道）] か null（通らない）
 function wayCost(t, cfg) {
-  const hw = t.highway, b = BASE[hw] || hw;
-  let p, name = KIND_JA[b] || b;
+  const hw = t.highway, b = BASE[hw] || hw, r = {};
+  let name = KIND_JA[b] || b, kd = 0, km = 1;
   // 「歩道」「小道」なのに階段っぽい印（段の数・自転車やベビーカーのスロープ・名前に階段）があるものは階段あつかい
   const stairy = FOOTLIKE.has(hw) && hw !== "steps" && (t.step_count || t["ramp:bicycle"] || t["ramp:stroller"] || /階段|石段/.test(t.name || ""));
   if (hw === "steps" || stairy) {
     const brR = t["br:ramp"] && t["ramp:bicycle"] !== "no" && (cfg.brSteps ?? "ramp") === "ramp";   // 🌉 橋の歩道の出入り口の階段：スロープつきとみなす
     if (cfg.steps === "no" && !brR) return null;
     if (cfg.steps === "ramp" && t["ramp:bicycle"] !== "yes" && !brR) return null;
-    p = cfg.steps === "yes" ? 5 : 8;
+    whyAdd(r, "rgh", cfg.steps === "yes" ? 5 : 8);
     name = cfg.steps === "yes" ? "階段" : t["ramp:bicycle"] === "yes" ? "自転車スロープ付き階段" : "橋の出入り口の階段（スロープつき？）";
   } else if (CYCLE_OK.has(hw) && t.bicycle === "designated") {
     // 自転車の通行指定がある歩道・小道・農道（川べりのサイクリングロードに多い）＝自転車道あつかい
-    p = cfg.pen.cycleway ?? 1; name = "自転車道";
+    const p = cfg.pen.cycleway ?? 1; name = "自転車道";
     if (p === "no") return null;
+    whyAdd(r, "bik", p);
   } else {
-    p = cfg.pen[b] ?? OTHER_PENALTY;
+    let p = cfg.pen[b] ?? OTHER_PENALTY;
     if (p === "no") return null;
     if (lanesOf(t) >= 2 && p > 1) p *= 1.5;
-    const kd = kodoOf(t);
-    if (kd) {
-      const km = Math.min(1, +cfg.kodo || 1);
-      p *= kd === 2 ? km : Math.sqrt(km);
-      name += kd === 2 ? "・旧街道" : "・旧道";
-    }
+    whyAdd(r, HW_WHY[b] || "car", p);
+    kd = kodoOf(t);
   }
   if (FOOTLIKE.has(hw) && t.bicycle !== "designated" && !t["jar:nbside"] && !t["br:side"] && (yes(t.bridge) || yes(t.tunnel))) {   // jar:nbside：自転車通行止めの橋の歩道・br:side：車の橋にそう歩道（どちらも歩道橋ではない）
     const bm = yes(t.bridge) ? cfg.bridge : (cfg.tunnel ?? cfg.bridge);
     if (bm === "no") return null;
-    p *= bm; name = yes(t.bridge) ? "歩道橋" : "地下道";
+    whyAdd(r, "rgh", bm); name = yes(t.bridge) ? "歩道橋" : "地下道";
   }
   const u = isUnpaved(t);
   if (u) {
     if (u === "sure" && cfg.unpaved === "no") return null;
     const m = cfg.unpaved === "no" ? 20 : cfg.unpaved;
-    p *= u === "sure" ? m : Math.max(1, Math.sqrt(m));
+    whyAdd(r, "rgh", u === "sure" ? m : Math.max(1, Math.sqrt(m)));
     name = u === "sure" ? "砂利・土の道" : "舗装不明の小道";
   }
-  return [p, name];
+  if (kd) {   // 旧街道は へらすほうなので 最後にかけ算
+    km = Math.min(1, +cfg.kodo || 1); km = kd === 2 ? km : Math.sqrt(km);
+    name += kd === 2 ? "・旧街道" : "・旧道";
+  }
+  return [whySum(r) * km, name, r, km];
 }
 const R = 6371000, RAD = Math.PI / 180;
 function hav(la1, lo1, la2, lo2) {
@@ -363,41 +378,42 @@ function buildGraph(osm, cfg, onProg) {
     if (t["jar:nb"] === "1" || t["jar:nb"] === "ta") { no((t["jar:nbk"] === "pw" ? "🚶 歩行者用道路" : "🚳 自転車通行止め") + (t["jar:nb"] === "ta" ? "（警察のデータ・いまは規制の時間）" : "（警察のデータ）")); continue; }   // 🚳 自転車通行止め（警察のデータ・一日中）：通らない（「横断する道」としては上で数えている）
     const wc = wayCost(t, cfg);
     if (!wc) { if (DBGW) no(wayNoWhy(t, cfg)); continue; }
-    let [pen, name] = wc;
+    let [pen, name, why, km] = wc;
+    const whyUp = (k, v) => { whyAdd(why, k, v); pen = whySum(why) * km; };   // 理由をふやして 倍率を数えなおす
     if (t["jar:nb"] === "t") name += t["jar:nbk"] === "pw" ? "・歩行者用道路（いまは時間外）" : "・自転車通行止め（いまは時間外）";   // 時間つきで いまは時間外：ふつうに通る
     if (stationGrid && cfg.station !== 1 && isStaPath(t, nd)) {   // 駅の中の通路
       if (stPen === null) { no("駅の中の通路（設定：通らない）"); continue; }
-      pen = Math.max(pen, cfg.pen.footway || 1) * stPen; name = "駅の通路";
+      whyAdd(why, "ppl", +cfg.pen.footway || 1); whyUp("ppl", stPen); name = "駅の通路";
     }
     // 🏫 学校・病院・工場などの敷地の中の通路は通らない（ふつうの道路と、自転車OKの印がある道はのぞく）
     if (areaGrids && areaGrids.closed && !BIG_HW.has(hw) && !["residential", "unclassified", "living_street"].includes(hw)
       && !["yes", "permissive", "designated"].includes(t.access) && !["yes", "permissive", "designated"].includes(t.bicycle) && inArea("closed", nd)) { no("学校・病院・工場などの敷地の中"); continue; }
     if (areaGrids && cfg.cemetery !== 1 && !BIG_HW.has(hw) && inArea("cemetery", nd)) {   // 霊園・墓地の中の道
       if (cemPen === null) { no("霊園・墓地の中（設定：通らない）"); continue; }
-      pen *= cemPen; name = "霊園の中";
+      whyUp("ppl", cemPen); name = "霊園の中";
     }
     // 公園の中の道（園路・交通公園のコースなど）。川ぞいのサイクリングロードみたいな
     // 長い（400m以上）自転車道と、ふつうの道（住宅街の道など）は、公園の中でもそのまま通る
     else if (areaGrids && areaGrids.park && cfg.park !== 1 && !BIG_HW.has(hw) && !t["br:side"] && !t["jar:nbside"] && !["yes", "designated"].includes(t.bicycle) && inArea("park", nd)   // 🌉 橋の歩道は 下が河川敷の公園でも 公園の道ではない（木根川橋）。🚲 自転車OKの道（bicycle=yes・designated）も 園路ではない（千住新橋の千住がわ：橋から土手へおりる 417623838 が 河川敷の公園の囲みに入っていた）
       && !(["residential", "unclassified", "living_street"].includes(hw) || (hw === "cycleway" && wayLen(nd) >= 400))) {
       if (parkPen === null) { no("公園の中（設定：通らない）"); continue; }
-      pen = Math.max(pen, 1) * parkPen; name = "公園の中";
+      whyUp("ppl", parkPen); name = "公園の中";
     }
     // 🏠 私道っぽい道：家の敷地に入る道（service=driveway）・「住んでいる人と用事のある人だけ」（access=destination など）・駐車場の中の道
     if (prvPen !== 1 && !BIG_HW.has(hw) && (t.service === "driveway" || ["destination", "customers", "delivery"].includes(t.access) || ["destination", "customers", "delivery"].includes(t.vehicle)
       || (hw === "service" && areaGrids && areaGrids.parking && inArea("parking", nd)))) {
       if (prvPen === null) { no("私道・駐車場（設定：通らない）"); continue; }
-      pen = Math.max(pen, 1) * prvPen; name = "私道・駐車場";
+      whyUp("prv", prvPen); name = "私道・駐車場";
     }
     // 🏢 団地の中の道（棟のあいだの通路・駐車場の道など）。団地の中を通りぬける ふつうの道路（住宅街の道など）は そのまま
     if (areaGrids && areaGrids.danchi && danPen !== 1 && !BIG_HW.has(hw) && !["residential", "unclassified", "tertiary", "tertiary_link"].includes(hw)
       && !(hw === "cycleway" && wayLen(nd) >= 400) && inArea("danchi", nd)) {
       if (danPen === null) { no("団地の中（設定：通らない）"); continue; }
-      pen = Math.max(pen, 1) * danPen; name = "団地の中";
+      whyUp("ppl", danPen); name = "団地の中";
     }
     if (["footway", "path", "pedestrian", "cycleway", "track"].includes(hw) && nd.some(i => ntags.get(i)?.railway === "crossing")) {
       let wl = 0; for (let i = 1; i < nd.length; i++) wl += d(nd[i - 1], nd[i]);
-      if (wl < 200) { pen = 1.0; name = "歩行者・自転車用踏切"; }
+      if (wl < 200) { pen = 1.0; for (const k in why) delete why[k]; km = 1; name = "歩行者・自転車用踏切"; }
     }
     // 一方通行：🚓 警察のデータ（jarApply の jar:ow・jar:owb）があれば それを優先（向き・自転車は除くか）。なければ OSM
     let ow = t.oneway;
@@ -416,10 +432,12 @@ function buildGraph(osm, cfg, onProg) {
     for (let i = 1; i < nd.length; i++) {
       const u = nd[i - 1], v = nd[i], L = d(u, v);
       inGraph[u] = 1; inGraph[v] = 1;
-      const m = swRoad && (swAll || hasSW(u, v)) ? swPen : 1;   // 歩道のある道は避ける
+      const m = swRoad && (swAll || hasSW(u, v)) ? swPen : 1;   // 歩道のある道は避ける（道の倍率と くらべて 大きいほう）
       if (m > 1) swLen += L;
-      if (fwd) adj[u].push({ v, c: L * (rev ? rp : pen) * m, L, l: L0, k: rev ? rname : name, w: e.id, b: lift, hw });
-      if (back) adj[v].push({ v: u, c: L * (rev ? pen : rp) * m, L, l: L0, k: rev ? name : rname, w: e.id, b: lift, hw });
+      const pm = m > 1 ? (whySum(why) + m - 1) * km : pen, rpm = pm * rp / pen, rg = why.rgh || 1;   // 🚧 段差・柵の分を足す。rp/pen：一方通行の逆向きの分（かけ算のまま）
+      // sm：足し算した倍率（旧街道の分の前）・rg：🪨 走りにくい の倍率（あとで 🪜階段？・⛰急坂？ と くらべる）
+      if (fwd) adj[u].push({ v, c: L * (rev ? rpm : pm), sm: pm / km, rg, L, l: L0, k: rev ? rname : name, w: e.id, b: lift, hw });
+      if (back) adj[v].push({ v: u, c: L * (rev ? pm : rpm), sm: pm / km, rg, L, l: L0, k: rev ? name : rname, w: e.id, b: lift, hw });
     }
   }
   // 大きい道の向き（横断かどうか＝道の反対側に出るかを判定するため）
@@ -2312,8 +2330,11 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
         if (!fix) marks.push([+mla.toFixed(6), +mlo.toFixed(6), stair ? 1 : 0, Math.round(gr * 100), +dh.toFixed(1), Math.round(L), why]); }   // 階段じゃない／階段だった の印がある道は マークを出さない（印と同じ所に かさなるので）
       for (let i = 1; i < path.length; i++) for (const [u, v] of [[path[i - 1], path[i]], [path[i], path[i - 1]]]) {
         const e = edge(u, v); if (!e) continue;
-        if (stair) { e.c *= stK === "no" ? 1e4 : (+stK || 1); e.k = "階段？"; }
-        else e.c *= +slK || 1;
+        // 🪨 走りにくい の理由：前の倍率（rg）と くらべて 大きいほうにして、ほかの理由とは 足し算のまま
+        const K = stair ? stK : slK, rg = e.rg || 1, sm = e.sm || e.c / e.L;
+        if (K === "no") e.c *= 1e4;
+        else if ((+K || 1) > rg) { const s2 = sm + (+K || 1) - rg; e.c *= s2 / sm; e.sm = s2; e.rg = +K; }
+        if (stair) e.k = "階段？";
       }
     }
   }
