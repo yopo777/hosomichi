@@ -15,7 +15,7 @@ const DEFAULT_CFG = {
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ（アプリではえらべない・分析用）
   park: "no",            // 公園の中の道（園路など）（11/24 から はじめは 通らない。〰川べりの道は のぞく）："no"=通らない / 倍率 / 1=気にしない
   cemetery: "no",         // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
-  station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
+  station: "no",          // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
   stepsGuess: 30,        // 🪜 階段？（標高で見つけた、印のない階段かも）：倍率 or "no"（1＝気にしない）
   steep: 3,              // ⛰ 急坂？（標高で10%より急な短い道）：倍率（1＝気にしない）
@@ -273,6 +273,7 @@ async function fetchOSM(b, prog, start = 0, quick = false, tag = "") {
 }
 
 function buildGraph(osm, cfg, onProg) {
+  cfg = { ...cfg, privy: "no", danchi: "no", cemetery: "no" };   // 私道・駐車場・団地・霊園の中は いつも 通らない（設定の項目はなくした。古い設定・共有URLが来ても そろえる）
   cfg = { ...DEFAULT_CFG, ...cfg, pen: { ...DEFAULT_CFG.pen, ...(cfg && cfg.pen) } };
   const idx = new Map(), lat = [], lon = [], ntags = new Map(), ids = [];
   for (const e of osm.elements) if (e.type === "node") {
