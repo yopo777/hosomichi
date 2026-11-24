@@ -4128,12 +4128,12 @@ const nbName = e => e.k === 1 ? "歩行者用道路" : e.t === "x" ? "通行止�
 const nbWk = w => !w ? "" : w === "12345" ? "平日" : w === "123456" ? "日曜・休日をのぞく" : w === "0" ? "日曜" : w === "06" ? "土日" : "曜日の決まりあり";
 const nbWhen = (h, w) => [nbWk(w), nbHm(h)].filter(Boolean).join(" ");
 // 📍マークを出すズーム：マークのタブの「マークを表示するレベル」「スポットを表示するレベル」で ぜんぶまとめて ずらす（[ふつうのズーム, いちばん引いてよいズーム]）
-const MK_ZB = { spot: [14, 11], road: [16, 13], ow: [16, 14], nb: [15, 12], ox: [16, 13], jx: [16, 13], rwl: [14, 12], rwa: [12, 9], riv: [12, 9], slope: [16, 13], dbg: [17, 14], jar: [16, 13], pt: [13, 10] };
-const MK_LV = [["近くだけ", 1], ["ふつう", 0], ["ひろめ", -1], ["もっとひろめ", -2], ["いつも", null]];   // いつも＝ズームでは消さない（読むマスの数の上限まで。重い）
+const MK_FLOOR = { spot: 11, road: 13, ow: 14, nb: 12, ox: 13, jx: 13, rwl: 12, rwa: 9, riv: 9, slope: 13, dbg: 14, jar: 13, pt: 10 };   // これより引いては出さない（道のデータを読む物は 重いので）
+const MK_LV = [["近くだけ", 18], ["ふつう", 16], ["ひろめ", 15], ["もっとひろめ", 14], ["いつも", null]];   // [名前, 出すズーム]。マーク・スポット・デバッグ ぜんぶ同じズーム   // いつも＝ズームでは消さない（読むマスの数の上限まで。重い）
 // 📍マーク（道の線・はんい・川・標識・休けい…・デバッグ）は 📍マークのタブの「マークを表示するレベル」、📌スポット（⭐🏠🔒🚫⚠）は 📌スポットのタブの「スポットを表示するレベル」
 const MK_KEY = k => k === "pt" ? "hosomichi_ptlv" : "hosomichi_mklv";
 const mkAll = () => lsGet("hosomichi_mklv", 1) === 4, MKCAP = () => mkAll() ? 4 : 1;   // いつも のときは 読むマスの上限を4倍
-function MZ(k) { const lv = lsGet(MK_KEY(k), 1); if (lv === 4) return 0; const o = (MK_LV[lv] || MK_LV[1])[1]; return Math.max(MK_ZB[k][1], MK_ZB[k][0] + o); }
+function MZ(k) { const lv = lsGet(MK_KEY(k), 1); if (lv === 4) return 0; return Math.min(19, Math.max(MK_FLOOR[k] || 0, (MK_LV[lv] || MK_LV[1])[1])); }
 const nbLayer = L.layerGroup().addTo(map); let nbMapT = null, nbMapId = 0;
 const NB_SIGN = '<svg viewBox="0 0 40 40" width="30" height="30" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#d40000" stroke-width="4"/>'
   + '<g fill="none" stroke="#1b2a4a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="24.5" r="5"/><circle cx="27.5" cy="24.5" r="5"/><path d="M12.5 24.5 L17 16.5 H25 L27.5 24.5 M17 16.5 L21 24.5 L25 16.5 M15 14 H19 M25 16.5 L24 12.5 H27"/></g>'
