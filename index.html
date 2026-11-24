@@ -209,7 +209,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.2238</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.2245</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -342,7 +342,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
     <div id="tabTrk" style="display:none"></div>
     <div id="tabLog" style="display:none">
-      <div id="dtabs" class="ttabs"><button data-d="tool" class="on">🛠 ツール</button><button data-d="log">📜 ログ</button><button data-d="issue">📝 課題</button><button data-d="hl">🎨 ハイライト</button></div>
+      <div id="dtabs" class="ttabs"><button data-d="tool" class="on">🛠 ツール</button><button data-d="hl">🎨 ハイライト</button><button data-d="log">📜 ログ</button><button data-d="issue">📝 課題</button></div>
       <div id="dbgIssue" style="display:none"></div>
       <div id="dbgTool">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
@@ -358,6 +358,12 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
         <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="simWipe" style="font-size:12px;color:#c5221f">🧪 ためしの軌跡と足あとを消す（本物はのこす）</button></div>
+
+      </div>
+      <div style="font-size:11px;color:#666;margin-bottom:6px">🧪 ためしの現在地は、地図を長おしで決めるよ<span class="hq">?</span><div class="hd">🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）→「ここを現在地にする」で決めるよ。もどすときも長おし →「本当の現在地にもどす」</div></div>
+      </div>
+      <div id="dbgHl" style="display:none"><div id="hlBox" style="margin-top:6px;font-size:12px"></div>
+<div style="margin-top:10px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:12px"><b>🧪 道のデータ・🚓 警察のデータ</b>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="dbgOn">🧪 道のデータを見る（拡大したときだけ）<small style="color:#999;margin-left:4px">Ctrl+Alt+Z</small></label>
         <details style="margin:2px 0 0 22px"><summary style="font-size:12px;color:#1a73e8;cursor:pointer">🎚 道の種類ごとに出す・出さない</summary><div id="dbgKinds" style="margin-top:2px"></div></details>
         <div id="dbgInfo" style="font-size:11px;color:#666;margin:2px 0 0 22px">OSMの地図データ：線＝道（車線で色分け：赤＝4車線・オレンジ＝2車線・シアン＝そのほか）／四角：緑＝信号・青＝横断歩道・半分ずつ＝信号つきの横断歩道・白に青わく＝しま模様のない渡る所（横断歩道ではない）。タップでタグを見られるよ</div>
@@ -368,11 +374,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="jarSigOn">🚦🚸 信号・横断歩道を「地図の道にあてた結果」で色分け<small style="color:#999;margin-left:4px">Ctrl+Alt+V</small></label>
         <div style="font-size:11px;color:#666;margin:2px 0 0 44px">まる：灰色＝OSMにも信号がある（30m以内・何もしない）・<b style="color:#0a0">緑</b>＝OSMにないので 交差点に足す・<b style="color:#f29900">オレンジ</b>＝近くに交差点が2つ以上 → 近いほうに足す・<b style="color:#1a73e8">青</b>＝交差点がない（押しボタン信号など）→ いちばん近い大きい道の点に足す・<b style="color:#d93025">赤</b>＝近くに大きい道がない（使わない）。細い点線の先の小さい点が 信号をつけた所<br>四角（横断歩道）：灰色＝OSMにも横断歩道か信号がある（20m以内）・白＝交差点の横断歩道（どの道を渡るかわからないので使わない）・<b style="color:#1a73e8">青</b>＝道のとちゅうの横断歩道 → いちばん近い2車線以上の道の点に横断歩道として足す・<b style="color:#d93025">赤</b>＝近くに2車線以上の道がない（使わない）</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
-
-      </div>
-      <div style="font-size:11px;color:#666;margin-bottom:6px">🧪 ためしの現在地は、地図を長おしで決めるよ<span class="hq">?</span><div class="hd">🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）→「ここを現在地にする」で決めるよ。もどすときも長おし →「本当の現在地にもどす」</div></div>
-      </div>
-      <div id="dbgHl" style="display:none"><div id="hlBox" style="margin-top:6px;font-size:12px"></div></div>
+</div></div>
       <div id="dbgLog" style="display:none">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
         <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="lgAuto" checked>自動スクロール</label></div>
@@ -3857,7 +3859,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1124.2238", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1124.2245", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5854,7 +5856,7 @@ function dbgReq() {
   clearTimeout(dbgT);
   if (!$("dbgOn").checked) { map.removeLayer(dbgLayer); dbgLegend(false); return; }
   dbgLayer.addTo(map);
-  if (map.getZoom() < MZ("dbg")) { dbgLayer.clearLayers(); setMsg(`🧪 道のデータ：もっと拡大してね（ズーム${MZ("dbg")}以上・📍マークの「マークを表示するレベル」で変えられるよ）`); return; }
+  if (map.getZoom() < MZ("dbg")) { dbgLayer.clearLayers(); setMsg(`🧪 道のデータ：もっと拡大してね（ズーム${MZ("dbg")}以上・🎨ハイライトの「ハイライトを表示するレベル」で変えられるよ）`); return; }
   dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { bike: spotOn.has("navi") || spotOn.has("blane2"), area: RW_AREA.some(k => spotOn.has(k)) } }); }, 300);
 }
 // 🧪 道のデータの色（細い道を 種類で分ける）。c 色・w 太さ・dash 点線・alt しま模様のもう1色（下に alt、上に c の破線）
@@ -6013,13 +6015,13 @@ function jarReq() {
   clearTimeout(jarT);
   if (!$("jarOn").checked) { map.removeLayer(jarLayer); return; }
   jarLayer.addTo(map);
-  if (map.getZoom() < MZ("jar")) { jarLayer.clearLayers(); setMsg(`🚓 警察の交通規制：もっと拡大してね（ズーム${MZ("jar")}以上・📍マークの「マークを表示するレベル」で変えられるよ）`); return; }
+  if (map.getZoom() < MZ("jar")) { jarLayer.clearLayers(); setMsg(`🚓 警察の交通規制：もっと拡大してね（ズーム${MZ("jar")}以上・🎨ハイライトの「ハイライトを表示するレベル」で変えられるよ）`); return; }
   jarT = setTimeout(jarDraw, 300);
 }
 async function jarDraw() {
   const id = ++jarId, b = map.getBounds(), keys = [];
   for (let i = Math.floor(b.getSouth() * 100); i <= Math.floor(b.getNorth() * 100); i++) for (let j = Math.floor(b.getWest() * 100); j <= Math.floor(b.getEast() * 100); j++) keys.push(`${i}_${j}`);
-  if (keys.length > 30 * MKCAP()) { jarLayer.clearLayers(); setMsg("🚓 警察の交通規制：もっと拡大してね"); return; }
+  if (keys.length > 30 * HLCAP()) { jarLayer.clearLayers(); setMsg("🚓 警察の交通規制：もっと拡大してね"); return; }
   let ds;
   try { ds = (await Promise.all(keys.map(jarTile))).filter(Boolean); } catch (e) { if (id === jarId) setMsg("🚓 警察の交通規制が読めなかった：" + e.message, true); return; }
   if (id !== jarId || !$("jarOn").checked) return;
@@ -6998,8 +7000,8 @@ const nbWhen = (h, w) => [nbWk(w), nbHm(h)].filter(Boolean).join(" ");
 const MK_FLOOR = { spot: 11, road: 13, ow: 14, nb: 12, ox: 13, jx: 13, rwl: 12, rwa: 9, riv: 9, slope: 13, dbg: 14, jar: 13, pt: 10 };   // これより引いては出さない（道のデータを読む物は 重いので）
 const MK_LV = [["近くだけ", 18], ["ふつう", 16], ["ひろめ", 15], ["もっとひろめ", 14], ["いつも", null]];   // [名前, 出すズーム]。マーク・スポット・デバッグ ぜんぶ同じズーム   // いつも＝ズームでは消さない（読むマスの数の上限まで。重い）
 // 📍マーク（道の線・はんい・川・標識・休けい…・デバッグ）は 📍マークのタブの「マークを表示するレベル」、📌スポット（⭐🏠🔒🚫⚠）は 📌スポットのタブの「スポットを表示するレベル」
-const MK_KEY = k => k === "pt" ? "hosomichi_ptlv" : ["rwl", "rwa", "riv"].includes(k) ? "hosomichi_hllv" : "hosomichi_mklv";   // 🎨 ハイライト（道の線・はんい・川）は ハイライトのレベル。はじめは マークのレベルと同じ
-const mkAll = () => lsGet("hosomichi_mklv", 1) === 4, MKCAP = () => mkAll() ? 4 : 1;   // いつも のときは 読むマスの上限を4倍
+const MK_KEY = k => k === "pt" ? "hosomichi_ptlv" : ["rwl", "rwa", "riv", "dbg", "jar"].includes(k) ? "hosomichi_hllv" : "hosomichi_mklv";   // 🎨 ハイライト（道の線・はんい・川）は ハイライトのレベル。はじめは マークのレベルと同じ
+const mkAll = () => lsGet("hosomichi_mklv", 1) === 4, MKCAP = () => mkAll() ? 4 : 1, HLCAP = () => lsGet("hosomichi_hllv", lsGet("hosomichi_mklv", 1)) === 4 ? 4 : 1;   // いつも のときは 読むマスの上限を4倍
 function MZ(k) { const lv = lsGet(MK_KEY(k), MK_KEY(k) === "hosomichi_hllv" ? lsGet("hosomichi_mklv", 1) : 1); if (lv === 4) return 0; return Math.min(19, Math.max(MK_FLOOR[k] || 0, (MK_LV[lv] || MK_LV[1])[1])); }
 const nbLayer = L.layerGroup().addTo(map); let nbMapT = null, nbMapId = 0;
 const NB_SIGN = '<svg viewBox="0 0 40 40" width="30" height="30" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#d40000" stroke-width="4"/>'
@@ -8351,13 +8353,13 @@ const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 const HL_GROUPS = new Set(["道", "はんい・川"]);   // 🎨 デバッグの「ハイライト」タブに出す グループ
 function renderSpots() {
   const lvRow = (nm, key, help) => { const lv = lsGet(key, 1); return `<div style="margin:2px 0 4px">${nm}：` + MK_LV.map(([t], i) => `<label style="margin-right:8px;white-space:nowrap"><input type="radio" name="${key}" data-lvkey="${key}" data-lv="${i}"${lv === i ? " checked" : ""}> ${t}</label>`).join("") + `<span class="hq">?</span><div class="hd">${help}</div></div>`; };
-  $("spotBox").innerHTML = lvRow("マークを表示するレベル", "hosomichi_mklv", `この📍マークのタブのもの（🎨ハイライトは のぞく）と デバッグの表示を、地図をどれくらい引いても出すか まとめて決めるよ。ひろくすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ（スマホだと電池も）。いまのレベルだと：標識 ズーム${MZ("road")}から・休けい／ごはんなど ${MZ("spot")}から${mkAll() ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ。うんと引いたときの休けい／ごはんなどは 有名なものだけに間引いたデータだよ）" : ""}`)
+  $("spotBox").innerHTML = lvRow("マークを表示するレベル", "hosomichi_mklv", `この📍マークのタブのもの（🎨ハイライトは のぞく）を、地図をどれくらい引いても出すか まとめて決めるよ。ひろくすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ（スマホだと電池も）。いまのレベルだと：標識 ズーム${MZ("road")}から・休けい／ごはんなど ${MZ("spot")}から${mkAll() ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ。うんと引いたときの休けい／ごはんなどは 有名なものだけに間引いたデータだよ）" : ""}`)
     + `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ 地図に出すよ<span class="hq">?</span><div class="hd">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div></div>`
     + (() => { const all = SPOT_KINDS.flatMap(x => x[1]), on = all.filter(x => spotOn.has(x[0])).length;
         return `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-weight:bold;font-size:14px"><input type="checkbox" data-sall="1"${on === all.length ? " checked" : ""}>📍 すべてのマーク<span style="font-weight:normal;font-size:11px;color:#888">（${on}/${all.length}）</span></label>`; })()
     + grp(false);
   const hlv = lsGet("hosomichi_hllv", lsGet("hosomichi_mklv", 1));
-  $("hlBox").innerHTML = lvRow("ハイライトを表示するレベル", "hosomichi_hllv", `道の線・はんい・川を、地図をどれくらい引いても出すか まとめて決めるよ。ひろくすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ。いまのレベルだと：道の線 ズーム${MZ("rwl")}から・はんいと川 ${MZ("rwa")}から${hlv === 4 ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ）" : ""}`)
+  $("hlBox").innerHTML = lvRow("ハイライトを表示するレベル", "hosomichi_hllv", `このタブの道の線・はんい・川・🧪道のデータ・🚓警察の交通規制を、地図をどれくらい引いても出すか まとめて決めるよ。ひろくすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ。いまのレベルだと：道の線 ズーム${MZ("rwl")}から・はんいと川 ${MZ("rwa")}から・🧪道のデータ ${MZ("dbg")}から・🚓警察 ${MZ("jar")}から${hlv === 4 ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ）" : ""}`)
     + `<div style="color:#666;margin:2px 0 4px">道・はんい・川を 地図に色で重ねるよ（走るのに使えるよ）<span class="hq">?</span><div class="hd">チェックしたものだけ 地図に出すよ。線やはんいに 地図のまんなかの＋をかさねるか、タップすると 説明が出るよ</div></div>` + grp(true);
   function grp(hl) { return SPOT_KINDS.map(([g, ks], gi) => HL_GROUPS.has(g) !== hl ? "" : `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}${spotSw(k)}</label>`).join("")
