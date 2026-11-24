@@ -378,7 +378,7 @@ function buildGraph(osm, cfg, onProg) {
     }
     // 公園の中の道（園路・交通公園のコースなど）。川ぞいのサイクリングロードみたいな
     // 長い（400m以上）自転車道と、ふつうの道（住宅街の道など）は、公園の中でもそのまま通る
-    else if (areaGrids && areaGrids.park && cfg.park !== 1 && !BIG_HW.has(hw) && !t["br:side"] && !t["jar:nbside"] && inArea("park", nd)   // 🌉 橋の歩道は 下が河川敷の公園でも 公園の道ではない（木根川橋）
+    else if (areaGrids && areaGrids.park && cfg.park !== 1 && !BIG_HW.has(hw) && !t["br:side"] && !t["jar:nbside"] && !["yes", "designated"].includes(t.bicycle) && inArea("park", nd)   // 🌉 橋の歩道は 下が河川敷の公園でも 公園の道ではない（木根川橋）。🚲 自転車OKの道（bicycle=yes・designated）も 園路ではない（千住新橋の千住がわ：橋から土手へおりる 417623838 が 河川敷の公園の囲みに入っていた）
       && !(["residential", "unclassified", "living_street"].includes(hw) || (hw === "cycleway" && wayLen(nd) >= 400))) {
       if (parkPen === null) { no("公園の中（設定：通らない）"); continue; }
       pen = Math.max(pen, 1) * parkPen; name = "公園の中";
