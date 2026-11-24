@@ -373,7 +373,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin:2px 0 0 22px">各都道府県警察の交通規制データ（ルートでは 横断禁止・一方通行・信号・道のとちゅうの横断歩道を使っているよ）／四角：白＝横断歩道・青＝自転車横断帯・緑＝信号／線：赤＝一方通行（自転車も）・緑の点線＝一方通行（自転車は除く）・矢印＝通ってよい向き・むらさき＝歩行者等横断禁止・灰色＝車両通行帯。タップで中身が出るよ。出典：JARTIC 交通規制情報オープンデータ</div>
         <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="jarSigOn">🚦🚸 信号・横断歩道を「地図の道にあてた結果」で色分け<small style="color:#999;margin-left:4px">Ctrl+Alt+V</small></label>
         <div style="font-size:11px;color:#666;margin:2px 0 0 44px">まる：灰色＝OSMにも信号がある（30m以内・何もしない）・<b style="color:#0a0">緑</b>＝OSMにないので 交差点に足す・<b style="color:#f29900">オレンジ</b>＝近くに交差点が2つ以上 → 近いほうに足す・<b style="color:#1a73e8">青</b>＝交差点がない（押しボタン信号など）→ いちばん近い大きい道の点に足す・<b style="color:#d93025">赤</b>＝近くに大きい道がない（使わない）。細い点線の先の小さい点が 信号をつけた所<br>四角（横断歩道）：灰色＝OSMにも横断歩道か信号がある（20m以内）・白＝交差点の横断歩道（どの道を渡るかわからないので使わない）・<b style="color:#1a73e8">青</b>＝道のとちゅうの横断歩道 → いちばん近い2車線以上の道の点に横断歩道として足す・<b style="color:#d93025">赤</b>＝近くに2車線以上の道がない（使わない）</div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）</label>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="rtHide">🙈 ルートの線をかくす（足あとを見やすく。読みこみなおすと もどるよ）<span style="color:#888;font-size:11px">　Ctrl＋Alt＋Backspace</span></label>
 </div></div>
       <div id="dbgLog" style="display:none">
       <div class="btns" style="margin:4px 0 6px"><button class="ib" id="lgCopy">コピー</button><button class="ib" id="lgClear">クリア</button>
@@ -5428,6 +5428,10 @@ document.addEventListener("keydown", e => {
 // ⌨ 🧪 デバッグの表示を キーボードで切りかえ（11/22）：Ctrl＋Alt＋Z 道のデータ／X アプリの判定／C 警察の交通規制／V 信号・横断歩道を あてた結果で色分け
 document.addEventListener("keydown", e => {
   if (!(e.ctrlKey && e.altKey) || e.metaKey || e.shiftKey || e.repeat) return;
+  if (e.code === "Backspace") {   // Ctrl＋Alt＋Backspace＝🙈 ルートの線をかくす／出す
+    e.preventDefault(); const el = $("rtHide"); el.checked = !el.checked; el.onchange({ target: el });
+    return setMsg(`🙈 ルートの線をかくす：${el.checked ? "オン" : "オフ"}`);
+  }
   const K = { KeyZ: ["dbgOn", "🧪 道のデータを見る"], KeyX: ["dbgJudge", "アプリの判定も出す"], KeyC: ["jarOn", "🚓 警察の交通規制を見る"], KeyV: ["jarSigOn", "🚦🚸 信号・横断歩道を あてた結果で色分け"] }[e.code];
   if (!K) return;
   e.preventDefault();
