@@ -209,7 +209,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1912</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1929</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3725,7 +3725,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1912", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1929", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -7638,7 +7638,7 @@ function spotsTabDraw() {
   const bo = newest(blocks).filter(([b]) => !BLK_SOFT(b.r)), ba = newest(blocks).filter(([b]) => b.r === "a"), bw = newest(blocks).filter(([b]) => b.r === "w"), bk = newest(blocks).filter(([b]) => b.r === "k"), bg = newest(blocks).filter(([b]) => b.r === "n"), by = newest(blocks).filter(([b]) => b.r === "y");
   const plv = lsGet("hosomichi_ptlv", 1);
   T.innerHTML = `<div style="font-size:12px;margin:4px 0 6px">スポットを表示するレベル：` + MK_LV.map(([t], i) => `<label style="margin-right:8px;white-space:nowrap"><input type="radio" name="ptlv" data-ptlv="${i}"${plv === i ? " checked" : ""}> ${t}</label>`).join("")
-    + `<span class="hq">?</span><div class="hd">⭐🏠🔒🚫⚠ の印を、地図をどれくらい引いても出すか決めるよ。いまのレベルだと ズーム${MZ("pt")}から${plv === 4 ? "（いつも＝ズームでは消さないよ）" : ""}。右はしの📍ボタンで かくしているときは レベルに関係なく出さないよ</div></div>`
+    + `<span class="hq">?</span><div class="hd">⭐🏠🔒🚫⚠ と、🪜✕（階段じゃない）・🪜✓（階段だった）の印を ぜんぶまとめて、地図をどれくらい引いても出すか決めるよ。いまのレベルだと ズーム${MZ("pt")}から${plv === 4 ? "（いつも＝ズームでは消さないよ）" : ""}。右はしの📍ボタンで かくしているときは レベルに関係なく出さないよ</div></div>`
     + `<div style="font-size:12px;color:#666;margin:2px 0 4px">📌 名前をタップでその場所へ。長おしで名前をかえるよ<span class="hq">?</span><div class="hd">📌 登録した地点の一覧だよ。名前をタップでその場所へ、長おし（パソコンは右クリック）で名前をかえられるよ。つけるのは 地図を長おしから。ぜんぶ この端末の中だけ</div></div>`
     + sec(`⭐ お気に入り ${favs.length}`, "よく行く所。SNSでは消さないよ", newest(favs).map(([q, i]) => row("⭐", q.name || "お気に入り", "f" + i)).join(""))
     + sec("🏠 家", "SNSでは まわりを消すよ。「家まで約○km」にも使うよ", home ? row("🏠", homeName || "家", "h") : "")
@@ -8501,7 +8501,7 @@ const favLayer = L.layerGroup().addTo(map);
 function ptShow() { const off = spotHide || map.getZoom() < MZ("pt"); for (const ly of [homeLayer, secLayer, favLayer, blkLayer]) { if (off) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }  blkFixShow(); }
 map.on("zoomend", ptShow);   // 📌スポットを表示するレベル より引いたら ⭐🏠🔒🚫⚠ をかくす
 $("tabPts").addEventListener("change", e => { if (e.target.dataset.ptlv == null) return; lsSet("hosomichi_ptlv", +e.target.dataset.ptlv); spotsTabDraw(); ptShow(); });
-function blkFixShow() { const on = !spotHide && map.getZoom() >= MZ("slope"); if (!on) map.removeLayer(blkFixLayer); else if (!map.hasLayer(blkFixLayer)) blkFixLayer.addTo(map); }   // 🚫⚠🪜✕🪜✓ の印は 🪜⛰マークと同じズームから
+function blkFixShow() { const on = !spotHide && map.getZoom() >= MZ("pt"); if (!on) map.removeLayer(blkFixLayer); else if (!map.hasLayer(blkFixLayer)) blkFixLayer.addTo(map); }   // 🚫⚠🪜✕🪜✓ の印も 📌スポットを表示するレベルで出す
 map.on("zoomend", blkFixShow); blkFixShow();   // 右はしの📍で かくす／出す
 function drawFavs() {
   favLayer.clearLayers();
