@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1545</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1742</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3724,7 +3724,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1545", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1742", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5712,7 +5712,6 @@ $("evTest").onclick = () => {   // ためしに聞く（10秒）
 $("ft").onclick = () => { footSet(!footOn); if ($("footOn")) $("footOn").checked = footOn; };
 // 🧪 道のデータを見る：保存してある道路データを そのまま地図に描く（点・線・タグ・大きい道を渡る判定）
 const dbgLayer = L.layerGroup(), dbgRend = L.canvas({ padding: 0.3 }); let dbgId = 0, dbgT = null;
-const DBG_Z = 17;
 function dbgTags(kind, id, t, extra) {
   const osm = id > 0 ? `<a href="https://www.openstreetmap.org/${kind}/${id}" target="_blank">OSMで見る</a>` : "（マスの中だけの点）";
   return `<div style="font-size:12px;max-height:240px;overflow:auto"><b>${kind === "way" ? "線" : "点"} ${id > 0 ? id : ""}</b> ${osm}${extra ? "<br>" + extra : ""}<table style="border-collapse:collapse;margin-top:4px">`
@@ -5722,7 +5721,7 @@ function dbgReq() {
   clearTimeout(dbgT);
   if (!$("dbgOn").checked) { map.removeLayer(dbgLayer); dbgLegend(false); return; }
   dbgLayer.addTo(map);
-  if (map.getZoom() < DBG_Z) { dbgLayer.clearLayers(); setMsg(`🧪 道のデータ：もっと拡大してね（ズーム${DBG_Z}以上）`); return; }
+  if (map.getZoom() < MZ("dbg")) { dbgLayer.clearLayers(); setMsg(`🧪 道のデータ：もっと拡大してね（ズーム${MZ("dbg")}以上・📍マークの「マークを出す広さ」で変えられるよ）`); return; }
   dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { bike: spotOn.has("navi") || spotOn.has("blane2"), area: RW_AREA.some(k => spotOn.has(k)) } }); }, 300);
 }
 // 🧪 道のデータの色（細い道を 種類で分ける）。c 色・w 太さ・dash 点線・alt しま模様のもう1色（下に alt、上に c の破線）
@@ -5836,7 +5835,7 @@ function dbgDraw(m) {
 }
 $("dbgOn").onchange = dbgReq; $("dbgJudge").onchange = () => { if ($("dbgOn").checked) dbgReq(); };  map.on("moveend zoomend", () => { if ($("dbgOn").checked) dbgReq(); });
 // 🚓 警察の交通規制（JARTIC オープンデータ）を見る：hosomichi-data/j/{緯度×100}_{経度×100}.json.gz（tools/jartic_pack.py で作る）。観察用（ルートには使わない）
-const jarLayer = L.layerGroup(), jarRend = L.canvas({ padding: 0.3 }), jarTiles = new Map(), JAR_Z = 16; let jarId = 0, jarT = null;
+const jarLayer = L.layerGroup(), jarRend = L.canvas({ padding: 0.3 }), jarTiles = new Map(); let jarId = 0, jarT = null;
 function jarTile(k) {
   if (!jarTiles.has(k)) jarTiles.set(k, (async () => {
     const r = await tfetch(new URL(`../hosomichi-data/j/${k}.json.gz`, location.href), {}, 15000);
@@ -5865,7 +5864,7 @@ function jarReq() {
   clearTimeout(jarT);
   if (!$("jarOn").checked) { map.removeLayer(jarLayer); return; }
   jarLayer.addTo(map);
-  if (map.getZoom() < JAR_Z) { jarLayer.clearLayers(); setMsg(`🚓 警察の交通規制：もっと拡大してね（ズーム${JAR_Z}以上）`); return; }
+  if (map.getZoom() < MZ("jar")) { jarLayer.clearLayers(); setMsg(`🚓 警察の交通規制：もっと拡大してね（ズーム${MZ("jar")}以上・📍マークの「マークを出す広さ」で変えられるよ）`); return; }
   jarT = setTimeout(jarDraw, 300);
 }
 async function jarDraw() {
@@ -6827,14 +6826,18 @@ const nbEmo = e => e.k === 1 ? "🚶" : e.t === "x" ? "🚧" : e.t === "v" ? "�
 const nbName = e => e.k === 1 ? "歩行者用道路" : e.t === "x" ? "通行止め" : e.t === "v" ? "車両通行止め" : "自転車通行止め";
 const nbWk = w => !w ? "" : w === "12345" ? "平日" : w === "123456" ? "日曜・休日をのぞく" : w === "0" ? "日曜" : w === "06" ? "土日" : "曜日の決まりあり";
 const nbWhen = (h, w) => [nbWk(w), nbHm(h)].filter(Boolean).join(" ");
-const nbLayer = L.layerGroup().addTo(map), NB_Z = 15; let nbMapT = null, nbMapId = 0;
+// 📍マークを出すズーム：マークのタブの「マークを出す広さ」4段階で ぜんぶまとめて ずらす（[ふつうのズーム, いちばん引いてよいズーム]）
+const MK_ZB = { spot: [14, 11], road: [16, 13], ow: [16, 14], nb: [15, 12], ox: [16, 13], jx: [16, 13], rwl: [14, 12], rwa: [12, 9], riv: [12, 9], slope: [16, 13], dbg: [17, 14], jar: [16, 13] };
+const MK_LV = [["近くだけ", 1], ["ふつう", 0], ["ひろめ", -1], ["もっとひろめ", -2]];
+function MZ(k) { const o = (MK_LV[lsGet("hosomichi_mklv", 1)] || MK_LV[1])[1]; return Math.max(MK_ZB[k][1], MK_ZB[k][0] + o); }
+const nbLayer = L.layerGroup().addTo(map); let nbMapT = null, nbMapId = 0;
 const NB_SIGN = '<svg viewBox="0 0 40 40" width="30" height="30" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#d40000" stroke-width="4"/>'
   + '<g fill="none" stroke="#1b2a4a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="24.5" r="5"/><circle cx="27.5" cy="24.5" r="5"/><path d="M12.5 24.5 L17 16.5 H25 L27.5 24.5 M17 16.5 L21 24.5 L25 16.5 M15 14 H19 M25 16.5 L24 12.5 H27"/></g>'
   + '<line x1="8.5" y1="31.5" x2="31.5" y2="8.5" stroke="#d40000" stroke-width="3.5"/></svg>';
 function nbMapReq() { clearTimeout(nbMapT); nbMapT = setTimeout(nbMapDraw, 400); }
 async function nbMapDraw() {
   const id = ++nbMapId;
-  if (!nbMapOn() || map.getZoom() < NB_Z) { nbLayer.clearLayers(); return; }
+  if (!nbMapOn() || map.getZoom() < MZ("nb")) { nbLayer.clearLayers(); return; }
   const b = map.getBounds(), r = await nbGather(b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), true, spotOn).catch(() => null);   // 時間外は出さない
   if (id !== nbMapId || !r) return;
   nbLayer.clearLayers();
@@ -6867,12 +6870,12 @@ async function oxGather(S, W, N, E) {   // → [{ p, h, dir: 出ていく向き�
   return out;
 }
 const OX_SIGN = '<svg viewBox="0 0 40 40" width="26" height="26" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="18" fill="#d40000" stroke="#fff" stroke-width="2"/><rect x="8" y="16.5" width="24" height="7" rx="1" fill="#fff"/></svg>';
-const oxLayer = L.layerGroup().addTo(map), OX_Z = 16; let oxT = null, oxId = 0;
+const oxLayer = L.layerGroup().addTo(map); let oxT = null, oxId = 0;
 const oxOn = () => spotOn.has("owexit") && !spotHide;
 function oxReq() { clearTimeout(oxT); oxT = setTimeout(oxDraw, 450); }
 async function oxDraw() {
   const id = ++oxId;
-  if (!oxOn() || map.getZoom() < OX_Z) { oxLayer.clearLayers(); return; }
+  if (!oxOn() || map.getZoom() < MZ("ox")) { oxLayer.clearLayers(); return; }
   const b = map.getBounds(), r = await oxGather(b.getSouth(), b.getWest(), b.getNorth(), b.getEast()).catch(() => null);
   if (id !== oxId || !r) return;
   oxLayer.clearLayers();
@@ -6895,13 +6898,12 @@ const SW_SIGN = SG(26, '<circle cx="20" cy="20" r="18" fill="#1565c0" stroke="#f
   + '<g transform="translate(9 9) scale(.62)">' + BIKE_W + '</g>');   // 自転車及び歩行者専用（325の3）＝歩道を自転車も通れる
 const BL_SIGN = SG(24, '<rect x="2" y="2" width="36" height="36" rx="4" fill="#1565c0" stroke="#fff" stroke-width="2"/><g transform="translate(0 -3)">' + BIKE_W + '</g><path d="M20 38 V31" stroke="#fff" stroke-width="2"/>');   // 普通自転車専用通行帯（327の4の2）
 const JX_K = { noent: ["ne", "⛔ <b>車両進入禁止</b>"], cxban: ["cx", "🚳 <b>自転車の交差点進入禁止</b>（この先の交差点に 自転車は入れない。歩道や横断帯を通ってね）"], swok: ["sw", "🔵 <b>自転車も歩道を通れる</b>（普通自転車歩道通行可）"], blane: ["bl", "🟦 <b>自転車専用通行帯</b>（自転車レーン）"] };
-const jxLayer = L.layerGroup().addTo(map), JX_Z = 16; let jxT = null, jxId = 0;
+const jxLayer = L.layerGroup().addTo(map); let jxT = null, jxId = 0;
 const jxOn = () => Object.keys(JX_K).some(k => spotOn.has(k)) && !spotHide;
 function jxReq() { clearTimeout(jxT); jxT = setTimeout(jxDraw, 500); }
 // 🚲 走る道・はんい（📍マーク）：OSM の ナビライン・自転車専用通行帯・自転車道・自転車歩行者道・30km制限 と、公園・団地・駐車場などの はんい
 const RW_LINE = ["navi", "blane2", "cway", "swalk", "slow"], RW_AREA = ["apark", "acem", "aclosed", "adanchi", "aparking"];
 const RW_AK = { park: "apark", cemetery: "acem", closed: "aclosed", danchi: "adanchi", parking: "aparking" };
-const RW_LZ = 14, RW_AZ = 12;   // 線はズーム14から（道路データを読む）・はんいはズーム12から
 const rwLayer = L.layerGroup().addTo(map), rwRend = L.canvas({ padding: 0.3 }); let rwId = 0, rwT = null;
 function rwKind(t) {   // 1本の道 → どの線の種類か（いくつも当てはまるときは 自転車向きの強いほう）
   const bl = dbgBikeLane(t);
@@ -6915,7 +6917,7 @@ function rwKind(t) {   // 1本の道 → どの線の種類か（いくつも当
 const RW_ST = { cway: { c: "#00a651", w: 7, o: .75 }, blane2: { c: "#0050ff", w: 7, o: .8 }, swalk: { c: "#00a651", w: 5, o: .75, d: "8 6" }, navi: { c: "#0050ff", w: 5, o: .9, d: "6 8" }, slow: { c: "#ff9800", w: 6, o: .55 } };
 const RW_NM = { cway: "🚲 <b>自転車道・サイクリングロード</b>", blane2: "🟦 <b>自転車専用通行帯</b>（地図のデータ）", swalk: "🚶 <b>自転車歩行者道</b>（自転車の通行の指定がある歩道・小道）", navi: "➡ <b>ナビライン</b>（矢羽根）", slow: "🐢 <b>30km制限の道</b>" };
 function rwReq() { clearTimeout(rwT); rwT = setTimeout(() => {
-  const ln = RW_LINE.some(k => spotOn.has(k)) && !spotHide, ar = RW_AREA.some(k => spotOn.has(k)) && !spotHide, z = map.getZoom();
+  const ln = RW_LINE.some(k => spotOn.has(k)) && !spotHide, ar = RW_AREA.some(k => spotOn.has(k)) && !spotHide, z = map.getZoom(), RW_LZ = MZ("rwl"), RW_AZ = MZ("rwa");
   if (!(ln && z >= RW_LZ) && !(ar && z >= RW_AZ)) { rwLayer.clearLayers(); rwId++; return; }
   const b = map.getBounds();
   worker.postMessage({ cmd: "dbgView", tag: "rw", id: ++rwId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { only: true, wide: true, bike: ln && z >= RW_LZ, area: ar } });
@@ -6938,7 +6940,7 @@ function rwDraw(m) {
 }
 map.on("moveend", rwReq);
 // 〰 川・🌊 大きい川の水面（hosomichi-data/rivers/・tools/make_pack.py --rivers-only で作る。0.1度のマスごとのファイル）
-const rivLayer = L.layerGroup().addTo(map), RIV_Z = 12, rivCell = new Map(); let rivSeq = 0, rivIdx = null, rivT = null, rivWarn = false;
+const rivLayer = L.layerGroup().addTo(map), rivCell = new Map(); let rivSeq = 0, rivIdx = null, rivT = null, rivWarn = false;
 const rivURL = f => new URL("../hosomichi-data/rivers/" + f, location.href);
 function rivIndex() {
   return rivIdx || (rivIdx = tfetch(rivURL("index.json"), {}, 20000).then(async r => {
@@ -6954,7 +6956,7 @@ function rivGet(key) {
 function rivReq() { clearTimeout(rivT); rivT = setTimeout(rivDraw, 400); }
 async function rivDraw() {
   const ln = spotOn.has("river") && !spotHide, wt = spotOn.has("bigriver") && !spotHide;
-  if ((!ln && !wt) || map.getZoom() < RIV_Z) { rivLayer.clearLayers(); return; }
+  if ((!ln && !wt) || map.getZoom() < MZ("riv")) { rivLayer.clearLayers(); return; }
   let ix; try { ix = await rivIndex(); } catch (e) { rivLayer.clearLayers(); if (!rivWarn) { rivWarn = true; setMsg("〰 川のデータ（rivers/）がまだないよ", true); } return; }
   const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast(), keys = [];
   for (let i = Math.floor(S / ix.t); i <= Math.floor(N / ix.t); i++) for (let k = Math.floor(W / ix.t); k <= Math.floor(E / ix.t); k++) if (ix.has.has(i + "_" + k)) keys.push(i + "_" + k);
@@ -6973,7 +6975,7 @@ async function rivDraw() {
 map.on("moveend", rivReq);
 async function jxDraw() {
   const id = ++jxId;
-  if (!jxOn() || map.getZoom() < JX_Z) { jxLayer.clearLayers(); return; }
+  if (!jxOn() || map.getZoom() < MZ("jx")) { jxLayer.clearLayers(); return; }
   const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast(), ks = [];
   for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let j = Math.floor(W * 100); j <= Math.floor(E * 100); j++) ks.push(i + "_" + j);
   if (ks.length > 16) { jxLayer.clearLayers(); return; }
@@ -8111,7 +8113,10 @@ const spotSize = () => { document.body.classList.toggle("spotS", spotSz === "S")
 spotSize();
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
-  $("spotBox").innerHTML = `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ 地図に出すよ<span class="hq">?</span><div class="hd">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div></div>`
+  const lv = lsGet("hosomichi_mklv", 1);
+  $("spotBox").innerHTML = `<div style="margin:2px 0 4px">マークを出す広さ：` + MK_LV.map(([t], i) => `<label style="margin-right:8px;white-space:nowrap"><input type="radio" name="mklv" data-mklv="${i}"${lv === i ? " checked" : ""}> ${t}</label>`).join("")
+    + `<span class="hq">?</span><div class="hd">地図をどれくらい引いても マークを出すか、ぜんぶまとめて決めるよ。「ふつう」より ひろめにすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ（スマホだと電池も）。いまの広さだと：道のマーク ${MZ("road")}から・お店などのマーク ${MZ("spot")}から・走る道の線 ${MZ("rwl")}から・はんいと川 ${MZ("rwa")}から</div></div>`
+    + `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ 地図に出すよ<span class="hq">?</span><div class="hd">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div></div>`
     + (() => { const all = SPOT_KINDS.flatMap(x => x[1]), on = all.filter(x => spotOn.has(x[0])).length;
         return `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-weight:bold;font-size:14px"><input type="checkbox" data-sall="1"${on === all.length ? " checked" : ""}>📍 すべてのマーク<span style="font-weight:normal;font-size:11px;color:#888">（${on}/${all.length}）</span></label>`; })()
     + SPOT_KINDS.map(([g, ks], gi) => `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
@@ -8124,6 +8129,7 @@ function renderSpots() {
 setTimeout(() => { rwReq(); rivReq(); }, 1500);   // 🚲 走る道・はんい・〰 川：はじめに1回
 $("tabSpot").addEventListener("change", e => {
   if (e.target.dataset.sz) { spotSz = e.target.dataset.sz; lsSet("hosomichi_spotsz", spotSz); spotSize(); return; }
+  if (e.target.dataset.mklv != null) { lsSet("hosomichi_mklv", +e.target.dataset.mklv); renderSpots(); spotUpdate(true); owUpdate(true); slopeDraw(); blkFixShow(); nbMapReq(); oxReq(); jxReq(); rwReq(); rivReq(); if ($("dbgOn").checked) dbgReq(); if ($("jarOn").checked) jarReq(); return; }
   const k = e.target.dataset.sk, sg = e.target.dataset.sg, sall = e.target.dataset.sall; if (!k && sg == null && !sall) return;
   if (sall) { for (const [, ks] of SPOT_KINDS) for (const [kk] of ks) e.target.checked ? spotOn.add(kk) : spotOn.delete(kk); }   // ぜんぶ
   else if (sg != null) { for (const [kk] of SPOT_KINDS[+sg][1]) e.target.checked ? spotOn.add(kk) : spotOn.delete(kk); }   // カテゴリぜんぶ
@@ -8177,13 +8183,13 @@ $("mkGo").onclick = mkTour;
 // どちらも、画面を指1本分（48px・引いたときは64px）のマスに分けて、マスごとに1個だけ（有名なもの → 近いもの の順にえらぶ）
 // 道・車止めのマーク（横断歩道・信号・階段・柵…）は、ズーム16より拡大したときだけ、見えている所に間引かずぜんぶ出す
 // （引いたときに間引くと、出たり消えたりしてかえってわかりにくいので）
-const ROAD_GROUPS = ["道"], SPOT_ROAD_Z = 16, SPOT_MIN_Z = 14;   // SPOT_MIN_Z より引いたらマークは出さない（全体図がごちゃごちゃしないように）
+const ROAD_GROUPS = ["道"];   // MZ("spot") より引いたらマークは出さない（全体図がごちゃごちゃしないように）
 const SPOT_ROAD = new Set(SPOT_KINDS.filter(g => ROAD_GROUPS.includes(g[0])).flatMap(g => g[1].map(x => x[0])));
 async function spotUpdate(force) {
   if (spotHide) return;   // かくし中は読みも描きもしない
-  if (!spotOn.size || map.getZoom() < SPOT_MIN_Z) { spotLayer.clearLayers(); spotAt = null; return; }
+  if (!spotOn.size || map.getZoom() < MZ("spot")) { spotLayer.clearLayers(); spotAt = null; return; }
   const fixed = follow && me, c = fixed ? me.getLatLng() : map.getCenter(), p = [c.lat, c.lng];
-  const onAll = [...spotOn].filter(k => !SPOT_SELF.has(k)), roadOn = map.getZoom() >= SPOT_ROAD_Z ? onAll.filter(k => SPOT_ROAD.has(k)) : [];
+  const onAll = [...spotOn].filter(k => !SPOT_SELF.has(k)), roadOn = map.getZoom() >= MZ("road") ? onAll.filter(k => SPOT_ROAD.has(k)) : [];
   const on = onAll.filter(k => !SPOT_ROAD.has(k));
   if (!force && fixed && spotAt && hav(spotAt, p) < (roadOn.length ? 120 : 500)) return;   // 少し動くまでは入れかえない（電池にやさしく）
   spotAt = p;
@@ -8229,7 +8235,7 @@ async function spotUpdate(force) {
 }
 let spotJarId = 0, spotJarAt = null;
 function spotJarDraw(m) {
-  if (m.id !== spotJarId || spotAt !== spotJarAt || spotHide || map.getZoom() < SPOT_ROAD_Z || m.err) return;
+  if (m.id !== spotJarId || spotAt !== spotJarAt || spotHide || map.getZoom() < MZ("road") || m.err) return;
   const vb = map.getBounds().pad(0.15), add = [];
   if (spotOn.has("signal")) for (const x of m.sigs || []) if (x.tag) add.push(["signal", x.p, x.t === "btn" ? "押しボタン信号など" : "信号"]);
   if (spotOn.has("xing")) for (const x of m.xws || []) if (x.tag) add.push(["xing", x.p, "横断歩道（道のとちゅう）"]);
@@ -8243,14 +8249,14 @@ function spotJarDraw(m) {
 }
 map.on("moveend", () => { if (!(follow && me)) spotUpdate(true); });
 map.on("zoomend", () => { if (follow && me) spotUpdate(true); });
-map.on("moveend", () => { if (follow && me && spotOn.size && map.getZoom() >= SPOT_ROAD_Z) spotUpdate(false); });   // 固定中も、道のマークは見えている所を出す   // 固定中もズームしたら間引きなおす
+map.on("moveend", () => { if (follow && me && spotOn.size && map.getZoom() >= MZ("road")) spotUpdate(false); });   // 固定中も、道のマークは見えている所を出す   // 固定中もズームしたら間引きなおす
 renderSpots(); spotUpdate(true);
 // ---------- ➡ 一方通行の矢印（拡大したとき。道路データは端末にあるもの・配布データから） ----------
 const owLayer = L.layerGroup().addTo(map);
 let owAt = null, owZ = 0, owId = 0;
 function owUpdate(force) {
   if (spotHide) return;
-  if (!spotOn.has("oneway") || map.getZoom() < 16) { owLayer.clearLayers(); owAt = null; return; }
+  if (!spotOn.has("oneway") || map.getZoom() < MZ("ow")) { owLayer.clearLayers(); owAt = null; return; }
   const c = map.getCenter(), p = [c.lat, c.lng];
   if (!force && owAt && owZ === map.getZoom() && hav(owAt, p) < 150) return;   // 少ししか動いていない
   owAt = p; owZ = map.getZoom();
@@ -8260,7 +8266,7 @@ function owUpdate(force) {
 function owDraw(m) {
   if (m.id !== owId) return;   // 古い返事
   owLayer.clearLayers();
-  if (!spotOn.has("oneway") || map.getZoom() < 16) return;
+  if (!spotOn.has("oneway") || map.getZoom() < MZ("ow")) return;
   const step = map.getZoom() >= 17 ? 45 : 80, MAXN = 500; let n = 0;
   for (const [pts, free] of m.ways) {
     const col = free ? "#4fc3f7" : "#d93025";
@@ -8330,7 +8336,7 @@ function slopeFix(la, lo, r) {   // 🪜⛰マークを 🪜✕ 階段じゃな�
 const SLOPE_Z = 16;   // 🪜⛰マークを出す ズーム（道のマークと同じ）
 function slopeDraw() {
   slopeLayer.clearLayers();
-  if (spotHide || map.getZoom() < SLOPE_Z) return;   // 引いているときは出さない（数が多いと 重いので）
+  if (spotHide || map.getZoom() < MZ("slope")) return;   // 引いているときは出さない（数が多いと 重いので）
   const b = map.getBounds().pad(0.2);
   for (let i = Math.floor(b.getSouth() / 0.01); i <= Math.floor(b.getNorth() / 0.01); i++)
     for (let j = Math.floor(b.getWest() / 0.01); j <= Math.floor(b.getEast() / 0.01); j++)
@@ -8437,7 +8443,7 @@ drawSecrets();
 let favs = lsGet("hosomichi_fav", []).filter(q => q && Array.isArray(q.p));
 const favLayer = L.layerGroup().addTo(map);
 function ptShow() { for (const ly of [homeLayer, secLayer, favLayer, blkLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }  blkFixShow(); }
-function blkFixShow() { const on = !spotHide && map.getZoom() >= 16; if (!on) map.removeLayer(blkFixLayer); else if (!map.hasLayer(blkFixLayer)) blkFixLayer.addTo(map); }   // 🚫⚠🪜✕🪜✓ の印は 🪜⛰マークと同じく ズーム16以上だけ
+function blkFixShow() { const on = !spotHide && map.getZoom() >= MZ("slope"); if (!on) map.removeLayer(blkFixLayer); else if (!map.hasLayer(blkFixLayer)) blkFixLayer.addTo(map); }   // 🚫⚠🪜✕🪜✓ の印は 🪜⛰マークと同じズームから
 map.on("zoomend", blkFixShow); blkFixShow();   // 右はしの📍で かくす／出す
 function drawFavs() {
   favLayer.clearLayers();
