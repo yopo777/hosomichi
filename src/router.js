@@ -157,11 +157,15 @@ function wayCost(t, cfg) {
     whyAdd(r, "rgh", bm); name = yes(t.bridge) ? "歩道橋" : "地下道";
   }
   const u = isUnpaved(t);
-  if (u) {
-    if (u === "sure" && cfg.unpaved === "no") return null;
-    const m = cfg.unpaved === "no" ? 20 : cfg.unpaved;
-    whyAdd(r, "rgh", u === "sure" ? m : Math.max(1, Math.sqrt(m)));
-    name = u === "sure" ? "砂利・土の道" : "舗装不明の小道";
+  if (u === "sure") {
+    if (cfg.unpaved === "no") return null;
+    whyAdd(r, "rgh", cfg.unpaved);
+    name = "砂利・土の道";
+  } else if (u) {   // 舗装不明の小道・農道（surface がない）：11/24 から 砂利・土とは別の設定（はじめは 少し避ける ×1.5）
+    const m = cfg.unkSurf ?? 1.5;
+    if (m === "no") return null;
+    whyAdd(r, "rgh", m);
+    name = "舗装不明の小道";
   }
   if (kd) {   // 旧街道は へらすほうなので 最後にかけ算
     km = Math.min(1, +cfg.kodo || 1); km = kd === 2 ? km : Math.sqrt(km);
