@@ -209,7 +209,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.2354</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.0005</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -577,6 +577,20 @@ function bikeClassK(t, hw, cfg) {
   if (+t.maxspeed > 0 && +t.maxspeed <= 30) return K("bkSlow") !== 1 ? [K("bkSlow"), "30km制限の道"] : null;
   return null;
 }
+// 🎨 デバッグの「道のデータ」と同じ道の種類（app.html の dbgKind と同じ。ルートの線の色に使う）
+const DBG_FT = ["footway", "pedestrian", "path", "track", "bridleway", "corridor"], dbgYes = v => v && v !== "no";
+function dbgKindR(t) {
+  const hw = t.highway;
+  if (hw === "steps") return t["ramp:bicycle"] === "yes" ? "rsteps" : t["br:ramp"] ? "bsteps" : "steps";
+  if (t["jar:nbside"]) return "nbside";
+  if (t["br:side"]) return t["br:bike"] ? "bsideb" : "bside";
+  if (hw === "cycleway" || (DBG_FT.includes(hw) && t.bicycle === "designated")) return "cycle";
+  if (["footway", "pedestrian", "path", "corridor"].includes(hw) && (dbgYes(t.bridge) || dbgYes(t.tunnel))) return dbgYes(t.bridge) ? "fbridge" : "ftunnel";
+  if (hw === "footway" || hw === "pedestrian" || hw === "corridor") return t.footway === "sidewalk" ? "sidewalk" : t.footway === "crossing" ? "crossing" : "foot";
+  if (DBG_FT.includes(hw)) return "path";
+  if (hw === "service") return "service";
+  return "road";
+}
 const whySum = r => { let s = 1; for (const k in r) s += r[k] - 1; return s; };
 const whyAdd = (r, k, v) => { v = +v || 1; if (!(r[k] >= v)) r[k] = v; return r; };
 // → [倍率, 名前, 理由ごとの倍率 {ppl,car,…}, かけ算の分（旧街道）] か null（通らない）
@@ -891,7 +905,7 @@ function buildGraph(osm, cfg, onProg) {
       fwd = back = true; rp = pen * (cfg.oneway === "avoid" ? ONEWAY_REV_AVOID : ONEWAY_REV); rname = name + "（一方通行を逆向き）";
     }
     if (DBGW) DBGW.set(e.uid || e.id, { use: true, r: `${name} ×${+pen.toFixed(2)}` + (rv ? (rvHalf ? "・〰川べり" : "・〰ところどころ川べり") + (rivK !== 1 ? `（川べりの所 ×${rivK}）` : "") : "") + (fwd !== back ? "・一方通行" : rp !== pen ? "・一方通行（自転車は逆向きOK）" : "") });
-    const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
+    const dk = dbgKindR(t), rev = ow === "-1";   // dk：ルートの線の色（デバッグの道の種類）   // 逆向き一方通行なら「正方向」が逆走
     const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);
     const lift = yes(t.bridge) || yes(t.tunnel) || t.tunnel === "building_passage" || (t.layer && t.layer !== "0") || t["br:side"] ? 1 : 0;   // 橋・トンネル・🌉 橋のたもとの坂ぞいの歩道（標高のデータと高さが合わない。新四つ木橋のたもとが ⛰/🪜 になっていた）
     for (let i = 1; i < nd.length; i++) {
@@ -903,8 +917,8 @@ function buildGraph(osm, cfg, onProg) {
       // sm：足し算した倍率（旧街道の分の前）・rg：🪨 走りにくい の倍率（あとで 🪜階段？・⛰急坂？ と くらべる）
       // 〰 川べり（設定がオンのとき）：🚶人が多い（歩く道）の分を数えないで、かわりに ×rivK（へらすほう）。歩道×3 だと ×0.6 しても 住宅街の道（×1）に勝てなかったので
       const isR = rv && rv[i - 1], rk = isR && rivOn ? (whySum(why) - ((why.ppl || 1) - 1) + (m > 1 ? m - 1 : 0)) * km * rivK / pm : 1, rn = isR ? "・川べり" : "";
-      if (fwd) adj[u].push({ v, c: L * (rev ? rpm : pm) * rk, sm: pm / km, rg, L, l: L0, k: (rev ? rname : name) + rn, w: e.id, b: lift, hw });
-      if (back) adj[v].push({ v: u, c: L * (rev ? pm : rpm) * rk, sm: pm / km, rg, L, l: L0, k: (rev ? name : rname) + rn, w: e.id, b: lift, hw });
+      if (fwd) adj[u].push({ v, c: L * (rev ? rpm : pm) * rk, sm: pm / km, rg, L, l: L0, k: (rev ? rname : name) + rn, w: e.id, b: lift, hw, dk });
+      if (back) adj[v].push({ v: u, c: L * (rev ? pm : rpm) * rk, sm: pm / km, rg, L, l: L0, k: (rev ? name : rname) + rn, w: e.id, b: lift, hw, dk });
     }
   }
   // 大きい道の向き（横断かどうか＝道の反対側に出るかを判定するため）
@@ -1368,7 +1382,7 @@ function guideAt(G, path, i) {
 function analyze(G, path) {
   const ok = [], xw = [], ng = [], ngIdx = [], xvia = [], kinds = {}, ek = [], tp = []; let len = 0, turns = 0;
   for (let i = 1; i < path.length; i++) {
-    const e = edge(G, path[i - 1], path[i]); len += e.L; kinds[e.k] = (kinds[e.k] || 0) + e.L; ek.push(e.k);
+    const e = edge(G, path[i - 1], path[i]); len += e.L; kinds[e.k] = (kinds[e.k] || 0) + e.L; ek.push(e.dk ? e.k + "\u0001" + e.dk : e.k);
   }
   for (let i = 1; i < path.length - 1; i++) {
     if (edge(G, path[i - 1], path[i]).w !== edge(G, path[i], path[i + 1]).w && isTurn(G, path[i - 1], path[i], path[i + 1])) turns++;
@@ -2802,7 +2816,7 @@ function applySlope(G, k, stK, slK, count) {   // count：数だけ返す（📍
         const K = stair ? stK : slK, rg = e.rg || 1, sm = e.sm || e.c / e.L;
         if (K === "no") e.c *= 1e4;
         else if ((+K || 1) > rg) { const s2 = sm + (+K || 1) - rg; e.c *= s2 / sm; e.sm = s2; e.rg = +K; }
-        if (stair) e.k = "階段？";
+        if (stair) { e.k = "階段？"; e.dk = "steps"; }
       }
     }
   }
@@ -3873,7 +3887,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1124.2354", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.0005", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4108,7 +4122,7 @@ function merged(m) {
   const mr = m.route || [];
   return { ...m, ek: undefined,
     route: mr.length ? P.route.concat(mr.slice(1)) : P.route.slice(),
-    kc: P.kc && m.ek ? P.kc.concat(m.ek.map(catOf)) : null,
+    kc: P.kc && m.ek ? P.kc.concat(m.ek.map(kcOf)) : null,
     ok: (P.ok || []).concat(m.ok || []), xw: (P.xw || []).concat(m.xw || []), ng: (P.ng || []).concat(m.ng || []), xvia: (P.xvia || []).concat(m.xvia || []),
     tp: P.tp && m.tp ? P.tp.concat(m.tp) : null,
     kinds: sumKinds(P.kinds, m.kinds), turns: P.turns != null && m.turns != null ? P.turns + m.turns : undefined,
@@ -4397,6 +4411,24 @@ $("go").onclick = async () => {
 
 // ---------- 表示 ----------
 // ---------- ルートの色分け（赤 / 道の種類 / 坂） ----------
+const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道」のふち）。白い点々・2色のしまで 数をふやす
+  // g：色の見本で まとめる グループ（11/23：にた名前が多くて わからない → グループ分けして 名前を 見分けやすく）
+  road: { g: "car", n: "細い車道（住宅街など）", c: "#00c8e8", w: 3 },
+  service: { g: "car", n: "駐車場・敷地の中の道", c: "#93abbb", w: 2.5 },
+  sidewalk: { g: "walk", n: "車道ぞいの歩道", c: "#ff5fa2", w: 3 },
+  crossing: { g: "walk", n: "横断歩道", c: "#ff5fa2", w: 3, dash: "3 4", alt: "#fff" },
+  foot: { g: "walk", n: "車道からはなれた 歩く道（公園・団地の中など）", c: "#ffa6d6", w: 3 },
+  path: { g: "walk", n: "小道（土手・あぜ道・山道など）", c: "#c47a2c", w: 3 },
+  cycle: { g: "bike", n: "自転車道・自転車歩行者道", c: "#2e9e3a", w: 3.5 },
+  fbridge: { g: "br", n: "歩道橋（道路や線路をまたぐ）", c: "#c800b4", w: 5 },
+  bsideb: { g: "br", n: "橋の歩道（自転車も走れる）", c: "#2e9e3a", w: 3.5, dash: "2 4", alt: "#c800b4" },
+  bside: { g: "br", n: "橋の歩道", c: "#ff5fa2", w: 3.5, dash: "2 4", alt: "#c800b4" },
+  nbside: { g: "br", n: "橋の歩道（車道は 自転車通行止め）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
+  ftunnel: { g: "br", n: "地下道", c: "#c47a2c", w: 4, dash: "6 4", alt: "#fff" },
+  steps: { g: "st", n: "階段", c: "#8a4dff", w: 5, dash: "3 3", alt: "#fff" },
+  rsteps: { g: "st", n: "スロープつき階段（地図に書いてある）", c: "#00d26a", w: 6, dash: "10 4", alt: "#8a4dff" },
+  bsteps: { g: "st", n: "橋の出入り口の階段（スロープつきとみなす）", c: "#00d26a", w: 6, dash: "4 4", alt: "#8a4dff" },   // 11/21 見分けやすく：緑の長い破線＋すきまに紫
+};
 const CATS = [["細い道", "#188038"], ["自転車道", "#00acc1"], ["歩道・小道（押す所も）", "#8e24aa"], ["一般道・県道", "#f29900"],
   ["国道・幹線", "#d93025"], ["歩道橋・階段・踏切・駅の通路・公園・霊園", "#6d4c41"], ["砂利・舗装不明・農道", "#757575"], ["そのほか", "#9e9e9e"]];
 function catOf(n) {
@@ -4409,11 +4441,19 @@ function catOf(n) {
   if (/一般道|県道/.test(n)) return 3;
   return 7;
 }
+const DK_ORDER = Object.keys(DBG_K);   // ルートの色の番号：0〜7＝むかしの8種類（CATS）・8〜＝デバッグの道の種類（11/25 から）
+function kcOf(n) {
+  const i = n.indexOf("\u0001");
+  if (i >= 0) { const k = DK_ORDER.indexOf(n.slice(i + 1)); if (k >= 0) return 8 + k; n = n.slice(0, i); }
+  if (/^階段？/.test(n)) return 8 + DK_ORDER.indexOf("steps");
+  return catOf(n);
+}
+const kcInfo = i => { if (i < 8) return { n: CATS[i][0], c: CATS[i][1] }; const K = DBG_K[DK_ORDER[i - 8]]; return K ? { n: K.n, c: K.c, dash: K.dash, alt: K.alt } : { n: "そのほか", c: "#9e9e9e" }; };
 const SLOPES = [["のぼり 7%〜", "#d50000", 7], ["のぼり 4〜7%", "#fb8c00", 4], ["のぼり 2〜4%", "#fdd835", 2], ["ほぼ平ら", "#43a047", -3], ["くだり", "#29b6f6", -99]];
 const slopeColor = g => SLOPES.find(x => g >= x[2])[1];
 // 区間ごとの種類を短い文字に（例 0a.3f.0c ＝ 種類＋区間数36進）
-const encK = kc => { const out = []; for (let i = 0; i < kc.length;) { let j = i; while (j < kc.length && kc[j] === kc[i]) j++; out.push(kc[i] + (j - i).toString(36)); i = j; } return out.join("."); };
-const decK = s => { const kc = []; for (const t of s.split(".")) { const c = +t[0], n = parseInt(t.slice(1), 36); for (let i = 0; i < n; i++) kc.push(c); } return kc; };
+const encK = kc => { const out = []; for (let i = 0; i < kc.length;) { let j = i; while (j < kc.length && kc[j] === kc[i]) j++; out.push(kc[i].toString(36) + (j - i).toString(36)); i = j; } return out.join("."); };
+const decK = s => { const kc = []; for (const t of s.split(".")) { const c = parseInt(t[0], 36), n = parseInt(t.slice(1), 36); for (let i = 0; i < n; i++) kc.push(c); } return kc; };
 // 線を間引いて、区間の種類もそれに合わせる
 function simpRoute(pts, kc, tol) {
   const keep = simplify(pts.map((p, i) => [p[0], p[1], i]), tol).map(p => p[2]);
@@ -4444,7 +4484,7 @@ function legend(r) {
   if (colorMode !== "red") h += '<div style="border-top:1px solid #ddd;margin:3px 0"></div>';
   if (colorMode === "kind") {
     if (!r.kc) h += "灰色の線：このルートには道の種類の情報がないよ";
-    else { const used = new Set(r.kc); h += CATS.map((c, i) => used.has(i) ? `<div><i style="background:${c[1]}"></i>${c[0]}</div>` : "").join(""); }
+    else { const used = new Set(r.kc); h += [...used].sort((a, b) => a - b).map(i => { const K = kcInfo(i); return `<div><i style="background:${K.alt ? `repeating-linear-gradient(90deg,${K.c} 0 4px,${K.alt} 4px 8px)` : K.c}"></i>${K.n}</div>`; }).join(""); }
   } else if (colorMode === "slope") {
     h += SLOPES.map(c => `<div><i style="background:${c[1]}"></i>${c[0]}</div>`).join("");
     if (r.elevInfo) h += `<div style="margin-top:2px;color:#444">${r.elevInfo}</div>`;
@@ -4478,7 +4518,7 @@ function drawRoute(r) {
   if (colorMode === "kind" && r.kc && r.kc.length === R.length - 1) {
     for (let i = 0; i < r.kc.length;) {
       let j = i; while (j < r.kc.length && r.kc[j] === r.kc[i]) j++;
-      seg(R.slice(i, j + 1), CATS[r.kc[i]][1]).bindTooltip(CATS[r.kc[i]][0]); i = j;
+      { const K = kcInfo(r.kc[i]), pp = R.slice(i, j + 1); if (K.alt) seg(pp, K.alt); const sg = seg(pp, K.c); if (K.dash) sg.setStyle({ dashArray: K.dash }); sg.bindTooltip(K.n); } i = j;
     }
   } else if (colorMode === "slope" && r.elev) {
     const { pts, grade } = r.elev;
@@ -4647,7 +4687,7 @@ function showRoute(r, fit) {
   const tent = r.tent || [];
   r.nav = r.route.length ? r.route.concat(tent.slice(1)) : tent.slice();   // ナビで使う線（確定＋仮）
   if (r.short?.length) L.polyline(r.short, { color: "#777", weight: 4, opacity: .5 }).addTo(layer).bindTooltip("ただの最短");
-  if (r.ek && !r.kc) r.kc = r.ek.map(catOf);
+  if (r.ek && !r.kc) r.kc = r.ek.map(kcOf);
   const line = L.polyline(r.route.length ? r.route : tent, { opacity: 0, interactive: false }).addTo(layer);
   if (r.route.length > 1) drawRoute(r);
   if (tent.length > 1) L.polyline(tent, { color: "#d93025", weight: 6, opacity: .7, dashArray: "8 10" }).addTo(layer).bindTooltip("計算中（まだ変わるかも）");
@@ -5874,24 +5914,6 @@ function dbgReq() {
   dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { maxK: hlAll() ? (IS_PC ? 100 : 20) : 9, maxW: hlAll() ? (IS_PC ? 40000 : 3000) : 1500, maxP: hlAll() ? (IS_PC ? 8000 : 1000) : 600, bike: spotOn.has("navi") || spotOn.has("blane2"), area: RW_AREA.some(k => spotOn.has(k)) } }); }, 300);
 }
 // 🧪 道のデータの色（細い道を 種類で分ける）。c 色・w 太さ・dash 点線・alt しま模様のもう1色（下に alt、上に c の破線）
-const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道」のふち）。白い点々・2色のしまで 数をふやす
-  // g：色の見本で まとめる グループ（11/23：にた名前が多くて わからない → グループ分けして 名前を 見分けやすく）
-  road: { g: "car", n: "細い車道（住宅街など）", c: "#00c8e8", w: 3 },
-  service: { g: "car", n: "駐車場・敷地の中の道", c: "#93abbb", w: 2.5 },
-  sidewalk: { g: "walk", n: "車道ぞいの歩道", c: "#ff5fa2", w: 3 },
-  crossing: { g: "walk", n: "横断歩道", c: "#ff5fa2", w: 3, dash: "3 4", alt: "#fff" },
-  foot: { g: "walk", n: "車道からはなれた 歩く道（公園・団地の中など）", c: "#ffa6d6", w: 3 },
-  path: { g: "walk", n: "小道（土手・あぜ道・山道など）", c: "#c47a2c", w: 3 },
-  cycle: { g: "bike", n: "自転車道・自転車歩行者道", c: "#2e9e3a", w: 3.5 },
-  fbridge: { g: "br", n: "歩道橋（道路や線路をまたぐ）", c: "#c800b4", w: 5 },
-  bsideb: { g: "br", n: "橋の歩道（自転車も走れる）", c: "#2e9e3a", w: 3.5, dash: "2 4", alt: "#c800b4" },
-  bside: { g: "br", n: "橋の歩道", c: "#ff5fa2", w: 3.5, dash: "2 4", alt: "#c800b4" },
-  nbside: { g: "br", n: "橋の歩道（車道は 自転車通行止め）", c: "#ff5fa2", w: 3.5, dash: "6 6", alt: "#2e9e3a" },
-  ftunnel: { g: "br", n: "地下道", c: "#c47a2c", w: 4, dash: "6 4", alt: "#fff" },
-  steps: { g: "st", n: "階段", c: "#8a4dff", w: 5, dash: "3 3", alt: "#fff" },
-  rsteps: { g: "st", n: "スロープつき階段（地図に書いてある）", c: "#00d26a", w: 6, dash: "10 4", alt: "#8a4dff" },
-  bsteps: { g: "st", n: "橋の出入り口の階段（スロープつきとみなす）", c: "#00d26a", w: 6, dash: "4 4", alt: "#8a4dff" },   // 11/21 見分けやすく：緑の長い破線＋すきまに紫
-};
 const dbgYes = v => v && v !== "no";
 function dbgKind(t) {
   const hw = t.highway, FT = ["footway", "pedestrian", "path", "track", "bridleway", "corridor"];
@@ -7501,7 +7523,7 @@ function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルー�
   if (m.type !== "done") { setMsg(m.type === "error" ? "もどる道が見つからなかったよ：" + m.msg : "止めたよ", m.type === "error"); return; }
   const rest = old.route.slice(ti), mr = m.route || [];
   let rl = 0; for (let i = 1; i < rest.length; i++) rl += hav(rest[i - 1], rest[i]);
-  const kc = old.kc && m.ek ? m.ek.map(catOf).concat([old.kc[ti - 1] ?? old.kc[ti] ?? catOf(m.ek[m.ek.length - 1])], old.kc.slice(ti)) : null;
+  const kc = old.kc && m.ek ? m.ek.map(kcOf).concat([old.kc[ti - 1] ?? old.kc[ti] ?? kcOf(m.ek[m.ek.length - 1])], old.kc.slice(ti)) : null;
   const tp = old.tp && m.tp ? m.tp.concat(old.tp.filter(t => rest.some(q => hav(q, t) < 3))) : null;
   const n = { ...old, route: mr.concat(rest), kc, ek: undefined, tp, opts: null, short: null, slen: 0, resume: null, partial: false, tent: null,
     ok: (m.ok || []).concat(old.ok || []), xw: (m.xw || []).concat(old.xw || []), ng: (m.ng || []).concat(old.ng || []), xvia: (m.xvia || []).concat(old.xvia || []), len: (m.len || 0) + rl };
