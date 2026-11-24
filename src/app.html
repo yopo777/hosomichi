@@ -4128,11 +4128,11 @@ const nbName = e => e.k === 1 ? "歩行者用道路" : e.t === "x" ? "通行止�
 const nbWk = w => !w ? "" : w === "12345" ? "平日" : w === "123456" ? "日曜・休日をのぞく" : w === "0" ? "日曜" : w === "06" ? "土日" : "曜日の決まりあり";
 const nbWhen = (h, w) => [nbWk(w), nbHm(h)].filter(Boolean).join(" ");
 // 📍マークを出すズーム：マークのタブの「マークを表示するレベル」「スポットを表示するレベル」で ぜんぶまとめて ずらす（[ふつうのズーム, いちばん引いてよいズーム]）
-const MK_ZB = { spot: [14, 11], road: [16, 13], ow: [16, 14], nb: [15, 12], ox: [16, 13], jx: [16, 13], rwl: [14, 12], rwa: [12, 9], riv: [12, 9], slope: [16, 13], dbg: [17, 14], jar: [16, 13] };
+const MK_ZB = { spot: [14, 11], road: [16, 13], ow: [16, 14], nb: [15, 12], ox: [16, 13], jx: [16, 13], rwl: [14, 12], rwa: [12, 9], riv: [12, 9], slope: [16, 13], dbg: [17, 14], jar: [16, 13], pt: [13, 10] };
 const MK_LV = [["近くだけ", 1], ["ふつう", 0], ["ひろめ", -1], ["もっとひろめ", -2], ["いつも", null]];   // いつも＝ズームでは消さない（読むマスの数の上限まで。重い）
-// マーク（道の線・はんい・川・標識・デバッグ）は「マークを表示するレベル」、スポット（休けい・ごはん・めぐる・まち）は「スポットを表示するレベル」
-const MK_KEY = k => k === "spot" ? "hosomichi_spotlv" : "hosomichi_mklv";
-const mkAll = () => lsGet("hosomichi_mklv", 1) === 4, spAll = () => lsGet("hosomichi_spotlv", 1) === 4, MKCAP = () => mkAll() ? 4 : 1, SPCAP = () => spAll() ? 4 : 1;   // いつも のときは 読むマスの上限を4倍
+// 📍マーク（道の線・はんい・川・標識・休けい…・デバッグ）は 📍マークのタブの「マークを表示するレベル」、📌スポット（⭐🏠🔒🚫⚠）は 📌スポットのタブの「スポットを表示するレベル」
+const MK_KEY = k => k === "pt" ? "hosomichi_ptlv" : "hosomichi_mklv";
+const mkAll = () => lsGet("hosomichi_mklv", 1) === 4, MKCAP = () => mkAll() ? 4 : 1;   // いつも のときは 読むマスの上限を4倍
 function MZ(k) { const lv = lsGet(MK_KEY(k), 1); if (lv === 4) return 0; const o = (MK_LV[lv] || MK_LV[1])[1]; return Math.max(MK_ZB[k][1], MK_ZB[k][0] + o); }
 const nbLayer = L.layerGroup().addTo(map); let nbMapT = null, nbMapId = 0;
 const NB_SIGN = '<svg viewBox="0 0 40 40" width="30" height="30" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#d40000" stroke-width="4"/>'
@@ -4936,7 +4936,10 @@ function spotsTabDraw() {
       <div style="border:1px solid #eee;border-radius:8px;max-height:28vh;overflow-y:auto">${rows || '<div style="padding:6px 8px;color:#aaa;font-size:12px">まだないよ</div>'}</div>`;
   const newest = a => a.map((q, i) => [q, i]).reverse();   // 新しく登録したものが上
   const bo = newest(blocks).filter(([b]) => !BLK_SOFT(b.r)), ba = newest(blocks).filter(([b]) => b.r === "a"), bw = newest(blocks).filter(([b]) => b.r === "w"), bk = newest(blocks).filter(([b]) => b.r === "k"), bg = newest(blocks).filter(([b]) => b.r === "n"), by = newest(blocks).filter(([b]) => b.r === "y");
-  T.innerHTML = `<div style="font-size:12px;color:#666;margin:2px 0 4px">📌 名前をタップでその場所へ。長おしで名前をかえるよ<span class="hq">?</span><div class="hd">📌 登録した地点の一覧だよ。名前をタップでその場所へ、長おし（パソコンは右クリック）で名前をかえられるよ。つけるのは 地図を長おしから。ぜんぶ この端末の中だけ</div></div>`
+  const plv = lsGet("hosomichi_ptlv", 1);
+  T.innerHTML = `<div style="font-size:12px;margin:4px 0 6px">スポットを表示するレベル：` + MK_LV.map(([t], i) => `<label style="margin-right:8px;white-space:nowrap"><input type="radio" name="ptlv" data-ptlv="${i}"${plv === i ? " checked" : ""}> ${t}</label>`).join("")
+    + `<span class="hq">?</span><div class="hd">⭐🏠🔒🚫⚠ の印を、地図をどれくらい引いても出すか決めるよ。いまのレベルだと ズーム${MZ("pt")}から${plv === 4 ? "（いつも＝ズームでは消さないよ）" : ""}。右はしの📍ボタンで かくしているときは レベルに関係なく出さないよ</div></div>`
+    + `<div style="font-size:12px;color:#666;margin:2px 0 4px">📌 名前をタップでその場所へ。長おしで名前をかえるよ<span class="hq">?</span><div class="hd">📌 登録した地点の一覧だよ。名前をタップでその場所へ、長おし（パソコンは右クリック）で名前をかえられるよ。つけるのは 地図を長おしから。ぜんぶ この端末の中だけ</div></div>`
     + sec(`⭐ お気に入り ${favs.length}`, "よく行く所。SNSでは消さないよ", newest(favs).map(([q, i]) => row("⭐", q.name || "お気に入り", "f" + i)).join(""))
     + sec("🏠 家", "SNSでは まわりを消すよ。「家まで約○km」にも使うよ", home ? row("🏠", homeName || "家", "h") : "")
     + sec(`🔒 秘密の場所 ${secrets.length}`, "親せきの家・職場など。SNSでは家と同じように まわりを消すよ", newest(secrets).map(([q, i]) => row("🔒", q.name || "秘密の場所", "s" + i)).join(""))
@@ -5468,8 +5471,7 @@ spotSize();
 const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
   const lvRow = (nm, key, help) => { const lv = lsGet(key, 1); return `<div style="margin:2px 0 4px">${nm}：` + MK_LV.map(([t], i) => `<label style="margin-right:8px;white-space:nowrap"><input type="radio" name="${key}" data-lvkey="${key}" data-lv="${i}"${lv === i ? " checked" : ""}> ${t}</label>`).join("") + `<span class="hq">?</span><div class="hd">${help}</div></div>`; };
-  $("spotBox").innerHTML = lvRow("マークを表示するレベル", "hosomichi_mklv", `道の線・はんい・川・標識（一方通行・通行止めなど）・デバッグの表示を、地図をどれくらい引いても出すか まとめて決めるよ。ひろくすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ（スマホだと電池も）。いまのレベルだと：標識 ズーム${MZ("road")}から・道の線 ${MZ("rwl")}から・はんいと川 ${MZ("rwa")}から${mkAll() ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ）" : ""}`)
-    + lvRow("スポットを表示するレベル", "hosomichi_spotlv", `休けい・ごはん・めぐる・まち のスポットを、地図をどれくらい引いても出すか決めるよ。いまのレベルだと ズーム${MZ("spot")}から${spAll() ? "（いつも＝ズームでは消さないよ。うんと引いたときは 有名なものだけに間引いたデータを出すよ）" : ""}`)
+  $("spotBox").innerHTML = lvRow("マークを表示するレベル", "hosomichi_mklv", `この📍マークのタブのものと デバッグの表示を、地図をどれくらい引いても出すか まとめて決めるよ。ひろくすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ（スマホだと電池も）。いまのレベルだと：標識 ズーム${MZ("road")}から・休けい／ごはんなど ${MZ("spot")}から・道の線 ${MZ("rwl")}から・はんいと川 ${MZ("rwa")}から${mkAll() ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ。うんと引いたときの休けい／ごはんなどは 有名なものだけに間引いたデータだよ）" : ""}`)
     + `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ 地図に出すよ<span class="hq">?</span><div class="hd">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div></div>`
     + (() => { const all = SPOT_KINDS.flatMap(x => x[1]), on = all.filter(x => spotOn.has(x[0])).length;
         return `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-weight:bold;font-size:14px"><input type="checkbox" data-sall="1"${on === all.length ? " checked" : ""}>📍 すべてのマーク<span style="font-weight:normal;font-size:11px;color:#888">（${on}/${all.length}）</span></label>`; })()
@@ -5555,7 +5557,7 @@ async function spotUpdate(force) {
   const over = !fixed && map.getZoom() < 12, keys = [];
   for (let i = Math.floor(S / SPOT_T); i <= Math.floor(N / SPOT_T); i++)
     for (let j = Math.floor(W / SPOT_T); j <= Math.floor(E / SPOT_T); j++) keys.push(i + "_" + j);
-  const tiles = over ? [await spotOverview()] : keys.length > 60 * Math.max(MKCAP(), SPCAP()) ? [] : await Promise.all(keys.map(spotTile)), got = [], road = [];
+  const tiles = over ? [await spotOverview()] : keys.length > 60 * MKCAP() ? [] : await Promise.all(keys.map(spotTile)), got = [], road = [];
   if (spotAt !== p) return;   // 読んでいるあいだに次の場所になった
   for (const t of tiles) {
     for (const k of on) for (const s of t[k] || []) {
@@ -5796,7 +5798,9 @@ drawSecrets();
 // ⭐ お気に入り（よく行く所）：名前は はじめ その場所の住所（市区町村＋町名）。SNSでは消さない。この端末の中だけ
 let favs = lsGet("hosomichi_fav", []).filter(q => q && Array.isArray(q.p));
 const favLayer = L.layerGroup().addTo(map);
-function ptShow() { for (const ly of [homeLayer, secLayer, favLayer, blkLayer]) { if (spotHide) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }  blkFixShow(); }
+function ptShow() { const off = spotHide || map.getZoom() < MZ("pt"); for (const ly of [homeLayer, secLayer, favLayer, blkLayer]) { if (off) map.removeLayer(ly); else if (!map.hasLayer(ly)) ly.addTo(map); }  blkFixShow(); }
+map.on("zoomend", ptShow);   // 📌スポットを表示するレベル より引いたら ⭐🏠🔒🚫⚠ をかくす
+$("tabPts").addEventListener("change", e => { if (e.target.dataset.ptlv == null) return; lsSet("hosomichi_ptlv", +e.target.dataset.ptlv); spotsTabDraw(); ptShow(); });
 function blkFixShow() { const on = !spotHide && map.getZoom() >= MZ("slope"); if (!on) map.removeLayer(blkFixLayer); else if (!map.hasLayer(blkFixLayer)) blkFixLayer.addTo(map); }   // 🚫⚠🪜✕🪜✓ の印は 🪜⛰マークと同じズームから
 map.on("zoomend", blkFixShow); blkFixShow();   // 右はしの📍で かくす／出す
 function drawFavs() {
