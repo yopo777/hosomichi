@@ -386,7 +386,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     <div class="row" id="viaRow"><label>経由</label><input type="text" autocomplete="off" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row" id="toRow"><label>到着</label><input type="text" autocomplete="off" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図を長おし（パソコンは右クリック）しても出発・到着を選べるよ</div>
-    <button id="go">ルートを作る</button>
+    <button id="go" title="Ctrl＋Alt＋Enter">ルートを作る</button>
     <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
       <div id="list"></div></div>
     <div id="result">
@@ -3644,37 +3644,47 @@ $("tog").onclick = () => { const p = $("panel"); p.classList.toggle("min"); $("t
 const PEN_ROWS = [
   ["residential,living_street,unclassified", "細い車道（住宅街・生活道路・細めの一般道）"], ["service", "駐車場・敷地の中の道"],
   ["tertiary", "一般道（2車線くらい）"], ["secondary,primary,trunk", "県道・国道・バイパス"],
-  ["footway", "歩く道（車道ぞいの歩道・横断歩道・橋の歩道・遊歩道・公園や団地の中の歩道）"], ["pedestrian", "歩行者天国・広場（自転車OKの印がある所は 歩く道と同じ）"], ["path,track", "小道（土手・あぜ道・農道）"], ["cycleway", "自転車道"],
+  ["footway", "歩く道（車道ぞいの歩道・横断歩道・橋の歩道・遊歩道・公園や団地の中の歩道）"], ["pedestrian", "歩行者天国・広場（自転車OKの印がある所は 歩く道と同じ）"], ["path,track", "小道（土手・あぜ道・農道）"], ["cycleway", "🚲 自転車道・サイクリングロード"],
 ];
 const PEN_ORD = v => v === "no" ? Infinity : +v;
 const penGet = ks => ks.split(",").map(k => cfg.pen[k]).reduce((a, b) => PEN_ORD(b) > PEN_ORD(a) ? b : a);   // まとめた行は いちばん避けるほう
 // えらぶ所の書きかた（11/24 そろえた）：「〜（距離×◯）」＝その道の長さを ◯倍と数える／「〜（ペナルティ ◯m）」＝そのたびに ◯m 足して数える。デフォルトは書かない（プリセットにするので）
-const PEN_OPT = [[1, "どんどん使う（距離×1）"], [1.2, "（距離×1.2）"], [1.5, "少し避ける（距離×1.5）"], [2, "（距離×2）"], [3, "避ける（距離×3）"], [5, "（距離×5）"],
-  [8, "かなり避ける（距離×8）"], [12, "（距離×12）"], [20, "（距離×20）"], [30, "ほぼ使わない（距離×30）"], ["no", "通らない"]];
-const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 3, pedestrian: "no", path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 0, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "mid", midCross: 100, oneway: "bike", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 1.5, station: "no", cemetery: "no", park: "no", riv: "off" };
+// 11/24 倍率の えらぶ所は ぜんぶ この9段階にそろえた（ユーザー）。行ごとに 意味のない段は けずる
+const LAD = [[0.4, "どんどん通る（距離×0.4）"], [0.6, "通りたい（距離×0.6）"], [0.8, "少し通りたい（距離×0.8）"], [1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [5, "かなり避ける（距離×5）"], [10, "ほぼ使わない（距離×10）"], ["no", "通らない"]];
+const L = (...vs) => LAD.filter(([v]) => vs.includes(v));
+const L_UP = [1, 1.5, 3, 5, 10], L_ALL = [0.4, 0.6, 0.8, 1, 1.5, 3, 5, 10];
+// 🚲 道の好み（PEN_ROWS）：どんどん通る側（×1より小さい）は 細い車道・小道・自転車道だけ。「通らない」は 細い車道には出さない
+const PEN_BONUS = new Set(["residential,living_street,unclassified", "path,track", "cycleway"]);
+const penOpts = ks => L(...(PEN_BONUS.has(ks) ? L_ALL : L_UP), ...(ks === "residential,living_street,unclassified" ? [] : ["no"]));
+const CFG_DEF = { bkLane: 1, bkNavi: 1, bkSwalk: 1, bkSlow: 1, pen: { living_street: 1, residential: 1, service: 1, unclassified: 1, cycleway: 1, tertiary: 5, secondary: 10,
+  primary: 10, trunk: 10, footway: 3, pedestrian: "no", path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 0, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "mid", midCross: 100, oneway: "bike", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 10, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 1.5, station: "no", cemetery: "no", park: "no", riv: "off" };
+const BK_OPT = L(...L_ALL);   // 🚲 自転車道のなかま ぜんぶ同じ
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
-  ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], [10, "かなり避ける（距離×10）"], [30, "ほぼ通らない（距離×30）"]]],
+  ["avoidPen", "⚠ 通りたくない道", L(1.5, 3, 5, 10)],
   ["alts", "第2・第3のルート", [["yes", "作る（えらべる・少し時間がかかる）"], ["no", "作らない（早い）"]]],
   ["turn", "曲がる回数", [[0, "気にしない（ペナルティ 0）"], [100, "少なめ（ペナルティ 1回100m）"], [300, "できるだけ少なく（ペナルティ 1回300m）"], [600, "とにかく少なく（ペナルティ 1回600m）"]]],
   ["area", "地図データを取る広さ", [["auto", "おまかせ（データが手元にあれば ひろい・なければ せまい）"], ["narrow", "せまい（いちばん早い・まわり道200m）"], ["normal", "ふつう（まわり道400m〜1km）"], ["wide", "ひろい（まわり道 2〜4km）"]]],
   ["oneway", "逆走", [["bike", "逆走する（距離×1.3）"], ["avoid", "逆走を避ける（距離×3）"], ["no", "逆走しない"]]],
-  ["riv", "〰 川べりの車の来ない道", [["off", "気にしない（歩く道・小道の倍率のまま）"], [1, "細い車道と同じ（距離×1）"], [0.8, "少し通りたい（距離×0.8）"], [0.6, "通りたい（距離×0.6）"]]],
-  ["kodo", "旧街道", [[1, "気にしない（距離×1）"], [0.8, "少し通りたい（距離×0.8）"], [0.6, "通りたい（距離×0.6）"], [0.4, "どんどん通る（距離×0.4）"]]],
+  ["bkNavi", "➡ ナビライン（矢羽根）", BK_OPT],
+  ["bkLane", "🟦 自転車専用通行帯（地図）", BK_OPT],
+  ["bkSwalk", "🚶 自転車歩行者道", BK_OPT],
+  ["bkSlow", "🐢 30km制限の道", BK_OPT],
+  ["riv", "〰 川べりの車の来ない道", [["off", "気にしない（歩く道・小道の倍率のまま）"], [1, "細い車道と同じ（距離×1）"], ...L(0.8, 0.6, 0.4)]],
+  ["kodo", "旧街道", L(0.4, 0.6, 0.8, 1)],
   ["slope", "坂道（のぼり）", [[0, "気にしない（ペナルティ 0）"], [5, "少し避ける（ペナルティ のぼり1mごとに5m）"], [10, "避ける（ペナルティ のぼり1mごとに10m）"], [20, "かなり避ける（ペナルティ のぼり1mごとに20m）"]]],
-  ["paintPen", "👣 もう塗った道（足あと）", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [2, "避ける（距離×2）"], [4, "かなり避ける（距離×4）"]]],
-  ["stepsGuess", "🪜 階段？", [[1, "気にしない（距離×1）"], [3, "少し避ける（距離×3）"], [30, "ほとんど通らない（距離×30）"], ["no", "通らない"]]],
-  ["steep", "⛰ 急坂？", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [10, "かなり避ける（距離×10）"]]],
-  ["station", "駅の中の通路", [[1, "気にしない（距離×1）"], [2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], ["no", "通らない（デフォルト）"]]],
-  ["park", "公園の中の道", [[1, "気にしない（距離×1）"], [2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], ["no", "通らない"]]],
-  ["sidewalk", "歩道がとなりにある車道（段差・柵）", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [6, "かなり避ける（距離×6）"]]],
+  ["paintPen", "👣 もう塗った道（足あと）", L(...L_UP)],
+  ["stepsGuess", "🪜 階段？", L(...L_UP, "no")],
+  ["steep", "⛰ 急坂？", L(...L_UP)],
+  ["station", "駅の中の通路", L(...L_UP, "no")],
+  ["park", "公園の中の道", L(...L_UP, "no")],
+  ["sidewalk", "歩道がとなりにある車道（段差・柵）", L(...L_UP)],
   ["steps", "階段", [["no", "通らない"], ["ramp", "自転車スロープ付きだけ（距離×8）"], ["yes", "通る（かついで上がる・距離×5）"]]],
   ["brSteps", "🌉 橋の歩道の出入り口の階段", [["ramp", "自転車スロープつきとみなす"], ["steps", "ふつうの階段と同じ（上の設定）"]]],
-  ["bridge", "歩道橋", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [10, "かなり避ける（距離×10）"], ["no", "通らない"]]],
-  ["tunnel", "地下道", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [10, "かなり避ける（距離×10）"], ["no", "通らない"]]],
-  ["unkSurf", "舗装不明の道（路面が書いてない小道・農道）", [[1, "気にしない（距離×1）"], [1.5, "少し避ける（距離×1.5）"], [3, "避ける（距離×3）"], [10, "かなり避ける（距離×10）"], ["no", "通らない"]]],
-  ["unpaved", "砂利・土の道", [[1, "気にしない（距離×1）"], [3, "少し避ける（距離×3）"], [20, "かなり避ける（距離×20）"], ["no", "通らない"]]],
+  ["bridge", "歩道橋", L(...L_UP, "no")],
+  ["tunnel", "地下道", L(...L_UP, "no")],
+  ["unkSurf", "舗装不明の道（路面が書いてない小道・農道）", L(...L_UP, "no")],
+  ["unpaved", "砂利・土の道", L(...L_UP, "no")],
   ["xDet", "4車線の道を 交差点で渡れないとき、信号・横断歩道まで 行ってよい距離", [[0, "行かない（大回りして 渡れる交差点をさがす）"], [60, "60mまで（ペナルティ 行って帰る分）"], [100, "100mまで（ペナルティ 行って帰る分）"], [150, "150mまで（ペナルティ 行って帰る分）"]]],
   ["allWide", "2車線の道路も 4車線としてあつかう（より安全に）", [["off", "あつかわない"], ["on", "あつかう"]]],
   ["midCross", "2車線の道を信号・横断歩道のない所で渡る", [[0, "どこでも渡る（ペナルティ 0）"], [100, "少し避ける（ペナルティ 1回100m）"], [300, "避ける（ペナルティ 1回300m）"], [500, "かなり避ける（ペナルティ 1回500m）"], [1000, "ほとんど渡らない（ペナルティ 1回1km）"], [3000, "ほぼ渡らない（ペナルティ 1回3km）"]]],
@@ -3696,6 +3706,11 @@ let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cf
         }
         c.penV2 = 1; }
       for (const k of ["privy", "danchi", "cemetery"]) c[k] = "no";   // 11/24 私道・駐車場・団地・霊園の中は いつも 通らない（設定の項目はなくした・ユーザー：項目があると「あれ？」と思われる）
+      if (!c.cfgV8) {   // 11/24 倍率は ぜんぶ 9段階にそろえた：前の設定は いちばん近い段に（×8→×10・×1.2→×1・×2→×1.5・×30→×10）
+        const snap = (v, o) => { if (typeof v !== "number") return v === "no" && !o.some(x => x[0] === "no") ? 10 : v; const ns = o.map(x => x[0]).filter(x => typeof x === "number"); if (!ns.length || ns.includes(v)) return v; return ns.reduce((a, b) => Math.abs(Math.log(b / v)) < Math.abs(Math.log(a / v)) ? b : a); };
+        if (c.pen) for (const ks of PEN_ROWS.map(r => r[0])) for (const k of ks.split(",")) if (c.pen[k] != null) c.pen[k] = snap(c.pen[k], penOpts(ks));
+        for (const [k, , o] of OTHER_ROWS) if (typeof c[k] === "number" && o.some(x => typeof x[0] === "number") && !["mode", "turn", "slope", "xDet", "midCross"].includes(k)) c[k] = snap(c[k], o);
+        c.cfgV8 = 1; }
       if (!c.cfgV7) { if (c.station === 5 || c.station == null) c.station = "no"; c.cfgV7 = 1; }   // 11/24 駅の中の通路は はじめ 通らない（ユーザー：どう考えても楽しくない）。設定では かえられる
       if (!c.cfgV6) { if (c.park === 5 || c.park == null) c.park = "no"; c.cfgV6 = 1; }   // 11/24 公園の中は 通らない（〰川べりの車の来ない道は のぞく）
       if (!c.cfgV5) { if (c.turn === 100 || c.turn == null) c.turn = 0; c.cfgV5 = 1; }   // 11/24 曲がる回数は はじめ 気にしない（ユーザー）
@@ -3719,16 +3734,16 @@ function renderCfg() {
   h += "<h4>道を渡るとき</h4>" + get(["xDet", "allWide", "midCross"]) + '<div class="note">ペナルティ＝ルートの長さに足して計算するきょり（じっさいに走るきょりは ふえないよ）<span class="hq">?</span><div class="hd">たとえば ペナルティ100m なら、信号・横断歩道のある所を通るルートの遠回りが 100mより短ければ そっちを選ぶよ。4車線以上の道は、安全のため 信号か横断歩道のある所でしか渡らないよ（それ以外は 3km＝ほぼ渡らない）。右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
   h += '<h4>一方通行</h4>' + get(["oneway"]) + '<div class="note">「自転車を除く」の一方通行だけ 逆走するよ（少し避ける）<span class="hq">?</span><div class="hd">警察の交通規制データ（JARTIC）と地図（OSM）で「自転車を除く」になっている一方通行だけ、逆走するよ（少しだけ避ける）。自転車も一方通行の道や、わからない道は 逆走しないよ。「逆走を避ける」にすると、逆走の道を3倍の長さとして計算するから、遠回りが短ければ逆走しないよ。「自転車を除く」の道は 自転車は逆向きに走ってもいい道だから、ほんとうは逆走じゃないよ（ここでは わかりやすく「逆走」って書いてるよ）</div></div>';
   // 🚲 道の好み：「なぜいやか」の理由ごとに まとめる（11/24）。同じ理由の中は いちばん大きいのだけ、ちがう理由どうしは 足し算（router.js の wayCost）
-  const pen = ks => PEN_ROWS.filter(r => ks.includes(r[0])).map(([k, t]) => `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(PEN_OPT, penGet(k))}</select></div>`).join("");
+  const pen = ks => PEN_ROWS.filter(r => ks.includes(r[0])).map(([k, t]) => `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(penOpts(k), penGet(k))}</select></div>`).join("");
   h += '<h4>🚲 道の好み</h4><div class="note">×3 なら「1mを3m分」と数えるよ<span class="hq">?</span><div class="hd">×3 なら「1mを3m分」と数えるよ（遠回りしても使わなくなる）。下の 🚗🚶🪨🚧🏠 は「なぜいやか」の分けかただよ。同じ分けの中で重なったら いちばん大きい倍率だけ、ちがう分けどうしは 足し算（×の数から1を引いて足す）。歩道×3で公園の中×5なら ×5、一般道×5で歩道がとなり×3なら ×7。道の種類は 🧪道のデータの色と同じ分けかただよ</div></div>';
   h += "<h4>🚗 車が多い</h4>" + pen(["residential,living_street,unclassified", "service", "tertiary", "secondary,primary,trunk"]);
   h += "<h4>🚶 人が多い</h4>" + pen(["footway", "pedestrian"]) + get(["park", "station"]) + '<div class="note">公園の中を通る道・駅の通路のこと<span class="hq">?</span><div class="hd">公園の敷地の中を通る道のこと（人が歩いていて、自転車はひんしゅく）。川ぞいのサイクリングロードみたいな長い自転車道（400m以上）・自転車OKの道・〰川べりの車の来ない道（長さの半分以上が川べり）と、住宅街の道は、公園の中でも気にしないよ。配布データのはんいで見分けるよ<br><br>🚉駅のまわり150mにある、自由通路・コンコース・駅の中の通路のこと（人が多くて、自転車は押して歩く所）。配布データの駅一覧で見分けるよ<br><br>🏢団地の中・🪦霊園の中・🏫学校や工場の敷地・🏠私道や駐車場の中は、設定にはないけど、いつも「通らない」にしてあるよ（人の敷地なので ひんしゅくだよ）</div></div>';
   h += "<h4>🪨 走りにくい</h4>" + pen(["path,track"]) + get(["unpaved", "unkSurf", "steps", "brSteps", "bridge", "tunnel"]) + '<div class="note">川の橋の歩道は、出入り口が階段だけに見えても 自転車を押して上がれるスロープつきが多いよ<span class="hq">?</span><div class="hd">車の橋にそった歩道で 自転車も走れる所（地図に自転車OKと書いてある・警察のデータの「自転車も通れる歩道」）が 合わせて50m以上あれば、そこから 30m以内の階段を「スロープつき」とみなすよ（地図に「スロープなし」と書いてある階段はのぞく）。車の橋にそった歩道は 歩道橋あつかいにしないよ</div></div>'
     + get(["stepsGuess", "steep"]) + '<div class="note">地図ではふつうの道だけど、標高で見つけた 階段・急坂っぽい所（地図の🪜⛰）<span class="hq">?</span><div class="hd">交差点から交差点までの80mまでの短い道で、はしとはしの高さの差を見るよ。🪜階段？＝車の道で20%・歩道や小道で10%より急（高さの差2.5m以上）。⛰急坂？＝10%より急（高さの差2m以上）で、じっさいは階段のこともけっこうあるよ。⛰急坂？の中でも、高さの差のほとんどが 15mの間に まとまっていて 25%より急な所（長い道の まん中だけ階段、みたいな所）は 🪜階段？にするよ。長い階段（15mの間で3m以上・30%より急）も 🪜階段？だよ（とちゅうで はしとはしの高さから飛び出した点は、崖や擁壁のずれとして すてるよ）。のぼりもくだりも同じだよ。地図に階段と書いてある所は「階段・歩道橋・砂利」の設定のほうだよ</div></div>';
   h += "<h4>🚧 段差・柵</h4>" + get(["sidewalk"]) + '<div class="note">すぐ横に歩道がある道（段差や柵が多い）<span class="hq">?</span><div class="hd">道のすぐ横に、同じ向きの歩道がある道のこと（段差や柵があることが多いよ）。柵そのものは地図データにほとんどないので、歩道があるかで見分けるよ</div></div>';
-  h += "<h4>🚲 自転車道</h4>" + pen(["cycleway"]);
+  h += "<h4>🚲 自転車道</h4>" + pen(["cycleway"]) + get(["bkSwalk"]) + get(["riv"]) + get(["bkSlow"]) + get(["bkLane"]) + get(["bkNavi"]) + '<div class="note">自転車道のなかま：倍率が小さいほど通りたい道（×1＝ふつうの道と同じ）<span class="hq">?</span><div class="hd">上から、信頼できる順だよ。🟦自転車専用通行帯・➡ナビラインは、地図（OSM）にそう書いてあっても、じっさいは道に何もないことがけっこうあるよ（あてにしすぎないでね）。🚶自転車歩行者道・🐢30km制限の道も、地図にそう書いてある道だけだよ（📍マークの「道」と同じ）。🚲自転車道・サイクリングロードは 上の「自転車道」の倍率。〰川べりは、小さい川ぞいの 車の来ない道（下の説明）。ぜんぶ「気にしない」だと いままでと同じルートだよ。通りたい（×0.8 など）にすると 少し遠回りしても その道を通るよ</div></div>' + '<div class="note">〰 川べり：小さい川ぞいの 車の来ない道を 通るよ<span class="hq">?</span><div class="hd">気にしない以外にすると、川べりの所は 🚶人が多い（歩く道 ×3 など）の分を数えないで、えらんだ倍率にするよ。川・水路・小川の線から20m以内で 川と同じ向きの、自転車道・歩道・小道・車は通行止めの道（📍マークの「〰 川べりの車の来ない道」）。自転車が走れない道・砂利・土の道は のぞくよ。公園の中でも この道は 通れるよ（公園の中の道の設定は かからない）。地図データを取る広さを 広げると 遠くの川べりまで使えるよ</div></div>';
   h += "<h4>⛰ 坂道（のぼり）</h4>" + get(["slope"]) + '<div class="note">のぼり1mを、平らな道の何m分と数えるか<span class="hq">?</span><div class="hd">のぼり1mを、平らな道の何m分と数えるか（長いのぼりで疲れたくないとき。短い急な所は 下の⛰急坂？・🪜階段？ で）。くだりは気にしないよ（国土地理院の標高データを使うので、少しだけ時間がかかるよ）</div></div>';
-  h += "<h4>👍 通りたい・⚠ 通りたくない（かけ算）</h4>" + get(["riv"]) + '<div class="note">小さい川ぞいの 車の来ない道を 通るよ<span class="hq">?</span><div class="hd">気にしない以外にすると、川べりの所は 🚶人が多い（歩く道 ×3 など）の分を数えないで、えらんだ倍率にするよ。川・水路・小川の線から20m以内で 川と同じ向きの、自転車道・歩道・小道・車は通行止めの道（📍マークの「〰 川べりの車の来ない道」）。自転車が走れない道・砂利・土の道は のぞくよ。公園の中でも この道は 通れるよ（公園の中の道の設定は かからない）。地図データを取る広さを 広げると 遠くの川べりまで使えるよ</div></div>' + get(["kodo"]) + '<div class="note">旧東海道みたいな旧街道を、遠回りしても通るよ<span class="hq">?</span><div class="hd">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div></div>' + get(["paintPen"]) + '<div class="note">まだ塗っていない道を通るルートにするよ<span class="hq">?</span><div class="hd">もう塗った道（👣足あと・今日の分も）を さけて、まだ塗っていない道を通るルートにするよ。行き止まりや遠回りもふえるので、塗りたいときだけ</div></div>' + get(["avoidPen"]) + '<div class="note">印のいちばん近い道を、何倍の長さと数えるか<span class="hq">?</span><div class="hd">地図を長おし →「⚠ 通りたくない」でつけた印の、いちばん近い道（12m以内）を、その道まるごと 何倍の長さと数えるか（×5 なら 100m の道を 500m 分）。「🚫 通れない」の印は、いつも通らないよ</div></div>';
+  h += "<h4>👍 通りたい・⚠ 通りたくない（かけ算）</h4>" + get(["kodo"]) + '<div class="note">旧東海道みたいな旧街道を、遠回りしても通るよ<span class="hq">?</span><div class="hd">遠くの旧街道まで行きたいときは「地図データを取る広さ」も広げてね。旧東海道・旧中山道・甲州道中みたいな旧街道を、遠回りしても通るよ（×0.6 なら 1m を 0.6m 分と数える）。「国道○号旧道」みたいなバイパスにされた旧道は半分くらいの効き目。国道1号みたいな幹線国道は、むかしの街道でも対象外だよ。気にしない以外にすると、計算が少しおそくなるよ</div></div>' + get(["paintPen"]) + '<div class="note">まだ塗っていない道を通るルートにするよ<span class="hq">?</span><div class="hd">もう塗った道（👣足あと・今日の分も）を さけて、まだ塗っていない道を通るルートにするよ。行き止まりや遠回りもふえるので、塗りたいときだけ</div></div>' + get(["avoidPen"]) + '<div class="note">印のいちばん近い道を、何倍の長さと数えるか<span class="hq">?</span><div class="hd">地図を長おし →「⚠ 通りたくない」でつけた印の、いちばん近い道（12m以内）を、その道まるごと 何倍の長さと数えるか（×5 なら 100m の道を 500m 分）。「🚫 通れない」の印は、いつも通らないよ</div></div>';
   h += '<div class="note" style="margin-top:6px">設定はこの端末におぼえておくよ。変えたらもう一度「ルートを作る」を押してね</div>';
   $("cfgBox").innerHTML = h; cfgDeps();
 }
@@ -4266,7 +4281,7 @@ function rwKind(t) {   // 1本の道 → どの線の種類か（いくつも当
   return null;
 }
 const RW_ST = { rvside: { c: "#00bfa5", w: 13, o: .45 }, cway: { c: "#00a651", w: 7, o: .8 }, blane2: { c: "#0050ff", w: 7, o: .8 }, swalk: { c: "#00bcd4", w: 5, o: .85, d: "8 6" }, navi: { c: "#d500f9", w: 5, o: .9, d: "6 8" }, slow: { c: "#ff9800", w: 6, o: .6 } };   // 種類ごとに色を変える（緑＝自転車道・青＝専用通行帯・水色点線＝自転車歩行者道・紫点線＝ナビライン・オレンジ＝30km）
-const RW_NM = { rvside: "〰 <b>小河川の川べりの 車の来ない道</b>（ためし）", cway: "🚲 <b>自転車道・サイクリングロード</b>", blane2: "🟦 <b>自転車専用通行帯</b>（地図のデータ）", swalk: "🚶 <b>自転車歩行者道</b>（自転車の通行の指定がある歩道・小道）", navi: "➡ <b>ナビライン</b>（矢羽根）", slow: "🐢 <b>30km制限の道</b>" };
+const RW_NM = { rvside: "〰 <b>小河川の川べりの 車の来ない道</b>", cway: "🚲 <b>自転車道・サイクリングロード</b>", blane2: "🟦 <b>自転車専用通行帯</b>（地図のデータ）", swalk: "🚶 <b>自転車歩行者道</b>（自転車の通行の指定がある歩道・小道）", navi: "➡ <b>ナビライン</b>（矢羽根）", slow: "🐢 <b>30km制限の道</b>" };
 function rwReq() { clearTimeout(rwT); rwT = setTimeout(() => {
   const ln = RW_LINE.some(k => spotOn.has(k)) && !spotHide, ar = RW_AREA.some(k => spotOn.has(k)) && !spotHide, rv = RW_RIV.some(k => spotOn.has(k)) && !spotHide, z = map.getZoom(), RW_LZ = MZ("rwl"), RW_AZ = MZ("rwa");
   if (!(ln && z >= RW_LZ) && !(ar && z >= RW_AZ) && !(rv && z >= RW_LZ)) { rwLayer.clearLayers(); rwId++; probeReq(); return; }
@@ -5397,6 +5412,11 @@ document.addEventListener("keydown", e => {
   if (!(e.ctrlKey && e.altKey) || e.metaKey || e.shiftKey || e.repeat || e.code !== "Space") return;
   e.preventDefault(); $("simGo").click();
 });
+// ⌨ Ctrl＋Alt＋Enter＝ルートを作る
+document.addEventListener("keydown", e => {
+  if (!(e.ctrlKey && e.altKey) || e.metaKey || e.shiftKey || e.repeat || e.key !== "Enter" || $("go").disabled) return;
+  e.preventDefault(); $("go").click();
+});
 // ⌨ 🧪 デバッグの表示を キーボードで切りかえ（11/22）：Ctrl＋Alt＋Z 道のデータ／X アプリの判定／C 警察の交通規制／V 信号・横断歩道を あてた結果で色分け
 document.addEventListener("keydown", e => {
   if (!(e.ctrlKey && e.altKey) || e.metaKey || e.shiftKey || e.repeat) return;
@@ -5427,7 +5447,7 @@ $("qList").onclick = e => {
 // ---------- 📍 まわりのスポット（設定でえらんだジャンルだけ、現在地のまわりに出す） ----------
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
-  ["道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"], ["rvside", "〰", "川べりの車の来ない道（ためし）"]]],
+  ["道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"], ["rvside", "〰", "川べりの車の来ない道"]]],
   ["はんい・川", [["river", "〰", "川・水路"], ["bigriver", "🌊", "大きい川の水面"],
     ["apark", "🌳", "公園のはんい"], ["acem", "🪦", "霊園・墓地のはんい"], ["aclosed", "🏫", "学校・工場などの敷地"], ["adanchi", "🏢", "団地のはんい"], ["aparking", "🅿", "駐車場のはんい"]]],
   ["標識", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
