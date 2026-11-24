@@ -209,7 +209,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1838</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1909</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3725,7 +3725,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1838", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1909", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6638,7 +6638,6 @@ function onPos(p) {
     me = L.marker(ll, { icon: icDot, interactive: false, zIndexOffset: 1000, rotateWithView: true, rotation: 0 }).addTo(map);
   }
   me.setLatLng(ll); acc.setLatLng(ll).setRadius(p.coords.accuracy);
-  try { if (follow) probeReq(); } catch {}
   qCheck(ll, p.coords.accuracy); if (!blkFull()) spotUpdate(false); homeDist();   // まっ黒のあいだは マークも描かない
   setTimeout(() => vcSpotCheck(ll), 0);   // 案内（vcNav）のあとで
   // 🚳🚶⛔ の「近くに〜」の声は 11/21 にやめた（音がふえすぎる）。nbCheck・oxCheck は のこしておく（もどすときは ここでよぶ）
@@ -6982,7 +6981,7 @@ async function rivDraw() {
   probeReq();
 }
 map.on("moveend", rivReq);
-// 🎯 道・はんい・川の線：タップしなくても、地図のまんなか（ナビ中は 現在地）が線やはんいに重なっているあいだ 説明を出しっぱなしにする
+// 🎯 道・はんい・川の線・スポット：タップしなくても、地図のまんなかの＋が重なっているあいだ 説明を出しっぱなしにする（◎で固定中は出さない）
 const probeTip = L.tooltip({ permanent: true, direction: "top", offset: [0, -6], className: "probeTip", interactive: false }), PROBE_PX = 14;
 let probeT = null, probeOn = false;
 const probeCtr = L.DomUtil.create("div", "", map.getContainer());
@@ -6996,8 +6995,8 @@ function probeText(ly) {
 function probe() {
   const lys = [...rwLayer.getLayers(), ...rivLayer.getLayers()], nav = follow && me;
   const pts = [spotLayer, jxLayer, oxLayer, nbLayer].flatMap(g => g.getLayers().filter(x => x instanceof L.Marker));   // スポット・標識の点
-  const want = !spotHide && (lys.length > 0 || pts.length > 0);
-  probeCtr.style.display = want && !nav ? "block" : "none";
+  const want = !spotHide && !nav && (lys.length > 0 || pts.length > 0);   // 走っているとき（◎で固定中）は出さない（じゃまなので）
+  probeCtr.style.display = want ? "block" : "none";
   if (!want) { if (probeOn) { map.removeLayer(probeTip); probeOn = false; } return; }
   const ll = nav ? me.getLatLng() : map.getCenter(), P = map.latLngToContainerPoint(ll);
   let best = null, bd = PROBE_PX, area = null, spot = null, sd = 20;   // 点（スポット・標識）は 20px 以内なら いちばん先に出す
@@ -7490,7 +7489,7 @@ $("dir").onclick = () => {
 // ナビ中は地図を動かせない（拡大・縮小だけ。自分の位置を中心に）。◎をもう一度押すまで解除しない
 function setFollow(on) {
   if (!on && ovMode) { if (Date.now() - ovSince < 8000) addLog("🗺 全体図をやめた（固定をはずした）", "w"); ovMode = false; document.body.classList.remove("ov"); }
-  follow = on; document.body.classList.toggle("navi", on); if (!on) { try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {} }
+  follow = on; document.body.classList.toggle("navi", on); try { probeReq(); } catch {} if (!on) { try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {} }
   $("gps").classList.toggle("on", on);
   $("gpsL").classList.toggle("on", on); $("gpsL").textContent = on ? "現在地に固定中" : wid !== null ? "押すと固定" : "現在地";
   const z = on ? "center" : true;
