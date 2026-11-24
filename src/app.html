@@ -3628,7 +3628,7 @@ const penGet = ks => ks.split(",").map(k => cfg.pen[k]).reduce((a, b) => PEN_ORD
 const PEN_OPT = [[1, "どんどん使う（距離×1）"], [1.2, "（距離×1.2）"], [1.5, "少し避ける（距離×1.5）"], [2, "（距離×2）"], [3, "避ける（距離×3）"], [5, "（距離×5）"],
   [8, "かなり避ける（距離×8）"], [12, "（距離×12）"], [20, "（距離×20）"], [30, "ほぼ使わない（距離×30）"], ["no", "通らない"]];
 const CFG_DEF = { pen: { living_street: 1, residential: 1, service: 1.2, unclassified: 1, cycleway: 1, tertiary: 5, secondary: 8,
-  primary: 8, trunk: 8, footway: 3, pedestrian: "no", path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "mid", midCross: 100, oneway: "bike", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 1.5, station: 5, cemetery: "no", park: 5 };
+  primary: 8, trunk: 8, footway: 3, pedestrian: "no", path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 0, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "mid", midCross: 100, oneway: "bike", bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 30, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 1.5, station: 5, cemetery: "no", park: 5 };
 const OTHER_ROWS = [
   ["mode", "計算のしかた", [["quick", "すぐ走り出す（スタートから順番に決める）"], ["full", "ぜんぶ計算してから（少し良いルート）"]]],
   ["avoidPen", "⚠ 通りたくない道", [[2, "少し避ける（距離×2）"], [5, "避ける（距離×5）"], [10, "かなり避ける（距離×10）"], [30, "ほぼ通らない（距離×30）"]]],
@@ -3673,6 +3673,7 @@ let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cf
           for (const k of ks.split(",")) c.pen[k] = v;
         }
         c.penV2 = 1; }
+      if (!c.cfgV5) { if (c.turn === 100 || c.turn == null) c.turn = 0; c.cfgV5 = 1; }   // 11/24 曲がる回数は はじめ 気にしない（ユーザー）
       if (!c.cfgV4 && c.pen) { if (c.pen.pedestrian === 3 || c.pen.pedestrian == null) c.pen.pedestrian = "no"; c.cfgV4 = 1; }   // 11/24 歩行者天国・広場は 通らない（ユーザー：怒られかねない）
       if (!c.cfgV3) { if (c.danchi === 5 || c.danchi == null) c.danchi = "no"; if (c.cemetery === 5 || c.cemetery == null) c.cemetery = "no"; c.cfgV3 = 1; }   // 11/24 団地・霊園の中は 通らない（ユーザー）   // 通りたくない道は、はじめ「かなり避ける（×10）」に   // 「せまい」がはじめの設定だったころの人は「おまかせ」に
       return { ...CFG_DEF, ...c, pen: { ...CFG_DEF.pen, ...c.pen } }; } } catch {} return structuredClone(CFG_DEF); })();
