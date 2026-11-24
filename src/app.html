@@ -4322,7 +4322,7 @@ function rwDraw(m) {
     L.polyline(w.pts, { renderer: rwRend, color: st.c, weight: st.w, opacity: st.o, dashArray: st.d || null, lineCap: "round" })
       .bindPopup(() => RW_NM[k] + (w.t.name ? `<br>${esc(w.t.name)}` : "") + (dbgBikeTag(w.t) ? `<br><small>${esc(dbgBikeTag(w.t))}</small>` : "") + (w.t.maxspeed ? `<br><small>最高速度 ${esc(w.t.maxspeed)}km</small>` : "") + "<br><small>地図（OSM）のデータ。じっさいの標識・路面の表示にしたがってね</small>").addTo(rwLayer);
   }
-  if (m.bikeTooWide) setMsg("🚲 走る道：ひろすぎるよ。もう少し拡大してね");
+  if (m.bikeTooWide) setMsg("🎨 道のハイライト：ひろすぎるよ。もう少し拡大してね（パソコンなら「ハイライトを表示するレベル」を「いつも」にすると ひろくても出るよ）");
   probeReq();
 }
 map.on("moveend", rwReq);

@@ -209,7 +209,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.0009</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.0030</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3887,7 +3887,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1125.0009", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.0030", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -7180,7 +7180,7 @@ function rwDraw(m) {
     L.polyline(w.pts, { renderer: rwRend, color: st.c, weight: st.w, opacity: st.o, dashArray: st.d || null, lineCap: "round" })
       .bindPopup(() => RW_NM[k] + (w.t.name ? `<br>${esc(w.t.name)}` : "") + (dbgBikeTag(w.t) ? `<br><small>${esc(dbgBikeTag(w.t))}</small>` : "") + (w.t.maxspeed ? `<br><small>最高速度 ${esc(w.t.maxspeed)}km</small>` : "") + "<br><small>地図（OSM）のデータ。じっさいの標識・路面の表示にしたがってね</small>").addTo(rwLayer);
   }
-  if (m.bikeTooWide) setMsg("🚲 走る道：ひろすぎるよ。もう少し拡大してね");
+  if (m.bikeTooWide) setMsg("🎨 道のハイライト：ひろすぎるよ。もう少し拡大してね（パソコンなら「ハイライトを表示するレベル」を「いつも」にすると ひろくても出るよ）");
   probeReq();
 }
 map.on("moveend", rwReq);
