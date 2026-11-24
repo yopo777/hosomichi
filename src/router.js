@@ -4,7 +4,7 @@ const DEFAULT_CFG = {
   pen: {                 // 1m を何m分と数えるか（大きいほど避ける）。"no" は通らない
     living_street: 1, residential: 1, service: 1.2, unclassified: 1, cycleway: 1,
     tertiary: 5, secondary: 8, primary: 8, trunk: 8,
-    footway: 3, pedestrian: 3,   // 歩道は 11/21 に ×5→×3、歩行者天国・広場は ×1.5→×3 path: 1.5, track: 1.5,
+    footway: 3, pedestrian: 3, path: 1, track: 1,   // 歩道は 11/21 に ×5→×3、歩行者天国・広場は ×1.5→×3。小道・農道は 11/24 に ×1.5→×1（路面は 🪨砂利・土の設定で見る）
   },
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
   bridge: 1.5,           // 歩道橋（歩行者用）: 倍率 or "no"（11/21 に地下道と分けた）
@@ -335,7 +335,7 @@ function buildGraph(osm, cfg, onProg) {
   const stPen = cfg.station === "no" ? null : (+cfg.station || 1), STA_R = 150;
   const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1), parkPen = cfg.park === "no" ? null : (+cfg.park || 1);
   const danPen = cfg.danchi === "no" ? null : (+(cfg.danchi ?? 5) || 1);   // 🏢 団地の中の道（はじめは ×5）
-  const prvPen = cfg.privy === "no" ? null : (+(cfg.privy ?? 5) || 1);     // 🏠 私道・家の前の道・駐車場の中（はじめは ×5）
+  const prvPen = (cfg.privy ?? "no") === "no" ? null : (+cfg.privy || 1);     // 🏠 私道・家の前の道・駐車場の中（11/24 から はじめは 通らない）
   const inArea = (kind, nd) => {   // 道のまん中の点（と両はし）が はんいの中か
     const m = nd[nd.length >> 1];
     return areaHas(kind, lat[m], lon[m]) || (nd.length > 2 && areaHas(kind, lat[nd[0]], lon[nd[0]]) && areaHas(kind, lat[nd[nd.length - 1]], lon[nd[nd.length - 1]]));
