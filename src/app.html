@@ -4208,7 +4208,7 @@ const jxLayer = L.layerGroup().addTo(map); let jxT = null, jxId = 0;
 const jxOn = () => Object.keys(JX_K).some(k => spotOn.has(k)) && !spotHide;
 function jxReq() { clearTimeout(jxT); jxT = setTimeout(jxDraw, 500); }
 // 🚲 走る道・はんい（📍マーク）：OSM の ナビライン・自転車専用通行帯・自転車道・自転車歩行者道・30km制限 と、公園・団地・駐車場などの はんい
-const RW_LINE = ["navi", "blane2", "cway", "swalk", "slow"], RW_AREA = ["apark", "acem", "aclosed", "adanchi", "aparking"];
+const RW_LINE = ["navi", "blane2", "cway", "swalk", "slow"], RW_RIV = ["rvside"], RW_AREA = ["apark", "acem", "aclosed", "adanchi", "aparking"];
 const RW_AK = { park: "apark", cemetery: "acem", closed: "aclosed", danchi: "adanchi", parking: "aparking" };
 const rwLayer = L.layerGroup().addTo(map), rwRend = L.canvas({ padding: 0.3 }); let rwId = 0, rwT = null;
 function rwKind(t) {   // 1本の道 → どの線の種類か（いくつも当てはまるときは 自転車向きの強いほう）
@@ -4220,13 +4220,13 @@ function rwKind(t) {   // 1本の道 → どの線の種類か（いくつも当
   if (+t.maxspeed > 0 && +t.maxspeed <= 30) return "slow";
   return null;
 }
-const RW_ST = { cway: { c: "#00a651", w: 7, o: .8 }, blane2: { c: "#0050ff", w: 7, o: .8 }, swalk: { c: "#00bcd4", w: 5, o: .85, d: "8 6" }, navi: { c: "#d500f9", w: 5, o: .9, d: "6 8" }, slow: { c: "#ff9800", w: 6, o: .6 } };   // 種類ごとに色を変える（緑＝自転車道・青＝専用通行帯・水色点線＝自転車歩行者道・紫点線＝ナビライン・オレンジ＝30km）
-const RW_NM = { cway: "🚲 <b>自転車道・サイクリングロード</b>", blane2: "🟦 <b>自転車専用通行帯</b>（地図のデータ）", swalk: "🚶 <b>自転車歩行者道</b>（自転車の通行の指定がある歩道・小道）", navi: "➡ <b>ナビライン</b>（矢羽根）", slow: "🐢 <b>30km制限の道</b>" };
+const RW_ST = { rvside: { c: "#00bfa5", w: 13, o: .45 }, cway: { c: "#00a651", w: 7, o: .8 }, blane2: { c: "#0050ff", w: 7, o: .8 }, swalk: { c: "#00bcd4", w: 5, o: .85, d: "8 6" }, navi: { c: "#d500f9", w: 5, o: .9, d: "6 8" }, slow: { c: "#ff9800", w: 6, o: .6 } };   // 種類ごとに色を変える（緑＝自転車道・青＝専用通行帯・水色点線＝自転車歩行者道・紫点線＝ナビライン・オレンジ＝30km）
+const RW_NM = { rvside: "〰 <b>小河川の川べりの 車の来ない道</b>（ためし）", cway: "🚲 <b>自転車道・サイクリングロード</b>", blane2: "🟦 <b>自転車専用通行帯</b>（地図のデータ）", swalk: "🚶 <b>自転車歩行者道</b>（自転車の通行の指定がある歩道・小道）", navi: "➡ <b>ナビライン</b>（矢羽根）", slow: "🐢 <b>30km制限の道</b>" };
 function rwReq() { clearTimeout(rwT); rwT = setTimeout(() => {
-  const ln = RW_LINE.some(k => spotOn.has(k)) && !spotHide, ar = RW_AREA.some(k => spotOn.has(k)) && !spotHide, z = map.getZoom(), RW_LZ = MZ("rwl"), RW_AZ = MZ("rwa");
-  if (!(ln && z >= RW_LZ) && !(ar && z >= RW_AZ)) { rwLayer.clearLayers(); rwId++; probeReq(); return; }
+  const ln = RW_LINE.some(k => spotOn.has(k)) && !spotHide, ar = RW_AREA.some(k => spotOn.has(k)) && !spotHide, rv = RW_RIV.some(k => spotOn.has(k)) && !spotHide, z = map.getZoom(), RW_LZ = MZ("rwl"), RW_AZ = MZ("rwa");
+  if (!(ln && z >= RW_LZ) && !(ar && z >= RW_AZ) && !(rv && z >= RW_LZ)) { rwLayer.clearLayers(); rwId++; probeReq(); return; }
   const b = map.getBounds();
-  worker.postMessage({ cmd: "dbgView", tag: "rw", id: ++rwId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { only: true, wide: true, bike: ln && z >= RW_LZ, area: ar } });
+  worker.postMessage({ cmd: "dbgView", tag: "rw", id: ++rwId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { only: true, wide: true, bike: ln && z >= RW_LZ, riv: rv && z >= RW_LZ, area: ar } });
 }, 400); }
 function rwDraw(m) {
   if (m.id !== rwId) return;
@@ -4236,7 +4236,19 @@ function rwDraw(m) {
     const [c, n] = AREA_K[a.k] || ["#888", a.k];
     L.polygon(a.pts, { renderer: rwRend, color: c, weight: 1.5, fillColor: c, fillOpacity: .18 }).bindPopup(`<b>${n}</b><br><small>${AREA_NOTE[a.k] || ""}</small>`).addTo(rwLayer);
   }
+  for (const w of m.ways || []) if (w.rv) {   // 〰 川べりの車の来ない道：太いうすい線を下に（同じ種類の区間をつなげて描く）
+    for (let i = 0; i < w.rv.length;) {
+      const v = w.rv[i]; let j = i; while (j + 1 < w.rv.length && w.rv[j + 1] === v) j++;
+      const k = v === 1 ? "rvside" : null;
+      if (k && spotOn.has(k)) { const st = RW_ST[k];
+        L.polyline(w.pts.slice(i, j + 2), { renderer: rwRend, color: st.c, weight: st.w, opacity: st.o, lineCap: "round" })
+          .bindPopup(RW_NM[k] + (v === 1 && w.rn ? `<br>${esc(w.rn)} のそば` : "") + `<br><small>道：${esc(w.t.name || w.t.highway)}</small>`
+            + "<br><small>川の線から20m以内・向きが±30°でそろう、車の来ない道（自転車道・歩道・小道・車は通行止めの道）。自転車が走れない道（自転車通行止め・押して歩く・歩行者天国）はのぞくよ（アプリの見分け。ルートにはまだ使わないよ）</small>").addTo(rwLayer); }
+      i = j + 1;
+    }
+  }
   for (const w of m.ways || []) {
+    if (w.bk === false) continue;   // 川べりだけで来た道
     const k = rwKind(w.t); if (!k || !spotOn.has(k)) continue;
     const st = RW_ST[k];
     L.polyline(w.pts, { renderer: rwRend, color: st.c, weight: st.w, opacity: st.o, dashArray: st.d || null, lineCap: "round" })
@@ -5370,7 +5382,7 @@ $("qList").onclick = e => {
 // ---------- 📍 まわりのスポット（設定でえらんだジャンルだけ、現在地のまわりに出す） ----------
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
-  ["道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"]]],
+  ["道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"], ["rvside", "〰", "川べりの車の来ない道（ためし）"]]],
   ["はんい・川", [["river", "〰", "川・水路"], ["bigriver", "🌊", "大きい川の水面"],
     ["apark", "🌳", "公園のはんい"], ["acem", "🪦", "霊園・墓地のはんい"], ["aclosed", "🏫", "学校・工場などの敷地"], ["adanchi", "🏢", "団地のはんい"], ["aparking", "🅿", "駐車場のはんい"]]],
   ["標識", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
@@ -5404,7 +5416,7 @@ if (!lsGet("hosomichi_spotsV4", false)) { spotOn.add("owexit"); lsSet("hosomichi
 if (!lsGet("hosomichi_spotsV5", false)) { spotOn.add("pwalk"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV5", true); }   // 🚶 歩行者用道路も はじめオン
 if (!lsGet("hosomichi_spotsV6", false)) { if (spotOn.has("nobike")) { spotOn.add("noroad"); spotOn.add("nocar"); } lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV6", true); }
 if (!lsGet("hosomichi_spotsV7", false)) { for (const k of ["noent", "cxban", "swok", "blane"]) spotOn.add(k); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV7", true); }   // 11/21 警察のデータの標識4つ（はじめオン）   // 🚳 を 通行止め・車両通行止め・自転車通行止め に分けた（前の 🚳 と同じオン・オフ）
-const SPOT_SELF = new Set(["oneway", "noroad", "nocar", "nobike", "pwalk", "owexit", "noent", "cxban", "swok", "blane", "gstep", "steep", "navi", "blane2", "cway", "swalk", "slow", "river", "bigriver", "apark", "acem", "aclosed", "adanchi", "aparking"]);
+const SPOT_SELF = new Set(["oneway", "noroad", "nocar", "nobike", "pwalk", "owexit", "noent", "cxban", "swok", "blane", "gstep", "steep", "navi", "blane2", "cway", "swalk", "slow", "rvside", "river", "bigriver", "apark", "acem", "aclosed", "adanchi", "aparking"]);
 SPOT_SVG.noroad = X_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.nocar = V_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.pwalk = PW_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");   // スポットのデータではなく、アプリが自分で出すマーク

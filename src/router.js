@@ -1497,9 +1497,10 @@ async function dbgView(bb, cfg, opt) {
   const maxK = opt.wide ? 100 : 9;
   if (opt.only) {   // 🚲 自転車レーン・ナビラインの道と 🟩 はんいだけ（判定の計算はしない）
     const areas = opt.area ? await areasIn(S, W, N, E, opt.wide ? 4000 : 800) : [];
-    if (!opt.bike) return { only: true, ways: [], pts: [], xs: [], areas };
+    if (!opt.bike && !opt.riv) return { only: true, ways: [], pts: [], xs: [], areas };
     if (keys.length > maxK) return { only: true, ways: [], pts: [], xs: [], areas, bikeTooWide: true };
     const nd = new Map(), ws = [], seen = new Set(); let miss = 0;
+    const RV = opt.riv ? await rivPrep(S, W, N, E) : null, rvOn = RV && RV.n > 0;   // 〰 小河川の川べりの 車の来ない道
     const BLK = ["cycleway", "cycleway:both", "cycleway:left", "cycleway:right"];
     for (const k of keys) {
       let el = mem.get(k);
@@ -1508,12 +1509,27 @@ async function dbgView(bb, cfg, opt) {
       if (!el) { miss++; continue; }
       for (const e of el) {
         if (e.type === "node") nd.set(e.id, e);
-        else if (e.type === "way" && e.tags && e.tags.highway && (BLK.some(x => e.tags[x] && e.tags[x] !== "no" && e.tags[x] !== "separate")
-          || e.tags.highway === "cycleway" || e.tags.bicycle === "designated" || (+e.tags.maxspeed > 0 && +e.tags.maxspeed <= 30))) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); ws.push(e); } }   // 🚲 自転車レーン・ナビライン・自転車道・30km制限
+        else if (e.type === "way" && e.tags && e.tags.highway) {
+          const bk = opt.bike && (BLK.some(x => e.tags[x] && e.tags[x] !== "no" && e.tags[x] !== "separate")
+            || e.tags.highway === "cycleway" || e.tags.bicycle === "designated" || (+e.tags.maxspeed > 0 && +e.tags.maxspeed <= 30));   // 🚲 自転車レーン・ナビライン・自転車道・30km制限
+          const rq = rvOn && rivOK(e.tags);   // 🚓 警察のデータは このあと あてて もう一度見る
+          if (bk || rq) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); ws.push([e, bk, rq]); } }
+        }
       }
     }
+    if (rvOn && ws.some(w => w[2])) try {   // 🚓 警察のデータ（自転車通行止め・歩行者用道路）を 川べりの候補の道にあてる
+      const J = await jarPrep(keys, cfg), cw = ws.filter(w => w[2]).map(w => w[0]), need = new Set(cw.flatMap(e => e.nodes));
+      const o = jarApply0({ elements: [...[...need].map(id => nd.get(id)).filter(Boolean), ...cw] }, cfg, J), nt = new Map();
+      for (const e of o.elements) if (e.type === "way") nt.set(elKey(e), e.tags || {});
+      for (const w of ws) if (w[2]) w[2] = rivOK(nt.get(elKey(w[0])) || w[0].tags);
+    } catch {}
     const r6 = x => +x.toFixed(6), ways = [];
-    for (const e of ws) { const p = e.nodes.map(id => nd.get(id)).filter(Boolean); if (p.length > 1 && ways.length < 5000) ways.push({ id: e.id, pts: p.map(q => [r6(q.lat), r6(q.lon)]), t: e.tags, lv: levelOf(e.tags, cfg), use: true }); }
+    for (const [e, bk, rq] of ws) {
+      const p = e.nodes.map(id => nd.get(id)).filter(Boolean); if (p.length < 2 || ways.length >= 8000) continue;
+      const pts = p.map(q => [r6(q.lat), r6(q.lon)]), r = rq ? rivWay(RV, pts) : null;
+      if (!bk && !r) continue;
+      ways.push({ id: e.id, pts, t: e.tags, lv: levelOf(e.tags, cfg), use: true, bk, ...(r ? { rv: r.rv, rn: r.rn } : {}) });
+    }
     return { only: true, ways, pts: [], xs: [], areas, miss };
   }
   if (keys.length > maxK) return { tooWide: true };
@@ -2047,6 +2063,82 @@ function areaHas(kind, la, lo) {
     if (inside) return true;
   }
   return false;
+}
+// ==== 〰 小河川の川べりの車の来ない道（配布データの rivers/・0.1度のマス）：見分けるだけ（いまはルートの計算には使わない）====
+// 川・水路・小川の線から 20m 以内で、線と向きが ±30° でそろう 区間（区間＝道の点と点のあいだ。10m おきに しらべて 半分以上あてはまれば その区間）
+// 車の来ない道だけ：自転車道・歩道（車道ぞいの歩道・横断歩道はのぞく）・小道・歩行者天国（自転車OKの印があるときだけ）、または 車は通行止めの印（motor_vehicle=no など）がある道
+// 自転車が走れない道はのぞく：bicycle=no・dismount（押して歩く）・🚓 警察のデータの 自転車通行止め・歩行者用道路
+// 大河川のCR は いったん置いておく（ユーザー：大きい川ぞいは 自転車道・自転車歩行者道の印が もともと多い）
+const RIV_NEAR = 20, RIV_COS = Math.cos(30 * Math.PI / 180), RIV_FOOT = new Set(["cycleway", "footway", "path", "pedestrian"]), RIV_NOCAR = ["no", "private", "agricultural", "forestry"];
+let rivIx = null; const rivMem = new Map();
+async function rivCells(S, W, N, E) {
+  if (!packBase) return [];
+  if (!rivIx) { try { const r = await fetch(packBase + "rivers/index.json"); if (!r.ok) return []; const j = await r.json(); rivIx = { t: j.t || .1, has: new Set(j.cells || []) }; } catch { return []; } }
+  const t = rivIx.t, out = [];
+  for (let i = Math.floor(S / t); i <= Math.floor(N / t); i++) for (let k = Math.floor(W / t); k <= Math.floor(E / t); k++) {
+    const key = i + "_" + k; if (!rivIx.has.has(key)) continue;
+    if (!rivMem.has(key)) rivMem.set(key, fetch(packBase + "rivers/" + key + ".json").then(r => r.ok ? r.json() : null).catch(() => { rivMem.delete(key); return null; }));
+    const c = await rivMem.get(key); if (c) out.push(c);
+  }
+  return out;
+}
+async function rivPrep(S, W, N, E) {
+  const P = .001, cs = await rivCells(S - P, W - P, N + P, E + P);
+  const cl = Math.cos((S + N) / 2 * Math.PI / 180), X = lo => lo * cl * 111320, Y = la => la * 110540;
+  const LG = 50, lg = new Map(), seen = new Set();
+  for (const c of cs) for (const [, nm, pts] of c.line || []) {
+    const id = pts[0] + "|" + pts.length + "|" + nm; if (seen.has(id)) continue; seen.add(id);
+    for (let q = 1; q < pts.length; q++) {
+      const x1 = X(pts[q - 1][1]), y1 = Y(pts[q - 1][0]), x2 = X(pts[q][1]), y2 = Y(pts[q][0]);
+      for (let i = Math.floor(Math.min(x1, x2) / LG); i <= Math.floor(Math.max(x1, x2) / LG); i++) for (let j = Math.floor(Math.min(y1, y2) / LG); j <= Math.floor(Math.max(y1, y2) / LG); j++) {
+        const k = i + "," + j; let a = lg.get(k); if (!a) lg.set(k, a = []); a.push([x1, y1, x2, y2, nm || ""]);
+      }
+    }
+  }
+  return { X, Y, lg, LG, n: lg.size };
+}
+// 点 (px,py) から R m 以内で、向き (ux,uy) と ±30° でそろう川の線があるか（あれば 川の名前、なければ null）
+function rivNear(g, G, R, px, py, ux, uy) {
+  const ci = Math.floor(px / G), cj = Math.floor(py / G), K = Math.ceil(R / G);
+  let best = null, bd = R;
+  for (let i = -K; i <= K; i++) for (let j = -K; j <= K; j++) for (const [x1, y1, x2, y2, v] of g.get((ci + i) + "," + (cj + j)) || []) {
+    const dx = x2 - x1, dy = y2 - y1, l = Math.hypot(dx, dy); if (l < 1) continue;
+    if (Math.abs((dx * ux + dy * uy) / l) < RIV_COS) continue;
+    let t = ((px - x1) * dx + (py - y1) * dy) / (l * l); t = Math.max(0, Math.min(1, t));
+    const dd = Math.hypot(px - x1 - t * dx, py - y1 - t * dy); if (dd <= bd) { bd = dd; best = v; }
+  }
+  return best;
+}
+// 車の来ない道か（自転車は通れる）
+const rivOK = t => {
+  if (EXCLUDE.has(t.highway) || t.highway === "steps" || yes(t.bridge) || yes(t.tunnel) || t.bicycle === "no" || t.bicycle === "dismount") return false;
+  if (t["jar:nb"] === "1" || t["jar:nb"] === "ta") return false;   // 🚓 警察のデータで 自転車通行止め・歩行者用道路
+  const bOK = ["yes", "designated", "permissive"].includes(t.bicycle);
+  if (t.highway === "pedestrian" && !bOK) return false;   // 🚶 歩行者天国・広場：自転車OKの印がなければ のぞく
+  if ((t.access === "no" || t.access === "private") && !bOK) return false;
+  if (RIV_FOOT.has(t.highway)) return t.footway !== "sidewalk" && t.footway !== "crossing" && t.cycleway !== "crossing" && t.path !== "sidewalk";
+  return [t.motor_vehicle, t.motorcar, t.vehicle].some(v => RIV_NOCAR.includes(v)) && (t.vehicle !== "no" || bOK) || (t.access === "no" && bOK);
+};
+// 1本の道の点の列 [[緯度,経度],…] → 区間ごとに 0＝なし・1＝〰川べり（どれもなければ null）と、そばの川の名前
+function rivWay(R, pts) {
+  const xs = pts.map(p => R.X(p[1])), ys = pts.map(p => R.Y(p[0]));
+  { const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys); let hit = false;   // まわりに川がなければ すぐ終わり
+    for (let i = Math.floor((x0 - RIV_NEAR) / R.LG); i <= Math.floor((x1 + RIV_NEAR) / R.LG) && !hit; i++) for (let j = Math.floor((y0 - RIV_NEAR) / R.LG); j <= Math.floor((y1 + RIV_NEAR) / R.LG) && !hit; j++) if (R.lg.has(i + "," + j)) hit = true;
+    if (!hit) return null; }
+  const rv = [], nms = new Map(); let any = false;
+  for (let q = 1; q < pts.length; q++) {
+    const ax = xs[q - 1], ay = ys[q - 1], dx = xs[q] - ax, dy = ys[q] - ay, L = Math.hypot(dx, dy);
+    if (L < 1) { rv.push(rv.length ? rv[rv.length - 1] : 0); continue; }
+    const ux = dx / L, uy = dy / L, n = Math.max(1, Math.round(L / 10)); let h = 0;
+    for (let s = 0; s < n; s++) {
+      const f = (s + .5) / n, nm = rivNear(R.lg, R.LG, RIV_NEAR, ax + dx * f, ay + dy * f, ux, uy);
+      if (nm !== null) { h++; if (nm) nms.set(nm, (nms.get(nm) || 0) + 1); }
+    }
+    const k = h * 2 >= n ? 1 : 0; rv.push(k); if (k) any = true;
+  }
+  if (!any) return null;
+  let rn = "", bn = 0; for (const [k, v] of nms) if (v > bn) { bn = v; rn = k; }
+  return { rv, rn };
 }
 // ==== 坂道：国土地理院の標高タイル（5mメッシュ dem5a・dem5b・ズーム15。ない所は 10mメッシュ dem_png・ズーム14）で、のぼりをきらう・印のない階段をさがす ====
 const DEMZ = 15, demCache = new Map();
