@@ -1556,7 +1556,7 @@ async function dbgView(bb, cfg, opt) {
     } catch {}
     const r6 = x => +x.toFixed(6), ways = [];
     for (const [e, bk, rq] of ws) {
-      const p = e.nodes.map(id => nd.get(id)).filter(Boolean); if (p.length < 2 || ways.length >= 8000) continue;
+      const p = e.nodes.map(id => nd.get(id)).filter(Boolean); if (p.length < 2 || ways.length >= (opt.maxW || 8000)) continue;
       const pts = p.map(q => [r6(q.lat), r6(q.lon)]), r = rq ? rivWay(RV, pts) : null;
       if (!bk && !r) continue;
       ways.push({ id: e.id, pts, t: e.tags, lv: levelOf(e.tags, cfg), use: true, bk, ...(r ? { rv: r.rv, rn: r.rn } : {}) });
@@ -1583,7 +1583,7 @@ async function dbgView(bb, cfg, opt) {
   for (const e of els) {
     if (e.type !== "way" || !e.tags || !e.tags.highway) continue;
     const nd = e.nodes.map(id => G.idx.get(id)).filter(x => x !== undefined); if (nd.length < 2 || !nd.some(i => inB(G.lat[i], G.lon[i]))) continue;
-    if (ways.length >= 1500) break;
+    if (ways.length >= (opt.maxW || 1500)) break;   // opt.maxW：app が「いつも」のとき（パソコンなら）大きくする
         const u = G.dbgW && G.dbgW.get(e.uid || e.id) || { use: false, r: "道のつながりがない" };
     const mi = nd[nd.length >> 1], pk = areaHas("park", G.lat[mi], G.lon[mi]) || (nd.length > 2 && areaHas("park", G.lat[nd[0]], G.lon[nd[0]]) && areaHas("park", G.lat[nd[nd.length - 1]], G.lon[nd[nd.length - 1]]));   // pk：公園の囲みの中（河川敷の公園なら 川べり）
     ways.push({ id: e.id, pts: nd.map(i => [r6(G.lat[i]), r6(G.lon[i])]), t: e.tags, lv: levelOf(e.tags, cfg), use: u.use, why: u.r, up: isUnpaved(e.tags), pk });   // up：砂利・土 "sure"／舗装かわからない "maybe"
@@ -1593,7 +1593,7 @@ async function dbgView(bb, cfg, opt) {
     const sg = t.highway === "traffic_signals" || t.crossing === "traffic_signals" || t["crossing:signals"] === "yes" || t["jar:sig"], cw = t.highway === "crossing" || !!t["jar:xw"];
     const um = cw && ["unmarked", "informal", "no"].includes(t.crossing);   // しま模様のない渡る所（unmarked・informal）・渡れない所（no）：横断歩道としては数えない
     const k = um ? "um" : sg && cw ? "both" : sg ? "sig" : cw ? "xw" : null;   // both：信号つきの横断歩道（半分緑・半分青で描く）
-    if (k && pts.length < 600) pts.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], t, k });
+    if (k && pts.length < (opt.maxP || 600)) pts.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], t, k });
   }
   for (let i = 0; i < G.lat.length; i++) {
     if (G.cfg.crossRule === "off" || !G.lvl[i] || !G.inGraph[i] || !inB(G.lat[i], G.lon[i]) || new Set((G.adj[i] || []).map(e => e.v)).size < 3) continue;   // 大きい道の上の 交差点（ちがう3方向以上。同じ区間が重なった線は1つに数える）
