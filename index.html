@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1123.1530</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1211</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -813,7 +813,7 @@ function buildGraph(osm, cfg, onProg) {
     }
     // 公園の中の道（園路・交通公園のコースなど）。川ぞいのサイクリングロードみたいな
     // 長い（400m以上）自転車道と、ふつうの道（住宅街の道など）は、公園の中でもそのまま通る
-    else if (areaGrids && areaGrids.park && cfg.park !== 1 && !BIG_HW.has(hw) && inArea("park", nd)
+    else if (areaGrids && areaGrids.park && cfg.park !== 1 && !BIG_HW.has(hw) && !t["br:side"] && !t["jar:nbside"] && inArea("park", nd)   // 🌉 橋の歩道は 下が河川敷の公園でも 公園の道ではない（木根川橋）
       && !(["residential", "unclassified", "living_street"].includes(hw) || (hw === "cycleway" && wayLen(nd) >= 400))) {
       if (parkPen === null) { no("公園の中（設定：通らない）"); continue; }
       pen = Math.max(pen, 1) * parkPen; name = "公園の中";
@@ -847,7 +847,7 @@ function buildGraph(osm, cfg, onProg) {
     if (DBGW) DBGW.set(e.uid || e.id, { use: true, r: `${name} ×${+pen.toFixed(2)}` + (fwd !== back ? "・一方通行" : rp !== pen ? "・一方通行（自転車は逆向きOK）" : "") });
     const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
     const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);
-    const lift = yes(t.bridge) || yes(t.tunnel) || t.tunnel === "building_passage" || (t.layer && t.layer !== "0") ? 1 : 0;   // 橋・トンネル（標高のデータと高さが合わない）
+    const lift = yes(t.bridge) || yes(t.tunnel) || t.tunnel === "building_passage" || (t.layer && t.layer !== "0") || t["br:side"] ? 1 : 0;   // 橋・トンネル・🌉 橋のたもとの坂ぞいの歩道（標高のデータと高さが合わない。新四つ木橋のたもとが ⛰/🪜 になっていた）
     for (let i = 1; i < nd.length; i++) {
       const u = nd[i - 1], v = nd[i], L = d(u, v);
       inGraph[u] = 1; inGraph[v] = 1;
@@ -1502,13 +1502,12 @@ let pinId = -8e15;
 // 🚶 とぎれた歩道をつなぐ（手で決めた所だけ）：歩道の線の はしが どこにもつながっていない所から、
 // となり（15m以内・向きがそろう）の車道ぞいに 次の交差点（SWG_MAX m まで）まで「歩道」の線を足す。車道が 🚳 でも 歩道は通れる。
 // 決まりにすると ほかの所のルートも たくさん変わるので、地図に描けない理由がはっきりしている所だけ SWG_AT に書く
-const SWG_NEAR = 15, SWG_MAX = 100, SWG_CAR = /^(primary|secondary|tertiary|trunk|unclassified|residential|living_street|service)(_link)?$/;
+const SWG_NEAR = 15, SWG_MAX = 100, SWG_JCT = 30, SWG_CAR = /^(primary|secondary|tertiary|trunk|unclassified|residential|living_street|service)(_link)?$/;
 const SWG_AT = [
   [35.745269, 139.823221],   // 堀切小橋（綾瀬川）の歩道 → 堀切がわの信号（約70m）。首都高の真下で 航空写真にもストリートビューにも写らない（ユーザーがいつも通る・11/23）
 ];
 let swgId = -8.5e15;
 function sideGap(osm) {
-  if (!SWG_AT.length) return osm;
   const pos = new Map(), deg = new Map(), roads = [], grid = new Map();
   for (const e of osm.elements) if (e.type === "node") pos.set(e.id, e);
   for (const e of osm.elements) if (e.type === "way" && e.tags && e.tags.highway && e.nodes) {
@@ -1531,7 +1530,7 @@ function sideGap(osm) {
       const id = end ? w.nodes[w.nodes.length - 1] : w.nodes[0];
       if ((deg.get(id) || 0) > 1) continue;
       const p = pos.get(id), q = pos.get(end ? w.nodes[w.nodes.length - 2] : w.nodes[1]); if (!p || !q) continue;
-      if (!SWG_AT.some(a => hav(a[0], a[1], p.lat, p.lon) < 3)) continue;
+      if (!(yes(w.tags.bridge) && w.tags["br:side"]) && !SWG_AT.some(a => hav(a[0], a[1], p.lat, p.lon) < 3)) continue;   // 🌉 橋の上の歩道は 橋のとちゅうで行き止まりにならない（木根川橋）
       const kx = 111320 * Math.cos(p.lat * RAD), ky = 111320;
       const dir = Math.atan2((p.lon - q.lon) * kx, (p.lat - q.lat) * ky);   // 歩道が とぎれる向き
       let best = null;
@@ -1547,7 +1546,21 @@ function sideGap(osm) {
         if (ang > 30 && ang < 150) continue;                                            // 車道と 向きがそろっていない
         if (!best || d < best.d) best = { d, r, i, fw: ang <= 30 };
       }
-      if (!best) continue;
+      if (!best) {
+        // 🌉 橋の歩道で、はしが 交差点のかどに向かって曲がっている所（木根川橋の東のはし）：
+        // 車道と向きがそろわないので、SWG_JCT m 以内の 車道の交差点の点（ほかの道とつながる点）に まっすぐつなぐ
+        if (!(yes(w.tags.bridge) && w.tags["br:side"])) continue;
+        let bj = null, bd = SWG_JCT;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const [r, i] of grid.get((cy + dy) + "," + (cx + dx)) || [])
+          for (const nid of [r.nodes[i - 1], r.nodes[i]]) {
+            if ((deg.get(nid) || 0) < 2) continue;
+            const n = pos.get(nid), d = hav(p.lat, p.lon, n.lat, n.lon);
+            if (d < bd) { bd = d; bj = nid; }
+          }
+        if (bj == null) continue;
+        add.push({ type: "way", id: swgId--, nodes: [id, bj], tags: { highway: "footway", footway: "sidewalk", "sw:gap": "1" } });
+        continue;
+      }
       // 車道ぞいに 歩道が進む向きへ たどって、次の交差点（ほかの道とつながる点）まで
       const r = best.r, step = best.fw ? 1 : -1, nodes = [id];
       let k = best.fw ? best.i : best.i - 1, prev = p, L = 0, ok = false;
@@ -3671,7 +3684,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1123.1530", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1211", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
