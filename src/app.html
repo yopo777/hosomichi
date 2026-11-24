@@ -3170,7 +3170,7 @@ function jarReq() {
 async function jarDraw() {
   const id = ++jarId, b = map.getBounds(), keys = [];
   for (let i = Math.floor(b.getSouth() * 100); i <= Math.floor(b.getNorth() * 100); i++) for (let j = Math.floor(b.getWest() * 100); j <= Math.floor(b.getEast() * 100); j++) keys.push(`${i}_${j}`);
-  if (keys.length > 30) { jarLayer.clearLayers(); setMsg("🚓 警察の交通規制：もっと拡大してね"); return; }
+  if (keys.length > 30 * MKCAP()) { jarLayer.clearLayers(); setMsg("🚓 警察の交通規制：もっと拡大してね"); return; }
   let ds;
   try { ds = (await Promise.all(keys.map(jarTile))).filter(Boolean); } catch (e) { if (id === jarId) setMsg("🚓 警察の交通規制が読めなかった：" + e.message, true); return; }
   if (id !== jarId || !$("jarOn").checked) return;
@@ -4092,7 +4092,7 @@ function nbActive(h, w) {   // 時間つき（"0700-0900"）・曜日つき（"1
 async function nbGather(S, W, N, E, now, kinds) {   // → { lines: [{p, h, w, k}], ents: [{p, h, w, k}] }（はんいの中のマスだけ。広すぎたら空）。now：いま規制中のものだけ
   const ks = [];
   for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let j = Math.floor(W * 100); j <= Math.floor(E * 100); j++) ks.push(i + "_" + j);
-  if (ks.length > 16) return { lines: [], ents: [], wide: true };
+  if (ks.length > 16 * MKCAP()) return { lines: [], ents: [], wide: true };
   const lines = [];
   for (const k of ks) { let d = null; try { d = await jarTile(k); } catch {} for (const o of (d && d.nb) || []) if (!o.q && o.p.length > 1 && (!now || nbActive(o.h, o.w)) && (!kinds || kinds.has(nbKey(o)))) lines.push(o); }
   const lat0 = (S + N) / 2, c = Math.cos(lat0 * RAD), XY = p => [p[1] * c * 111320, p[0] * 111320];
@@ -4128,8 +4128,9 @@ const nbWk = w => !w ? "" : w === "12345" ? "平日" : w === "123456" ? "日曜�
 const nbWhen = (h, w) => [nbWk(w), nbHm(h)].filter(Boolean).join(" ");
 // 📍マークを出すズーム：マークのタブの「マークを出す広さ」4段階で ぜんぶまとめて ずらす（[ふつうのズーム, いちばん引いてよいズーム]）
 const MK_ZB = { spot: [14, 11], road: [16, 13], ow: [16, 14], nb: [15, 12], ox: [16, 13], jx: [16, 13], rwl: [14, 12], rwa: [12, 9], riv: [12, 9], slope: [16, 13], dbg: [17, 14], jar: [16, 13] };
-const MK_LV = [["近くだけ", 1], ["ふつう", 0], ["ひろめ", -1], ["もっとひろめ", -2]];
-function MZ(k) { const o = (MK_LV[lsGet("hosomichi_mklv", 1)] || MK_LV[1])[1]; return Math.max(MK_ZB[k][1], MK_ZB[k][0] + o); }
+const MK_LV = [["近くだけ", 1], ["ふつう", 0], ["ひろめ", -1], ["もっとひろめ", -2], ["いつも", null]];   // いつも＝ズームでは消さない（読むマスの数の上限まで。重い）
+const mkAll = () => lsGet("hosomichi_mklv", 1) === 4, MKCAP = () => mkAll() ? 4 : 1;   // いつも のときは 読むマスの上限を4倍
+function MZ(k) { if (mkAll()) return 0; const o = (MK_LV[lsGet("hosomichi_mklv", 1)] || MK_LV[1])[1]; return Math.max(MK_ZB[k][1], MK_ZB[k][0] + o); }
 const nbLayer = L.layerGroup().addTo(map); let nbMapT = null, nbMapId = 0;
 const NB_SIGN = '<svg viewBox="0 0 40 40" width="30" height="30" style="display:block;filter:drop-shadow(0 1px 2px #0006)"><circle cx="20" cy="20" r="17.5" fill="#fff" stroke="#d40000" stroke-width="4"/>'
   + '<g fill="none" stroke="#1b2a4a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="24.5" r="5"/><circle cx="27.5" cy="24.5" r="5"/><path d="M12.5 24.5 L17 16.5 H25 L27.5 24.5 M17 16.5 L21 24.5 L25 16.5 M15 14 H19 M25 16.5 L24 12.5 H27"/></g>'
@@ -4152,7 +4153,7 @@ setInterval(() => { if (!document.hidden) nbMapReq(); }, 10 * 60e3);   // 時間
 async function oxGather(S, W, N, E) {   // → [{ p, h, dir: 出ていく向き（度） }]
   const ks = [];
   for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let j = Math.floor(W * 100); j <= Math.floor(E * 100); j++) ks.push(i + "_" + j);
-  if (ks.length > 16) return [];
+  if (ks.length > 16 * MKCAP()) return [];
   const lines = [];
   for (const k of ks) { let d = null; try { d = await jarTile(k); } catch {} for (const o of (d && d.ow) || []) if (o.b === 0 && o.p.length > 1 && nbActive(o.h, o.w)) lines.push(o); }
   const c = Math.cos((S + N) / 2 * RAD), XY = p => [p[1] * c * 111320, p[0] * 111320], ang = (A, B) => (Math.atan2(B[0] - A[0], B[1] - A[1]) / RAD + 360) % 360;
@@ -4260,7 +4261,7 @@ async function rivDraw() {
   let ix; try { ix = await rivIndex(); } catch (e) { rivLayer.clearLayers(); if (!rivWarn) { rivWarn = true; setMsg("〰 川のデータ（rivers/）がまだないよ", true); } return; }
   const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast(), keys = [];
   for (let i = Math.floor(S / ix.t); i <= Math.floor(N / ix.t); i++) for (let k = Math.floor(W / ix.t); k <= Math.floor(E / ix.t); k++) if (ix.has.has(i + "_" + k)) keys.push(i + "_" + k);
-  if (keys.length > 30) { rivLayer.clearLayers(); return; }
+  if (keys.length > (mkAll() ? 300 : 30)) { rivLayer.clearLayers(); return; }
   const my = ++rivSeq; let cs; try { cs = await Promise.all(keys.map(rivGet)); } catch (e) { return; }
   if (my !== rivSeq) return;
   rivLayer.clearLayers(); const got = new Set();
@@ -4278,7 +4279,7 @@ async function jxDraw() {
   if (!jxOn() || map.getZoom() < MZ("jx")) { jxLayer.clearLayers(); return; }
   const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast(), ks = [];
   for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let j = Math.floor(W * 100); j <= Math.floor(E * 100); j++) ks.push(i + "_" + j);
-  if (ks.length > 16) { jxLayer.clearLayers(); return; }
+  if (ks.length > 16 * MKCAP()) { jxLayer.clearLayers(); return; }
   const ds = []; for (const k of ks) { try { const d = await jarTile(k); if (d) ds.push(d); } catch {} }
   if (id !== jxId) return;
   jxLayer.clearLayers();
@@ -5323,12 +5324,13 @@ $("qList").onclick = e => {
 // ---------- 📍 まわりのスポット（設定でえらんだジャンルだけ、現在地のまわりに出す） ----------
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
+  ["走る道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"]]],
+  ["はんい・川", [["river", "〰", "川・水路"], ["bigriver", "🌊", "大きい川の水面"],
+    ["apark", "🌳", "公園のはんい"], ["acem", "🪦", "霊園・墓地のはんい"], ["aclosed", "🏫", "学校・工場などの敷地"], ["adanchi", "🏢", "団地のはんい"], ["aparking", "🅿", "駐車場のはんい"]]],
   ["道", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
     ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
     ["oneway", "➡", "一方通行"], ["noroad", "🚧", "通行止め"], ["nocar", "🚫", "車両通行止め"], ["nobike", "🚳", "自転車通行止め"], ["pwalk", "🚶", "歩行者用道路（自転車も）"], ["owexit", "⛔", "一方通行の出口（自転車も）"], ["noent", "🔴", "車両進入禁止"], ["cxban", "✖", "自転車の交差点進入禁止"], ["swok", "🔵", "自転車も通れる歩道"], ["blane", "🟦", "自転車レーン（専用通行帯）"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
     ["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
-  ["走る道・はんい", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"], ["river", "〰", "川・水路"], ["bigriver", "🌊", "大きい川の水面"],
-    ["apark", "🌳", "公園のはんい"], ["acem", "🪦", "霊園・墓地のはんい"], ["aclosed", "🏫", "学校・工場などの敷地"], ["adanchi", "🏢", "団地のはんい"], ["aparking", "🅿", "駐車場のはんい"]]],
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"], ["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
   ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"], ["townhall", "🏛", "役所"], ["library", "📚", "図書館"], ["post", "📮", "郵便局"], ["drug", "💊", "ドラッグストア"], ["fire", "🚒", "消防署"],
@@ -5341,7 +5343,7 @@ const SPOT_KINDS = [
     ["jizo", "🙏", "お地蔵さん・道祖神"], ["ichiri", "🌲", "一里塚"], ["tree", "🌳", "大きな木"], ["spring", "🫧", "湧き水"], ["fall", "🏞", "滝"], ["ferry", "⛴", "渡し船"]]]];
 // 絵文字にないアイコン（横断歩道＝上から見たしましま）
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
-const SPOT_COL = { "走る道・はんい": "#0050ff", "道": "#188038", "休けい・自転車": "#1a73e8", "ごはん・おやつ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
+const SPOT_COL = { "走る道": "#0050ff", "はんい・川": "#0288d1", "道": "#188038", "休けい・自転車": "#1a73e8", "ごはん・おやつ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
 const SPOT_KCOL = { cbar: "#d93025", bollard: "#d93025", gate: "#d93025", police: "#d01884", aed: "#d01884", hospital: "#d01884" };   // まとめる前のジャンルの色を のこす物（車止め＝赤・こまったとき＝ピンク）
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_KCOL[k] || SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
@@ -5415,7 +5417,7 @@ const spotLayer = L.layerGroup().addTo(map), spotTiles = new Map();
 function renderSpots() {
   const lv = lsGet("hosomichi_mklv", 1);
   $("spotBox").innerHTML = `<div style="margin:2px 0 4px">マークを出す広さ：` + MK_LV.map(([t], i) => `<label style="margin-right:8px;white-space:nowrap"><input type="radio" name="mklv" data-mklv="${i}"${lv === i ? " checked" : ""}> ${t}</label>`).join("")
-    + `<span class="hq">?</span><div class="hd">地図をどれくらい引いても マークを出すか、ぜんぶまとめて決めるよ。「ふつう」より ひろめにすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ（スマホだと電池も）。いまの広さだと：道のマーク ${MZ("road")}から・お店などのマーク ${MZ("spot")}から・走る道の線 ${MZ("rwl")}から・はんいと川 ${MZ("rwa")}から</div></div>`
+    + `<span class="hq">?</span><div class="hd">地図をどれくらい引いても マークを出すか、ぜんぶまとめて決めるよ。「ふつう」より ひろめにすると 引いた地図でも出るけど、データを読む量がふえて 重くなるよ（スマホだと電池も）。いまの広さだと：道のマーク ${MZ("road")}から・お店などのマーク ${MZ("spot")}から・走る道の線 ${MZ("rwl")}から・はんいと川 ${MZ("rwa")}から${mkAll() ? "（いつも＝ズームでは消さないよ。ただ、ひろすぎると読みきれないので、読む量の上限で出なくなることはあるよ）" : ""}</div></div>`
     + `<div style="margin:2px 0 4px">アイコンの大きさ：` + [["S", "小"], ["M", "中"], ["L", "大"]].map(([v, t]) => `<label style="margin-right:10px"><input type="radio" name="spotsz" data-sz="${v}"${spotSz === v ? " checked" : ""}> ${t}</label>`).join("") + `</div><div style="color:#888;margin:2px 0 4px">チェックしたものだけ 地図に出すよ<span class="hq">?</span><div class="hd">チェックしたものだけ出すよ。◎で現在地に固定しているときは現在地から${SPOT_R / 1000}km以内（近い順に${SPOT_MAX}個まで）、固定していないときは見えている地図の中。重ならないように間引いて、有名なものから出すよ。地図をある程度ひいたら（町がいくつも見えるくらい）出さないよ。なにもチェックしなければデータも読まないよ。一方通行は少し拡大すると、道にそって矢印が出るよ（<span style="color:#d93025">赤</span>＝自転車も一方通行／<span style="color:#039be5">青</span>＝自転車はどっちからでもOK）</div></div>`
     + (() => { const all = SPOT_KINDS.flatMap(x => x[1]), on = all.filter(x => spotOn.has(x[0])).length;
         return `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-weight:bold;font-size:14px"><input type="checkbox" data-sall="1"${on === all.length ? " checked" : ""}>📍 すべてのマーク<span style="font-weight:normal;font-size:11px;color:#888">（${on}/${all.length}）</span></label>`; })()
@@ -5501,7 +5503,7 @@ async function spotUpdate(force) {
   const over = !fixed && map.getZoom() < 12, keys = [];
   for (let i = Math.floor(S / SPOT_T); i <= Math.floor(N / SPOT_T); i++)
     for (let j = Math.floor(W / SPOT_T); j <= Math.floor(E / SPOT_T); j++) keys.push(i + "_" + j);
-  const tiles = over ? [await spotOverview()] : keys.length > 60 ? [] : await Promise.all(keys.map(spotTile)), got = [], road = [];
+  const tiles = over ? [await spotOverview()] : keys.length > 60 * MKCAP() ? [] : await Promise.all(keys.map(spotTile)), got = [], road = [];
   if (spotAt !== p) return;   // 読んでいるあいだに次の場所になった
   for (const t of tiles) {
     for (const k of on) for (const s of t[k] || []) {
