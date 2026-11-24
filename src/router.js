@@ -1525,7 +1525,7 @@ async function dbgView(bb, cfg, opt) {
   opt = opt || {};
   const [S, W, N, E] = bb, T = 0.01, keys = [];
   for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
-  const maxK = opt.wide ? 100 : 9;
+  const maxK = opt.maxK || (opt.wide ? 100 : 9);   // opt.maxK：app が 「いつも」のとき（パソコンなら）大きくする
   if (opt.only) {   // 🚲 自転車レーン・ナビラインの道と 🟩 はんいだけ（判定の計算はしない）
     const areas = opt.area ? await areasIn(S, W, N, E, opt.wide ? 4000 : 800) : [];
     if (!opt.bike && !opt.riv) return { only: true, ways: [], pts: [], xs: [], areas };

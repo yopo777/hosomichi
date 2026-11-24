@@ -3027,7 +3027,7 @@ function dbgReq() {
   if (!$("dbgOn").checked) { map.removeLayer(dbgLayer); dbgLegend(false); return; }
   dbgLayer.addTo(map);
   if (map.getZoom() < MZ("dbg")) { dbgLayer.clearLayers(); setMsg(`🧪 道のデータ：もっと拡大してね（ズーム${MZ("dbg")}以上・🎨ハイライトの「ハイライトを表示するレベル」で変えられるよ）`); return; }
-  dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { bike: spotOn.has("navi") || spotOn.has("blane2"), area: RW_AREA.some(k => spotOn.has(k)) } }); }, 300);
+  dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { maxK: hlAll() ? (IS_PC ? 100 : 20) : 9, bike: spotOn.has("navi") || spotOn.has("blane2"), area: RW_AREA.some(k => spotOn.has(k)) } }); }, 300);
 }
 // 🧪 道のデータの色（細い道を 種類で分ける）。c 色・w 太さ・dash 点線・alt しま模様のもう1色（下に alt、上に c の破線）
 const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道」のふち）。白い点々・2色のしまで 数をふやす
@@ -4171,6 +4171,8 @@ const MK_FLOOR = { spot: 11, road: 13, ow: 14, nb: 12, ox: 13, jx: 13, rwl: 12, 
 const MK_LV = [["近くだけ", 18], ["ふつう", 16], ["ひろめ", 15], ["もっとひろめ", 14], ["いつも", null]];   // [名前, 出すズーム]。マーク・スポット・デバッグ ぜんぶ同じズーム   // いつも＝ズームでは消さない（読むマスの数の上限まで。重い）
 // 📍マーク（道の線・はんい・川・標識・休けい…・デバッグ）は 📍マークのタブの「マークを表示するレベル」、📌スポット（⭐🏠🔒🚫⚠）は 📌スポットのタブの「スポットを表示するレベル」
 const MK_KEY = k => k === "pt" ? "hosomichi_ptlv" : ["rwl", "rwa", "riv", "dbg", "jar"].includes(k) ? "hosomichi_hllv" : "hosomichi_mklv";   // 🎨 ハイライト（道の線・はんい・川）は ハイライトのレベル。はじめは マークのレベルと同じ
+const IS_PC = (() => { try { return matchMedia("(pointer: fine) and (hover: hover)").matches; } catch { return false; } })();   // パソコン（マウス）か。🎨 ハイライト「いつも」のとき 読むマスを多くする
+const hlAll = () => lsGet("hosomichi_hllv", lsGet("hosomichi_mklv", 1)) === 4;
 const mkAll = () => lsGet("hosomichi_mklv", 1) === 4, MKCAP = () => mkAll() ? 4 : 1, HLCAP = () => lsGet("hosomichi_hllv", lsGet("hosomichi_mklv", 1)) === 4 ? 4 : 1;   // いつも のときは 読むマスの上限を4倍
 function MZ(k) { const lv = lsGet(MK_KEY(k), MK_KEY(k) === "hosomichi_hllv" ? lsGet("hosomichi_mklv", 1) : 1); if (lv === 4) return 0; return Math.min(19, Math.max(MK_FLOOR[k] || 0, (MK_LV[lv] || MK_LV[1])[1])); }
 const nbLayer = L.layerGroup().addTo(map); let nbMapT = null, nbMapId = 0;
@@ -4265,7 +4267,7 @@ function rwReq() { clearTimeout(rwT); rwT = setTimeout(() => {
   const ln = RW_LINE.some(k => spotOn.has(k)) && !spotHide, ar = RW_AREA.some(k => spotOn.has(k)) && !spotHide, rv = RW_RIV.some(k => spotOn.has(k)) && !spotHide, z = map.getZoom(), RW_LZ = MZ("rwl"), RW_AZ = MZ("rwa");
   if (!(ln && z >= RW_LZ) && !(ar && z >= RW_AZ) && !(rv && z >= RW_LZ)) { rwLayer.clearLayers(); rwId++; probeReq(); return; }
   const b = map.getBounds();
-  worker.postMessage({ cmd: "dbgView", tag: "rw", id: ++rwId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { only: true, wide: true, bike: ln && z >= RW_LZ, riv: rv && z >= RW_LZ, area: ar } });
+  worker.postMessage({ cmd: "dbgView", tag: "rw", id: ++rwId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { only: true, wide: true, maxK: hlAll() ? (IS_PC ? 900 : 150) : 100, bike: ln && z >= RW_LZ, riv: rv && z >= RW_LZ, area: ar } });
 }, 400); }
 function rwDraw(m) {
   if (m.id !== rwId) return;
