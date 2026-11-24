@@ -13,7 +13,7 @@ const DEFAULT_CFG = {
   crossRule: "on",       // 大きい道を渡るルール: いつも "on"（安全のため、アプリから「使わない」はえらべない。"off" は分析用だけ）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ（アプリではえらべない・分析用）
-  park: 5,               // 公園の中の道（園路など）："no"=通らない / 倍率 / 1=気にしない
+  park: "no",            // 公園の中の道（園路など）（11/24 から はじめは 通らない。〰川べりの道は のぞく）："no"=通らない / 倍率 / 1=気にしない
   cemetery: "no",         // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
   station: 5,            // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
@@ -339,6 +339,7 @@ function buildGraph(osm, cfg, onProg) {
   // 橋・地下・屋根つき・建物の中・階（level）がある・名前に「通路」「コンコース」「改札」「駅」がある道
   const stPen = cfg.station === "no" ? null : (+cfg.station || 1), STA_R = 150;
   const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1), parkPen = cfg.park === "no" ? null : (+cfg.park || 1);
+  const rivOn = cfg.riv != null && cfg.riv !== "off", rivK = rivOn ? Math.min(1, +cfg.riv || 1) : 1, RG = cfg._riv;   // RG：ルートのはんいの 川の線（rivPrep）   // 〰 川べりの車の来ない道：1m を何m分と数えるか（1＝気にしない・へらすほう）
   const danPen = (cfg.danchi ?? "no") === "no" ? null : (+cfg.danchi || 1);   // 🏢 団地の中の道（11/24 から はじめは 通らない）
   const prvPen = (cfg.privy ?? "no") === "no" ? null : (+cfg.privy || 1);     // 🏠 私道・家の前の道・駐車場の中（11/24 から はじめは 通らない）
   const inArea = (kind, nd) => {   // 道のまん中の点（と両はし）が はんいの中か
@@ -384,6 +385,10 @@ function buildGraph(osm, cfg, onProg) {
     const wc = wayCost(t, cfg);
     if (!wc) { if (DBGW) no(wayNoWhy(t, cfg)); continue; }
     let [pen, name, why, km] = wc;
+    // 〰 川べりの車の来ない道：区間ごとに見分ける（rv）。長さの半分以上が川べりなら 公園の中でも 公園あつかいにしない（ユーザー：川べりの公園の中の 川ぞいの道だけ通れる）
+    let rv = null, rvHalf = false;
+    if (RG && RG.n && rivOK(t)) { const r = rivWay(RG, nd.map(i => [lat[i], lon[i]]));
+      if (r) { rv = r.rv; let a = 0, b = 0; for (let q = 1; q < nd.length; q++) { const l = hav(lat[nd[q - 1]], lon[nd[q - 1]], lat[nd[q]], lon[nd[q]]); b += l; if (rv[q - 1]) a += l; } rvHalf = a * 2 >= b; } }
     const whyUp = (k, v) => { whyAdd(why, k, v); pen = whySum(why) * km; };   // 理由をふやして 倍率を数えなおす
     if (t["jar:nb"] === "t") name += t["jar:nbk"] === "pw" ? "・歩行者用道路（いまは時間外）" : "・自転車通行止め（いまは時間外）";   // 時間つきで いまは時間外：ふつうに通る
     if (stationGrid && cfg.station !== 1 && isStaPath(t, nd)) {   // 駅の中の通路
@@ -399,7 +404,7 @@ function buildGraph(osm, cfg, onProg) {
     }
     // 公園の中の道（園路・交通公園のコースなど）。川ぞいのサイクリングロードみたいな
     // 長い（400m以上）自転車道と、ふつうの道（住宅街の道など）は、公園の中でもそのまま通る
-    else if (areaGrids && areaGrids.park && cfg.park !== 1 && !BIG_HW.has(hw) && !t["br:side"] && !t["jar:nbside"] && !["yes", "designated"].includes(t.bicycle) && inArea("park", nd)   // 🌉 橋の歩道は 下が河川敷の公園でも 公園の道ではない（木根川橋）。🚲 自転車OKの道（bicycle=yes・designated）も 園路ではない（千住新橋の千住がわ：橋から土手へおりる 417623838 が 河川敷の公園の囲みに入っていた）
+    else if (areaGrids && areaGrids.park && cfg.park !== 1 && !rvHalf && !BIG_HW.has(hw) && !t["br:side"] && !t["jar:nbside"] && !["yes", "designated"].includes(t.bicycle) && inArea("park", nd)   // 🌉 橋の歩道は 下が河川敷の公園でも 公園の道ではない（木根川橋）。🚲 自転車OKの道（bicycle=yes・designated）も 園路ではない（千住新橋の千住がわ：橋から土手へおりる 417623838 が 河川敷の公園の囲みに入っていた）
       && !(["residential", "unclassified", "living_street"].includes(hw) || (hw === "cycleway" && wayLen(nd) >= 400))) {
       if (parkPen === null) { no("公園の中（設定：通らない）"); continue; }
       whyUp("ppl", parkPen); name = "公園の中";
@@ -430,7 +435,7 @@ function buildGraph(osm, cfg, onProg) {
     if (fwd !== back && bikeOK && cfg.oneway !== "no") {
       fwd = back = true; rp = pen * (cfg.oneway === "avoid" ? ONEWAY_REV_AVOID : ONEWAY_REV); rname = name + "（一方通行を逆向き）";
     }
-    if (DBGW) DBGW.set(e.uid || e.id, { use: true, r: `${name} ×${+pen.toFixed(2)}` + (fwd !== back ? "・一方通行" : rp !== pen ? "・一方通行（自転車は逆向きOK）" : "") });
+    if (DBGW) DBGW.set(e.uid || e.id, { use: true, r: `${name} ×${+pen.toFixed(2)}` + (rv ? (rvHalf ? "・〰川べり" : "・〰ところどころ川べり") + (rivK !== 1 ? `（川べりの所 ×${rivK}）` : "") : "") + (fwd !== back ? "・一方通行" : rp !== pen ? "・一方通行（自転車は逆向きOK）" : "") });
     const rev = ow === "-1";   // 逆向き一方通行なら「正方向」が逆走
     const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);
     const lift = yes(t.bridge) || yes(t.tunnel) || t.tunnel === "building_passage" || (t.layer && t.layer !== "0") || t["br:side"] ? 1 : 0;   // 橋・トンネル・🌉 橋のたもとの坂ぞいの歩道（標高のデータと高さが合わない。新四つ木橋のたもとが ⛰/🪜 になっていた）
@@ -441,8 +446,10 @@ function buildGraph(osm, cfg, onProg) {
       if (m > 1) swLen += L;
       const pm = m > 1 ? (whySum(why) + m - 1) * km : pen, rpm = pm * rp / pen, rg = why.rgh || 1;   // 🚧 段差・柵の分を足す。rp/pen：一方通行の逆向きの分（かけ算のまま）
       // sm：足し算した倍率（旧街道の分の前）・rg：🪨 走りにくい の倍率（あとで 🪜階段？・⛰急坂？ と くらべる）
-      if (fwd) adj[u].push({ v, c: L * (rev ? rpm : pm), sm: pm / km, rg, L, l: L0, k: rev ? rname : name, w: e.id, b: lift, hw });
-      if (back) adj[v].push({ v: u, c: L * (rev ? pm : rpm), sm: pm / km, rg, L, l: L0, k: rev ? name : rname, w: e.id, b: lift, hw });
+      // 〰 川べり（設定がオンのとき）：🚶人が多い（歩く道）の分を数えないで、かわりに ×rivK（へらすほう）。歩道×3 だと ×0.6 しても 住宅街の道（×1）に勝てなかったので
+      const isR = rv && rv[i - 1], rk = isR && rivOn ? (whySum(why) - ((why.ppl || 1) - 1) + (m > 1 ? m - 1 : 0)) * km * rivK / pm : 1, rn = isR ? "・川べり" : "";
+      if (fwd) adj[u].push({ v, c: L * (rev ? rpm : pm) * rk, sm: pm / km, rg, L, l: L0, k: (rev ? rname : name) + rn, w: e.id, b: lift, hw });
+      if (back) adj[v].push({ v: u, c: L * (rev ? pm : rpm) * rk, sm: pm / km, rg, L, l: L0, k: (rev ? name : rname) + rn, w: e.id, b: lift, hw });
     }
   }
   // 大きい道の向き（横断かどうか＝道の反対側に出るかを判定するため）
@@ -527,7 +534,7 @@ function buildGraph(osm, cfg, onProg) {
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
   return { dbgW: DBGW, lat, lon, adj, lvl, xcost, xkind, xref, xdet, divided, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
-    hk: Math.min(1, +cfg.kodo || 1) * (preferPts.length ? PREFER_K : 1) };   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
+    hk: Math.min(1, +cfg.kodo || 1) * (cfg.riv != null && cfg.riv !== "off" ? Math.min(1, +cfg.riv || 1) : 1) * (preferPts.length ? PREFER_K : 1) };   // 〰 川べりも 1m＜1m なので   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
@@ -1568,7 +1575,8 @@ async function dbgView(bb, cfg, opt) {
   if (!els.length) return { miss, ways: [], pts: [], xs: [], areas };
   cfg = { ...DEFAULT_CFG, ...(cfg || {}), pen: { ...DEFAULT_CFG.pen, ...((cfg && cfg.pen) || {}) } };
   try { const J = jarApply({ elements: els }, cfg, await jarPrep(keys, cfg)).elements; if (J !== els) { els.length = 0; for (const e of J) els.push(e); } } catch {}   // 🚓 横断禁止の道に印（印がないときは そのまま）
-  const G = buildGraph({ elements: els }, { ...cfg, _dbg: true });   // _dbg：道ごとの「通る／通らない（理由）」をメモしてもらう（ルートの計算と同じ判定）
+  let RVd = null; try { RVd = await rivPrep(S, W, N, E); } catch {}   // 〰 川べり（公園の中の判定も ルートと同じに）
+  const G = buildGraph({ elements: els }, { ...cfg, _dbg: true, _riv: RVd });   // _dbg：道ごとの「通る／通らない（理由）」をメモしてもらう（ルートの計算と同じ判定）
   const m = 0.0004, inB = (a, o) => a > S - m && a < N + m && o > W - m && o < E + m, r6 = x => +x.toFixed(6);
   const ways = [], pts = [], xs = [];
   for (const e of els) {
@@ -2462,7 +2470,9 @@ async function routeOnce(req, prog, partial) {
   }
   const demOK = await demP;   // 坂道のデータ（あとで道に坂の重みをつける）
   let jarL = []; try { jarL = await jarPrep(tiles.map(t => bigOf(t.key)), cfg); } catch {}   // 🚓 横断禁止の線（取れなければ使わない）
-  const BG = (osm, c, p) => { const G0 = buildGraph(addPins(jarApply(osm, c, jarL), [s, g]), c, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
+  let rivR = null; try { const S0 = Math.min(s[0], g[0]) - pad, N0 = Math.max(s[0], g[0]) + pad, W0 = Math.min(s[1], g[1]) - pad, E0 = Math.max(s[1], g[1]) + pad;
+    rivR = await rivPrep(S0, W0, N0, E0); if (rivR.n) log(`〰 川のデータ：${rivR.n}マス（川べりの道を見分ける）`); } catch { rivR = null; }   // 〰 川べりの道（取れなければ使わない）
+  const BG = (osm, c, p) => { const G0 = buildGraph(addPins(jarApply(osm, c, jarL), [s, g]), { ...(c || {}), _riv: rivR }, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   if (oldPack) log(`配布データが新しくなったので、${oldPack}マスを配布データから取りなおすよ`);
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
