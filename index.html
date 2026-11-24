@@ -208,7 +208,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1454</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1124.1458</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -360,9 +360,11 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="dbgOn">🧪 道のデータを見る（拡大したときだけ）<small style="color:#999;margin-left:4px">Ctrl+Alt+Z</small></label>
         <div id="dbgInfo" style="font-size:11px;color:#666;margin:2px 0 0 22px">OSMの地図データ：線＝道（車線で色分け：赤＝4車線・オレンジ＝2車線・シアン＝そのほか）／四角：緑＝信号・青＝横断歩道・半分ずつ＝信号つきの横断歩道・白に青わく＝しま模様のない渡る所（横断歩道ではない）。タップでタグを見られるよ</div>
         <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="dbgJudge">アプリの判定も出す（加工したもの）<small style="color:#999;margin-left:4px">Ctrl+Alt+X</small></label>
-        <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="dbgBike">🚲 自転車レーン・ナビラインを くっきり出す</label>
-        <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="dbgArea">🟩 公園・団地・駐車場などの はんいを 色でぬる</label>
         <div style="font-size:11px;color:#666;margin:2px 0 0 44px">点線＝ルートで通らない道／まる：大きい道を渡る判定（緑＝信号・青＝横断歩道・赤＝渡れない・オレンジ＝ペナルティ）。細い点線は「どの信号・横断歩道でOKにしたか」</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="dbgBike">🚲 自転車レーン・ナビラインを くっきり出す</label>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="dbgArea">🟩 公園・団地・駐車場などの はんいを 色でぬる</label>
+        <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="dbgWide">🔭 縮小しても出す（🚲は 約10km四方まで・🟩は どこまでも）</label>
+        <div style="font-size:11px;color:#666;margin:2px 0 0 44px">🚲は 道路データを読むので、ひろいと少し時間がかかるよ（まだ保存していない所は 読みこむよ）</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="jarOn">🚓 警察の交通規制（JARTIC）を見る（拡大したときだけ）<small style="color:#999;margin-left:4px">Ctrl+Alt+C</small></label>
         <div style="font-size:11px;color:#666;margin:2px 0 0 22px">各都道府県警察の交通規制データ（ルートでは 横断禁止・一方通行・信号・道のとちゅうの横断歩道を使っているよ）／四角：白＝横断歩道・青＝自転車横断帯・緑＝信号／線：赤＝一方通行（自転車も）・緑の点線＝一方通行（自転車は除く）・矢印＝通ってよい向き・むらさき＝歩行者等横断禁止・灰色＝車両通行帯。タップで中身が出るよ。出典：JARTIC 交通規制情報オープンデータ</div>
         <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0 22px"><input type="checkbox" id="jarSigOn">🚦🚸 信号・横断歩道を「地図の道にあてた結果」で色分け<small style="color:#999;margin-left:4px">Ctrl+Alt+V</small></label>
@@ -1912,10 +1914,47 @@ async function slopeView(bb) {
   return { st: r.st, sl: r.sl, miss };
 }
 // 🧪 道のデータを見る：保存してあるデータだけで、いま見ている範囲の 道（線）・信号/横断歩道（点）・大きい道を渡る判定 を返す
-async function dbgView(bb, cfg) {
+// 🌐 はんい（公園・団地・駐車場など）を 画面の中だけ（道のデータは いらない）
+async function areasIn(S, W, N, E, max) {
+  try { await loadAreas(); } catch {}
+  const areas = [];
+  if (areaGrids) for (const kind of Object.keys(areaGrids)) {
+    const g = areaGrids[kind], got = new Set();
+    for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let k = Math.floor(W * 100); k <= Math.floor(E * 100); k++)
+      for (const P of g.get(i + "," + k) || []) {
+        if (got.has(P) || P.n < S || P.s > N || P.e < W || P.w > E) continue;
+        got.add(P); if (areas.length < max) areas.push({ k: kind, pts: P.pts });
+      }
+  }
+  return areas;
+}
+// opt.only：🚲🟩 だけ（道のデータ全部はいらない・自転車レーンの道だけ）／opt.wide：🔭 縮小しても出す（マスを 100 まで）
+async function dbgView(bb, cfg, opt) {
+  opt = opt || {};
   const [S, W, N, E] = bb, T = 0.01, keys = [];
   for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
-  if (keys.length > 9) return { tooWide: true };
+  const maxK = opt.wide ? 100 : 9;
+  if (opt.only) {   // 🚲 自転車レーン・ナビラインの道と 🟩 はんいだけ（判定の計算はしない）
+    const areas = opt.area ? await areasIn(S, W, N, E, opt.wide ? 4000 : 800) : [];
+    if (!opt.bike) return { only: true, ways: [], pts: [], xs: [], areas };
+    if (keys.length > maxK) return { only: true, ways: [], pts: [], xs: [], areas, bikeTooWide: true };
+    const nd = new Map(), ws = [], seen = new Set(); let miss = 0;
+    const BLK = ["cycleway", "cycleway:both", "cycleway:left", "cycleway:right"];
+    for (const k of keys) {
+      let el = mem.get(k);
+      if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+      if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+      if (!el) { miss++; continue; }
+      for (const e of el) {
+        if (e.type === "node") nd.set(e.id, e);
+        else if (e.type === "way" && e.tags && BLK.some(x => e.tags[x] && e.tags[x] !== "no" && e.tags[x] !== "separate")) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); ws.push(e); } }
+      }
+    }
+    const r6 = x => +x.toFixed(6), ways = [];
+    for (const e of ws) { const p = e.nodes.map(id => nd.get(id)).filter(Boolean); if (p.length > 1 && ways.length < 5000) ways.push({ id: e.id, pts: p.map(q => [r6(q.lat), r6(q.lon)]), t: e.tags, lv: levelOf(e.tags, cfg), use: true }); }
+    return { only: true, ways, pts: [], xs: [], areas, miss };
+  }
+  if (keys.length > maxK) return { tooWide: true };
   const els = [], seen = new Set(), have = new Set(); let miss = 0;
   for (const k of keys) {
     let el = mem.get(k);
@@ -1924,17 +1963,7 @@ async function dbgView(bb, cfg) {
     if (!el) { miss++; continue; }
     for (const e of el) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); els.push(e); } }
   }
-  // 🟩 公園・団地・駐車場などの はんい（画面に出す用）
-  try { await loadAreas(); } catch {}
-  const areas = [];
-  if (areaGrids) for (const kind of Object.keys(areaGrids)) {
-    const g = areaGrids[kind], got = new Set();
-    for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let k = Math.floor(W * 100); k <= Math.floor(E * 100); k++)
-      for (const P of g.get(i + "," + k) || []) {
-        if (got.has(P) || P.n < S || P.s > N || P.e < W || P.w > E) continue;
-        got.add(P); if (areas.length < 800) areas.push({ k: kind, pts: P.pts });
-      }
-  }
+  const areas = opt.area ? await areasIn(S, W, N, E, 800) : [];   // 🟩 公園・団地・駐車場などの はんい
   if (!els.length) return { miss, ways: [], pts: [], xs: [], areas };
   cfg = { ...DEFAULT_CFG, ...(cfg || {}), pen: { ...DEFAULT_CFG.pen, ...((cfg && cfg.pen) || {}) } };
   try { const J = jarApply({ elements: els }, cfg, await jarPrep(keys, cfg)).elements; if (J !== els) { els.length = 0; for (const e of J) els.push(e); } } catch {}   // 🚓 横断禁止の道に印（印がないときは そのまま）
@@ -3061,7 +3090,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "jarSig") { const r = await jarSigIn(d.bb, d.cfg).catch(e => ({ err: e.message, sigs: [] })); return self.postMessage({ type: "jarSig", id: d.id, who: d.who, ...r }); }
-      if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
+      if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg, d.opt).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
         if (pfRun) return; pfRun = true;
@@ -3698,7 +3727,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1454", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1124.1458", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5694,10 +5723,12 @@ function dbgTags(kind, id, t, extra) {
 }
 function dbgReq() {
   clearTimeout(dbgT);
-  if (!$("dbgOn").checked) { map.removeLayer(dbgLayer); dbgLegend(false); return; }
+  const on = $("dbgOn").checked, bike = $("dbgBike").checked, area = $("dbgArea").checked, wide = $("dbgWide").checked;
+  if (!on && !bike && !area) { map.removeLayer(dbgLayer); dbgLegend(false); return; }
   dbgLayer.addTo(map);
-  if (map.getZoom() < DBG_Z) { dbgLayer.clearLayers(); setMsg(`🧪 道のデータ：もっと拡大してね（ズーム${DBG_Z}以上）`); return; }
-  dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg) }); }, 300);
+  const z = map.getZoom(), full = on && z >= DBG_Z, zOK = full || ((bike || area) && z >= (wide ? (bike ? 13 : 10) : 15));   // 道のデータは ズーム17から。🚲🟩 は もっと縮小しても出す
+  if (!zOK) { dbgLayer.clearLayers(); setMsg(on ? `🧪 道のデータ：もっと拡大してね（ズーム${DBG_Z}以上）` : wide ? "🚲🟩：もっと拡大してね" : "🚲🟩：もっと拡大してね（🔭 縮小しても出す をオンにすると ひろく出せるよ）"); return; }
+  dbgT = setTimeout(() => { const b = map.getBounds(); worker.postMessage({ cmd: "dbgView", id: ++dbgId, bb: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()], cfg: structuredClone(cfg), opt: { only: !full, bike, area, wide } }); }, 300);
 }
 // 🧪 道のデータの色（細い道を 種類で分ける）。c 色・w 太さ・dash 点線・alt しま模様のもう1色（下に alt、上に c の破線）
 const DBG_K = {   // 黒っぽい色は使わない（黒は「通らない道」のふち）。白い点々・2色のしまで 数をふやす
@@ -5754,6 +5785,12 @@ dbgLeg.onAdd = () => {
 };
 let dbgLegOn = false;
 function dbgLegend(on) { if (on && !dbgLegOn) { dbgLeg.addTo(map); dbgLegOn = true; } else if (!on && dbgLegOn) { dbgLeg.remove(); dbgLegOn = false; } }
+function dbgAreas(areas) {   // 🟩 公園・団地・駐車場などの はんい（ルートの「公園の中 ×5」などと同じデータ）
+  for (const a of areas || []) {
+    const [c, n] = AREA_K[a.k] || ["#888", a.k];
+    L.polygon(a.pts, { renderer: dbgRend, color: c, weight: 2, fillColor: c, fillOpacity: .22 }).bindPopup(`<b>${n}</b><br><small>${AREA_NOTE[a.k] || ""}</small>`).addTo(dbgLayer);
+  }
+}
 const AREA_NOTE = { park: "この中の歩く道・小道は 設定「公園の中の道」の倍率（デフォルト×5）。車の道・橋の歩道・自転車OKの道・長い自転車道は のぞく",
   cemetery: "この中の道は 設定「霊園・墓地の中の道」の倍率", closed: "この中の道は 通らない（入っていいと書いてある道は のぞく）",
   danchi: "この中の道は 設定「団地の中の道」の倍率", parking: "駐車場の中の通路（近道に使うことがある）" };
@@ -5769,18 +5806,27 @@ function dbgBikeLane(t) {
 }
 const dbgBikeTag = t => BL_KEYS.filter(k => t[k] && t[k] !== "no" && t[k] !== "separate").map(k => k + "=" + t[k]).join("・");
 function dbgDraw(m) {
-  if (m.id !== dbgId || !$("dbgOn").checked) return;
+  if (m.id !== dbgId || !($("dbgOn").checked || $("dbgBike").checked || $("dbgArea").checked)) return;
   dbgLayer.clearLayers();
+  if (m.only) {   // 🚲🟩 だけ（道のデータを見る はオフ）
+    if ($("dbgArea").checked) dbgAreas(m.areas);
+    if ($("dbgBike").checked) for (const w of m.ways) {
+      const bl = dbgBikeLane(w.t); if (!bl) continue;
+      L.polyline(w.pts, { renderer: dbgRend, color: "#0050ff", weight: bl === "lane" ? 7 : 5, opacity: bl === "lane" ? .85 : .9, dashArray: bl === "lane" ? null : "6 8" })
+        .bindPopup(() => dbgTags("way", w.id, w.t, bl === "lane" ? `🚲 <b>自転車レーン</b>（${esc(dbgBikeTag(w.t))}）` : `🚲 <b>ナビライン</b>（矢羽根・${esc(dbgBikeTag(w.t))}）`)).addTo(dbgLayer);
+    }
+    dbgLegend(true);
+    const nl = m.ways.filter(w => dbgBikeLane(w.t) === "lane").length, nn = m.ways.filter(w => dbgBikeLane(w.t) === "navi").length;
+    setMsg(($("dbgBike").checked ? (m.bikeTooWide ? "🚲：ひろすぎるよ（約10km四方まで）" : `🚲 自転車レーン ${nl}本・ナビライン ${nn}本${m.miss ? `（保存していないマス ${m.miss}）` : ""}`) : "") + ($("dbgArea").checked ? `${$("dbgBike").checked ? "・" : ""}🟩 はんい ${m.areas.length}` : ""));
+    return;
+  }
   if (m.tooWide) { setMsg("🧪 道のデータ：もっと拡大してね"); return; }
   if (m.err) { setMsg("🧪 道のデータ：" + m.err, true); return; }
   if (!m.ways.length) { setMsg("🧪 道のデータ：この場所の道路データは まだ保存されていないよ（一度ルートを作ると保存されるよ）"); return; }
   const LC = { 2: "#d93025", 1: "#f29900" };   // 大きい道（4車線あつかい・2車線）
   const J = $("dbgJudge").checked;   // アプリの判定（加工したもの）も出すか。オフなら OSM のデータそのまま
   const BK = $("dbgBike").checked;   // 🚲 自転車レーン・ナビラインを くっきり
-  if ($("dbgArea").checked) for (const a of m.areas || []) {   // 🟩 公園・団地・駐車場などの はんい（ルートの「公園の中 ×5」などと同じデータ）
-    const [c, n] = AREA_K[a.k] || ["#888", a.k];
-    L.polygon(a.pts, { renderer: dbgRend, color: c, weight: 2, fillColor: c, fillOpacity: .22 }).bindPopup(`<b>${n}</b><br><small>${AREA_NOTE[a.k] || ""}</small>`).addTo(dbgLayer);
-  }
+  if ($("dbgArea").checked) dbgAreas(m.areas);
   for (const w of m.ways) {
     const k = dbgKind(w.t), K = DBG_K[k], col = w.lv ? LC[w.lv] : K.c, wt = w.lv ? 5 : K.w, t = w.t;
     const bl = BK ? dbgBikeLane(t) : null;
@@ -5812,7 +5858,7 @@ function dbgDraw(m) {
     .bindPopup(() => dbgTags("node", q.id, q.t, q.k === "both" ? "🚦🚸 信号つきの横断歩道" : q.k === "sig" ? "🚦 信号" : q.k === "um" ? (q.t.crossing === "no" ? "⛔ 渡れない所（crossing=no）" : "しま模様のない 渡る所（横断歩道ではない）") : "🚸 横断歩道")).addTo(dbgLayer);
   setMsg(`🧪 道のデータ：線 ${m.ways.length}・信号/横断歩道 ${m.pts.length}${J ? `・渡る判定 ${m.xs.length}` : ""}${m.miss ? `（保存していないマス ${m.miss}）` : ""}`);
 }
-$("dbgOn").onchange = dbgReq; $("dbgJudge").onchange = () => { if ($("dbgOn").checked) dbgReq(); }; $("dbgBike").onchange = $("dbgArea").onchange = () => { if ($("dbgOn").checked) dbgReq(); }; map.on("moveend zoomend", () => { if ($("dbgOn").checked) dbgReq(); });
+$("dbgOn").onchange = dbgReq; $("dbgJudge").onchange = () => { if ($("dbgOn").checked) dbgReq(); }; $("dbgBike").onchange = $("dbgArea").onchange = $("dbgWide").onchange = dbgReq; map.on("moveend zoomend", () => { if ($("dbgOn").checked || $("dbgBike").checked || $("dbgArea").checked) dbgReq(); });
 // 🚓 警察の交通規制（JARTIC オープンデータ）を見る：hosomichi-data/j/{緯度×100}_{経度×100}.json.gz（tools/jartic_pack.py で作る）。観察用（ルートには使わない）
 const jarLayer = L.layerGroup(), jarRend = L.canvas({ padding: 0.3 }), jarTiles = new Map(), JAR_Z = 16; let jarId = 0, jarT = null;
 function jarTile(k) {

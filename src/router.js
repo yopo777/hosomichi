@@ -1475,10 +1475,47 @@ async function slopeView(bb) {
   return { st: r.st, sl: r.sl, miss };
 }
 // 🧪 道のデータを見る：保存してあるデータだけで、いま見ている範囲の 道（線）・信号/横断歩道（点）・大きい道を渡る判定 を返す
-async function dbgView(bb, cfg) {
+// 🌐 はんい（公園・団地・駐車場など）を 画面の中だけ（道のデータは いらない）
+async function areasIn(S, W, N, E, max) {
+  try { await loadAreas(); } catch {}
+  const areas = [];
+  if (areaGrids) for (const kind of Object.keys(areaGrids)) {
+    const g = areaGrids[kind], got = new Set();
+    for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let k = Math.floor(W * 100); k <= Math.floor(E * 100); k++)
+      for (const P of g.get(i + "," + k) || []) {
+        if (got.has(P) || P.n < S || P.s > N || P.e < W || P.w > E) continue;
+        got.add(P); if (areas.length < max) areas.push({ k: kind, pts: P.pts });
+      }
+  }
+  return areas;
+}
+// opt.only：🚲🟩 だけ（道のデータ全部はいらない・自転車レーンの道だけ）／opt.wide：🔭 縮小しても出す（マスを 100 まで）
+async function dbgView(bb, cfg, opt) {
+  opt = opt || {};
   const [S, W, N, E] = bb, T = 0.01, keys = [];
   for (let i = Math.floor(S / T); i <= Math.floor(N / T); i++) for (let j = Math.floor(W / T); j <= Math.floor(E / T); j++) keys.push(`0.01:${i},${j}`);
-  if (keys.length > 9) return { tooWide: true };
+  const maxK = opt.wide ? 100 : 9;
+  if (opt.only) {   // 🚲 自転車レーン・ナビラインの道と 🟩 はんいだけ（判定の計算はしない）
+    const areas = opt.area ? await areasIn(S, W, N, E, opt.wide ? 4000 : 800) : [];
+    if (!opt.bike) return { only: true, ways: [], pts: [], xs: [], areas };
+    if (keys.length > maxK) return { only: true, ways: [], pts: [], xs: [], areas, bikeTooWide: true };
+    const nd = new Map(), ws = [], seen = new Set(); let miss = 0;
+    const BLK = ["cycleway", "cycleway:both", "cycleway:left", "cycleway:right"];
+    for (const k of keys) {
+      let el = mem.get(k);
+      if (!el) { const r = await getTileAny(k); if (r) el = r.el; }
+      if (!el) { try { if (await packHas(k)) el = (await packTile(k)).el; } catch {} }
+      if (!el) { miss++; continue; }
+      for (const e of el) {
+        if (e.type === "node") nd.set(e.id, e);
+        else if (e.type === "way" && e.tags && BLK.some(x => e.tags[x] && e.tags[x] !== "no" && e.tags[x] !== "separate")) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); ws.push(e); } }
+      }
+    }
+    const r6 = x => +x.toFixed(6), ways = [];
+    for (const e of ws) { const p = e.nodes.map(id => nd.get(id)).filter(Boolean); if (p.length > 1 && ways.length < 5000) ways.push({ id: e.id, pts: p.map(q => [r6(q.lat), r6(q.lon)]), t: e.tags, lv: levelOf(e.tags, cfg), use: true }); }
+    return { only: true, ways, pts: [], xs: [], areas, miss };
+  }
+  if (keys.length > maxK) return { tooWide: true };
   const els = [], seen = new Set(), have = new Set(); let miss = 0;
   for (const k of keys) {
     let el = mem.get(k);
@@ -1487,17 +1524,7 @@ async function dbgView(bb, cfg) {
     if (!el) { miss++; continue; }
     for (const e of el) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); els.push(e); } }
   }
-  // 🟩 公園・団地・駐車場などの はんい（画面に出す用）
-  try { await loadAreas(); } catch {}
-  const areas = [];
-  if (areaGrids) for (const kind of Object.keys(areaGrids)) {
-    const g = areaGrids[kind], got = new Set();
-    for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let k = Math.floor(W * 100); k <= Math.floor(E * 100); k++)
-      for (const P of g.get(i + "," + k) || []) {
-        if (got.has(P) || P.n < S || P.s > N || P.e < W || P.w > E) continue;
-        got.add(P); if (areas.length < 800) areas.push({ k: kind, pts: P.pts });
-      }
-  }
+  const areas = opt.area ? await areasIn(S, W, N, E, 800) : [];   // 🟩 公園・団地・駐車場などの はんい
   if (!els.length) return { miss, ways: [], pts: [], xs: [], areas };
   cfg = { ...DEFAULT_CFG, ...(cfg || {}), pen: { ...DEFAULT_CFG.pen, ...((cfg && cfg.pen) || {}) } };
   try { const J = jarApply({ elements: els }, cfg, await jarPrep(keys, cfg)).elements; if (J !== els) { els.length = 0; for (const e of J) els.push(e); } } catch {}   // 🚓 横断禁止の道に印（印がないときは そのまま）
@@ -2624,7 +2651,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "jarSig") { const r = await jarSigIn(d.bb, d.cfg).catch(e => ({ err: e.message, sigs: [] })); return self.postMessage({ type: "jarSig", id: d.id, who: d.who, ...r }); }
-      if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
+      if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg, d.opt).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
         if (pfRun) return; pfRun = true;
