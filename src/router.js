@@ -1487,7 +1487,18 @@ async function dbgView(bb, cfg) {
     if (!el) { miss++; continue; }
     for (const e of el) { const q = elKey(e); if (!seen.has(q)) { seen.add(q); els.push(e); } }
   }
-  if (!els.length) return { miss, ways: [], pts: [], xs: [] };
+  // 🟩 公園・団地・駐車場などの はんい（画面に出す用）
+  try { await loadAreas(); } catch {}
+  const areas = [];
+  if (areaGrids) for (const kind of Object.keys(areaGrids)) {
+    const g = areaGrids[kind], got = new Set();
+    for (let i = Math.floor(S * 100); i <= Math.floor(N * 100); i++) for (let k = Math.floor(W * 100); k <= Math.floor(E * 100); k++)
+      for (const P of g.get(i + "," + k) || []) {
+        if (got.has(P) || P.n < S || P.s > N || P.e < W || P.w > E) continue;
+        got.add(P); if (areas.length < 800) areas.push({ k: kind, pts: P.pts });
+      }
+  }
+  if (!els.length) return { miss, ways: [], pts: [], xs: [], areas };
   cfg = { ...DEFAULT_CFG, ...(cfg || {}), pen: { ...DEFAULT_CFG.pen, ...((cfg && cfg.pen) || {}) } };
   try { const J = jarApply({ elements: els }, cfg, await jarPrep(keys, cfg)).elements; if (J !== els) { els.length = 0; for (const e of J) els.push(e); } } catch {}   // 🚓 横断禁止の道に印（印がないときは そのまま）
   const G = buildGraph({ elements: els }, { ...cfg, _dbg: true });   // _dbg：道ごとの「通る／通らない（理由）」をメモしてもらう（ルートの計算と同じ判定）
@@ -1498,7 +1509,8 @@ async function dbgView(bb, cfg) {
     const nd = e.nodes.map(id => G.idx.get(id)).filter(x => x !== undefined); if (nd.length < 2 || !nd.some(i => inB(G.lat[i], G.lon[i]))) continue;
     if (ways.length >= 1500) break;
         const u = G.dbgW && G.dbgW.get(e.uid || e.id) || { use: false, r: "道のつながりがない" };
-    ways.push({ id: e.id, pts: nd.map(i => [r6(G.lat[i]), r6(G.lon[i])]), t: e.tags, lv: levelOf(e.tags, cfg), use: u.use, why: u.r, up: isUnpaved(e.tags) });   // up：砂利・土 "sure"／舗装かわからない "maybe"
+    const mi = nd[nd.length >> 1], pk = areaHas("park", G.lat[mi], G.lon[mi]) || (nd.length > 2 && areaHas("park", G.lat[nd[0]], G.lon[nd[0]]) && areaHas("park", G.lat[nd[nd.length - 1]], G.lon[nd[nd.length - 1]]));   // pk：公園の囲みの中（河川敷の公園なら 川べり）
+    ways.push({ id: e.id, pts: nd.map(i => [r6(G.lat[i]), r6(G.lon[i])]), t: e.tags, lv: levelOf(e.tags, cfg), use: u.use, why: u.r, up: isUnpaved(e.tags), pk });   // up：砂利・土 "sure"／舗装かわからない "maybe"
   }
   for (const [i, t] of G.ntags) {
     if (!inB(G.lat[i], G.lon[i])) continue;
@@ -1512,7 +1524,7 @@ async function dbgView(bb, cfg) {
     const j = G.xref[i];
     if (xs.length < 600) xs.push({ id: G.ids[i], p: [r6(G.lat[i]), r6(G.lon[i])], lv: G.lvl[i], k: G.xkind[i], c: Math.round(G.xcost[i]), dv: G.divided ? G.divided[i] : 0, det: G.xdet ? Math.round(G.xdet[i]) : 0, ref: j >= 0 ? [r6(G.lat[j]), r6(G.lon[j])] : null });
   }
-  return { miss, ways, pts, xs };
+  return { miss, ways, pts, xs, areas };
 }
 async function onewayIn(bb) {
   const [S, W, N, E] = bb, T = 0.01, keys = [];
