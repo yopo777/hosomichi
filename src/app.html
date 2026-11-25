@@ -36,6 +36,7 @@ html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-a
 #fs{border:none;background:#eee;border-radius:8px;padding:4px 10px;font-size:16px;line-height:1.2;display:none}
 .row{display:flex;gap:6px;margin-top:8px;align-items:center}
 .row label{width:3.2em;font-size:13px;color:#555}
+.xClr{flex:none;width:34px;height:36px;padding:0;border:1px solid #ccc;border-radius:8px;background:#fff;color:#777;font-size:18px;line-height:1}
 .row input[type=text]{flex:1;min-width:0;padding:9px;border:1px solid #ccc;border-radius:8px;font-size:15px}
 .ib{border:1px solid #ccc;background:#fff;border-radius:8px;padding:8px 10px;font-size:15px}
 #go,#msnGo{width:100%;margin-top:10px;padding:12px;border:none;border-radius:10px;background:#d93025;color:#fff;font-size:17px;font-weight:bold}
@@ -389,9 +390,9 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       </div>
     </div>
     <div id="tabRoute">
-    <div class="row"><label>出発</label><input type="text" autocomplete="off" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
-    <div class="row" id="viaRow"><label>経由地</label><input type="text" autocomplete="off" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
-    <div class="row" id="toRow"><label>目的地</label><input type="text" autocomplete="off" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
+    <div class="row"><label>出発</label><input type="text" autocomplete="off" id="from" enterkeyhint="go" placeholder="空なら現在地"><button type="button" class="xClr" data-c="from" title="出発をクリア">×</button></div>
+    <div class="row" id="viaRow"><label>経由地</label><input type="text" autocomplete="off" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"><button type="button" class="xClr" data-c="via" title="経由地をクリア">×</button></div>
+    <div class="row" id="toRow"><label>目的地</label><input type="text" autocomplete="off" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"><button type="button" class="xClr" data-c="to" title="目的地をクリア">×</button></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図を長おし（パソコンは右クリック）しても出発・目的地を選べるよ</div>
     <button id="go" title="Ctrl＋Alt＋Enter">ルートを作る</button>
     <div id="saved"><button class="ib" id="bList" style="width:100%;margin-top:8px;font-size:14px">📁 保存したルート（<span id="nSaved">0</span>）</button>
@@ -1833,9 +1834,15 @@ function inPins(hide) {
   for (const [id, col, txt] of [["from", "#188038", "🚲 出発"], ["via", "#1a73e8", "📍 経由地"], ["to", "#d93025", "🏁 目的地"]]) {
     if (lk && id !== "from") continue;   // 1周のときは 経由地・目的地の欄は使わない
     if (cur && pinUsed && pinUsed[id] === $(id).value) continue;   // いまのルートを作った場所（ルートが出ているときは「新しい目的地」など：いまのルートの🏁と まちがえないように）
-    const p = inLL(id); if (p) L.marker(p, { icon: pinIc(col, cur ? txt.replace(" ", " 新しい") : txt), zIndexOffset: 540 }).addTo(pinLayer).bindTooltip(txt.slice(txt.indexOf(" ") + 1) + "（まだ計算していないよ）");
+    const p = inLL(id); if (p) L.marker(p, { icon: pinIc(col, cur ? txt.replace(" ", " 新しい") : txt), zIndexOffset: 540 }).addTo(pinLayer).bindTooltip(txt.slice(txt.indexOf(" ") + 1) + "（まだ計算していないよ）").on("contextmenu", ev => {   // 右クリック（長おし）→ ふきだし：キャンセルで この欄とピンを消す
+      L.DomEvent.stop(ev); const nm = txt.slice(txt.indexOf(" ") + 1);
+      pinPopup(p, p[0].toFixed(6) + "," + p[1].toFixed(6), txt, null, [{ t: `✖ キャンセル（${nm}を消す）`, col: "#666", fn: () => inClear(id) }]); });
   }
 }
+function inClear(id) {   // 出発・経由地・目的地の欄を空にして、ピンも消す
+  const el = $(id); el.value = ""; delete el.dataset.ll; delete el.dataset.v; inPins(); setMsg(`${{ from: "出発", via: "経由地", to: "目的地" }[id]}をクリアしたよ`);
+}
+for (const b of document.querySelectorAll(".xClr")) b.onclick = () => inClear(b.dataset.c);
 for (const id of ["from", "via", "to"]) $(id).addEventListener("input", () => inPins());
 setTimeout(() => inPins(), 0);
 function showRoute(r, fit) {
