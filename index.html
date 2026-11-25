@@ -216,7 +216,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.2213</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.2217</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3936,7 +3936,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1125.2213", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.2217", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6620,7 +6620,7 @@ const OTHER_ROWS = [
   ["tunnel", "地下道", LADF(...L_UP, "no")],
   ["unkSurf", "舗装不明の道（路面が書いてない小道・農道）", LADF(...L_UP, "no")],
   ["unpaved", "砂利・土の道", LADF(...L_UP, "no")],
-  ["xDet", "4車線の道を 交差点で渡れないとき、信号・横断歩道まで 行ってよい距離", [[0, "行かない（大回りして 渡れる交差点をさがす）"], [60, "60mまで（ペナルティ 行って帰る分）"], [100, "100mまで（ペナルティ 行って帰る分）"], [150, "150mまで（ペナルティ 行って帰る分）"]]],
+  ["xDet", "4車線の道を 交差点で渡れないとき、信号・横断歩道まで 行ってよい距離", [[0, "行かない（大回りして 渡れる交差点をさがす）"], [30, "30mまで（ペナルティ 行って帰る分）"], [60, "60mまで（ペナルティ 行って帰る分）"], [100, "100mまで（ペナルティ 行って帰る分）"], [150, "150mまで（ペナルティ 行って帰る分）"]]],
   ["allWide", "2車線の道路も 4車線としてあつかう（より安全に）", [["off", "あつかわない"], ["on", "あつかう"]]],
   ["midCross", "2車線の道を信号・横断歩道のない所で渡る", [[0, "どこでも渡る（ペナルティ 0）"], [100, "少し避ける（ペナルティ 1回100m）"], [300, "避ける（ペナルティ 1回300m）"], [500, "かなり避ける（ペナルティ 1回500m）"], [1000, "ほとんど渡らない（ペナルティ 1回1km）"], [3000, "ほぼ渡らない（ペナルティ 1回3km）"]]],
 ];
