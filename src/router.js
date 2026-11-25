@@ -372,6 +372,7 @@ function buildGraph(osm, cfg, onProg) {
   // 橋・地下・屋根つき・建物の中・階（level）がある・名前に「通路」「コンコース」「改札」「駅」がある道
   const stPen = cfg.station === "no" ? null : (+cfg.station || 1), STA_R = 150;
   const cemPen = cfg.cemetery === "no" ? null : (+cfg.cemetery || 1), parkPen = cfg.park === "no" ? null : (+cfg.park || 1);
+  const WG = cfg._warp, warpOn = cfg.warp != null && cfg.warp !== "off", warpD = warpOn ? Math.min(1, +cfg.warp || 1) - 1 : 0;   // 🌀 ワープトンネル：倍率の足し算（自転車道のなかま）
   const rivOn = cfg.riv != null && cfg.riv !== "off", rivK = rivOn ? Math.min(1, +cfg.riv || 1) : 1, RG = cfg._riv;   // RG：ルートのはんいの 川の線（rivPrep）   // 〰 川べりの車の来ない道：1m を何m分と数えるか（1＝気にしない・へらすほう）
   const danPen = (cfg.danchi ?? "no") === "no" ? null : (+cfg.danchi || 1);   // 🏢 団地の中の道（11/24 から はじめは 通らない）
   const prvPen = (cfg.privy ?? "no") === "no" ? null : (+cfg.privy || 1);     // 🏠 私道・家の前の道・駐車場の中（11/24 から はじめは 通らない）
@@ -422,6 +423,8 @@ function buildGraph(osm, cfg, onProg) {
     let rv = null, rvHalf = false;
     if (RG && RG.n && rivOK(t)) { const r = rivWay(RG, nd.map(i => [lat[i], lon[i]]));
       if (r) { rv = r.rv; let a = 0, b = 0; for (let q = 1; q < nd.length; q++) { const l = hav(lat[nd[q - 1]], lon[nd[q - 1]], lat[nd[q]], lon[nd[q]]); b += l; if (rv[q - 1]) a += l; } rvHalf = a * 2 >= b; } }
+    let wv = null;   // 🌀 ワープトンネル：区間ごとに 0/1
+    if (WG && WG.n && warpOn && WARP_HW.has(t.highway)) { const r = rivWay(WG, nd.map(i => [lat[i], lon[i]]), WARP_NEAR); if (r) wv = r.rv; }
     const whyUp = (k, v) => { whyAdd(why, k, v); pen = whySum(why) * km; };   // 理由をふやして 倍率を数えなおす
     if (t["jar:nb"] === "t") name += t["jar:nbk"] === "pw" ? "・歩行者用道路（いまは時間外）" : "・自転車通行止め（いまは時間外）";   // 時間つきで いまは時間外：ふつうに通る
     if (stationGrid && cfg.station !== 1 && isStaPath(t, nd)) {   // 駅の中の通路
@@ -485,9 +488,11 @@ function buildGraph(osm, cfg, onProg) {
       const rpm = rvK ? (whySum(why) - rgBase + rg + rvK) * Math.max(1, km) : pm;
       // sm：足し算した倍率（旧街道の分の前）・rg：🪨 走りにくい の倍率（あとで 🪜階段？・⛰急坂？ と くらべる）
       // 〰 川べり（設定がオンのとき）：🚶人が多い（歩く道）の分を数えないで、かわりに ×rivK（へらすほう）。歩道×3 だと ×0.6 しても 住宅街の道（×1）に勝てなかったので
-      const isR = rv && rv[i - 1], rk = isR && rivOn ? (whySum(why) - ((why.ppl || 1) - 1) + (m > 1 ? m - 1 : 0)) * km * rivK / pm : 1, rn = isR ? "・川べり" : "";
-      if (fwd) adj[u].push({ v, c: L * (rev ? rpm : pm) * rk, sm: pm / km, rg, L, l: L0, k: (rev ? rname : name) + rn, w: e.id, b: lift, hw, dk });
-      if (back) adj[v].push({ v: u, c: L * (rev ? pm : rpm) * rk, sm: pm / km, rg, L, l: L0, k: (rev ? name : rname) + rn, w: e.id, b: lift, hw, dk });
+      const isW = wv && wv[i - 1] && warpD < 0;   // 🌀 倍率は 足し算（×1の道が ×0.6 など）。0.1 より下げない
+      const pmW = isW ? Math.max(0.1, pm / km + warpD) * km : pm, rpmW = isW ? Math.max(0.1, rpm / km + warpD) * km : rpm;
+      const isR = rv && rv[i - 1], rk = isR && rivOn ? (whySum(why) - ((why.ppl || 1) - 1) + (m > 1 ? m - 1 : 0)) * km * rivK / pm : 1, rn = (isR ? "・川べり" : "") + (isW ? "・🌀ワープ" : "");
+      if (fwd) adj[u].push({ v, c: L * (rev ? rpmW : pmW) * rk, sm: pmW / km, rg, L, l: L0, k: (rev ? rname : name) + rn, w: e.id, b: lift, hw, dk });
+      if (back) adj[v].push({ v: u, c: L * (rev ? pmW : rpmW) * rk, sm: pmW / km, rg, L, l: L0, k: (rev ? name : rname) + rn, w: e.id, b: lift, hw, dk });
     }
   }
   // 大きい道の向き（横断かどうか＝道の反対側に出るかを判定するため）
@@ -572,7 +577,7 @@ function buildGraph(osm, cfg, onProg) {
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
   return { dbgW: DBGW, lat, lon, adj, lvl, xcost, xkind, xref, xdet, divided, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
-    hk: Math.min(1, +cfg.kodo || 1) * Math.max(0.1, Math.min(1, ...Object.values(cfg.pen || {}).map(v => +v > 0 ? +v : 1)) + Math.min(1, ...["bkLane", "bkNavi"].map(k => +cfg[k] > 0 ? +cfg[k] : 1)) - 1) * (cfg.riv != null && cfg.riv !== "off" ? Math.min(1, +cfg.riv || 1) : 1) * (preferPts.length ? PREFER_K : 1) };   // 〰 川べりも 1m＜1m なので   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）。道の倍率と自転車道のなかまは 11/25 から足し算なので、見こみも足し算（whySum と同じ 0.1 で止める）
+    hk: Math.min(1, +cfg.kodo || 1) * Math.max(0.1, Math.min(1, ...Object.values(cfg.pen || {}).map(v => +v > 0 ? +v : 1)) + Math.min(1, ...["bkLane", "bkNavi"].map(k => +cfg[k] > 0 ? +cfg[k] : 1)) - 1 + (cfg.warp != null && cfg.warp !== "off" ? Math.min(1, +cfg.warp || 1) - 1 : 0)) * (cfg.riv != null && cfg.riv !== "off" ? Math.min(1, +cfg.riv || 1) : 1) * (preferPts.length ? PREFER_K : 1) };   // 〰 川べりも 1m＜1m なので   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）。道の倍率と自転車道のなかまは 11/25 から足し算なので、見こみも足し算（whySum と同じ 0.1 で止める）
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
@@ -2178,6 +2183,27 @@ function rivNear(g, G, R, px, py, ux, uy) {
   }
   return best;
 }
+// ==== 🌀 ワープトンネル（配布データの warp.json・tools/make_warp.py で作る。いまは東京23区だけ）：曲がらずに遠くまで続く細い道 ====
+// 道の区間が ワープトンネルの線から 8m 以内で 向きが ±30° でそろえば 🌀（川べりと同じ見分けかた）。設定 warp で「通りたい」倍率（足し算）をつける
+const WARP_NEAR = 8, WARP_HW = new Set(["residential", "living_street", "unclassified", "service", "tertiary"]); let warpMem = null;   // WARP_HW：見つけた道と同じ種類だけ（となりの歩道には かけない）
+async function warpPrep(S, W, N, E, minL) {
+  if (!packBase) return null;
+  if (!warpMem) warpMem = fetch(packBase + "warp.json").then(r => r.ok ? r.json() : null).catch(() => { warpMem = null; return null; });
+  const j = await warpMem; if (!j || !j.s) return null;
+  const cl = Math.cos((S + N) / 2 * Math.PI / 180), X = lo => lo * cl * 111320, Y = la => la * 110540, LG = 50, lg = new Map(), P = .001;
+  for (const o of j.s) {
+    if (o.l < minL) continue;
+    let a = 90, b = 180, c = -90, d = -180; for (const [la, lo] of o.p) { a = Math.min(a, la); c = Math.max(c, la); b = Math.min(b, lo); d = Math.max(d, lo); }
+    if (a > N + P || c < S - P || b > E + P || d < W - P) continue;
+    for (let q = 1; q < o.p.length; q++) {
+      const x1 = X(o.p[q - 1][1]), y1 = Y(o.p[q - 1][0]), x2 = X(o.p[q][1]), y2 = Y(o.p[q][0]);
+      for (let i = Math.floor(Math.min(x1, x2) / LG); i <= Math.floor(Math.max(x1, x2) / LG); i++) for (let k = Math.floor(Math.min(y1, y2) / LG); k <= Math.floor(Math.max(y1, y2) / LG); k++) {
+        const key = i + "," + k; let arr = lg.get(key); if (!arr) lg.set(key, arr = []); arr.push([x1, y1, x2, y2, o.nm || ""]);
+      }
+    }
+  }
+  return { X, Y, lg, LG, n: lg.size };
+}
 // 車の来ない道か（自転車は通れる）
 const rivOK = t => {
   if (EXCLUDE.has(t.highway) || t.highway === "steps" || yes(t.bridge) || yes(t.tunnel) || t.bicycle === "no" || t.bicycle === "dismount") return false;
@@ -2194,10 +2220,10 @@ const rivOK = t => {
   return [t.motor_vehicle, t.motorcar, t.vehicle].some(v => RIV_NOCAR.includes(v)) && (t.vehicle !== "no" || bOK) || (t.access === "no" && bOK);
 };
 // 1本の道の点の列 [[緯度,経度],…] → 区間ごとに 0＝なし・1＝〰川べり（どれもなければ null）と、そばの川の名前
-function rivWay(R, pts) {
+function rivWay(R, pts, near = RIV_NEAR) {
   const xs = pts.map(p => R.X(p[1])), ys = pts.map(p => R.Y(p[0]));
   { const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys); let hit = false;   // まわりに川がなければ すぐ終わり
-    for (let i = Math.floor((x0 - RIV_NEAR) / R.LG); i <= Math.floor((x1 + RIV_NEAR) / R.LG) && !hit; i++) for (let j = Math.floor((y0 - RIV_NEAR) / R.LG); j <= Math.floor((y1 + RIV_NEAR) / R.LG) && !hit; j++) if (R.lg.has(i + "," + j)) hit = true;
+    for (let i = Math.floor((x0 - near) / R.LG); i <= Math.floor((x1 + near) / R.LG) && !hit; i++) for (let j = Math.floor((y0 - near) / R.LG); j <= Math.floor((y1 + near) / R.LG) && !hit; j++) if (R.lg.has(i + "," + j)) hit = true;
     if (!hit) return null; }
   const rv = [], nms = new Map(); let any = false;
   for (let q = 1; q < pts.length; q++) {
@@ -2205,7 +2231,7 @@ function rivWay(R, pts) {
     if (L < 1) { rv.push(rv.length ? rv[rv.length - 1] : 0); continue; }
     const ux = dx / L, uy = dy / L, n = Math.max(1, Math.round(L / 10)); let h = 0;
     for (let s = 0; s < n; s++) {
-      const f = (s + .5) / n, nm = rivNear(R.lg, R.LG, RIV_NEAR, ax + dx * f, ay + dy * f, ux, uy);
+      const f = (s + .5) / n, nm = rivNear(R.lg, R.LG, near, ax + dx * f, ay + dy * f, ux, uy);
       if (nm !== null) { h++; if (nm) nms.set(nm, (nms.get(nm) || 0) + 1); }
     }
     const k = h * 2 >= n ? 1 : 0; rv.push(k); if (k) any = true;
@@ -2514,7 +2540,9 @@ async function routeOnce(req, prog, partial) {
   let jarL = []; try { jarL = await jarPrep(tiles.map(t => bigOf(t.key)), cfg); } catch {}   // 🚓 横断禁止の線（取れなければ使わない）
   let rivR = null; try { const S0 = Math.min(s[0], g[0]) - pad, N0 = Math.max(s[0], g[0]) + pad, W0 = Math.min(s[1], g[1]) - pad, E0 = Math.max(s[1], g[1]) + pad;
     rivR = await rivPrep(S0, W0, N0, E0); if (rivR.n) log(`〰 川のデータ：${rivR.n}マス（川べりの道を見分ける）`); } catch { rivR = null; }   // 〰 川べりの道（取れなければ使わない）
-  const BG = (osm, c, p) => { const G0 = buildGraph(addPins(jarApply(osm, c, jarL), [s, g]), { ...(c || {}), _riv: rivR }, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
+  let warpR = null; if (cfg.warp != null && cfg.warp !== "off") { try { const S0 = Math.min(s[0], g[0]) - pad, N0 = Math.max(s[0], g[0]) + pad, W0 = Math.min(s[1], g[1]) - pad, E0 = Math.max(s[1], g[1]) + pad;
+    warpR = await warpPrep(S0, W0, N0, E0, +cfg.warpMin || 1500); if (warpR && warpR.n) log(`🌀 ワープトンネルのデータ：${warpR.n}マス（${(+cfg.warpMin || 1500) / 1000}km以上）`); } catch { warpR = null; } }   // 🌀（取れなければ使わない）
+  const BG = (osm, c, p) => { const G0 = buildGraph(addPins(jarApply(osm, c, jarL), [s, g]), { ...(c || {}), _riv: rivR, _warp: warpR }, p); return demOK ? applySlope(G0, slopeK, c && c.stepsGuess != null ? c.stepsGuess : DEFAULT_CFG.stepsGuess, c && c.steep != null ? c.steep : DEFAULT_CFG.steep) : G0; };
   const saved = got.size - stale.size, need = tiles.filter(t => !got.has(t.key));
   if (oldPack) log(`配布データが新しくなったので、${oldPack}マスを配布データから取りなおすよ`);
   log(`端末の保存データ: 使える ${saved}マス / 1年より古いけど使う ${stale.size}マス / ダウンロードが必要 ${need.length}マス（同時 ${Math.min(PARALLEL, need.length)}本）`, saved === N ? "ok" : "i");
