@@ -217,7 +217,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.2307</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.2316</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3937,7 +3937,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1125.2307", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.2316", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4038,6 +4038,14 @@ function boo() {   // ミスコースの「ブー」（1回だけ。ルートに
     o.type = "square"; o.frequency.value = 150; o.connect(g); g.connect(actx.destination);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.setValueAtTime(0.25, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
     o.start(t); o.stop(t + 0.65);
+  } catch {}
+}
+function pip() {   // 「ルートを作る」を押したときの「ピッ」（受けつけたよ の合図。みじかく小さく）
+  try {
+    audioUnlock(); if (!actx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+    o.type = "sine"; o.frequency.value = 1320; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    o.start(t); o.stop(t + 0.1);
   } catch {}
 }
 function chime() {
@@ -4392,6 +4400,7 @@ $("go").onclick = async () => {
   let LK = loopKm();
   const fromT = $("from").value.trim(), toT = LK ? "" : $("to").value.trim(), viaT = LK ? "" : $("via").value.trim();
   if (!toT && !LK) { setMsg("目的地を入れてね", true); return; }
+  pip();
   pendingName = (fromT ? shortName(fromT) : "現在地") + (LK ? " 1周" : " → " + shortName(toT));
   // 押したらすぐ前のルートを消す（場所さがしのあいだも前のルートが出ていると、動いていないように見えるので）
   layer.clearLayers(); cur = null; cum = []; navAlong = null; pinUsed = { from: $("from").value, via: $("via").value, to: $("to").value }; inPins(true);
