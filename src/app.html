@@ -3680,7 +3680,7 @@ const L_UP = [1, 1.5, 3, 5, 10], L_ALL = [0.4, 0.6, 0.8, 1, 1.5, 3, 5, 10];
 // 🚲 道の好み（PEN_ROWS）：どんどん通る側（×1より小さい）は 細い車道・小道・自転車道だけ。「通らない」は 細い車道には出さない
 const PEN_BONUS = new Set(["residential,living_street,unclassified", "path,track", "cycleway"]);
 const penOpts = ks => LADF(...(PEN_BONUS.has(ks) ? L_ALL : L_UP), ...(ks === "residential,living_street,unclassified" ? [] : ["no"]));
-const CFG_DEF = { bkLane: 1, bkNavi: 1, bkSlow: 1, pen: { living_street: 1, residential: 1, service: 1, unclassified: 1, cycleway: 1, tertiary: 5, secondary: 10,
+const CFG_DEF = { bkLane: 1, bkNavi: 1, pen: { living_street: 1, residential: 1, service: 1, unclassified: 1, cycleway: 1, tertiary: 5, secondary: 10,
   primary: 10, trunk: 10, footway: 3, pedestrian: "no", path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 0, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 3, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 60, allWide: "off", fastCross: "mid", midCross: 100, oneway: 1.5, bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 10, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 1.5, station: "no", cemetery: "no", park: "no", riv: "off" };
 const BK_OPT = LADF(...L_ALL);   // 🚲 自転車道のなかま ぜんぶ同じ
 const OTHER_ROWS = [
@@ -3690,7 +3690,6 @@ const OTHER_ROWS = [
   ["oneway", "逆走（自転車を除くの一方通行）", LADF(...L_UP, "no")],   // 11/25 ほかの道と同じ えらぶ所（距離×◯・足し算）にそろえた
   ["bkNavi", "➡ ナビライン（矢羽根）", BK_OPT],
   ["bkLane", "🟦 自転車専用通行帯（地図）", BK_OPT],
-  ["bkSlow", "🐢 30km制限の道", BK_OPT],
   ["riv", "〰 川べりの車の来ない道", [["off", "気にしない（歩く道・小道の倍率のまま）"], [1, "細い車道と同じ（距離×1）"], ...LADF(0.8, 0.6, 0.4)]],
   ["kodo", "旧街道", LADF(0.4, 0.6, 0.8, 1)],
   ["slope", "坂道（のぼり）", [[0, "気にしない（ペナルティ 0）"], [5, "少し避ける（ペナルティ のぼり1mごとに5m）"], [10, "避ける（ペナルティ のぼり1mごとに10m）"], [20, "かなり避ける（ペナルティ のぼり1mごとに20m）"]]],
@@ -3735,6 +3734,7 @@ let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cf
       c.mode = "full"; c.area = "auto";   // 11/25 設定からなくした（いつも ぜんぶ計算してから・おまかせ）
       if (!c.cfgV9) { c.oneway = c.oneway === "no" ? "no" : c.oneway === "avoid" ? 3 : 1.5; c.cfgV9 = 1; }   // 11/25 逆走：前の「逆走する ×1.3」→ 少し避ける ×1.5・「避ける ×3」→ ×3
       if (!c.cfgV10) { delete c.bkSwalk; c.cfgV10 = 1; }   // 11/25 自転車歩行者道（bkSwalk）は 自転車道（pen.cycleway）と同じあつかいにしたので 設定からなくした
+      if (!c.cfgV11) { delete c.bkSlow; c.cfgV11 = 1; }   // 11/25 🐢30km制限の道 は設定からなくした（細い道を好めば自然とそうなるので）
       if (!c.cfgV7) { if (c.station === 5 || c.station == null) c.station = "no"; c.cfgV7 = 1; }   // 11/24 駅の中の通路は はじめ 通らない（ユーザー：どう考えても楽しくない）。設定では かえられる
       if (!c.cfgV6) { if (c.park === 5 || c.park == null) c.park = "no"; c.cfgV6 = 1; }   // 11/24 公園の中は 通らない（〰川べりの車の来ない道は のぞく）
       if (!c.cfgV5) { if (c.turn === 100 || c.turn == null) c.turn = 0; c.cfgV5 = 1; }   // 11/24 曲がる回数は はじめ 気にしない（ユーザー）
@@ -3765,7 +3765,7 @@ function renderCfg() {
   $("cfgMap").innerHTML = h; h = "";
   const pen = ks => PEN_ROWS.filter(r => ks.includes(r[0])).map(([k, t]) => `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(penOpts(k), penGet(k))}</select></div>`).join("");
   h += "<h4>計算</h4>" + get(["turn"]);
-  h += "<h4>🚲 自転車道</h4>" + pen(["cycleway"]) + get(["riv"]) + get(["bkSlow"]) + get(["bkLane"]) + get(["bkNavi"]) + '<div class="note">自転車道のなかま：倍率が小さいほど通りたい道（×1＝ふつうの道と同じ）。11/25 から ほかの「道の好み」と同じ足し算のなかまに<span class="hq">?</span><div class="hd">上から、信頼できる順だよ。🟦自転車専用通行帯・➡ナビラインは、地図（OSM）にそう書いてあっても、じっさいは道に何もないことがけっこうあるよ（あてにしすぎないでね）。🐢30km制限の道は、地図にそう書いてある道だけだよ（📍マークの「道」と同じ）。🚲自転車道・サイクリングロードは 上の「自転車道」の倍率（大河川ぞいでCRの印がとぎれた所をつなぐ 自転車歩行者道も、同じ「自転車道」の倍率であつかうよ）。〰川べりは、小さい川ぞいの 車の来ない道（下の説明）。ぜんぶ「気にしない」だと いままでと同じルートだよ。通りたい（×0.8 など）にすると 少し遠回りしても その道を通るよ</div></div>' + '<div class="note">〰 川べり：小さい川ぞいの 車の来ない道を 通るよ<span class="hq">?</span><div class="hd">気にしない以外にすると、川べりの所は 🚶人が多い（歩く道 ×3 など）の分を数えないで、えらんだ倍率にするよ。川・水路・小川の線から20m以内で 川と同じ向きの、自転車道・歩道・小道・車は通行止めの道（📍マークの「〰 川べりの車の来ない道」）。自転車が走れない道・砂利・土の道は のぞくよ。公園の中でも この道は 通れるよ（公園の中の道の設定は かからない）。手元に道路データがあれば、遠くの川べりまで使えるよ</div></div>';
+  h += "<h4>🚲 自転車道</h4>" + pen(["cycleway"]) + get(["riv"]) + get(["bkLane"]) + get(["bkNavi"]) + '<div class="note">自転車道のなかま：倍率が小さいほど通りたい道（×1＝ふつうの道と同じ）。11/25 から ほかの「道の好み」と同じ足し算のなかまに<span class="hq">?</span><div class="hd">上から、信頼できる順だよ。🟦自転車専用通行帯・➡ナビラインは、地図（OSM）にそう書いてあっても、じっさいは道に何もないことがけっこうあるよ（あてにしすぎないでね）。🚲自転車道・サイクリングロードは 上の「自転車道」の倍率（大河川ぞいでCRの印がとぎれた所をつなぐ 自転車歩行者道も、同じ「自転車道」の倍率であつかうよ）。〰川べりは、小さい川ぞいの 車の来ない道（下の説明）。ぜんぶ「気にしない」だと いままでと同じルートだよ。通りたい（×0.8 など）にすると 少し遠回りしても その道を通るよ（🐢30km制限の道は、細い車道を好めば自然とそうなるので 11/25 に設定からなくしたよ。📍マークでの表示は今までどおり見られるよ）</div></div>' + '<div class="note">〰 川べり：小さい川ぞいの 車の来ない道を 通るよ<span class="hq">?</span><div class="hd">気にしない以外にすると、川べりの所は 🚶人が多い（歩く道 ×3 など）の分を数えないで、えらんだ倍率にするよ。川・水路・小川の線から20m以内で 川と同じ向きの、自転車道・歩道・小道・車は通行止めの道（📍マークの「〰 川べりの車の来ない道」）。自転車が走れない道・砂利・土の道は のぞくよ。公園の中でも この道は 通れるよ（公園の中の道の設定は かからない）。手元に道路データがあれば、遠くの川べりまで使えるよ</div></div>';
   h += "<h4>道を渡るとき</h4>" + get(["xDet", "allWide", "midCross"]) + '<div class="note">ペナルティ＝ルートの長さに足して計算するきょり（じっさいに走るきょりは ふえないよ）<span class="hq">?</span><div class="hd">たとえば ペナルティ100m なら、信号・横断歩道のある所を通るルートの遠回りが 100mより短ければ そっちを選ぶよ。4車線以上の道は、安全のため 信号か横断歩道のある所でしか渡らないよ（それ以外は 3km＝ほぼ渡らない）。右折レーンなどで3車線以上ある所は4車線と同じにしてるよ（地図データに車線が書いてあるときだけ）</div></div>';
   // 🚲 道の好み：「なぜいやか」の理由ごとに まとめる（11/24）。同じ理由の中は いちばん大きいのだけ、ちがう理由どうしは 足し算（router.js の wayCost）
   h += '<h4>🚲 道の好み</h4><div class="note">×3 なら「1mを3m分」と数えるよ<span class="hq">?</span><div class="hd">×3 なら「1mを3m分」と数えるよ（遠回りしても使わなくなる）。下の 🚗🚶🪨🚧⛔🏠 は「なぜいやか」の分けかただよ。同じ分けの中で重なったら いちばん大きい倍率だけ、ちがう分けどうしは 足し算（×の数から1を引いて足す）。歩道×3で公園の中×5なら ×5、一般道×5で歩道がとなり×3なら ×7。道の種類は 🧪道のデータの色と同じ分けかただよ</div></div>';

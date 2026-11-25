@@ -6,7 +6,7 @@ const DEFAULT_CFG = {
     tertiary: 5, secondary: 10, primary: 10, trunk: 10,
     footway: 3, pedestrian: "no", path: 1, track: 1,   // 歩道は 11/21 に ×5→×3、歩行者天国・広場は ×1.5→×3。小道・農道は 11/24 に ×1.5→×1（路面は 🪨砂利・土の設定で見る）
   },
-  bkLane: 1, bkNavi: 1, bkSlow: 1,   // 🚲 自転車専用通行帯・ナビライン・30km制限の道：倍率（1=気にしない・小さいほど通りたい）。自転車歩行者道は 11/25 から 自転車道（pen.cycleway）と同じあつかい
+  bkLane: 1, bkNavi: 1,   // 🚲 自転車専用通行帯・ナビライン：倍率（1=気にしない・小さいほど通りたい）。自転車歩行者道は 11/25 から 自転車道（pen.cycleway）と同じあつかい。🐢30km制限は 11/25 に設定からなくした（細い道を好むなら自然とそうなるので）
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
   bridge: 1.5,           // 歩道橋（歩行者用）: 倍率 or "no"（11/21 に地下道と分けた）
   tunnel: 3,             // 地下道（歩行者用）: 倍率 or "no"
@@ -137,7 +137,6 @@ function bikeClassK(t, hw, cfg) {
   const v = BL_KEYS_R.map(k => t[k]).filter(Boolean), K = k => { const x = +cfg[k]; return x > 0 ? x : 1; };
   if (v.some(x => ["lane", "track", "opposite_lane", "opposite_track"].includes(x))) return K("bkLane") !== 1 ? [K("bkLane"), "自転車専用通行帯"] : null;
   if (v.some(x => ["shared_lane", "share_busway", "shoulder"].includes(x))) return K("bkNavi") !== 1 ? [K("bkNavi"), "ナビライン"] : null;
-  if (+t.maxspeed > 0 && +t.maxspeed <= 30) return K("bkSlow") !== 1 ? [K("bkSlow"), "30km制限の道"] : null;
   return null;
 }
 // 🎨 デバッグの「道のデータ」と同じ道の種類（app.html の dbgKind と同じ。ルートの線の色に使う）
@@ -573,7 +572,7 @@ function buildGraph(osm, cfg, onProg) {
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
   return { dbgW: DBGW, lat, lon, adj, lvl, xcost, xkind, xref, xdet, divided, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
-    hk: Math.min(1, +cfg.kodo || 1) * Math.max(0.1, Math.min(1, ...Object.values(cfg.pen || {}).map(v => +v > 0 ? +v : 1)) + Math.min(1, ...["bkLane", "bkNavi", "bkSlow"].map(k => +cfg[k] > 0 ? +cfg[k] : 1)) - 1) * (cfg.riv != null && cfg.riv !== "off" ? Math.min(1, +cfg.riv || 1) : 1) * (preferPts.length ? PREFER_K : 1) };   // 〰 川べりも 1m＜1m なので   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）。道の倍率と自転車道のなかまは 11/25 から足し算なので、見こみも足し算（whySum と同じ 0.1 で止める）
+    hk: Math.min(1, +cfg.kodo || 1) * Math.max(0.1, Math.min(1, ...Object.values(cfg.pen || {}).map(v => +v > 0 ? +v : 1)) + Math.min(1, ...["bkLane", "bkNavi"].map(k => +cfg[k] > 0 ? +cfg[k] : 1)) - 1) * (cfg.riv != null && cfg.riv !== "off" ? Math.min(1, +cfg.riv || 1) : 1) * (preferPts.length ? PREFER_K : 1) };   // 〰 川べりも 1m＜1m なので   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）。道の倍率と自転車道のなかまは 11/25 から足し算なので、見こみも足し算（whySum と同じ 0.1 で止める）
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
