@@ -3776,8 +3776,8 @@ function renderCfg() {
   h += "<h4>◎ 現在地・ナビ開始</h4>" + mirrorRow("gps", "現在地についていく・固定を解除");
   h += "<h4>ルートの色</h4>" + [["kind", "道の種類"], ["slope", "坂"]].map(([k, t]) =>
     `<label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="radio" name="rcol" value="${k}"${k === colorMode ? " checked" : ""}>${t}</label>`).join("");
-  h += '<h4>階段？・急坂？</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="slopeAuto"' + (lsGet("hosomichi_slopeauto", false) ? " checked" : "") + '>地図を動かしたら、見ている所を 自動でしらべる<span class="pw u">⚡小</span></label><div class="note">ズーム16より近いとき・ナビで固定していないときだけ<span class="hq">?</span><div class="hd">地図をスクロールして止まると、見えている所の 階段？・急坂？ を しらべてマークを出すよ（📍ボタンの長押しと同じ）。標高のデータを取るので、少し通信するよ。一度しらべた所は しらべないよ。ナビで走っているあいだは 電池のために しらべないよ</div></div>';
   h += '<h4>進行方向</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="flow"' + (lsGet("hosomichi_flowmode", "fwd") !== "off" ? " checked" : "") + '>➤ ルートの上に 進む向きの矢印を出す</label>';
+  h += '<h4>階段？・急坂？</h4><label style="display:flex;align-items:center;gap:6px;padding:3px 0"><input type="checkbox" name="slopeAuto"' + (lsGet("hosomichi_slopeauto", false) ? " checked" : "") + '>地図を動かしたら、見ている所を 自動でしらべる<span class="pw u">⚡小</span></label><div class="note">ズーム16より近いとき・ナビで固定していないときだけ<span class="hq">?</span><div class="hd">地図をスクロールして止まると、見えている所の 階段？・急坂？ を しらべてマークを出すよ（📍ボタンの長押しと同じ）。標高のデータを取るので、少し通信するよ。一度しらべた所は しらべないよ。ナビで走っているあいだは 電池のために しらべないよ</div></div>';
   $("cfgMap").innerHTML = h; h = "";
   const pen = ks => PEN_ROWS.filter(r => ks.includes(r[0])).map(([k, t]) => `<div class="c"><span>${t}</span><select data-pen="${k}">${optHtml(penOpts(k), penGet(k))}</select></div>`).join("");
   h += "<h4>計算</h4>" + get(["turn"]);
@@ -5520,24 +5520,23 @@ document.addEventListener("keydown", e => {
   if (!K) return;
   e.preventDefault(); $(K[0]).click(); setMsg(K[1]);
 });
-// ⌨ ⚙設定「🗺地図」タブの3つを キーボードで：Ctrl＋Alt＋Q 背景の地図／W ルートの色／E 進行方向（上から順）
+// ⌨ ⚙設定「🗺地図」タブの下のほうの3つを キーボードで：Ctrl＋Alt＋Q ルートの色／W 進行方向／E 階段？・急坂？の自動しらべ（A S D F G の つづき・上から順。背景の地図は D＝🗺ボタン）
 document.addEventListener("keydown", e => {
   if (!(e.ctrlKey && e.altKey) || e.metaKey || e.shiftKey || e.repeat) return;
-  if (e.code === "KeyQ") {   // 背景の地図：🗺ボタンと同じ順番で切りかえ
-    e.preventDefault(); if (photoBack) { photoBack = null; photoBackBtn(); }
-    const ks = BG_ALL; setBase(ks[(ks.indexOf(baseName) + 1) % ks.length]); baseBtn();
-    for (const r of document.querySelectorAll("[name=bg]")) r.checked = r.value === baseName;
-    return setMsg(`🗺 背景の地図：${BASES[baseName][0]}`);
-  }
-  if (e.code === "KeyW") {   // ルートの色：道の種類 ⇄ 坂
+  if (e.code === "KeyQ") {   // ルートの色：道の種類 ⇄ 坂
     e.preventDefault(); const m = colorMode === "kind" ? "slope" : "kind"; setColorMode(m);
     for (const r of document.querySelectorAll("[name=rcol]")) r.checked = r.value === m;
     return setMsg(`🎨 ルートの色：${m === "kind" ? "道の種類" : "坂"}`);
   }
-  if (e.code === "KeyE") {   // 進行方向：矢印 出す／出さない
+  if (e.code === "KeyW") {   // 進行方向：矢印 出す／出さない
     e.preventDefault(); const on = !flowOn; flowSet(on);
     for (const c of document.querySelectorAll("[name=flow]")) c.checked = on;
     return setMsg(`➤ 進行方向の矢印：${on ? "出す" : "出さない"}`);
+  }
+  if (e.code === "KeyE") {   // 階段？・急坂？：地図を動かしたら 自動でしらべる オン／オフ
+    e.preventDefault(); const c = document.querySelector("#cfgMap [name=slopeAuto]"); if (!c) return;
+    c.checked = !c.checked; $("cfgMap").onchange({ target: c });
+    return setMsg(`🪜 階段？・急坂？の自動しらべ：${c.checked ? "オン" : "オフ"}`);
   }
 });
 $("qLine").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) qFind(); });
