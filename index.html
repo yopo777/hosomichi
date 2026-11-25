@@ -71,6 +71,8 @@ html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-a
 #geoAsk{position:fixed;inset:0;z-index:6000;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px}#geoAsk .box{background:#fff;border-radius:14px;padding:16px;max-width:420px;font-size:13px;box-shadow:0 6px 24px #0005}#geoAsk button{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:14px}#geoAsk button.big{background:#1a73e8;border-color:#1a73e8;color:#fff;font-weight:bold;font-size:15px}
 #discl{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);z-index:3000;width:min(92vw,460px);box-sizing:border-box;background:rgba(32,33,36,.9);color:#fff;font-size:12px;line-height:1.55;padding:9px 12px;border-radius:12px;pointer-events:none;opacity:0;transition:opacity .6s}   /* ⚠ 起動時の免責：さわれない（地図の操作のじゃまをしない） */
 #discl.on{opacity:1}
+#helpTop{position:fixed;left:8px;right:8px;top:calc(var(--ptop, 52px) + 8px);z-index:3500;max-width:460px;margin:0 auto;box-sizing:border-box;background:rgba(32,33,36,.93);color:#fff;font-size:13px;line-height:1.55;padding:10px 38px 10px 12px;border-radius:12px;box-shadow:0 2px 10px #0006}
+#helpX{position:absolute;top:4px;right:6px;width:28px;height:28px;border:none;border-radius:50%;background:#ffffff26;color:#fff;font-size:18px;line-height:1;padding:0}
 #snsBox{padding:2px 0}.pw{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;font-size:10px;font-weight:bold;vertical-align:middle;white-space:nowrap}.pw.u{background:#fff4e5;color:#b45309;border:1px solid #f6c38b}.pw.s{background:#e6f4ea;color:#188038;border:1px solid #a8dab5}
 .ttabs{display:flex;gap:4px;margin:2px 0 8px}.ttabs button{flex:1;padding:6px 0;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:13px}.ttabs button.on{background:#e8f0fe;border-color:#1a73e8;color:#1a73e8;font-weight:bold}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.calW{text-align:center;font-size:11px}.calD{border:1px solid #eee;border-radius:6px;min-height:42px;padding:2px;text-align:center;font-size:12px;color:#aaa}.calD b{display:block;font-weight:normal}
@@ -209,7 +211,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1007</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1010</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3887,7 +3889,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1007", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1010", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6358,12 +6360,14 @@ async function snsOpen() {
   // 共有したら まっさらにもどす（次に開いたとき 前の写真・ひとこと・画像がのこっていないように）
   const snsDone = () => setTimeout(() => { if ($("snsBox") && trkV === "sns") { snsOpen(); setMsg("📣 共有したよ。SNSの画面は まっさらにもどしたよ"); } }, 300);
 };
-{ const d = $("discl");   // ⚠ 起動時のメッセージ：ふつうに起動したときだけ「アプリの説明＋かんたんな使いかた＋免責」（16秒）。Xなどの共有リンクで開いたときは ルートを見るだけなので 何も出さない
+{ const d = $("discl");   // ⚠ 起動時：下に免責の2行だけ（10秒・さわれない）。上に 使いかた（タップか ×で消える）。Xなどの共有リンクで開いたときは どちらも出さない（ルートを見るだけ）
   if (GC_SHARED) d.remove();
   else {
-    d.innerHTML = "<b>「ほそみちナビ」は自転車で車の少ない道を走るためのアプリです。</b>"
-      + '<div style="margin:6px 0 8px;padding:6px 8px;background:#ffffff1f;border-radius:8px">① 左上のメニューを「ひらく」<br>② 「ルート」の「シンプル」から「到着」に目的地を入れて「ルートを作る」<br>③ 右の◎を押してナビ開始</div>' + d.innerHTML;
-    requestAnimationFrame(() => d.classList.add("on")); setTimeout(() => d.classList.remove("on"), 16000); setTimeout(() => d.remove(), 16800);
+    requestAnimationFrame(() => d.classList.add("on")); setTimeout(() => d.classList.remove("on"), 10000); setTimeout(() => d.remove(), 10800);
+    const h = document.createElement("div"); h.id = "helpTop";
+    h.innerHTML = '<button id="helpX" aria-label="とじる">×</button><b>「ほそみちナビ」は自転車で車の少ない道を走るためのアプリです。</b><div style="margin-top:6px">① 左上のメニューを「ひらく」<br>② 「ルート」の「シンプル」から「到着」に目的地を入れて「ルートを作る」<br>③ 右の◎を押してナビ開始</div><div style="margin-top:6px;font-size:11px;color:#9ab">（タップすると消えるよ）</div>';
+    h.onclick = () => h.remove();
+    document.body.appendChild(h);
   } }
 $("bGpx").onclick = () => {
   const x = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="hosomichi" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>細道ルート</name><trkseg>\n'
