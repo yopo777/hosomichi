@@ -5,7 +5,8 @@
 使い方:
   python make_warp.py データフォルダ                 ← hosomichi-data（index.json と t/ があるところ）
   python make_warp.py データフォルダ --min 2000      ← 2km 以上だけ（はじめは 1500m）
-  python make_warp.py データフォルダ --box 35.48,138.94,35.90,139.93   ← はんい（南,西,北,東。はじめは 都内のまわりの四角）
+  python make_warp.py データフォルダ --area all --box 35.48,138.94,35.90,139.93   ← 四角のはんい ぜんぶ（南,西,北,東）
+  はじめは 東京23区だけ（cities.json で 区のさかい目で切る）
   → データフォルダ/warp.json を作る
 
 やりかた（ストローク）:
@@ -13,6 +14,7 @@
   2. 交差点では「いちばんまっすぐ進める道」どうしをつなぐ（ずれが 30° 以内のときだけ）。交差点でない曲がり角は 75° まで
   3. つながった1本の長さをはかって、長いものを残す
   4. 入り口：その1本が 大きい道（tertiary 以上）とふれる所（両はしもふくむ）
+  5. 4車線以上の道（アプリの isWide と同じ見分け）を わたる所に 信号も横断歩道も（25m以内に）なければ、そこで切る
 
 データ: © OpenStreetMap contributors（ODbL）
 """
@@ -29,6 +31,34 @@ BAD_ACCESS = {"private", "no"}
 TURN_JCT = 30   # 交差点で つないでいい ずれ（度）
 TURN_BEND = 75  # 交差点でない 曲がり角で つないでいい ずれ（度）
 LOOK = 15       # 向きをはかる長さ（m）
+
+def lanes_of(t):
+    try: return int(str(t.get("lanes", "0")).split(";")[0])
+    except ValueError: return 0
+
+def is_wide(t):   # router.js の isWide と同じ（4車線以上）
+    hw = t.get("highway", ""); n = lanes_of(t); ow = t.get("oneway") in ("yes", "1", "true", "-1")
+    if n >= 4: return True
+    def num(k):
+        try: return int(t.get(k) or 0)
+        except ValueError: return 0
+    tl = lambda k: len(str(t[k]).split("|")) if t.get(k) else 0
+    fb = num("lanes:forward") + num("lanes:backward") + num("lanes:both_ways")
+    tf, tb = tl("turn:lanes:forward"), tl("turn:lanes:backward")
+    tn = tl("turn:lanes") if ow else ((tf or 1) + (tb or 1) if (tf or tb) else 0)
+    if not ow and max(n, fb, tn) >= 3: return True
+    if hw in ("trunk", "trunk_link") and n != 2 and not (ow and n == 1): return True
+    if hw in ("trunk", "primary", "secondary") and ow and n >= 2: return True
+    return False
+
+def load_area(data, want):   # cities.json（約100mのマス目）で、want の市区町村のマスの集まりを作る
+    c = json.load(open(os.path.join(data, "cities.json"), encoding="utf-8"))
+    ids = {k for k, nm in enumerate(c["names"]) if want(nm)}
+    cells, other = set(), set()   # other：ほかの市のマス（どこの市でもないマス＝さかい目の道など は どちらにも入らない）
+    for r, row in enumerate(c["rows"]):
+        for q in range(0, len(row), 3):
+            (cells if row[q + 2] in ids else other).update((c["i0"] + r, j) for j in range(row[q], row[q + 1]))
+    return c["G"], cells, other, sorted(c["names"][k] for k in ids)
 
 def dec_v2(o):   # make_pack.py の dec_v2 と同じ（osmium なしで動くように コピー）
     i, j = o["t"]; base = (i * 20000 + j) * 100000
@@ -78,13 +108,23 @@ def simplify(pts, tol=3.0):   # ダグラス・ポーカー（m）
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("data"); ap.add_argument("--min", type=float, default=1500)
-    ap.add_argument("--box", default="35.48,138.94,35.90,139.93")
+    ap.add_argument("--box", default="35.52,139.56,35.82,139.92")
+    ap.add_argument("--area", default="23ku", help="23ku（東京23区だけ）／all（--box の四角ぜんぶ）")
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv); t0 = time.time()
     S, W, N, E = map(float, a.box.split(","))
     ix = json.load(open(os.path.join(a.data, "index.json"), encoding="utf-8"))
     keys = [k for k in ix["keys"] if S <= int(k.split("_")[0]) * T < N and W <= int(k.split("_")[1]) * T < E]
     print(f"マス {len(keys):,}個を読むよ", flush=True)
+    inA = lambda la, lo: True
+    if a.area == "23ku":
+        G, cells, other, nms = load_area(a.data, lambda nm: nm.endswith("区") and "市" not in nm)
+        print(f"はんい：{len(nms)}区（{'・'.join(nms)}）", flush=True)
+        def inA(la, lo):
+            c = (math.floor(la / G), math.floor(lo / G))
+            if c in cells: return True
+            if c in other: return False
+            return any((c[0] + di, c[1] + dj) in cells for di in (-1, 0, 1) for dj in (-1, 0, 1))   # どこの市でもないマス：となりに23区があれば入れる
 
     pos = {}                     # 点 → (緯度, 経度)
     sig = set()                  # 信号の点
@@ -93,6 +133,8 @@ def main(argv=None):
     big = set()                  # 大きい道の点
     names = {}                   # (点, 点) → 道の名前
     mid = set()                  # tertiary・service の区間
+    wide = set()                 # 4車線以上の道の点
+    xing = defaultdict(list)     # 信号・横断歩道の点（0.0005度のマスごと）
     for n_, k in enumerate(keys):
         p = os.path.join(a.data, "t", k + ".json.gz")
         if not os.path.exists(p): continue
@@ -102,16 +144,20 @@ def main(argv=None):
                 pos[e["id"]] = (e["lat"], e["lon"])
                 tg = e.get("tags") or {}
                 if tg.get("highway") == "traffic_signals" or tg.get("crossing") == "traffic_signals": sig.add(e["id"])
+                if tg.get("highway") in ("traffic_signals", "crossing") or tg.get("crossing"):
+                    xing[(math.floor(e["lat"] / 5e-4), math.floor(e["lon"] / 5e-4))].append((e["lat"], e["lon"]))
                 continue
             tg = e["tags"]; hw = tg.get("highway"); nd = e["nodes"]
             if hw in BIG:
                 big.update(nd)
+                if is_wide(tg): wide.update(nd)
             if hw in JCT and tg.get("area") != "yes":
                 for u, v in zip(nd, nd[1:]): jdeg[u].add(v); jdeg[v].add(u)
             ok = hw in NARROW or (hw in MID and tg.get("service") not in SKIP_SERVICE)
             if ok and tg.get("area") != "yes" and tg.get("access") not in BAD_ACCESS and tg.get("bicycle") not in ("no", "dismount"):
                 for u, v in zip(nd, nd[1:]):
                     if u == v: continue
+                    if u in pos and v in pos and not inA((pos[u][0] + pos[v][0]) / 2, (pos[u][1] + pos[v][1]) / 2): continue
                     adj[u].add(v); adj[v].add(u)
                     if hw in MID: mid.add((min(u, v), max(u, v)))
                     if tg.get("name"): names[(min(u, v), max(u, v))] = tg["name"]
@@ -143,6 +189,18 @@ def main(argv=None):
         for dv, x, y in cand:
             if x in used or y in used: continue
             used.add(x); used.add(y); link[(n, x)] = y; link[(n, y)] = x
+
+    # ---- 4車線以上の道を 信号も横断歩道もない所で わたるなら、そこで切る ----
+    def has_x(n):
+        la, lo = pos[n]; ci, cj = math.floor(la / 5e-4), math.floor(lo / 5e-4)
+        return any(dist((la, lo), q) <= 25 for di in (-1, 0, 1) for dj in (-1, 0, 1) for q in xing.get((ci + di, cj + dj), ()))
+    cut = 0
+    for n in wide:
+        ks = [(n, x) for x in adj.get(n, ()) if (n, x) in link]
+        if ks and not has_x(n):
+            for k in ks: del link[k]
+            cut += 1
+    print(f"4車線以上を 信号・横断歩道なしで わたる所 {cut}か所で切ったよ", flush=True)
 
     # ---- つないで1本にする ----
     seen = set(); strokes = []
