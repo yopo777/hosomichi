@@ -28,9 +28,24 @@ MID = {"tertiary", "service"}   # 細い道のあいだを つなぐだけの道
 SKIP_SERVICE = {"driveway", "parking_aisle", "drive-through"}
 JCT = NARROW | BIG | {"service"}   # 交差点かどうかを数える道（歩道・小道は 交差点に数えない）
 BAD_ACCESS = {"private", "no"}
+UNPAVED = {"gravel", "fine_gravel", "pebblestone", "unpaved", "dirt", "earth", "ground", "grass", "sand", "mud", "compacted", "woodchips", "rock", "grass_paver"}   # 砂利・土の道は のぞく（router.js と同じ）
 TURN_JCT = 30   # 交差点で つないでいい ずれ（度）
 TURN_BEND = 75  # 交差点でない 曲がり角で つないでいい ずれ（度）
 LOOK = 15       # 向きをはかる長さ（m）
+
+# はんい「cities」：23区＋政令市（区ごとに入っている）＋東京近郊の市（松戸・市川・船橋・柏・川口・草加・多摩の市街地など）
+CITY_PREFIX = ("横浜市", "川崎市", "さいたま市", "千葉市")   # 政令市：「横浜市鶴見区」のように 区ごとの名前なので 前がいっしょなら入れる
+CITY_NAMES = ("松戸市 市川市 船橋市 浦安市 習志野市 八千代市 鎌ケ谷市 柏市 流山市 我孫子市 "
+              "川口市 蕨市 戸田市 草加市 越谷市 三郷市 八潮市 吉川市 朝霞市 和光市 志木市 新座市 富士見市 "
+              "武蔵野市 三鷹市 調布市 狛江市 小金井市 府中市 西東京市 小平市 国分寺市 国立市 東久留米市 清瀬市 東村山市 日野市 立川市 昭島市 稲城市 多摩市 町田市").split()
+
+def dense_names(data, th):   # 1km²あたりの道の長さ（km）が th 以上の市区町村（cities.json の道の長さ ÷ 100mマス目の数）
+    c = json.load(open(os.path.join(data, "cities.json"), encoding="utf-8"))
+    cnt = defaultdict(int)
+    for row in c["rows"]:
+        for q in range(0, len(row), 3): cnt[row[q + 2]] += row[q + 1] - row[q]
+    k2 = (c["G"] * 111.2) ** 2 * 0.81   # マス目1つの広さ（km²・緯度35.7度ごろ）
+    return {nm for i, nm in enumerate(c["names"]) if c["total"][i] > 0 and cnt[i] > 50 and c["total"][i] / 1000 / (cnt[i] * k2) >= th}
 
 def lanes_of(t):
     try: return int(str(t.get("lanes", "0")).split(";")[0])
@@ -105,27 +120,8 @@ def simplify(pts, tol=3.0):   # ダグラス・ポーカー（m）
         if best > tol: keep[bi] = True; st += [(a, bi), (bi, b)]
     return [p for p, k in zip(pts, keep) if k]
 
-def main(argv=None):
-    ap = argparse.ArgumentParser()
-    ap.add_argument("data"); ap.add_argument("--min", type=float, default=1500)
-    ap.add_argument("--box", default="35.52,139.56,35.82,139.92")
-    ap.add_argument("--area", default="23ku", help="23ku（東京23区だけ）／all（--box の四角ぜんぶ）")
-    ap.add_argument("--out", default=None)
-    a = ap.parse_args(argv); t0 = time.time()
-    S, W, N, E = map(float, a.box.split(","))
-    ix = json.load(open(os.path.join(a.data, "index.json"), encoding="utf-8"))
-    keys = [k for k in ix["keys"] if S <= int(k.split("_")[0]) * T < N and W <= int(k.split("_")[1]) * T < E]
-    print(f"マス {len(keys):,}個を読むよ", flush=True)
-    inA = lambda la, lo: True
-    if a.area == "23ku":
-        G, cells, other, nms = load_area(a.data, lambda nm: nm.endswith("区") and "市" not in nm)
-        print(f"はんい：{len(nms)}区（{'・'.join(nms)}）", flush=True)
-        def inA(la, lo):
-            c = (math.floor(la / G), math.floor(lo / G))
-            if c in cells: return True
-            if c in other: return False
-            return any((c[0] + di, c[1] + dj) in cells for di in (-1, 0, 1) for dj in (-1, 0, 1))   # どこの市でもないマス：となりに23区があれば入れる
-
+def solve(a, keys, inA, core=None):
+    t0 = time.time()
     pos = {}                     # 点 → (緯度, 経度)
     sig = set()                  # 信号の点
     adj = defaultdict(set)       # 細い道の となり
@@ -139,21 +135,25 @@ def main(argv=None):
         p = os.path.join(a.data, "t", k + ".json.gz")
         if not os.path.exists(p): continue
         with gzip.open(p, "rt", encoding="utf-8") as f: el = dec_v2(json.load(f))
+        loc = {}   # このマスの点（道につかうものだけ あとで pos にうつす：メモリをへらす）
         for e in el:
             if e["type"] == "node":
-                pos[e["id"]] = (e["lat"], e["lon"])
+                loc[e["id"]] = (e["lat"], e["lon"])
                 tg = e.get("tags") or {}
                 if tg.get("highway") == "traffic_signals" or tg.get("crossing") == "traffic_signals": sig.add(e["id"])
                 if tg.get("highway") in ("traffic_signals", "crossing") or tg.get("crossing"):
                     xing[(math.floor(e["lat"] / 5e-4), math.floor(e["lon"] / 5e-4))].append((e["lat"], e["lon"]))
                 continue
             tg = e["tags"]; hw = tg.get("highway"); nd = e["nodes"]
+            if hw not in JCT: continue   # 歩道・小道・自転車道などは つかわない
+            for q in nd:
+                if q in loc: pos[q] = loc[q]
             if hw in BIG:
                 big.update(nd)
                 if is_wide(tg): wide.update(nd)
             if hw in JCT and tg.get("area") != "yes":
                 for u, v in zip(nd, nd[1:]): jdeg[u].add(v); jdeg[v].add(u)
-            ok = hw in NARROW or (hw in MID and tg.get("service") not in SKIP_SERVICE)
+            ok = (hw in NARROW or (hw in MID and tg.get("service") not in SKIP_SERVICE)) and tg.get("surface") not in UNPAVED and tg.get("tracktype") not in ("grade3", "grade4", "grade5") and "林道" not in (tg.get("name") or "")
             if ok and tg.get("area") != "yes" and tg.get("access") not in BAD_ACCESS and tg.get("bicycle") not in ("no", "dismount"):
                 for u, v in zip(nd, nd[1:]):
                     if u == v: continue
@@ -243,7 +243,48 @@ def main(argv=None):
             if s: nm[s] += dist(pos[u], pos[v])
         name = max(nm, key=nm.get) if nm else ""
         js = sum(1 for x in path[1:-1] if isjct(x))
+        if core and not (core[0] <= pts[len(pts) // 2][0] < core[1]): continue   # はんいの帯のまん中の線だけ（となりの帯で 数える）
         res.append({"l": round(L), "nm": name, "j": js, "p": [[round(la, 5), round(lo, 5)] for la, lo in simplify(pts)], "g": gates})
+    return res
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("data"); ap.add_argument("--min", type=float, default=1500)
+    ap.add_argument("--box", default="35.52,139.56,35.82,139.92")
+    ap.add_argument("--area", default="23ku", help="23ku（東京23区だけ）／dense（23区＋道の密度 --density 以上の市区町村）／cities（23区＋政令市＋東京近郊の市。市のリストは CITY_NAMES）／all（--box の四角ぜんぶ）")
+    ap.add_argument("--band", type=float, default=0, help="広いはんいは 緯度をこの幅（度）の帯にわけて メモリをへらす（関東ぜんぶなら 0.2）")
+    ap.add_argument("--margin", type=float, default=0.05, help="帯の上下に のりしろ（度）。これより長い線は 帯のさかい目で切れることがある")
+    ap.add_argument("--density", type=float, default=20, help="--area dense のとき：1km²あたりの道の長さ（km）がこれ以上の市区町村（23区は いつも入れる）")
+    ap.add_argument("--out", default=None)
+    a = ap.parse_args(argv); t0 = time.time()
+    S, W, N, E = map(float, a.box.split(","))
+    ix = json.load(open(os.path.join(a.data, "index.json"), encoding="utf-8"))
+    allkeys = [k for k in ix["keys"] if S <= int(k.split("_")[0]) * T < N and W <= int(k.split("_")[1]) * T < E]
+    print(f"マス {len(allkeys):,}個", flush=True)
+    inA = lambda la, lo: True
+    if a.area in ("23ku", "cities", "dense"):
+        if a.area == "23ku": want = lambda nm: nm.endswith("区") and "市" not in nm
+        elif a.area == "dense":
+            dn = dense_names(a.data, a.density); print(f"道の密度 {a.density:g}km/km² 以上：{len(dn)}か所", flush=True)
+            want = lambda nm: (nm.endswith("区") and "市" not in nm) or nm in dn
+        else: want = lambda nm: (nm.endswith("区") and "市" not in nm) or nm.startswith(CITY_PREFIX) or nm in CITY_NAMES
+        G, cells, other, nms = load_area(a.data, want)
+        print(f"はんい：{len(nms)}か所（{'・'.join(nms[:40])}{'…' if len(nms) > 40 else ''}）", flush=True)
+        def inA(la, lo):
+            c = (math.floor(la / G), math.floor(lo / G))
+            if c in cells: return True
+            if c in other: return False
+            return any((c[0] + di, c[1] + dj) in cells for di in (-1, 0, 1) for dj in (-1, 0, 1))   # どこの市でもないマス：となりに23区があれば入れる
+    if a.band > 0:
+        res = []; b0 = S
+        while b0 < N:
+            b1 = min(N, b0 + a.band)
+            ks = [k for k in allkeys if b0 - a.margin <= int(k.split("_")[0]) * T < b1 + a.margin]
+            print(f"\n== 帯 {b0:.2f}〜{b1:.2f}度（マス {len(ks):,}個・ここまで {len(res):,}本・{time.time() - t0:.0f}秒）", flush=True)
+            if ks: res += solve(a, ks, inA, (b0, b1))
+            b0 = b1
+    else:
+        res = solve(a, allkeys, inA)
     res.sort(key=lambda r: -r["l"])
     out = a.out or os.path.join(a.data, "warp.json")
     with open(out, "w", encoding="utf-8") as f:
