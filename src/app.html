@@ -3588,7 +3588,7 @@ $("lgCopy").onclick = async () => {
   setTimeout(() => $("lgCopy").textContent = "コピー", 1500);
 };
 let rtLast = lsGet("hosomichi_rt", "route") === "quest" ? "quest" : "route";   // ルートタブの中の小さいタブ（シンプル・クエスト）
-function showTab(t) {
+function showTab(t, quiet) {   // quiet：メニューは開かずに 中のタブだけ切りかえる（吹き出しのボタン用）
   if (t === "route" || t === "quest") { rtLast = t; lsSet("hosomichi_rt", t); }
   for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.t === (t === "quest" ? "route" : t));
   $("rtabs").style.display = t === "route" || t === "quest" ? "" : "none";
@@ -3603,6 +3603,7 @@ function showTab(t) {
   if (t === "trk") trkOpen(); else { snsTest = false; trkLayer.clearLayers(); }   // ほかのタブにうつったら、地図の軌跡を消す・SNSのテストは終わり
   if (t === "quest") qRender();
   if (t === "log") $("log").scrollTop = $("log").scrollHeight;
+  if (quiet) return;
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
 }
 for (const b of document.querySelectorAll("#rtabs button")) b.onclick = () => { rtLast = b.dataset.r; showTab(b.dataset.r); };
@@ -3848,17 +3849,17 @@ function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ス
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
     if (ev.target.dataset.act) { L.DomEvent.stopPropagation(ev); map.closePopup(pop); acts[ev.target.dataset.act - 1].fn(); return; }
-    if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), ev.target.dataset.b); map.closePopup(pop); showTab("pts"); return; }   // 🚫／⚠ その場でつける
+    if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), ev.target.dataset.b); map.closePopup(pop); showTab("pts", true); return; }   // 🚫／⚠ その場でつける
     if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
     if (ev.target.dataset.ph) { L.DomEvent.stopPropagation(ev); map.closePopup(pop); photoPeek(L.latLng(ll)); return; }
     if (ev.target.dataset.fake) { L.DomEvent.stopPropagation(ev); setFake(ev.target.dataset.fake === "1" ? [+ll.lat.toFixed(6), +ll.lng.toFixed(6)] : null); map.closePopup(pop); return; }
-    if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); showTab("pts"); return; }
-    if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); showTab("pts"); return; }
-    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title); map.closePopup(pop); showTab("pts"); return; }
+    if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); showTab("pts", true); return; }
+    if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); showTab("pts", true); return; }
+    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title); map.closePopup(pop); showTab("pts", true); return; }
     const k = ev.target.dataset.k; if (!k) return;
     $(k).value = v; $(k).dataset.ll = ll.lat + "," + ll.lng; $(k).dataset.v = v; inPins(); map.closePopup(pop);
-    rtLast = "route"; showTab("route");   // メニューは開かない（じゃまなので）。「ひらく」を押したとき もう 🚲シンプルが出ているように 中だけ切りかえておく
-    setMsg(`${{ from: "出発", via: "経由地", to: "目的地" }[k]}に入れたよ。上のメニューを「ひらく」→「ルートを作る」`); };
+    rtLast = "route"; showTab("route", true);   // メニューは開かない（じゃまなので）。「ひらく」を押したとき もう 🚲シンプルが出ているように 中だけ切りかえておく
+    setMsg(`${{ from: "出発", via: "経由地", to: "目的地" }[k]}に入れたよ（ひらく→ルートを作る）`); };
 }
 map.on("contextmenu", e => {   // 長おし（パソコンは右クリック）で「ここを出発・目的地にする」。タップでふいに出ないように
   pinPopup(e.latlng, e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6));
