@@ -115,22 +115,25 @@ function wayNoWhy(t, cfg) {
   if (isUnpaved(t) && cfg.unpaved === "no") return "砂利・土の道（設定：通らない）";
   return `${KIND_JA[b] || b}（設定：通らない）`;
 }
-// 倍率の数えかた（11/24・ユーザーと決めた）：「なぜいやか」の理由ごとに分けて、
+// 倍率の数えかた（11/24・ユーザーと決めた）：「なぜいやか／なぜ通りたいか」の理由ごとに分けて、
 //   同じ理由の中は いちばん大きいのだけ（Math.max）、ちがう理由どうしは 足し算：倍率 ＝ 1 ＋ Σ（理由ごとの倍率 − 1）
+//   足し算にする基準：その道じたいのタグでわかる性質（道の種類・路面・自転車インフラなど）は、いくつも重なりがちなので足し算
 //   🚶 ppl 人が多い：歩く道（歩道・歩行者天国）・公園の中・駅の通路・霊園・団地
 //   🚗 car 車が多い：車の道（細い車道・駐車場・一般道・県道・国道。4車線以上は ×1.5）
 //   🪨 rgh 走りにくい：小道・農道・階段・砂利・舗装不明・歩道橋・地下道・🪜階段？・⛰急坂？・🚧段差柵（歩道がとなりにある車道。11/25 から 同じ理由に統合）
 //   🏠 prv 入りにくい：私道・家の前・駐車場の中
-//   🚲 bik 自転車道の倍率
+//   🚲 bik 自転車道の倍率（自転車道そのもの・自転車専用通行帯・ナビライン・30km制限。11/25 から 同じ理由に統合。いくつも当てはまっても いちばん効くの1つだけ）
 // （前は かけ算で、歩道×3 × 公園×5 ＝ ×15 みたいに 同じ理由を2回数えて きつすぎた）
-// へらすほう（旧街道・👍通りたい・👣足あと）と ⚠通りたくない・一方通行の逆向きは これまでどおり 最後に かけ算
+// 足し算にしないもの（道そのもののタグではなく、場所の文脈・ユーザーの操作でかかる、別レイヤーの倍率）は これまでどおり 最後に かけ算：
+//   旧街道（kodo）・〰川べり（riv）・👍通りたい／⚠通りたくない（地図に印をつける）・👣もう塗った道（paintPen）
 const HW_WHY = { footway: "ppl", pedestrian: "ppl", corridor: "ppl", path: "rgh", track: "rgh", bridleway: "rgh", steps: "rgh", cycleway: "bik" };
-// 🚲 自転車道のなかま（道の好み・11/24）。いくつも当てはまるときは 専用通行帯 → ナビライン → 30km制限 の順に 1つだけ
-// 11/25：bicycle=designated の歩道・小道（自転車歩行者道。大河川ぞいでCRの印がとぎれた所をつなぐ、CRと同じ存在）は、
+// 🚲 自転車道のなかま（道の好み・11/24）。いくつも当てはまるときは 専用通行帯 → ナビライン → 30km制限 の順に 1つだけ。
+// 11/25：自転車道そのもの（pen.cycleway）と同じ「bik」の理由にまとめた（前は ここだけ別あつかいの かけ算だった）
+// bicycle=designated の歩道・小道（自転車歩行者道。大河川ぞいでCRの印がとぎれた所をつなぐ、CRと同じ存在）は、
 //   wayCost 本体ですでに「自転車道」（pen.cycleway）としてあつかっているので、ここでは もう数えない（前は二重に効いていた）
 const BL_KEYS_R = ["cycleway", "cycleway:both", "cycleway:left", "cycleway:right"];
 function bikeClassK(t, hw, cfg) {
-  if (hw === "cycleway" || hw === "steps") return null;   // 自転車道そのものは 「自転車道」の設定（pen.cycleway）
+  if (hw === "cycleway" || hw === "steps" || (CYCLE_OK.has(hw) && t.bicycle === "designated")) return null;   // 自転車道そのものは 「自転車道」の設定（pen.cycleway）
   const v = BL_KEYS_R.map(k => t[k]).filter(Boolean), K = k => { const x = +cfg[k]; return x > 0 ? x : 1; };
   if (v.some(x => ["lane", "track", "opposite_lane", "opposite_track"].includes(x))) return K("bkLane") !== 1 ? [K("bkLane"), "自転車専用通行帯"] : null;
   if (v.some(x => ["shared_lane", "share_busway", "shoulder"].includes(x))) return K("bkNavi") !== 1 ? [K("bkNavi"), "ナビライン"] : null;
@@ -151,7 +154,9 @@ function dbgKindR(t) {
   if (hw === "service") return "service";
   return "road";
 }
-const whySum = r => { let s = 1; for (const k in r) s += r[k] - 1; return s; };
+// 11/25：bik（自転車道）も 足し算に入ったので、「細い車道 ×0.4（どんどん通る）」＋「自転車専用通行帯 ×0.4」みたいに
+//   へらすほうが2つ重なると 0 を下回りかねない → 下げすぎないように 0.1 で止める
+const whySum = r => { let s = 1; for (const k in r) s += r[k] - 1; return Math.max(0.1, s); };
 const whyAdd = (r, k, v) => { v = +v || 1; if (!(r[k] >= v)) r[k] = v; return r; };
 // → [倍率, 名前, 理由ごとの倍率 {ppl,car,…}, かけ算の分（旧街道）] か null（通らない）
 function wayCost(t, cfg) {
@@ -198,8 +203,8 @@ function wayCost(t, cfg) {
     km = Math.min(1, +cfg.kodo || 1); km = kd === 2 ? km : Math.sqrt(km);
     name += kd === 2 ? "・旧街道" : "・旧道";
   }
-  const bk = bikeClassK(t, hw, cfg);   // 🚲 自転車道のなかま（ナビライン・専用通行帯・自転車歩行者道・30km制限）：設定の倍率（へらす・ふやす）を かけ算
-  if (bk) { km *= bk[0]; name += `・${bk[1]}` + (bk[0] !== 1 ? ` ×${bk[0]}` : ""); }
+  const bk = bikeClassK(t, hw, cfg);   // 🚲 自転車道のなかま（ナビライン・専用通行帯・30km制限）：11/25 から 自転車道（bik）と同じ理由の足し算に
+  if (bk) { whyAdd(r, "bik", bk[0]); name += `・${bk[1]}` + (bk[0] !== 1 ? ` ×${bk[0]}` : ""); }
   return [whySum(r) * km, name, r, km];
 }
 const R = 6371000, RAD = Math.PI / 180;
@@ -568,7 +573,7 @@ function buildGraph(osm, cfg, onProg) {
   // 1周の帰り道：通った所を通りにくくしたぶん、道を渡るルールも同じだけ重くする（でないと「遠回りより国道を信号なしで渡る」になる）
   if (usedNodes && usedNodes.size) for (let i = 0; i < N; i++) if (xcost[i]) xcost[i] *= USED_PEN;
   return { dbgW: DBGW, lat, lon, adj, lvl, xcost, xkind, xref, xdet, divided, ntags, inGraph, nNodes, cfg, nBlk, dirX, dirY, cosl, idx, ids, turn: +(cfg.turn || 0), swLen, stepN,
-    hk: Math.min(1, +cfg.kodo || 1) * Math.min(1, ...Object.values(cfg.pen || {}).map(v => +v > 0 ? +v : 1)) * Math.min(1, ...["bkLane", "bkNavi", "bkSlow"].map(k => +cfg[k] > 0 ? +cfg[k] : 1)) * (cfg.riv != null && cfg.riv !== "off" ? Math.min(1, +cfg.riv || 1) : 1) * (preferPts.length ? PREFER_K : 1) };   // 〰 川べりも 1m＜1m なので   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）
+    hk: Math.min(1, +cfg.kodo || 1) * Math.max(0.1, Math.min(1, ...Object.values(cfg.pen || {}).map(v => +v > 0 ? +v : 1)) + Math.min(1, ...["bkLane", "bkNavi", "bkSlow"].map(k => +cfg[k] > 0 ? +cfg[k] : 1)) - 1) * (cfg.riv != null && cfg.riv !== "off" ? Math.min(1, +cfg.riv || 1) : 1) * (preferPts.length ? PREFER_K : 1) };   // 〰 川べりも 1m＜1m なので   // 👍 通りたい道も 1m＜1m なので、見こみを同じだけ小さく   // 旧街道を 1m＜1m と数えるときは、A* の見こみもそのぶん小さくする（でないと良いルートを見のがす）。道の倍率と自転車道のなかまは 11/25 から足し算なので、見こみも足し算（whySum と同じ 0.1 で止める）
 }
 
 // 🚫 通れない印（自分でつけた印。画面から毎回もらう）：印から12m以内を通る道のつながりを切る
