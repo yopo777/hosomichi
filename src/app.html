@@ -5460,6 +5460,26 @@ document.addEventListener("keydown", e => {
   if (!K) return;
   e.preventDefault(); $(K[0]).click(); setMsg(K[1]);
 });
+// ⌨ ⚙設定「🗺地図」タブの3つを キーボードで：Ctrl＋Alt＋Q 背景の地図／W ルートの色／E 進行方向（上から順）
+document.addEventListener("keydown", e => {
+  if (!(e.ctrlKey && e.altKey) || e.metaKey || e.shiftKey || e.repeat) return;
+  if (e.code === "KeyQ") {   // 背景の地図：🗺ボタンと同じ順番で切りかえ
+    e.preventDefault(); if (photoBack) { photoBack = null; photoBackBtn(); }
+    const ks = BG_ALL; setBase(ks[(ks.indexOf(baseName) + 1) % ks.length]); baseBtn();
+    for (const r of document.querySelectorAll("[name=bg]")) r.checked = r.value === baseName;
+    return setMsg(`🗺 背景の地図：${BASES[baseName][0]}`);
+  }
+  if (e.code === "KeyW") {   // ルートの色：道の種類 ⇄ 坂
+    e.preventDefault(); const m = colorMode === "kind" ? "slope" : "kind"; setColorMode(m);
+    for (const r of document.querySelectorAll("[name=rcol]")) r.checked = r.value === m;
+    return setMsg(`🎨 ルートの色：${m === "kind" ? "道の種類" : "坂"}`);
+  }
+  if (e.code === "KeyE") {   // 進行方向：矢印 出す／出さない
+    e.preventDefault(); const on = !flowOn; flowSet(on);
+    for (const c of document.querySelectorAll("[name=flow]")) c.checked = on;
+    return setMsg(`➤ 進行方向の矢印：${on ? "出す" : "出さない"}`);
+  }
+});
 $("qLine").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) qFind(); });
 $("qCand").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) qAdd(+b.dataset.i); };
 $("qList").onclick = e => {
