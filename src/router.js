@@ -2186,7 +2186,10 @@ const rivOK = t => {
   const bOK = ["yes", "designated", "permissive"].includes(t.bicycle);
   if (t.highway === "pedestrian" && !bOK) return false;   // 🚶 歩行者天国・広場：自転車OKの印がなければ のぞく
   if ((t.access === "no" || t.access === "private") && !bOK) return false;
-  if (RIV_FOOT.has(t.highway)) return t.footway !== "sidewalk" && t.footway !== "crossing" && t.cycleway !== "crossing" && t.path !== "sidewalk";
+  if (RIV_FOOT.has(t.highway)) {
+    if (t.footway === "sidewalk" || t.footway === "crossing" || t.cycleway === "crossing" || t.path === "sidewalk") return false;
+    return t.highway === "cycleway" || bOK;   // 11/25：歩道・遊歩道（footway/path/pedestrian）は「自転車OK」の印がなければ のぞく（cyclewayはタグ自体が自転車の印なのでそのままOK）
+  }
   return [t.motor_vehicle, t.motorcar, t.vehicle].some(v => RIV_NOCAR.includes(v)) && (t.vehicle !== "no" || bOK) || (t.access === "no" && bOK);
 };
 // 1本の道の点の列 [[緯度,経度],…] → 区間ごとに 0＝なし・1＝〰川べり（どれもなければ null）と、そばの川の名前
