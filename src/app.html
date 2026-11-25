@@ -3695,7 +3695,7 @@ const L_UP = [1, 1.5, 3, 5, 10], L_ALL = [0.4, 0.6, 0.8, 1, 1.5, 3, 5, 10];
 const PEN_BONUS = new Set(["residential,living_street,unclassified", "path,track", "cycleway"]);
 const penOpts = ks => LADF(...(PEN_BONUS.has(ks) ? L_ALL : L_UP), ...(ks === "residential,living_street,unclassified" ? [] : ["no"]));
 const CFG_DEF = { bkLane: 1, bkNavi: 1, pen: { living_street: 0.4, residential: 0.4, service: 1, unclassified: 0.4, cycleway: 0.4, tertiary: 1.5, secondary: 3,
-  primary: 3, trunk: 3, footway: 1.5, pedestrian: 1.5, path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 1.5, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 30, allWide: "off", fastCross: "mid", midCross: 100, oneway: 1, bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 10, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 3, station: 1.5, cemetery: "no", park: 1.5, riv: 0.4, warp: 0.4, warpMin: 1500 };
+  primary: 3, trunk: 3, footway: 1.5, pedestrian: 10, path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 1.5, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 30, allWide: "off", fastCross: "mid", midCross: 100, oneway: 1, bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 10, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 3, station: 10, cemetery: "no", park: 10, riv: 0.4, warp: 0.4, warpMin: 1500 };
 const BK_OPT = LADF(...L_ALL);   // 🚲 自転車道のなかま ぜんぶ同じ
 const OTHER_ROWS = [
   ["avoidPen", "⚠ 通りたくない道", LADF(1.5, 3, 5, 10)],
@@ -3750,9 +3750,9 @@ let cfg = (() => { try { const c = JSON.parse(localStorage.getItem("hosomichi_cf
       c.mode = "full"; c.area = "auto";   // 11/25 設定からなくした（いつも ぜんぶ計算してから・おまかせ）
       if (!c.cfgV9) { c.oneway = c.oneway === "no" ? "no" : c.oneway === "avoid" ? 3 : 1.5; c.cfgV9 = 1; }   // 11/25 逆走：前の「逆走する ×1.3」→ 少し避ける ×1.5・「避ける ×3」→ ×3
       if (!c.cfgV11 && c.pen) {   // 11/25 はじめの値を変えた：前の はじめの値のままの人だけ 新しい値に（変えていた人は そのまま）
-        const P = [["living_street", 1, 0.4], ["residential", 1, 0.4], ["unclassified", 1, 0.4], ["cycleway", 1, 0.4], ["tertiary", 5, 1.5], ["secondary", 10, 3], ["primary", 10, 3], ["trunk", 10, 3], ["footway", 3, 1.5], ["pedestrian", "no", 1.5]];
+        const P = [["living_street", 1, 0.4], ["residential", 1, 0.4], ["unclassified", 1, 0.4], ["cycleway", 1, 0.4], ["tertiary", 5, 1.5], ["secondary", 10, 3], ["primary", 10, 3], ["trunk", 10, 3], ["footway", 3, 1.5], ["pedestrian", "no", 10]];
         for (const [k, o, n] of P) if (c.pen[k] === o || c.pen[k] == null) c.pen[k] = n;
-        for (const [k, o, n] of [["turn", 0, 100], ["tunnel", 3, 1.5], ["xDet", 60, 30], ["oneway", 1.5, 1], ["unkSurf", 1.5, 3], ["station", "no", 1.5], ["park", "no", 1.5], ["riv", "off", 0.4], ["warp", "off", 0.4]]) if (c[k] === o || c[k] == null) c[k] = n;
+        for (const [k, o, n] of [["turn", 0, 100], ["tunnel", 3, 1.5], ["xDet", 60, 30], ["oneway", 1.5, 1], ["unkSurf", 1.5, 3], ["station", "no", 10], ["park", "no", 10], ["riv", "off", 0.4], ["warp", "off", 0.4]]) if (c[k] === o || c[k] == null) c[k] = n;
         c.cfgV11 = 1; }
       if (!c.cfgV10) { delete c.bkSwalk; c.cfgV10 = 1; }   // 11/25 自転車歩行者道（bkSwalk）は 自転車道（pen.cycleway）と同じあつかいにしたので 設定からなくした
       if (!c.cfgV11) { delete c.bkSlow; c.cfgV11 = 1; }   // 11/25 🐢30km制限の道 は設定からなくした（細い道を好めば自然とそうなるので）
