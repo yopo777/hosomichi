@@ -22,7 +22,7 @@ const DEFAULT_CFG = {
   steep: 3,              // ⛰ 急坂？（標高で10%より急な短い道）：倍率（1＝気にしない）
   sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
-  oneway: "bike",        // 一方通行の逆向き: "bike"=自転車可の一方通行（警察のデータ・OSMの oneway:bicycle=no）だけ走る（少し避ける） / "no"=走らない
+  oneway: 1.5,           // 11/25 から 数（距離×◯・足し算）。前の "bike"＝×1.3・"avoid"＝×3 も読める。 一方通行の逆向き: "bike"=自転車可の一方通行（警察のデータ・OSMの oneway:bicycle=no）だけ走る（少し避ける） / "no"=走らない
   midCross: 100,         // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
   allWide: "off",        // 2車線の道も4車線としてあつかう: "off"（デフォルト）/ "on"（信号・横断歩道でしか渡らない）
   jarUse: "on",          // 警察の交通規制（JARTIC）を使う: "on"（デフォルト）/ "off"。いまは 歩行者等横断禁止の道を4車線あつかいにするだけ
@@ -464,7 +464,7 @@ function buildGraph(osm, cfg, onProg) {
     //   逆向き ＝（理由の足し算 ＋（逆走の倍率 − 1））×（へらすほうの倍率。ただし ×1より下げない）。自転車レーン・ナビライン・30km などの「通りたい」は 逆向きには効かない
     let rvK = 0, rname = name;
     if (fwd !== back && bikeOK && cfg.oneway !== "no") {
-      fwd = back = true; rvK = (cfg.oneway === "avoid" ? ONEWAY_REV_AVOID : ONEWAY_REV) - 1; rname = name.replace(/ ×0\.\d+/g, "") + "（一方通行を逆向き）";
+      fwd = back = true; rvK = (cfg.oneway === "avoid" ? ONEWAY_REV_AVOID : cfg.oneway === "bike" || !(+cfg.oneway > 0) ? ONEWAY_REV : +cfg.oneway) - 1; rname = name.replace(/ ×0\.\d+/g, "") + "（一方通行を逆向き）";
     }
     const rp = rvK ? (whySum(why) + rvK) * Math.max(1, km) : pen;
     if (DBGW) DBGW.set(e.uid || e.id, { use: true, r: `${name} ×${+pen.toFixed(2)}` + (rv ? (rvHalf ? "・〰川べり" : "・〰ところどころ川べり") + (rivK !== 1 ? `（川べりの所 ×${rivK}）` : "") : "") + (fwd !== back ? "・一方通行" : rvK ? `・一方通行（自転車は逆向きOK・逆向き ×${+rp.toFixed(2)}）` : "") });
