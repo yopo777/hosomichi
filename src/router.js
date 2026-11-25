@@ -1117,7 +1117,7 @@ async function jarPrep(bigs, cfg) {   // → そのはんいの { nx: 横断禁�
   return { nx: jarLines, ow: jow, sig: jsig, xw: jxw, nb: jnb, sw: jsw };
 }
 function jarApply(osm, cfg, J) { return sideGap(brApply(jarApply1(osm, cfg, J), J)); }   // 🚓 警察のデータ → 🌉 橋の歩道・出入り口の階段
-// 📍 出発・到着のピンのそばの道の線に、ピンにいちばん近い所の点を足す。
+// 📍 出発・目的地のピンのそばの道の線に、ピンにいちばん近い所の点を足す。
 // 道の線は 交差点や曲がる所にしか点がないので、長くまっすぐな線（橋の歩道 約450m など）だと
 // 「線の はしの点」まで何百mも飛んでいた。ピンから PIN_R m 以内の線ぜんぶに足す（いちばん近い線が 通れない道でも大丈夫なように）
 // 足した点は その道だけの点（ほかの道とは つながらない）なので、ルートの形・交差点は 変わらない
@@ -2009,7 +2009,7 @@ async function stats() {
 }
 async function clearAll() { const st = await store("readwrite"); if (st) await req(st.clear()); mem.clear(); await jarClear(); }
 
-// 出発→到着の線のまわり（帯）にかかるマスだけ選ぶ
+// 出発→目的地の線のまわり（帯）にかかるマスだけ選ぶ
 function tilesFor(s, g, pad, TILE = tileFor(s, g)) {
   const c = Math.cos(s[0] * RAD);
   const P = q => [q[1] * c, q[0]];
@@ -2445,10 +2445,10 @@ async function routeOnce(req, prog, partial) {
   // 長さの上限：道路データがぜんぶ手元にあれば 150km、ダウンロードが必要なら 30km（サーバーにやさしく・待たせすぎない）
   { const km = hav(s[0], s[1], g[0], g[1]) / 1000;
     if (km > 30 && !(await allLocal(tilesFor(s, g, pad))))
-      throw new Error(`出発と到着が ${km.toFixed(1)}km はなれてるよ。道路データのダウンロードが必要な所（${missN}マス）があるので、30km以内にしてね（配布データのある所なら150kmまでOK）`); }
+      throw new Error(`出発と目的地が ${km.toFixed(1)}km はなれてるよ。道路データのダウンロードが必要な所（${missN}マス）があるので、30km以内にしてね（配布データのある所なら150kmまでOK）`); }
   const tiles = tilesFor(s, g, pad), N = tiles.length;
   log(`==== ルート計算スタート ====`, "h");
-  log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 到着 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
+  log(`出発 ${s[0].toFixed(5)},${s[1].toFixed(5)} → 目的地 ${g[0].toFixed(5)},${g[1].toFixed(5)}（まっすぐ ${(hav(s[0], s[1], g[0], g[1]) / 1000).toFixed(2)}km）`);
   log(`設定: 計算=${cfg?.mode || "quick"} 広さ=${area || "normal"}（余白 ${Math.round(pad * 111000)}m） 曲がる=${cfg?.turn ?? 0} 階段=${cfg?.steps} 4車線=${cfg?.wideCross} 県道国道=${cfg?.bigCross} 2車線=${cfg?.midCross} 一方通行逆向き=${cfg?.oneway}`);
   log(`道の倍率: ${Object.entries(cfg?.pen || {}).map(([k, v]) => k + "=" + v).join(" ")}`);
   log(`マス: ${N}個（1マス ${tiles[0] ? tiles[0].key.split(":")[0] : "?"}°）`);
@@ -2623,10 +2623,10 @@ async function routeOnce(req, prog, partial) {
         if (final) {
           // 出発とおなじ「つながりのかたまり」にある点だけをゴールにする（駅の中の通路などをさける）
           const q = nearestGood(G, g[0], g[1], sn);
-          log(`到着の点: ${Math.round(q.d)}m先の道（出発とつながっている）` + (q.seg ? `｜道の線まで ${q.seg}m なので、その道の はしの点を使うよ` : q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m は出発とつながってないので使わない（つながり ${q.anySize}点）` : ""), q.d > 300 ? "w" : "i");
+          log(`目的地の点: ${Math.round(q.d)}m先の道（出発とつながっている）` + (q.seg ? `｜道の線まで ${q.seg}m なので、その道の はしの点を使うよ` : q.n !== q.nearestAny ? `｜いちばん近い点 ${Math.round(q.dAny)}m は出発とつながってないので使わない（つながり ${q.anySize}点）` : ""), q.d > 300 ? "w" : "i");
           if (q.n < 0 || q.d > 600) {
-            if (!wide && lo > 0) { log("到着地のそばにつながる道がないので、範囲を広げて探しなおし", "w"); wide = true; continue; }
-            throw noLink("到着地まで道がつながりませんでした。⚙ 設定の「地図データを取る広さ」を「ひろい」にするか、設定で「通らない」にしている道（階段・歩道橋など）をゆるめてみてね");
+            if (!wide && lo > 0) { log("目的地のそばにつながる道がないので、範囲を広げて探しなおし", "w"); wide = true; continue; }
+            throw noLink("目的地まで道がつながりませんでした。⚙ 設定の「地図データを取る広さ」を「ひろい」にするか、設定で「通らない」にしている道（階段・歩道橋など）をゆるめてみてね");
           }
           gn = q.n;
         }
@@ -2838,7 +2838,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       okPts = Array.isArray(d.oks) ? d.oks : [];
       otherUsed = null;
       if (Array.isArray(d.others) && d.others.length) { const keep = usedNodes; usedNodes = new Set(); for (const r of d.others) markUsed(r); otherUsed = usedNodes; usedNodes = keep;   // 🔄 前のルート（いくつでも）
-        // 出発・到着のまわり（約400m）は さけない（どのルートも通るので）
+        // 出発・目的地のまわり（約400m）は さけない（どのルートも通るので）
         const ends = [d.s, d.g].filter(Boolean); for (const k of [...otherUsed]) { const [a, b] = k.split(",").map(Number), la = a / 600, lo = b / 490; if (ends.some(p => hav(la, lo, p[0], p[1]) < 400)) otherUsed.delete(k); } }
       PREFER_K = Math.min(1, Math.max(0.2, +(d.cfg && d.cfg.preferK) || 0.5));
       const pr = p => self.postMessage({ type: "prog", ...p, frac: p.frac !== undefined ? p.frac : stageFrac(p) ?? undefined });
