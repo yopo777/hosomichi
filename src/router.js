@@ -2188,7 +2188,8 @@ const rivOK = t => {
   if ((t.access === "no" || t.access === "private") && !bOK) return false;
   if (RIV_FOOT.has(t.highway)) {
     if (t.footway === "sidewalk" || t.footway === "crossing" || t.cycleway === "crossing" || t.path === "sidewalk") return false;
-    return t.highway === "cycleway" || bOK;   // 11/25：歩道・遊歩道（footway/path/pedestrian）は「自転車OK」の印がなければ のぞく（cyclewayはタグ自体が自転車の印なのでそのままOK）
+    if (t.highway === "cycleway" || bOK) return true;
+    return !!t.surface && !UNPAVED.has(t.surface);   // 11/25：歩道・遊歩道は「自転車OK」か「舗装の印（surfaceタグ）がちゃんとある」のどちらかがなければ のぞく（タグなしの正体不明な小道を除外するため）
   }
   return [t.motor_vehicle, t.motorcar, t.vehicle].some(v => RIV_NOCAR.includes(v)) && (t.vehicle !== "no" || bOK) || (t.access === "no" && bOK);
 };
