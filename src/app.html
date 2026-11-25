@@ -4420,16 +4420,13 @@ function warpGet() {
 async function warpDraw() {
   if (!spotOn.has("warp") || spotHide || map.getZoom() < MZ("riv")) { warpLayer.clearLayers(); return; }
   let ws; try { ws = await warpGet(); } catch (e) { warpLayer.clearLayers(); if (!warpWarn) { warpWarn = true; setMsg("🌀 ワープトンネルのデータ（warp.json）がまだないよ", true); } return; }
-  const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast(), star = map.getZoom() >= 14;
+  const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast();
   warpLayer.clearLayers();
   for (const o of ws) {
     if (o.bb[0] > N || o.bb[2] < S || o.bb[1] > E || o.bb[3] < W) continue;
     const km = (o.l / 1000).toFixed(1), sg = o.g.filter(x => x[2]).length;
     const html = `🌀 <b>ワープトンネル ${km}km</b>${o.nm ? "<br>" + esc(o.nm) + " など" : ""}<br>入り口 ${o.g.length}か所（うち🚦信号 ${sg}）<br><small>曲がらずに続く細い道（地図のOSMデータから見つけた ためし）</small>`;
     L.polyline(o.p, { renderer: rwRend, color: "#8e24aa", weight: o.l >= 3000 ? 7 : 5, opacity: .6, lineCap: "round" }).bindPopup(html).addTo(warpLayer);
-    if (star) for (const g of o.g) if (g[0] > S && g[0] < N && g[1] > W && g[1] < E)
-      L.marker([g[0], g[1]], { icon: L.divIcon({ className: "", html: '<div style="font-size:16px;line-height:16px;text-shadow:0 0 2px #fff">⭐</div>', iconSize: [16, 16], iconAnchor: [8, 8] }) })
-        .bindPopup(`⭐ <b>ワープトンネルの入り口</b>${g[2] ? "（🚦信号あり）" : ""}<br>ここから ${km}km 曲がらずに行けるよ${o.nm ? "<br>" + esc(o.nm) + " など" : ""}`).addTo(warpLayer);
   }
   probeReq();
 }
@@ -4445,8 +4442,8 @@ function probeText(ly) {
   return typeof c === "function" ? c(ly) : c;
 }
 function probe() {
-  const lys = [...rwLayer.getLayers(), ...rivLayer.getLayers(), ...warpLayer.getLayers().filter(x => !(x instanceof L.Marker))], nav = follow && me;
-  const pts = [spotLayer, jxLayer, oxLayer, nbLayer, warpLayer].flatMap(g => g.getLayers().filter(x => x instanceof L.Marker));   // スポット・標識の点
+  const lys = [...rwLayer.getLayers(), ...rivLayer.getLayers(), ...warpLayer.getLayers()], nav = follow && me;
+  const pts = [spotLayer, jxLayer, oxLayer, nbLayer].flatMap(g => g.getLayers().filter(x => x instanceof L.Marker));   // スポット・標識の点
   const want = !spotHide && !nav && (lys.length > 0 || pts.length > 0);   // 走っているとき（◎で固定中）は出さない（じゃまなので）
   probeCtr.style.display = want ? "block" : "none";
   if (!want) { if (probeOn) { map.removeLayer(probeTip); probeOn = false; } return; }

@@ -216,7 +216,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1814</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1825</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3908,7 +3908,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1814", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1825", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -7291,16 +7291,13 @@ function warpGet() {
 async function warpDraw() {
   if (!spotOn.has("warp") || spotHide || map.getZoom() < MZ("riv")) { warpLayer.clearLayers(); return; }
   let ws; try { ws = await warpGet(); } catch (e) { warpLayer.clearLayers(); if (!warpWarn) { warpWarn = true; setMsg("🌀 ワープトンネルのデータ（warp.json）がまだないよ", true); } return; }
-  const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast(), star = map.getZoom() >= 14;
+  const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast();
   warpLayer.clearLayers();
   for (const o of ws) {
     if (o.bb[0] > N || o.bb[2] < S || o.bb[1] > E || o.bb[3] < W) continue;
     const km = (o.l / 1000).toFixed(1), sg = o.g.filter(x => x[2]).length;
     const html = `🌀 <b>ワープトンネル ${km}km</b>${o.nm ? "<br>" + esc(o.nm) + " など" : ""}<br>入り口 ${o.g.length}か所（うち🚦信号 ${sg}）<br><small>曲がらずに続く細い道（地図のOSMデータから見つけた ためし）</small>`;
     L.polyline(o.p, { renderer: rwRend, color: "#8e24aa", weight: o.l >= 3000 ? 7 : 5, opacity: .6, lineCap: "round" }).bindPopup(html).addTo(warpLayer);
-    if (star) for (const g of o.g) if (g[0] > S && g[0] < N && g[1] > W && g[1] < E)
-      L.marker([g[0], g[1]], { icon: L.divIcon({ className: "", html: '<div style="font-size:16px;line-height:16px;text-shadow:0 0 2px #fff">⭐</div>', iconSize: [16, 16], iconAnchor: [8, 8] }) })
-        .bindPopup(`⭐ <b>ワープトンネルの入り口</b>${g[2] ? "（🚦信号あり）" : ""}<br>ここから ${km}km 曲がらずに行けるよ${o.nm ? "<br>" + esc(o.nm) + " など" : ""}`).addTo(warpLayer);
   }
   probeReq();
 }
@@ -7316,8 +7313,8 @@ function probeText(ly) {
   return typeof c === "function" ? c(ly) : c;
 }
 function probe() {
-  const lys = [...rwLayer.getLayers(), ...rivLayer.getLayers(), ...warpLayer.getLayers().filter(x => !(x instanceof L.Marker))], nav = follow && me;
-  const pts = [spotLayer, jxLayer, oxLayer, nbLayer, warpLayer].flatMap(g => g.getLayers().filter(x => x instanceof L.Marker));   // スポット・標識の点
+  const lys = [...rwLayer.getLayers(), ...rivLayer.getLayers(), ...warpLayer.getLayers()], nav = follow && me;
+  const pts = [spotLayer, jxLayer, oxLayer, nbLayer].flatMap(g => g.getLayers().filter(x => x instanceof L.Marker));   // スポット・標識の点
   const want = !spotHide && !nav && (lys.length > 0 || pts.length > 0);   // 走っているとき（◎で固定中）は出さない（じゃまなので）
   probeCtr.style.display = want ? "block" : "none";
   if (!want) { if (probeOn) { map.removeLayer(probeTip); probeOn = false; } return; }
