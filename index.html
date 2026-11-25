@@ -211,7 +211,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1022</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1038</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -385,7 +385,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
     <div id="tabRoute">
     <div class="row"><label>出発</label><input type="text" autocomplete="off" id="from" enterkeyhint="go" placeholder="空なら現在地"></div>
-    <div class="row" id="viaRow"><label>経由</label><input type="text" autocomplete="off" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
+    <div class="row" id="viaRow"><label>経由地</label><input type="text" autocomplete="off" id="via" enterkeyhint="go" placeholder="寄りたい所（なくてもOK）"></div>
     <div class="row" id="toRow"><label>目的地</label><input type="text" autocomplete="off" id="to" enterkeyhint="go" placeholder="駅名・住所・GoogleマップURL"></div>
     <div style="font-size:11px;color:#888;margin-top:4px">地図を長おし（パソコンは右クリック）しても出発・目的地を選べるよ</div>
     <button id="go" title="Ctrl＋Alt＋Enter">ルートを作る</button>
@@ -3889,7 +3889,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1022", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1038", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4112,7 +4112,7 @@ worker.onmessage = ev => {
 // ---------- 計算の「お仕事」と、途中からの再開 ----------
 let job = null;   // { g, cfg, prefix: 続きを計算するときの、もう決まっているルート }
 function sumKinds(a, b) { const o = { ...(a || {}) }; for (const [k, v] of Object.entries(b || {})) o[k] = (o[k] || 0) + v; return o; }
-let viaPick = null;   // ルートタブの「経由」：{ p, name }（📣 SNS で「○○ 着」にするため）
+let viaPick = null;   // ルートタブの「経由地」：{ p, name }（📣 SNS で「○○ 着」にするため）
 function midStops(st) {   // 🎯 寄り道スポットの名前をつける
   if (viaPick && !(st || []).some(q => hav(q.p, viaPick.p) < 300)) st = [...(st || []), { p: viaPick.p, kind: "via", name: viaPick.name }];
   if (!st || !midPick) return st;
@@ -4252,7 +4252,7 @@ async function placeName(input, ll) {
 }
 const shortName = t => /^https?:/.test(t) ? "地図の場所" : /^-?\d+\.\d+\s*,/.test(t) ? "地図の地点" : (looksAddress(t) ? townName(t) : cleanAddr(t)).slice(0, 24);
 
-// 🔁 ぐるっと1周：経由・目的地の欄はかくす（出発にもどるので）
+// 🔁 ぐるっと1周：経由地・目的地の欄はかくす（出発にもどるので）
 let loopReq = false;   // 🎯 ミッションのボタンから作るときだけ 1周
 const loopKm = () => loopReq ? ($("loopKm").value === "auto" ? "auto" : +$("loopKm").value) : 0;
 // おまかせの長さ：経由地があれば まっすぐの距離 × 2.8（行きと帰りを別の道にできる太さの輪っか。5km単位）、なければ 30km
@@ -4361,7 +4361,7 @@ $("go").onclick = async () => {
         if (midPick) { v = midPick.p; vn = midPick.ic + " " + midPick.name; midSeen(v); }
         else { addLog("  🎯 ちょうどいい距離に寄り道スポットがなかったので、ふつうの1周にするよ", "w"); midNone = true; }
       }
-      if (v) { addLog(`  経由 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
+      if (v) { addLog(`  経由地 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
         if (hav(s, v) > 75000) throw new Error(`経由地が ${fmtKm(hav(s, v))} もはなれてるよ。1周なら75km以内にしてね`); }
       if (LK === "auto") { LK = autoKm(s, v); addLog(`  長さ: おまかせ → ${LK}km` + (v ? `（経由地まで まっすぐ ${fmtKm(hav(s, v))}）` : ""), "m"); }
       else if (v && hav(s, v) * 2.5 > LK * 1000) {   // 輪っかにするほど長さがない（経由地まで行って帰るだけになる）
@@ -4373,7 +4373,7 @@ $("go").onclick = async () => {
       addLog(`  ルート名: ${pendingName}`, "m");
       lastProg = { stage: 1, msg: `🔁 ${sn} から ${LK}km の1周` }; showProg();
       layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発・目的地");
-      if (v) { L.marker(v).addTo(layer).bindTooltip(midPick ? "🎯 " + vn : "経由"); map.fitBounds([s, v], { padding: [60, 60] }); }
+      if (v) { L.marker(v).addTo(layer).bindTooltip(midPick ? "🎯 " + vn : "経由地"); map.fitBounds([s, v], { padding: [60, 60] }); }
       else map.setView(s, Math.max(10, Math.min(15, Math.round(15 - Math.log2(LK / 5)))));
       if (geoAbort.signal.aborted) throw new Error("止めたよ");
       geoAbort = null; clearInterval(tickTimer);
@@ -4382,7 +4382,7 @@ $("go").onclick = async () => {
       return;
     }
     const [v, vn] = viaT ? await geocode(viaT) : [null, ""];
-    if (v) addLog(`  経由 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
+    if (v) addLog(`  経由地 → ${vn}（${v[0].toFixed(5)},${v[1].toFixed(5)}）`, "m");
     const [g, gn] = await geocode(toT);
     addLog(`  目的地 → ${gn}（${g[0].toFixed(5)},${g[1].toFixed(5)}）`, "m");
     // 「現在地」「地図の地点」のままだと、あとで見てもどこかわからないので、町名にする
@@ -4395,7 +4395,7 @@ $("go").onclick = async () => {
       if (hav(a, b) > 150000) throw new Error(`${t}が ${fmtKm(hav(a, b))} もはなれてるよ。150km以内にしてね`);
     lastProg = { stage: 1, msg: `出発: ${sn} → 目的地: ${gn}` }; showProg();
     layer.clearLayers(); L.marker(s).addTo(layer).bindTooltip("出発"); L.marker(g).addTo(layer).bindTooltip("目的地");
-    if (v) L.marker(v).addTo(layer).bindTooltip("経由");
+    if (v) L.marker(v).addTo(layer).bindTooltip("経由地");
     map.fitBounds(v ? [s, v, g] : [s, g], { padding: [40, 40] });
     if (geoAbort.signal.aborted) throw new Error("止めたよ");
     geoAbort = null;
@@ -4659,7 +4659,7 @@ function xUpd() {
   }
 }
 map.on("zoomend", () => { try { xUpd(); } catch {} });
-// 📍 計算する前の 出発・経由・目的地の印（11/22）：入力が「緯度,経度」か、地図の長おしで入れたものなら ピンを立てる。
+// 📍 計算する前の 出発・経由地・目的地の印（11/22）：入力が「緯度,経度」か、地図の長おしで入れたものなら ピンを立てる。
 //   ルートが出ていても ピンだけ出す（ルートは🚲を押すまで そのまま）。いま出ているルートを作ったときの入力と同じものは出さない（🏁などと かさならないように）
 var pinLayer, pinUsed = null;   // var：showRoute が 先に よばれても こわれないように（inPins で作る）
 function pinIc(col, txt) { return L.divIcon({ className: "", iconSize: [0, 0], html: `<div style="position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center"><div style="background:${col};color:#fff;font-size:13px;font-weight:bold;border-radius:10px;padding:2px 7px;border:2px solid #fff;box-shadow:0 1px 4px #0006;white-space:nowrap">${txt}</div><div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:12px solid ${col};margin-top:-1px"></div></div>` }); }
@@ -4674,8 +4674,8 @@ function inPins(hide) {
   pinLayer.clearLayers();
   if (hide || job) return;
   const lk = (() => { try { return loopKm(); } catch { return 0; } })();
-  for (const [id, col, txt] of [["from", "#188038", "🚲 出発"], ["via", "#1a73e8", "📍 経由"], ["to", "#d93025", "🏁 目的地"]]) {
-    if (lk && id !== "from") continue;   // 1周のときは 経由・目的地の欄は使わない
+  for (const [id, col, txt] of [["from", "#188038", "🚲 出発"], ["via", "#1a73e8", "📍 経由地"], ["to", "#d93025", "🏁 目的地"]]) {
+    if (lk && id !== "from") continue;   // 1周のときは 経由地・目的地の欄は使わない
     if (cur && pinUsed && pinUsed[id] === $(id).value) continue;   // いまのルートを作った場所（ルートが出ているときは「新しい目的地」など：いまのルートの🏁と まちがえないように）
     const p = inLL(id); if (p) L.marker(p, { icon: pinIc(col, cur ? txt.replace(" ", " 新しい") : txt), zIndexOffset: 540 }).addTo(pinLayer).bindTooltip(txt.slice(txt.indexOf(" ") + 1) + "（まだ計算していないよ）");
   }
@@ -6365,7 +6365,7 @@ async function snsOpen() {
   else {
     requestAnimationFrame(() => d.classList.add("on")); setTimeout(() => d.classList.remove("on"), 10000); setTimeout(() => d.remove(), 10800);
     const h = document.createElement("div"); h.id = "helpTop";
-    h.innerHTML = '<button id="helpX" aria-label="とじる">×</button><b>「ほそみちナビ」は自転車で車の少ない道を走るためのアプリです。</b><div style="margin-top:6px">① 左上のメニューを「ひらく」<br>② 検索窓から目的地を検索、見つけたら「目的地にする」を選んで「ルートを作る」<br>③ ルートが計算されたら右の「◎」を押してナビ開始</div><div style="margin-top:6px;font-size:11px;color:#9ab">（タップすると消えるよ）</div>';
+    h.innerHTML = '<button id="helpX" aria-label="とじる">×</button><b>「ほそみちナビ」は自転車で車の少ない道を走るためのアプリです。</b><div style="margin-top:6px">① 上のメニューを「ひらく」<br>② 検索窓から目的地を検索、見つけたら「目的地にする」を選んで「ルートを作る」<br>③ ルートが計算されたら右の「◎」を押してナビ開始</div><div style="margin-top:6px;font-size:11px;color:#9ab">（タップすると消えるよ）</div>';
     h.onclick = () => h.remove();
     document.body.appendChild(h);
   } }
@@ -6698,7 +6698,7 @@ function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ス
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note).replace(/\n/g, "<br>")}</span><br>` : "")
     + (acts ? acts.map((a, i) => `<button data-act="${i + 1}" style="color:${a.col};font-weight:bold">${esc(a.t)}</button>`).join("") + "<br>" : "")
-    + (only ? "<button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>" : "") + (only ? "" : (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由にする</button><button data-k='to'>目的地にする</button><br>")
+    + (only ? "<button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>" : "") + (only ? "" : (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由地にする</button><button data-k='to'>目的地にする</button><br>")
     + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br><button data-fav='1'>⭐ お気に入り</button>"
     + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>"
     + "<br><button data-fake='1' style='color:#888'>🧪 ここを現在地にする（debug用）</button>"   // いちばん下：ふだんは使わない
@@ -6706,15 +6706,17 @@ function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ス
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
     if (ev.target.dataset.act) { L.DomEvent.stopPropagation(ev); map.closePopup(pop); acts[ev.target.dataset.act - 1].fn(); return; }
-    if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), ev.target.dataset.b); map.closePopup(pop); return; }   // 🚫／⚠ その場でつける
+    if (ev.target.dataset.b) { L.DomEvent.stopPropagation(ev); addBlock(L.latLng(ll), ev.target.dataset.b); map.closePopup(pop); showTab("pts"); return; }   // 🚫／⚠ その場でつける
     if (ev.target.dataset.sv) { openStreetView(L.latLng(ll)); map.closePopup(pop); return; }
     if (ev.target.dataset.ph) { L.DomEvent.stopPropagation(ev); map.closePopup(pop); photoPeek(L.latLng(ll)); return; }
     if (ev.target.dataset.fake) { L.DomEvent.stopPropagation(ev); setFake(ev.target.dataset.fake === "1" ? [+ll.lat.toFixed(6), +ll.lng.toFixed(6)] : null); map.closePopup(pop); return; }
-    if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); return; }
-    if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); return; }
-    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title); map.closePopup(pop); return; }
+    if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); showTab("pts"); return; }
+    if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); showTab("pts"); return; }
+    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title); map.closePopup(pop); showTab("pts"); return; }
     const k = ev.target.dataset.k; if (!k) return;
-    $(k).value = v; $(k).dataset.ll = ll.lat + "," + ll.lng; $(k).dataset.v = v; inPins(); map.closePopup(pop); $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; };
+    $(k).value = v; $(k).dataset.ll = ll.lat + "," + ll.lng; $(k).dataset.v = v; inPins(); map.closePopup(pop);
+    rtLast = "route"; showTab("route");   // メニューは開かない（じゃまなので）。「ひらく」を押したとき もう 🚲シンプルが出ているように 中だけ切りかえておく
+    setMsg(`${{ from: "出発", via: "経由地", to: "目的地" }[k]}に入れたよ。上のメニューを「ひらく」→「ルートを作る」`); };
 }
 map.on("contextmenu", e => {   // 長おし（パソコンは右クリック）で「ここを出発・目的地にする」。タップでふいに出ないように
   pinPopup(e.latlng, e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6));
@@ -7846,7 +7848,7 @@ function ptRename(k) {
 }
 function ptUse(key, k) {   // k：from / via / to
   const q = ptPos(key);
-  $(k).value = q[0].toFixed(6) + "," + q[1].toFixed(6); rtLast = "route"; showTab("route"); setMsg(`${{ from: "出発", via: "経由", to: "目的地" }[k]}に入れたよ`);
+  $(k).value = q[0].toFixed(6) + "," + q[1].toFixed(6); rtLast = "route"; showTab("route"); setMsg(`${{ from: "出発", via: "経由地", to: "目的地" }[k]}に入れたよ`);
 }
 function ptDel(k, ask) {   // ask：地図から消すときは 確認する（タブからは 家だけ確認）
   const nm = k === "h" ? "家の登録" : `「${ptObj(k).name || "この地点"}」`;
@@ -7857,14 +7859,14 @@ function ptDel(k, ask) {   // ask：地図から消すときは 確認する（�
   else { const b = blocks[+k.slice(1)]; blocks.splice(+k.slice(1), 1); saveBlocks(); if (b && BLK_FIX(b.r)) slopeRecheck(b.p); }   // 🪜✕／🪜✓ を消したら もとの 🪜⛰ に
   spotsTabDraw();
 }
-// 🗺 地図の ⭐🏠🔒 をタップ：名前と、出発・経由・目的地／名前をかえる／消す
+// 🗺 地図の ⭐🏠🔒 をタップ：名前と、出発・経由地・目的地／名前をかえる／消す
 function ptPop(k) {
   const ic = { h: "🏠", f: "⭐", s: "🔒" }[k[0]], nm = k === "h" ? homeName || "家" : ptObj(k).name || { f: "お気に入り", s: "秘密の場所" }[k[0]];
   const note = { h: "SNSでは まわりを消すよ", f: "お気に入り", s: "秘密の場所（SNSでは家と同じように まわりを消すよ）" }[k[0]];
   const B = (a, col, t) => `<button data-pu="${a}" style="color:${col}">${t}</button>`;
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = `<b>${ic} ${esc(nm)}</b><br><span style="font-size:11px;color:#666">${note}</span><br>`
-    + (follow ? "" : "ここを<br>" + B("from", "#188038", "出発にする") + (k[0] === "f" ? B("via", "#1a73e8", "経由にする") : "") + B("to", "#d93025", "目的地にする") + "<br>")
+    + (follow ? "" : "ここを<br>" + B("from", "#188038", "出発にする") + (k[0] === "f" ? B("via", "#1a73e8", "経由地にする") : "") + B("to", "#d93025", "目的地にする") + "<br>")
     + B("ren", "#333", "✏ 名前をかえる") + B("del", "#888", "🗑 消す");
   const pop = L.popup().setLatLng(ptPos(k)).setContent(div).openOn(map);
   div.onclick = ev => {
@@ -7878,7 +7880,7 @@ function spotsTabDraw() {
   const BTN = (k, key, col, t) => `<button data-use="${k}:${key}" style="font-size:11px;padding:2px 6px;border:1px solid ${col};color:${col};border-radius:6px;background:#fff">${t}</button>`;
   const row = (ic, name, key) => `<div class="ptRow" data-key="${key}" style="display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #f3f3f3;font-size:12px">
       <span style="font-size:15px">${ic}</span><span style="flex:1;cursor:pointer;user-select:none;-webkit-user-select:none" data-go="${key}">${esc(name)}</span>
-      ${key[0] === "b" ? "" : BTN("from", key, "#188038", "出発") + (key[0] === "f" ? BTN("via", key, "#1a73e8", "経由") : "") + BTN("to", key, "#d93025", "目的地")}
+      ${key[0] === "b" ? "" : BTN("from", key, "#188038", "出発") + (key[0] === "f" ? BTN("via", key, "#1a73e8", "経由地") : "") + BTN("to", key, "#d93025", "目的地")}
       <button data-del="${key}" style="font-size:11px;padding:2px 6px;border:1px solid #ddd;border-radius:6px;background:#fff">🗑</button></div>`;
   const sec = (title, note, rows) => `<div style="margin:8px 0 2px;font-weight:bold;font-size:13px">${title}</div><div style="font-size:11px;color:#666;margin-bottom:3px">${note}</div>
       <div style="border:1px solid #eee;border-radius:8px;max-height:28vh;overflow-y:auto">${rows || '<div style="padding:6px 8px;color:#aaa;font-size:12px">まだないよ</div>'}</div>`;
@@ -7896,7 +7898,7 @@ function spotsTabDraw() {
     + sec(`${BLK_IC("n")} 階段じゃない ${bg.length}`, "🪜階段？のマークから つけた所。いちばん近い道を ⛰急坂？にするよ", bg.map(([b, i]) => row(BLK_IC("n"), b.name || "階段じゃない", "b" + i)).join(""))
     + sec(`${BLK_IC("y")} 階段だった ${by.length}`, "⛰急坂？のマークから つけた所。いちばん近い道を 🪜階段？にするよ", by.map(([b, i]) => row(BLK_IC("y"), b.name || "階段だった", "b" + i)).join(""));
   const pos = ptPos, rename = ptRename;
-  for (const e of T.querySelectorAll("[data-use]")) e.onclick = () => { const [k, key] = e.dataset.use.split(":"); ptUse(key, k); };   // 🚲ルートの 出発・経由・目的地に入れる（すぐ引ける）
+  for (const e of T.querySelectorAll("[data-use]")) e.onclick = () => { const [k, key] = e.dataset.use.split(":"); ptUse(key, k); };   // 🚲ルートの 出発・経由地・目的地に入れる（すぐ引ける）
   for (const e of T.querySelectorAll("[data-go]")) {
     let lp = null, long = false;
     e.oncontextmenu = ev => { ev.preventDefault(); rename(e.dataset.go); };   // 右クリック
@@ -8330,10 +8332,11 @@ const SPOT_KINDS = [
   ["道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"], ["rvside", "〰", "川べりの車の来ない道"]]],
   ["はんい・川", [["river", "〰", "川・水路"], ["bigriver", "🌊", "大きい川の水面"],
     ["apark", "🌳", "公園のはんい"], ["acem", "🪦", "霊園・墓地のはんい"], ["aclosed", "🏫", "学校・工場などの敷地"], ["adanchi", "🏢", "団地のはんい"], ["aparking", "🅿", "駐車場のはんい"]]],
-  ["標識", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
-    ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"], ["constr", "🏗", "工事中の道"],
-    ["oneway", "➡", "一方通行"], ["noroad", "🚧", "通行止め"], ["nocar", "🚫", "車両通行止め"], ["nobike", "🚳", "自転車通行止め"], ["pwalk", "🚶", "歩行者用道路（自転車も）"], ["owexit", "⛔", "一方通行の出口（自転車も）"], ["noent", "🔴", "車両進入禁止"], ["cxban", "✖", "自転車の交差点進入禁止"], ["swok", "🔵", "自転車も通れる歩道"], ["blane", "🟦", "自転車レーン（専用通行帯）"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"],
-    ["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"]]],
+  ["標識", [["oneway", "➡", "一方通行"], ["noroad", "🚧", "通行止め"], ["nocar", "🚫", "車両通行止め"], ["nobike", "🚳", "自転車通行止め"], ["pwalk", "🚶", "歩行者用道路（自転車も）"], ["owexit", "⛔", "一方通行の出口（自転車も）"], ["noent", "🔴", "車両進入禁止"], ["cxban", "✖", "自転車の交差点進入禁止"], ["swok", "🔵", "自転車も通れる歩道"], ["blane", "🟦", "自転車レーン（専用通行帯）"]]],
+  ["道路", [["xing", "🚸", "横断歩道"], ["signal", "🚦", "信号"], ["stop", "🛑", "一時停止"], ["bump", "〰", "減速の段差"],
+    ["steps", "🪜", "階段"], ["ramp", "↗", "自転車スロープつき階段"], ["elev", "🛗", "エレベーター"],
+    ["railx", "🚃", "踏切"], ["footbr", "🚶", "歩道橋"], ["underpass", "🕳", "地下道"], ["constr", "🏗", "工事中の道"],
+    ["cbar", "🚧", "自転車止めの柵"], ["bollard", "🚏", "ポール"], ["gate", "⛔", "ゲート・遮断機"], ["gstep", "🪜", "階段？"], ["steep", "⛰", "急坂？"]]],
   ["休けい・自転車", [["toilet", "🚻", "トイレ"], ["water", "💧", "水飲み場"], ["vending", "🥤", "自販機（飲み物）"], ["bench", "🪑", "ベンチ"], ["shelter", "🛖", "東屋"],
     ["bike", "🔧", "自転車屋"], ["repair", "🛠", "空気入れ・修理スタンド"], ["bikepark", "🅿", "駐輪場"], ["police", "👮", "交番・警察"], ["aed", "❤", "AED"], ["hospital", "🏥", "病院"]]],
   ["まち", [["school", "🏫", "学校"], ["univ", "🎓", "大学"], ["townhall", "🏛", "役所"], ["library", "📚", "図書館"], ["post", "📮", "郵便局"], ["drug", "💊", "ドラッグストア"], ["fire", "🚒", "消防署"],
@@ -8346,7 +8349,7 @@ const SPOT_KINDS = [
     ["jizo", "🙏", "お地蔵さん・道祖神"], ["ichiri", "🌲", "一里塚"], ["tree", "🌳", "大きな木"], ["spring", "🫧", "湧き水"], ["fall", "🏞", "滝"], ["ferry", "⛴", "渡し船"]]]];
 // 絵文字にないアイコン（横断歩道＝上から見たしましま）
 const spotIc = (k, ic) => SPOT_SVG[k] || ic;
-const SPOT_COL = { "道": "#0050ff", "はんい・川": "#0288d1", "標識": "#188038", "休けい・自転車": "#1a73e8", "ごはん・おやつ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
+const SPOT_COL = { "道": "#0050ff", "はんい・川": "#0288d1", "標識": "#188038", "道路": "#6d4c41", "休けい・自転車": "#1a73e8", "ごはん・おやつ": "#e8710a", "めぐる": "#a142f4", "まち": "#5f6368" };   // ジャンルのふちの色
 const SPOT_KCOL = { cbar: "#d93025", bollard: "#d93025", gate: "#d93025", police: "#d01884", aed: "#d01884", hospital: "#d01884" };   // まとめる前のジャンルの色を のこす物（車止め＝赤・こまったとき＝ピンク）
 const SPOT_INFO = Object.fromEntries(SPOT_KINDS.flatMap(([g, ks]) => ks.map(([k, ic, nm]) => [k, [ic, nm, SPOT_KCOL[k] || SPOT_COL[g]]])));
 const SPOT_NEAR = 150;
@@ -8439,7 +8442,8 @@ function renderSpots() {
     + `<div style="color:#666;margin:2px 0 4px">道・はんい・川を 地図に色で重ねるよ（走るのに使えるよ）<span class="hq">?</span><div class="hd">チェックしたものだけ 地図に出すよ。線やはんいに 地図のまんなかの＋をかさねるか、タップすると 説明が出るよ</div></div>` + grp(true);
   function grp(hl) { return SPOT_KINDS.map(([g, ks], gi) => HL_GROUPS.has(g) !== hl ? "" : `<div style="margin-top:8px;border-left:4px solid ${SPOT_COL[g] || "#999"};padding-left:6px"><label style="display:flex;align-items:center;gap:4px;font-weight:bold;font-size:14px;color:#333"><input type="checkbox" data-sg="${gi}"${ks.every(x => spotOn.has(x[0])) ? " checked" : ""}>${g}</label><div style="padding-left:20px;margin-top:2px">` + ks.map(([k, ic, nm]) =>
       `<label style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap"><input type="checkbox" data-sk="${k}"${spotOn.has(k) ? " checked" : ""}>${spotIc(k, ic)}${nm}${spotSw(k)}</label>`).join("")
-      + (g === "標識" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所<br>🚦🚸 の右上に<span style="color:#8e24aa">●</span>＝地図（OSM）にはなくて、警察のデータ（JARTIC）から足した信号・横断歩道（ルートでも使うよ）</div>' : "") + "</div></div>").join(""); }
+      + (g === "道路" ? '<div style="font-size:11px;color:#666;margin-top:2px"><span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.gstep + '</span>階段？<span style="display:inline-block;vertical-align:-2px">' + SPOT_SVG.steep + '</span>急坂？＝地図ではふつうの道だけど、標高で見つけた所</div>' : "")
+      + (g === "道路" ? '<div style="font-size:11px;color:#666;margin-top:2px">🚦🚸 の右上に<span style="color:#8e24aa">●</span>＝地図（OSM）にはなくて、警察のデータ（JARTIC）から足した信号・横断歩道（ルートでも使うよ）</div>' : "") + "</div></div>").join(""); }
   for (const el of document.querySelectorAll("#spotBox [data-sg], #hlBox [data-sg]")) { const ks = SPOT_KINDS[+el.dataset.sg][1]; el.indeterminate = !el.checked && ks.some(x => spotOn.has(x[0])); }   // 一部だけオンのときは「－」
   { const el = $("spotBox").querySelector("[data-sall]"); if (el) el.indeterminate = !el.checked && spotOn.size > 0; }
   try { mkKindsShow(); } catch {}   // 🏆 チャレンジの「📍 マークを回る」に、いま回るものを出す
@@ -8502,7 +8506,7 @@ $("mkGo").onclick = mkTour;
 // どちらも、画面を指1本分（48px・引いたときは64px）のマスに分けて、マスごとに1個だけ（有名なもの → 近いもの の順にえらぶ）
 // 道・車止めのマーク（横断歩道・信号・階段・柵…）は、ズーム16より拡大したときだけ、見えている所に間引かずぜんぶ出す
 // （引いたときに間引くと、出たり消えたりしてかえってわかりにくいので）
-const ROAD_GROUPS = ["標識"];   // MZ("spot") より引いたらマークは出さない（全体図がごちゃごちゃしないように）
+const ROAD_GROUPS = ["標識", "道路"];   // MZ("spot") より引いたらマークは出さない（全体図がごちゃごちゃしないように）
 const SPOT_ROAD = new Set(SPOT_KINDS.filter(g => ROAD_GROUPS.includes(g[0])).flatMap(g => g[1].map(x => x[0])));
 async function spotUpdate(force) {
   if (spotHide) return;   // かくし中は読みも描きもしない
