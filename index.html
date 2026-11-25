@@ -174,6 +174,9 @@ body.navi #addr{font-size:17px!important;font-weight:bold!important;color:#111!i
 body.navi.ov #addr::after{content:'　↩ タップでもどる';font-size:12px;font-weight:normal;color:#1a73e8}
 body.navi #homeD{bottom:calc(100px + env(safe-area-inset-bottom))!important;font-size:14px!important}
 .pin{font-size:13px}
+.pin .rtBtn{font-size:15px;font-weight:bold;padding:8px 12px;border-width:2px}
+.pin .pinHr{border:none;border-top:1px solid #ccc;margin:8px 0 2px}
+.pin .subBtns button{font-size:11px;padding:3px 7px}
 #sug{position:fixed;z-index:7000;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 4px 16px #0003;max-height:46vh;overflow-y:auto;display:none;font-size:14px}
 #sug .it{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f2f2f2;cursor:pointer}#sug .it:active,#sug .it.on{background:#e8f0fe}
 #sug .ic{width:20px;text-align:center;flex:none}#sug .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#sug .sub{color:#888;font-size:11px}#sug .km{color:#1a73e8;font-size:11px;flex:none}
@@ -213,7 +216,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1201</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1207</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3894,7 +3897,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1201", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1207", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6719,11 +6722,12 @@ function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ス
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note).replace(/\n/g, "<br>")}</span><br>` : "")
     + (acts ? acts.map((a, i) => `<button data-act="${i + 1}" style="color:${a.col};font-weight:bold">${esc(a.t)}</button>`).join("") + "<br>" : "")
-    + (only ? "<button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>" : "") + (only ? "" : (follow ? "" : "ここを<br><button data-k='from'>出発にする</button><button data-k='via'>経由地にする</button><button data-k='to'>目的地にする</button><br>")
-    + "<button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br><button data-fav='1'>⭐ お気に入り</button>"
+    + (only ? "<div class='subBtns'><button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button></div>" : "")
+    + (only ? "" : (follow ? "" : "ここを<br><button class='rtBtn' data-k='from' style='color:#188038'>🚲 出発にする</button><button class='rtBtn' data-k='via' style='color:#1a73e8'>📍 経由地にする</button><button class='rtBtn' data-k='to' style='color:#d93025'>🏁 目的地にする</button><hr class='pinHr'>")
+    + "<div class='subBtns'><button data-home='1'>🏠 ここを家にする</button><button data-sec='1'>🔒 秘密の場所</button><br><button data-fav='1'>⭐ お気に入り</button>"
     + "<button data-b='o' style='color:#c00'>🚫 通れない</button><button data-b='a' style='color:#b06000'>⚠ 通りたくない</button><button data-sv='1'>📷 ストビュー</button><button data-ph='1'>🛰 航空写真</button>"
     + "<br><button data-fake='1' style='color:#888'>🧪 ここを現在地にする（debug用）</button>"   // いちばん下：ふだんは使わない
-    + (fakePos ? "<br><button data-fake='0' style='color:#1a73e8'>🧪 本当の現在地にもどす（debug用）</button>" : ""));
+    + (fakePos ? "<br><button data-fake='0' style='color:#1a73e8'>🧪 本当の現在地にもどす（debug用）</button>" : "") + "</div>");
   const pop = L.popup().setLatLng(ll).setContent(div).openOn(map);
   div.onclick = ev => {
     if (ev.target.dataset.act) { L.DomEvent.stopPropagation(ev); map.closePopup(pop); acts[ev.target.dataset.act - 1].fn(); return; }
