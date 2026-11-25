@@ -460,11 +460,14 @@ function buildGraph(osm, cfg, onProg) {
     const bikeOK = t["jar:ow"] ? t["jar:owb"] === "1" : t["oneway:bicycle"] === "no";   // 自転車は逆向きも走ってよい（自転車を除く）
     let fwd = ow !== "-1", back = !["yes", "1", "true"].includes(ow);
     // 一方通行の逆向き：自転車可（自転車を除く）とわかっている道だけ（少しだけ避ける）。設定「走らない」なら走らない。自転車も一方通行の道・わからない道は走らない
-    let rp = pen, rname = name;
+    // ⛔ 逆走も ほかと同じ「理由ごとに足し算」のルールに入れた（11/25）：前は 最後にかけ算で、30km制限 ×0.4 × 逆走1.3 ＝ ×0.52 と ふつうの道（×1）より安くなり 逆走ばかりしていた
+    //   逆向き ＝（理由の足し算 ＋（逆走の倍率 − 1））×（へらすほうの倍率。ただし ×1より下げない）。自転車レーン・ナビライン・30km などの「通りたい」は 逆向きには効かない
+    let rvK = 0, rname = name;
     if (fwd !== back && bikeOK && cfg.oneway !== "no") {
-      fwd = back = true; rp = pen * (cfg.oneway === "avoid" ? ONEWAY_REV_AVOID : ONEWAY_REV); rname = name + "（一方通行を逆向き）";
+      fwd = back = true; rvK = (cfg.oneway === "avoid" ? ONEWAY_REV_AVOID : ONEWAY_REV) - 1; rname = name.replace(/ ×0\.\d+/g, "") + "（一方通行を逆向き）";
     }
-    if (DBGW) DBGW.set(e.uid || e.id, { use: true, r: `${name} ×${+pen.toFixed(2)}` + (rv ? (rvHalf ? "・〰川べり" : "・〰ところどころ川べり") + (rivK !== 1 ? `（川べりの所 ×${rivK}）` : "") : "") + (fwd !== back ? "・一方通行" : rp !== pen ? "・一方通行（自転車は逆向きOK）" : "") });
+    const rp = rvK ? (whySum(why) + rvK) * Math.max(1, km) : pen;
+    if (DBGW) DBGW.set(e.uid || e.id, { use: true, r: `${name} ×${+pen.toFixed(2)}` + (rv ? (rvHalf ? "・〰川べり" : "・〰ところどころ川べり") + (rivK !== 1 ? `（川べりの所 ×${rivK}）` : "") : "") + (fwd !== back ? "・一方通行" : rvK ? `・一方通行（自転車は逆向きOK・逆向き ×${+rp.toFixed(2)}）` : "") });
     const dk = dbgKindR(t), rev = ow === "-1";   // dk：ルートの線の色（デバッグの道の種類）   // 逆向き一方通行なら「正方向」が逆走
     const swRoad = swPen > 1 && SW_ROADS.has(hw), swAll = swRoad && swTag(t);
     const lift = yes(t.bridge) || yes(t.tunnel) || t.tunnel === "building_passage" || (t.layer && t.layer !== "0") || t["br:side"] ? 1 : 0;   // 橋・トンネル・🌉 橋のたもとの坂ぞいの歩道（標高のデータと高さが合わない。新四つ木橋のたもとが ⛰/🪜 になっていた）
@@ -473,7 +476,7 @@ function buildGraph(osm, cfg, onProg) {
       inGraph[u] = 1; inGraph[v] = 1;
       const m = swRoad && (swAll || hasSW(u, v)) ? swPen : 1;   // 歩道のある道は避ける（道の倍率と くらべて 大きいほう）
       if (m > 1) swLen += L;
-      const pm = m > 1 ? (whySum(why) + m - 1) * km : pen, rpm = pm * rp / pen, rg = why.rgh || 1;   // 🚧 段差・柵の分を足す。rp/pen：一方通行の逆向きの分（かけ算のまま）
+      const pm = m > 1 ? (whySum(why) + m - 1) * km : pen, rpm = rvK ? (whySum(why) + (m > 1 ? m - 1 : 0) + rvK) * Math.max(1, km) : pm, rg = why.rgh || 1;   // 🚧 段差・柵の分を足す。rpm：⛔ 逆走の分も足し算（通りたいの割引なし）
       // sm：足し算した倍率（旧街道の分の前）・rg：🪨 走りにくい の倍率（あとで 🪜階段？・⛰急坂？ と くらべる）
       // 〰 川べり（設定がオンのとき）：🚶人が多い（歩く道）の分を数えないで、かわりに ×rivK（へらすほう）。歩道×3 だと ×0.6 しても 住宅街の道（×1）に勝てなかったので
       const isR = rv && rv[i - 1], rk = isR && rivOn ? (whySum(why) - ((why.ppl || 1) - 1) + (m > 1 ? m - 1 : 0)) * km * rivK / pm : 1, rn = isR ? "・川べり" : "";
