@@ -2,33 +2,33 @@
 // 設定（cfg）はページ側から渡される。DEFAULT_CFG がおすすめ値
 const DEFAULT_CFG = {
   pen: {                 // 1m を何m分と数えるか（大きいほど避ける）。"no" は通らない
-    living_street: 1, residential: 1, service: 1, unclassified: 1, cycleway: 1,
-    tertiary: 5, secondary: 10, primary: 10, trunk: 10,
-    footway: 3, pedestrian: "no", path: 1, track: 1,   // 歩道は 11/21 に ×5→×3、歩行者天国・広場は ×1.5→×3。小道・農道は 11/24 に ×1.5→×1（路面は 🪨砂利・土の設定で見る）
+    living_street: 0.4, residential: 0.4, service: 1, unclassified: 0.4, cycleway: 0.4,
+    tertiary: 1.5, secondary: 3, primary: 3, trunk: 3,
+    footway: 1.5, pedestrian: 1.5, path: 1, track: 1,   // 歩道は 11/21 に ×5→×3、歩行者天国・広場は ×1.5→×3。小道・農道は 11/24 に ×1.5→×1（路面は 🪨砂利・土の設定で見る）
   },
   bkLane: 1, bkNavi: 1,   // 🚲 自転車専用通行帯・ナビライン：倍率（1=気にしない・小さいほど通りたい）。自転車歩行者道は 11/25 から 自転車道（pen.cycleway）と同じあつかい。🐢30km制限は 11/25 に設定からなくした（細い道を好むなら自然とそうなるので）
   steps: "no",           // 階段: "no"=通らない / "ramp"=自転車スロープ付きなら / "yes"=通る
   bridge: 1.5,           // 歩道橋（歩行者用）: 倍率 or "no"（11/21 に地下道と分けた）
-  tunnel: 3,             // 地下道（歩行者用）: 倍率 or "no"
+  tunnel: 1.5,           // 地下道（歩行者用）: 倍率 or "no"
   unpaved: "no",         // 砂利・土の道: 倍率 or "no"（1=気にしない）
   crossRule: "on",       // 大きい道を渡るルール: いつも "on"（安全のため、アプリから「使わない」はえらべない。"off" は分析用だけ）
   wideCross: "crosswalk", // 4車線以上の横断: "signal" / "crosswalk" / "any"
   bigCross: "mid",       // 県道・国道を渡る: "mid"=2車線と同じ / "wide"=4車線と同じ（アプリではえらべない・分析用）
-  park: "no",            // 公園の中の道（園路など）（11/24 から はじめは 通らない。〰川べりの道は のぞく）："no"=通らない / 倍率 / 1=気にしない
+  park: 1.5,             // 公園の中の道（園路など）（11/24 から はじめは 通らない。〰川べりの道は のぞく）："no"=通らない / 倍率 / 1=気にしない
   cemetery: "no",         // 霊園・墓地の中の道："no"=通らない / 倍率 / 1=気にしない
-  station: "no",          // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
+  station: 1.5,           // 駅の中の通路（自由通路・コンコース）："no"=通らない / 倍率 / 1=気にしない
   slope: 5,              // 坂道：のぼり 1m を何m分と数えるか（0＝気にしない）
   stepsGuess: 10,        // 🪜 階段？（標高で見つけた、印のない階段かも）：倍率 or "no"（1＝気にしない）
   steep: 3,              // ⛰ 急坂？（標高で10%より急な短い道）：倍率（1＝気にしない）
   sidewalk: 3,           // 歩道（段差・柵）のある道の倍率。1＝気にしない
   kodo: 1,               // 旧街道の倍率（1＝気にしない / 0.6 なら 1m を 0.6m 分と数える）。「○○旧道」はその半分くらいの効き目
-  oneway: 1.5,           // 11/25 から 数（距離×◯・足し算）。前の "bike"＝×1.3・"avoid"＝×3 も読める。 一方通行の逆向き: "bike"=自転車可の一方通行（警察のデータ・OSMの oneway:bicycle=no）だけ走る（少し避ける） / "no"=走らない
+  oneway: 1,             // 11/25 から 数（距離×◯・足し算）。前の "bike"＝×1.3・"avoid"＝×3 も読める。 一方通行の逆向き: "bike"=自転車可の一方通行（警察のデータ・OSMの oneway:bicycle=no）だけ走る（少し避ける） / "no"=走らない
   midCross: 100,         // 2車線の道を横断歩道以外で渡るときの追加コスト(m相当)。旧: "must"/"prefer"/"any"
   allWide: "off",        // 2車線の道も4車線としてあつかう: "off"（デフォルト）/ "on"（信号・横断歩道でしか渡らない）
   jarUse: "on",          // 警察の交通規制（JARTIC）を使う: "on"（デフォルト）/ "off"。いまは 歩行者等横断禁止の道を4車線あつかいにするだけ
   fastCross: "mid",      // 最高速度50km以上の2車線道路: "mid"=2車線と同じ（11/20 からいつも。アプリではえらべない）/ "wide"=4車線と同じ（分析用）
   brSteps: "ramp",      // 🌉 橋の歩道の出入り口の階段（br:ramp）: "ramp"=自転車スロープつきとみなす（デフォルト）/ "steps"=ふつうの階段と同じ
-  xDet: 60,              // 4車線の道：この m 以内の（同じ道の上の）信号・横断歩道まで行って渡る。0＝しない（交差点の その場で渡れる所だけ）
+  xDet: 30,              // 4車線の道：この m 以内の（同じ道の上の）信号・横断歩道まで行って渡る。0＝しない（交差点の その場で渡れる所だけ）
 };
 const BASE = { tertiary_link: "tertiary", secondary_link: "secondary", primary_link: "primary", trunk_link: "trunk" };
 const CAR_ROADS = new Set(["residential", "unclassified", "living_street", "service", "tertiary", "secondary", "primary", "trunk"]);   // 車の道（🚓 一方通行を見る道）
@@ -193,7 +193,7 @@ function wayCost(t, cfg) {
     whyAdd(r, "rgh", cfg.unpaved);
     name = "砂利・土の道";
   } else if (u) {   // 舗装不明の小道・農道（surface がない）：11/24 から 砂利・土とは別の設定（はじめは 少し避ける ×1.5）
-    const m = cfg.unkSurf ?? 1.5;
+    const m = cfg.unkSurf ?? 3;
     if (m === "no") return null;
     whyAdd(r, "rgh", m);
     name = "舗装不明の小道";
