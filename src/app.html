@@ -5453,6 +5453,13 @@ document.addEventListener("keydown", e => {
   const el = $(K[0]); el.checked = !el.checked; try { el.onchange && el.onchange(); } catch {}
   setMsg(`${K[1]}：${el.checked ? "オン" : "オフ"}`);
 });
+// ⌨ 右はしのボタン（いつも出てる5つ）を キーボードで：Ctrl＋Alt＋A/S/D/F/G（上から順）＝👣足あと／📍マーク／🗺地図／🧭向き／◎ナビ開始
+document.addEventListener("keydown", e => {
+  if (!(e.ctrlKey && e.altKey) || e.metaKey || e.shiftKey || e.repeat) return;
+  const K = { KeyA: ["ft", "👣 足あと"], KeyS: ["mk", "📍 マーク"], KeyD: ["col", "🗺 地図"], KeyF: ["dir", "🧭 地図の向き"], KeyG: ["gps", "◎ 現在地・ナビ開始"] }[e.code];
+  if (!K) return;
+  e.preventDefault(); $(K[0]).click(); setMsg(K[1]);
+});
 $("qLine").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) qFind(); });
 $("qCand").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) qAdd(+b.dataset.i); };
 $("qList").onclick = e => {
