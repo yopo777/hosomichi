@@ -3838,6 +3838,7 @@ function photoBackBtn() {
   b.style.display = photoBack ? "block" : "none";
 }
 function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ストビュー・🛰航空写真 だけ（🪜⛰マーク用）   // 「ここを 出発にする / 目的地にする」（note：タイトルの下の 小さい説明1行・acts：[{t, col, fn}] いちばん上に足すボタン）
+  ll = L.latLng(ll);   // 検索からは [緯度,経度] の配列で来る → ここで LatLng にそろえる（ll.lat が undefined になって ピンが NaN で止まっていた）
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note).replace(/\n/g, "<br>")}</span><br>` : "")
     + (acts ? acts.map((a, i) => `<button data-act="${i + 1}" style="color:${a.col};font-weight:bold">${esc(a.t)}</button>`).join("") + "<br>" : "")

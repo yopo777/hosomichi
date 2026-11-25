@@ -211,7 +211,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1044</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1046</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3889,7 +3889,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1044", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1046", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6696,6 +6696,7 @@ function photoBackBtn() {
   b.style.display = photoBack ? "block" : "none";
 }
 function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ストビュー・🛰航空写真 だけ（🪜⛰マーク用）   // 「ここを 出発にする / 目的地にする」（note：タイトルの下の 小さい説明1行・acts：[{t, col, fn}] いちばん上に足すボタン）
+  ll = L.latLng(ll);   // 検索からは [緯度,経度] の配列で来る → ここで LatLng にそろえる（ll.lat が undefined になって ピンが NaN で止まっていた）
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note).replace(/\n/g, "<br>")}</span><br>` : "")
     + (acts ? acts.map((a, i) => `<button data-act="${i + 1}" style="color:${a.col};font-weight:bold">${esc(a.t)}</button>`).join("") + "<br>" : "")
