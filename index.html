@@ -216,7 +216,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1556</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1125.1814</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3908,7 +3908,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1556", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1125.1814", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -7259,7 +7259,7 @@ function rivGet(key) {
     .catch(e => { rivCell.delete(key); throw e; }));
   return rivCell.get(key);
 }
-function rivReq() { clearTimeout(rivT); rivT = setTimeout(rivDraw, 400); }
+function rivReq() { clearTimeout(rivT); rivT = setTimeout(() => { rivDraw(); warpDraw(); }, 400); }
 async function rivDraw() {
   const ln = spotOn.has("river") && !spotHide, wt = spotOn.has("bigriver") && !spotHide;
   if ((!ln && !wt) || map.getZoom() < MZ("riv")) { rivLayer.clearLayers(); probeReq(); return; }
@@ -7280,6 +7280,30 @@ async function rivDraw() {
   probeReq();
 }
 map.on("moveend", rivReq);
+// 🌀 ワープトンネル（ためし）：曲がらずに遠くまで行ける細い道（hosomichi-data/warp.json・tools/make_warp.py で作る。いまは都内のまわりだけ）
+const warpLayer = L.layerGroup().addTo(map); let warpData = null, warpWarn = false;
+function warpGet() {
+  return warpData || (warpData = tfetch(new URL("../hosomichi-data/warp.json", location.href), {}, 30000).then(async r => {
+    if (!r.ok) throw new Error("HTTP " + r.status); const j = await r.json();
+    return (j.s || []).map(o => { let S = 90, W = 180, N = -90, E = -180; for (const [a, b] of o.p) { S = Math.min(S, a); N = Math.max(N, a); W = Math.min(W, b); E = Math.max(E, b); } return { ...o, bb: [S, W, N, E] }; });
+  }).catch(e => { warpData = null; throw e; }));
+}
+async function warpDraw() {
+  if (!spotOn.has("warp") || spotHide || map.getZoom() < MZ("riv")) { warpLayer.clearLayers(); return; }
+  let ws; try { ws = await warpGet(); } catch (e) { warpLayer.clearLayers(); if (!warpWarn) { warpWarn = true; setMsg("🌀 ワープトンネルのデータ（warp.json）がまだないよ", true); } return; }
+  const b = map.getBounds(), S = b.getSouth(), W = b.getWest(), N = b.getNorth(), E = b.getEast(), star = map.getZoom() >= 14;
+  warpLayer.clearLayers();
+  for (const o of ws) {
+    if (o.bb[0] > N || o.bb[2] < S || o.bb[1] > E || o.bb[3] < W) continue;
+    const km = (o.l / 1000).toFixed(1), sg = o.g.filter(x => x[2]).length;
+    const html = `🌀 <b>ワープトンネル ${km}km</b>${o.nm ? "<br>" + esc(o.nm) + " など" : ""}<br>入り口 ${o.g.length}か所（うち🚦信号 ${sg}）<br><small>曲がらずに続く細い道（地図のOSMデータから見つけた ためし）</small>`;
+    L.polyline(o.p, { renderer: rwRend, color: "#8e24aa", weight: o.l >= 3000 ? 7 : 5, opacity: .6, lineCap: "round" }).bindPopup(html).addTo(warpLayer);
+    if (star) for (const g of o.g) if (g[0] > S && g[0] < N && g[1] > W && g[1] < E)
+      L.marker([g[0], g[1]], { icon: L.divIcon({ className: "", html: '<div style="font-size:16px;line-height:16px;text-shadow:0 0 2px #fff">⭐</div>', iconSize: [16, 16], iconAnchor: [8, 8] }) })
+        .bindPopup(`⭐ <b>ワープトンネルの入り口</b>${g[2] ? "（🚦信号あり）" : ""}<br>ここから ${km}km 曲がらずに行けるよ${o.nm ? "<br>" + esc(o.nm) + " など" : ""}`).addTo(warpLayer);
+  }
+  probeReq();
+}
 // 🎯 道・はんい・川の線・スポット：タップしなくても、地図のまんなかの＋が重なっているあいだ 説明を出しっぱなしにする（◎で固定中は出さない）
 const probeTip = L.tooltip({ permanent: true, direction: "top", offset: [0, -6], className: "probeTip", interactive: false }), PROBE_PX = 14;
 let probeT = null, probeOn = false;
@@ -7292,8 +7316,8 @@ function probeText(ly) {
   return typeof c === "function" ? c(ly) : c;
 }
 function probe() {
-  const lys = [...rwLayer.getLayers(), ...rivLayer.getLayers()], nav = follow && me;
-  const pts = [spotLayer, jxLayer, oxLayer, nbLayer].flatMap(g => g.getLayers().filter(x => x instanceof L.Marker));   // スポット・標識の点
+  const lys = [...rwLayer.getLayers(), ...rivLayer.getLayers(), ...warpLayer.getLayers().filter(x => !(x instanceof L.Marker))], nav = follow && me;
+  const pts = [spotLayer, jxLayer, oxLayer, nbLayer, warpLayer].flatMap(g => g.getLayers().filter(x => x instanceof L.Marker));   // スポット・標識の点
   const want = !spotHide && !nav && (lys.length > 0 || pts.length > 0);   // 走っているとき（◎で固定中）は出さない（じゃまなので）
   probeCtr.style.display = want ? "block" : "none";
   if (!want) { if (probeOn) { map.removeLayer(probeTip); probeOn = false; } return; }
@@ -8405,7 +8429,7 @@ $("qList").onclick = e => {
 // ---------- 📍 まわりのスポット（設定でえらんだジャンルだけ、現在地のまわりに出す） ----------
 // データ：hosomichi-data/spots/緯度番号_経度番号.json（0.05°のマス・tools/make_quests.py で作る）
 const SPOT_KINDS = [
-  ["道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"], ["rvside", "〰", "川べりの車の来ない道"]]],
+  ["道", [["navi", "➡", "ナビライン（矢羽根）"], ["blane2", "🟦", "自転車専用通行帯（地図）"], ["cway", "🚲", "自転車道・サイクリングロード"], ["swalk", "🚶", "自転車歩行者道"], ["slow", "🐢", "30km制限の道"], ["rvside", "〰", "川べりの車の来ない道"], ["warp", "🌀", "ワープトンネル（ためし）"]]],
   ["はんい・川", [["river", "〰", "川・水路"], ["bigriver", "🌊", "大きい川の水面"],
     ["apark", "🌳", "公園のはんい"], ["acem", "🪦", "霊園・墓地のはんい"], ["aclosed", "🏫", "学校・工場などの敷地"], ["adanchi", "🏢", "団地のはんい"], ["aparking", "🅿", "駐車場のはんい"]]],
   ["標識", [["oneway", "➡", "一方通行"], ["noroad", "🚧", "通行止め"], ["nocar", "🚫", "車両通行止め"], ["nobike", "🚳", "自転車通行止め"], ["pwalk", "🚶", "歩行者用道路（自転車も）"], ["owexit", "⛔", "一方通行の出口（自転車も）"], ["noent", "🔴", "車両進入禁止"], ["cxban", "✖", "自転車の交差点進入禁止"], ["swok", "🔵", "自転車も通れる歩道"], ["blane", "🟦", "自転車レーン（専用通行帯）"]]],
@@ -8440,7 +8464,7 @@ if (!lsGet("hosomichi_spotsV4", false)) { spotOn.add("owexit"); lsSet("hosomichi
 if (!lsGet("hosomichi_spotsV5", false)) { spotOn.add("pwalk"); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV5", true); }   // 🚶 歩行者用道路も はじめオン
 if (!lsGet("hosomichi_spotsV6", false)) { if (spotOn.has("nobike")) { spotOn.add("noroad"); spotOn.add("nocar"); } lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV6", true); }
 if (!lsGet("hosomichi_spotsV7", false)) { for (const k of ["noent", "cxban", "swok", "blane"]) spotOn.add(k); lsSet("hosomichi_spots", [...spotOn]); lsSet("hosomichi_spotsV7", true); }   // 11/21 警察のデータの標識4つ（はじめオン）   // 🚳 を 通行止め・車両通行止め・自転車通行止め に分けた（前の 🚳 と同じオン・オフ）
-const SPOT_SELF = new Set(["oneway", "noroad", "nocar", "nobike", "pwalk", "owexit", "noent", "cxban", "swok", "blane", "gstep", "steep", "navi", "blane2", "cway", "swalk", "slow", "rvside", "river", "bigriver", "apark", "acem", "aclosed", "adanchi", "aparking"]);
+const SPOT_SELF = new Set(["oneway", "noroad", "nocar", "nobike", "pwalk", "owexit", "noent", "cxban", "swok", "blane", "gstep", "steep", "navi", "blane2", "cway", "swalk", "slow", "rvside", "warp", "river", "bigriver", "apark", "acem", "aclosed", "adanchi", "aparking"]);
 SPOT_SVG.noroad = X_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.nocar = V_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");
 SPOT_SVG.pwalk = PW_SIGN.replace('width="30" height="30"', 'width="16" height="16"').replace("filter:drop-shadow(0 1px 2px #0006)", "");   // スポットのデータではなく、アプリが自分で出すマーク
@@ -8498,6 +8522,7 @@ function spotSw(k) {   // 線・はんいのマークは、地図での色を �
   const ar = (c, f) => `<svg width="18" height="12" style="margin-left:3px"><rect x="1" y="1" width="16" height="10" rx="2" fill="${f || c}" fill-opacity=".35" stroke="${c}" stroke-width="1.5"/></svg>`;
   if (RW_ST[k]) return ln(RW_ST[k].c, RW_ST[k].w, RW_ST[k].d);
   if (k === "river") return ln("#0288d1", 5);
+  if (k === "warp") return ln("#8e24aa", 5);
   if (k === "bigriver") return ar("#0288d1", "#4fc3f7");
   const a = Object.keys(RW_AK).find(x => RW_AK[x] === k); if (a && AREA_K[a]) return ar(AREA_K[a][0]);
   return "";
