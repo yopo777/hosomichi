@@ -119,8 +119,7 @@ function wayNoWhy(t, cfg) {
 //   同じ理由の中は いちばん大きいのだけ（Math.max）、ちがう理由どうしは 足し算：倍率 ＝ 1 ＋ Σ（理由ごとの倍率 − 1）
 //   🚶 ppl 人が多い：歩く道（歩道・歩行者天国）・公園の中・駅の通路・霊園・団地
 //   🚗 car 車が多い：車の道（細い車道・駐車場・一般道・県道・国道。4車線以上は ×1.5）
-//   🪨 rgh 走りにくい：小道・農道・階段・砂利・舗装不明・歩道橋・地下道・🪜階段？・⛰急坂？
-//   🚧 krb 段差・柵：歩道がとなりにある車道
+//   🪨 rgh 走りにくい：小道・農道・階段・砂利・舗装不明・歩道橋・地下道・🪜階段？・⛰急坂？・🚧段差柵（歩道がとなりにある車道。11/25 から 同じ理由に統合）
 //   🏠 prv 入りにくい：私道・家の前・駐車場の中
 //   🚲 bik 自転車道の倍率
 // （前は かけ算で、歩道×3 × 公園×5 ＝ ×15 みたいに 同じ理由を2回数えて きつすぎた）
@@ -476,7 +475,9 @@ function buildGraph(osm, cfg, onProg) {
       inGraph[u] = 1; inGraph[v] = 1;
       const m = swRoad && (swAll || hasSW(u, v)) ? swPen : 1;   // 歩道のある道は避ける（道の倍率と くらべて 大きいほう）
       if (m > 1) swLen += L;
-      const pm = m > 1 ? (whySum(why) + m - 1) * km : pen, rpm = rvK ? (whySum(why) + (m > 1 ? m - 1 : 0) + rvK) * Math.max(1, km) : pm, rg = why.rgh || 1;   // 🚧 段差・柵の分を足す。rpm：⛔ 逆走の分も足し算（通りたいの割引なし）
+      // 🚧 段差・柵は 🪨走りにくい と同じ理由あつかいにした（11/25）：重なったら 大きいほうだけ（足し算ではなく）
+      const rgBase = why.rgh || 1, rg = Math.max(rgBase, m), pm = (whySum(why) - rgBase + rg) * km;
+      const rpm = rvK ? (whySum(why) - rgBase + rg + rvK) * Math.max(1, km) : pm;
       // sm：足し算した倍率（旧街道の分の前）・rg：🪨 走りにくい の倍率（あとで 🪜階段？・⛰急坂？ と くらべる）
       // 〰 川べり（設定がオンのとき）：🚶人が多い（歩く道）の分を数えないで、かわりに ×rivK（へらすほう）。歩道×3 だと ×0.6 しても 住宅街の道（×1）に勝てなかったので
       const isR = rv && rv[i - 1], rk = isR && rivOn ? (whySum(why) - ((why.ppl || 1) - 1) + (m > 1 ? m - 1 : 0)) * km * rivK / pm : 1, rn = isR ? "・川べり" : "";
