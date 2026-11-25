@@ -437,6 +437,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="qToast"></div>
 <div id="cdot" style="position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#000;box-shadow:0 0 0 1.5px #fff;z-index:950;pointer-events:none"></div>
 <button id="fStop" style="display:none;position:absolute;left:50%;bottom:calc(60px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1200;border:none;background:#d93025;color:#fff;border-radius:22px;padding:10px 20px;font-size:16px;font-weight:bold;box-shadow:0 2px 10px #0005">⏹ 計算を止める</button>
+<button id="fGo" style="display:none;position:absolute;left:50%;bottom:calc(60px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1200;border:none;background:#d93025;color:#fff;border-radius:22px;padding:10px 20px;font-size:16px;font-weight:bold;box-shadow:0 2px 10px #0005">🚲 ルートを作る</button>
 <div id="homeD" style="position:absolute;left:50%;bottom:36px;transform:translateX(-50%);z-index:1000;font-size:12px;font-weight:bold;color:#1a73e8;background:#fffffff0;border:1px solid #1a73e8;border-radius:12px;padding:2px 10px;white-space:nowrap;display:none;pointer-events:none"></div>
 <div id="blk" style="position:fixed;inset:0;z-index:5000;background:#000;color:#555;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-size:20px;font-weight:bold;text-align:center;padding:20px;touch-action:none">
   <div id="blkNav"></div><div id="blkAddr" style="font-size:16px"></div><div style="font-size:12px;color:#333;margin-top:20px">タッチで地図にもどるよ</div></div>
@@ -1334,7 +1335,15 @@ function workerReset() {
 }
 // ⏹ メニューをたたんでいても 止められるように、計算中は 地図の下にも「止める」を出す
 $("fStop").onclick = () => $("stop").click();
-setInterval(() => { const b = $("fStop"), on = $("stop").style.display !== "none" && $("go").disabled && $("panel").classList.contains("min"); if (b.style.display !== (on ? "" : "none")) b.style.display = on ? "" : "none"; }, 1000);
+// 🚲 メニューをたたんでいても 作れるように、目的地（or 1周）が決まっていれば 地図の下にも「ルートを作る」を出す
+$("fGo").onclick = () => $("go").click();
+setInterval(() => {
+  const b = $("fStop"), on = $("stop").style.display !== "none" && $("go").disabled && $("panel").classList.contains("min");
+  if (b.style.display !== (on ? "" : "none")) b.style.display = on ? "" : "none";
+  const lk = (() => { try { return loopKm(); } catch { return 0; } })();
+  const g = $("fGo"), gOn = !$("go").disabled && $("panel").classList.contains("min") && (lk || $("to").value.trim() !== "");
+  if (g.style.display !== (gOn ? "" : "none")) g.style.display = gOn ? "" : "none";
+}, 1000);
 $("bResume").onclick = () => {
   audioUnlock(); barMax = 0;
   if (!cur || !cur.resume || $("go").disabled) return;
@@ -3511,10 +3520,15 @@ async function snsOpen() {
   if (GC_SHARED) d.remove();
   else {
     requestAnimationFrame(() => d.classList.add("on")); setTimeout(() => d.classList.remove("on"), 10000); setTimeout(() => d.remove(), 10800);
-    const h = document.createElement("div"); h.id = "helpTop";
-    h.innerHTML = '<button id="helpX" aria-label="とじる">×</button><b>「ほそみちナビ」は自転車で車の少ない道を走るためのアプリです。</b><div style="margin-top:6px">① 上のメニューを「ひらく」<br>② 検索窓から目的地を検索、見つけたら「目的地にする」を選んで「ルートを作る」<br>③ ルートが計算されたら右の「◎」を押してナビ開始</div><div style="margin-top:6px;font-size:11px;color:#9ab">（タップすると消えるよ）</div>';
-    h.onclick = () => h.remove();
-    document.body.appendChild(h);
+    // 🔰 使いかたの案内は 最初の3回だけ（4回目から出さない）
+    const helpN = lsGet("hosomichi_helpN", 0);
+    if (helpN < 3) {
+      lsSet("hosomichi_helpN", helpN + 1);
+      const h = document.createElement("div"); h.id = "helpTop";
+      h.innerHTML = '<button id="helpX" aria-label="とじる">×</button><b>「ほそみちナビ」は自転車で車の少ない道を走るためのアプリです。</b><div style="margin-top:6px">① 上のメニューを「ひらく」<br>② 検索窓から目的地を検索、見つけたら「目的地にする」を選んで「ルートを作る」<br>③ ルートが計算されたら右の「◎」を押してナビ開始</div><div style="margin-top:6px;font-size:11px;color:#9ab">（タップすると消えるよ）</div>';
+      h.onclick = () => h.remove();
+      document.body.appendChild(h);
+    }
   } }
 $("bGpx").onclick = () => {
   const x = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="hosomichi" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>細道ルート</name><trkseg>\n'
