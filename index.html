@@ -132,6 +132,10 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0;display:none}
 #flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 .shLbl{white-space:nowrap;pointer-events:none}.shLbl i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#5f6368;border:2px solid #fff;box-sizing:border-box}
+/* 🔍 周辺検索：タップできる店名の吹き出し */
+.poi-marker{background:transparent;border:0}
+.poi-bubble{position:relative;width:160px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;background:#fff;color:#202124;border:1px solid #d93025;border-radius:8px;padding:5px 8px;font-size:12px;font-weight:600;line-height:18px;box-shadow:0 2px 6px #0004;cursor:pointer}
+.poi-bubble:after{content:"";position:absolute;left:calc(50% - 6px);bottom:-7px;width:10px;height:10px;background:#fff;border-right:1px solid #d93025;border-bottom:1px solid #d93025;transform:rotate(45deg)}
 .shLbl b{position:absolute;left:7px;top:-8px;font-size:11px;color:#333;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}   /* 🔗 共有ルートの 通った所の名前 */
 #ft{position:absolute;top:calc(50% + var(--rb) - 206px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
@@ -217,7 +221,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1126.1052</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1126.1214</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3395,6 +3399,7 @@ function setBase(n) {
 }
 map.attributionControl.setPrefix(false);
 const layer = L.layerGroup().addTo(map);
+const poiLayer = L.layerGroup().addTo(map);   // 🔍 周辺検索の結果
 
 // ---------- 便利関数 ----------
 const RAD = Math.PI / 180;
@@ -3937,7 +3942,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1126.1052", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1126.1214", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6821,12 +6826,55 @@ function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ス
 map.on("contextmenu", e => {   // 長おし（パソコンは右クリック）で「ここを出発・目的地にする」。タップでふいに出ないように
   pinPopup(e.latlng, e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6));
 });
-// 🔍 検索（地名・駅名・住所で地図を動かす）
+// 🔍 地図の表示範囲から周辺施設をさがす（まずは蕎麦屋）
+async function searchNearby(q) {
+  const n = q.normalize("NFKC").replace(/[　\s]/g, "");
+  const kinds = [
+    { re: /^(蕎麦屋|そば屋|そば|蕎麦|おそば|soba)$/i, tag: '["cuisine"~"soba",i]', name: '["name"~"そば|蕎麦",i]', label: "蕎麦屋" }
+  ];
+  const kind = kinds.find(x => x.re.test(n));
+  if (!kind) return false;
+  const b = map.getBounds(), box = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(x => x.toFixed(6)).join(",");
+  poiLayer.clearLayers();
+  setMsg("地図に見えている範囲から さがしているよ…");
+  const query = `[out:json][timeout:20];(nwr["amenity"~"^(restaurant|fast_food|cafe)$"]${kind.tag}(${box});nwr["amenity"~"^(restaurant|fast_food|cafe)$"]${kind.name}(${box}););out center;`;
+  let data = null, last = null;
+  for (const url of ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]) {
+    try {
+      const res = await tfetch(url, { method: "POST", body: "data=" + encodeURIComponent(query), headers: { "Content-Type": "application/x-www-form-urlencoded" } }, 25000);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      data = await res.json(); break;
+    } catch (err) { last = err; addLog("周辺検索失敗: " + err.message, "w"); }
+  }
+  if (!data) throw new Error("周辺検索に失敗したよ。少し待ってから試してね" + (last ? "（" + last.message + "）" : ""));
+  const seen = new Set(), found = [];
+  for (const el of data.elements || []) {
+    const t = el.tags || {}, ll = el.type === "node" ? [el.lat, el.lon] : el.center ? [el.center.lat, el.center.lon] : null;
+    if (!ll || !t.name) continue;
+    const key = el.type + "/" + el.id; if (seen.has(key)) continue; seen.add(key);
+    found.push({ name: t.name, ll, detail: [t.cuisine, t.amenity].filter(Boolean).join("・") });
+  }
+  found.sort((a, b) => hav([map.getCenter().lat, map.getCenter().lng], a.ll) - hav([map.getCenter().lat, map.getCenter().lng], b.ll));
+  for (const p of found) {
+    L.marker(p.ll, { icon: L.divIcon({ className: "poi-marker", html: `<div class="poi-bubble">${esc(p.name)}</div>`, iconSize: [160, 30], iconAnchor: [80, 37] }) })
+      .on("click", () => pinPopup(p.ll, p.name, p.detail || kind.label))
+      .addTo(poiLayer);
+  }
+  if (!found.length) { setMsg(`この地図の範囲に ${kind.label} は見つからなかったよ`, true); return true; }
+  if (follow) setFollow(false);
+  $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+  setMsg(`この地図の範囲で ${found.length}件 見つかったよ（店名の吹き出しを押してね）`);
+  addLog(`🔍 ${kind.label}: ${found.length}件（表示中の地図範囲）`, "ok");
+  return true;
+}
+// 🔍 検索（地名・駅名・住所・周辺施設）
 $("jump").addEventListener("keydown", async e => {
   if (e.key !== "Enter" || e.isComposing) return;
   const t = $("jump").value.trim(); if (!t) return;
   $("jump").blur();
   try {
+    if (await searchNearby(t)) return;
+    poiLayer.clearLayers();
     { const C = await footCityData(); const hit = C ? cityFind(C, t) : [];   // 🏙 市区町村の名前なら、👣足あとと同じ わく（いちばん近い所）
       if (hit.length) { const c0 = map.getCenter(); hit.sort((a, b) => hav([c0.lat, c0.lng], cityCenter(C, a) || [0, 0]) - hav([c0.lat, c0.lng], cityCenter(C, b) || [0, 0])); return cityGo(hit[0], true); } }
     const [ll, name] = await geocode(t);
@@ -8016,7 +8064,7 @@ function spotsTabDraw() {
     + `<span class="hq">?</span><div class="hd">⭐🏠🔒🚫⚠ と、🪜✕（階段じゃない）・🪜✓（階段だった）の印を ぜんぶまとめて、地図をどれくらい引いても出すか決めるよ。いまのレベルだと ズーム${MZ("pt")}から${plv === 4 ? "（いつも＝ズームでは消さないよ）" : ""}。右はしの📍ボタンで かくしているときは レベルに関係なく出さないよ</div></div>`
     + `<div style="font-size:12px;color:#666;margin:2px 0 4px">📌 名前をタップでその場所へ。長おしで名前をかえるよ<span class="hq">?</span><div class="hd">📌 登録した地点の一覧だよ。名前をタップでその場所へ、長おし（パソコンは右クリック）で名前をかえられるよ。つけるのは 地図を長おしから。ぜんぶ この端末の中だけ</div></div>`
     + sec(`⭐ お気に入り ${favs.length}`, "よく行く所。SNSでは消さないよ", newest(favs).map(([q, i]) => row("⭐", q.name || "お気に入り", "f" + i)).join(""))
-    + sec("🏠 家", "SNSでは まわりを消すよ。「家まで約○km」にも使うよ", home ? row("🏠", homeName || "家", "h") : "")
+    + sec("🏠 自宅", "SNSでは まわりを消すよ。「自宅まで約○km」にも使うよ", home ? row("🏠", homeName || "自宅", "h") : "")
     + sec(`🔒 秘密の場所 ${secrets.length}`, "親せきの家・職場など。SNSでは家と同じように まわりを消すよ", newest(secrets).map(([q, i]) => row("🔒", q.name || "秘密の場所", "s" + i)).join(""))
     + sec(`🚫 通れない ${bo.length}`, "いちばん近い道（12m以内）を ルートに使わないよ", bo.map(([b, i]) => row("🚫", b.name || "通れない", "b" + i)).join(""))
     + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", b.name || "通りたくない", "b" + i)).join(""))
