@@ -148,7 +148,7 @@ def spot_address(t):
     """OSM の addr:* タグから住所を作る。住所タグがない施設は空文字。"""
     g = t.get
     full = g("addr:full") or g("addr:full:ja")
-    if full: return re.sub(r"\\s+", " ", full).strip()
+    if full: return re.sub(r"\s+", " ", full).strip()
     parts = []
     for key in ("province", "state", "city", "county", "city_district",
                 "suburb", "quarter", "neighbourhood", "town", "village",
@@ -296,7 +296,9 @@ def main():
     for k, n, ns, imp, addr in wh.pow:   # 面のスポットは、まわりの点の平均（橋は まん中の点）
         ps = [L[x] for x in ns if x in L]
         if not ps: continue
-        if k in MID_KINDS:\n            la, lo = ps[len(ps) // 2]; pts.append((k, n, la, lo, imp))\n            if addr: address_by_spot[(k, n, round(la, 5), round(lo, 5))] = addr
+        if k in MID_KINDS:
+            la, lo = ps[len(ps) // 2]; pts.append((k, n, la, lo, imp))
+            if addr: address_by_spot[(k, n, round(la, 5), round(lo, 5))] = addr
         else:
             la, lo = sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps)
             pts.append((k, n, la, lo, imp))
