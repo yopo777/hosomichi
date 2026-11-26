@@ -6060,9 +6060,20 @@ async function muniTable() {   // 市区町村コード → 名前（地理院�
   } catch {}
   return muni;
 }
-async function addrName(p) {   // 地名（市区町村＋町名）。わからなければ ""（ルート名の placeName とは別）
+async function addrName(p) {   // 地名（市区町村＋町名）。Nominatimを先に使い、失敗時は国土地理院へ
+  const lat = (+p[0]).toFixed(6), lon = (+p[1]).toFixed(6);
+  // 住所検索と同じNominatim経由に統一（1秒間隔の制限も nomiFetch が管理）
   try {
-    const r = await (await tfetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${p[0].toFixed(6)}&lon=${p[1].toFixed(6)}`, {}, 6000)).json();
+    const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=ja`)).json();
+    const a = r.address || {};
+    const parts = [a.state, a.city || a.town || a.village || a.county, a.city_district, a.suburb || a.quarter || a.neighbourhood, a.road, a.house_number].filter(Boolean);
+    const unique = [...new Set(parts)];
+    if (unique.length) return unique.join("");
+    if (r.display_name) return r.display_name.split(",").slice(0, 4).reverse().join("");
+  } catch (e) { console.warn("お気に入り住所(Nominatim):", e); }
+  // Nominatimで取れない場合だけ国土地理院を試す
+  try {
+    const r = await (await tfetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${lat}&lon=${lon}`, {}, 6000)).json();
     const t = r.results; if (!t) return "";
     return ((await muniTable())[+t.muniCd] || "") + (t.lv01Nm && t.lv01Nm !== "－" ? t.lv01Nm : "");
   } catch { return ""; }
