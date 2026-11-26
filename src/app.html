@@ -4021,8 +4021,9 @@ $("jump").addEventListener("keydown", async e => {
   const t = $("jump").value.trim(); if (!t) return;
   $("jump").blur();
   try {
-    if (await searchNearby(t)) return;
     poiLayer.clearLayers();
+    // 🔍 周辺検索（searchNearby）はいったん停止中（11/26）：吹き出しが出しっぱなしで消えない・📍スポット表示と役割がかぶる、のため
+    // if (await searchNearby(t)) return;
     { const C = await footCityData(); const hit = C ? cityFind(C, t) : [];   // 🏙 市区町村の名前なら、👣足あとと同じ わく（いちばん近い所）
       if (hit.length) { const c0 = map.getCenter(); hit.sort((a, b) => hav([c0.lat, c0.lng], cityCenter(C, a) || [0, 0]) - hav([c0.lat, c0.lng], cityCenter(C, b) || [0, 0])); return cityGo(hit[0], true); } }
     const [ll, name] = await geocode(t);
