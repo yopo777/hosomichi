@@ -3983,7 +3983,7 @@ async function searchNearby(q) {
   for (let i = Math.floor(S / SPOT_T); i <= Math.floor(N / SPOT_T); i++)
     for (let j = Math.floor(W / SPOT_T); j <= Math.floor(E / SPOT_T); j++) keys.push(i + "_" + j);
   poiLayer.clearLayers();
-  if (keys.length > 120) {
+  if (keys.length > 60) {
     setMsg("地図の範囲が広すぎるよ。少し拡大してから検索してね", true);
     return true;
   }
