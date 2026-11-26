@@ -143,6 +143,19 @@ def spot_kind(t, is_way=False):
     return None
 DRUG_NM = r"ドラッグ|マツモトキヨシ|マツキヨ|ウエルシア|ウェルシア|welcia|ココカラ|クリエイト|ツルハ|サンドラッグ|スギ薬局|スギドラッグ|カワチ|セイムス|福太郎|コスモス|トモズ|サツドラ|クスリのアオキ|キリン堂|ゲンキー|Vドラッグ|ププレ|ザグザグ|レデイ薬局|くすりの|クスリの|薬王堂|petit madoca|プチマドカ|matsumoto ?kiyoshi|sundrug|tsuruha"
 def famous(t): return 1 if (t.get("wikidata") or t.get("wikipedia")) else 0
+
+def spot_address(t):
+    """OSM の addr:* タグから住所を作る。住所タグがない施設は空文字。"""
+    g = t.get
+    full = g("addr:full") or g("addr:full:ja")
+    if full: return re.sub(r"\\s+", " ", full).strip()
+    parts = []
+    for key in ("province", "state", "city", "county", "city_district",
+                "suburb", "quarter", "neighbourhood", "town", "village",
+                "place", "street", "housenumber", "housename", "unit"):
+        value = (g("addr:" + key) or "").strip()
+        if value and value not in parts: parts.append(value)
+    return "".join(parts)
 QUEST_KINDS = {"jizo", "tree", "spring", "fall", "ichiri", "ferry", "station", "shrine", "temple", "church", "castle", "kofun", "monument", "view", "michi", "sight", "bridge", "bath"}
 
 # ---- 1回目：relation（市区町村の境界・路線）----
@@ -173,7 +186,7 @@ class WayH(osmium.SimpleHandler):
         if w.id in self.need: self.ways[w.id] = [n.ref for n in w.nodes]
         if not w.tags: return
         k = spot_kind(w.tags, True)
-        if k and w.id not in self.seen: self.seen.add(w.id); self.pow.append((k, w.tags.get("name") or "", [n.ref for n in w.nodes], famous(w.tags)))
+        if k and w.id not in self.seen: self.seen.add(w.id); self.pow.append((k, w.tags.get("name") or "", [n.ref for n in w.nodes], famous(w.tags), spot_address(w.tags)))
 
 # ---- 3回目：node（座標・駅・点の神社とお寺）----
 class NodeH(osmium.SimpleHandler):
@@ -190,7 +203,7 @@ class NodeH(osmium.SimpleHandler):
         if not (st or k) or n.id in self.seen: return   # さかい目の点は2つの pbf にある（駅・スポットの点だけおぼえる）
         self.seen.add(n.id)
         if st: self.sta.append((sta_name(n.tags["name"]), la, lo))
-        if k: self.pow.append((k, n.tags.get("name") or "", la, lo, famous(n.tags)))
+        if k: self.pow.append((k, n.tags.get("name") or "", la, lo, famous(n.tags), spot_address(n.tags)))
 
 def rings(way_ids, ways):   # way をつないで輪にする（端と端が同じ node のものをつなぐ）
     segs = [list(ways[w]) for w in way_ids if w in ways and len(ways[w]) > 1]
@@ -249,7 +262,7 @@ def main():
     need_w = {w for _, ms in rh.city.values() for w, _ in ms}
     print("2/3 way（境界の線・面になっているスポット・橋）を読んでるよ…", flush=True)
     wh = WayH(need_w); apply_all(wh, src)
-    need_n = {n for ns in wh.ways.values() for n in ns} | {n for _, _, ns, _ in wh.pow for n in ns}
+    need_n = {n for ns in wh.ways.values() for n in ns} | {n for _, _, ns, _, _ in wh.pow for n in ns}
     need_n |= {n for _, _, ms in rh.route.values() for n, _ in ms}
     print(f"3/3 node（座標 {len(need_n):,}点・駅・スポット）を読んでるよ…", flush=True)
     nh = NodeH(need_n); apply_all(nh, src)
@@ -274,15 +287,20 @@ def main():
     lines.sort(key=lambda x: x[0])
 
     # 市区町村
-    pts = [("station", n, la, lo, 0) for n, la, lo in nh.sta] + nh.pow
+    address_by_spot = {}
+    pts = [("station", n, la, lo, 0) for n, la, lo in nh.sta]
+    for k, n, la, lo, imp, addr in nh.pow:
+        pts.append((k, n, la, lo, imp))
+        if addr: address_by_spot[(k, n, round(la, 5), round(lo, 5))] = addr
     outline = {}   # (ジャンル, 名前, 緯度, 経度) → 外形 [緯度, 経度, 緯度, 経度, …]（まちの建物の面だけ・約20mおき・16点まで）
-    for k, n, ns, imp in wh.pow:   # 面のスポットは、まわりの点の平均（橋は まん中の点）
+    for k, n, ns, imp, addr in wh.pow:   # 面のスポットは、まわりの点の平均（橋は まん中の点）
         ps = [L[x] for x in ns if x in L]
         if not ps: continue
-        if k in MID_KINDS: pts.append((k, n) + ps[len(ps) // 2] + (imp,))
+        if k in MID_KINDS:\n            la, lo = ps[len(ps) // 2]; pts.append((k, n, la, lo, imp))\n            if addr: address_by_spot[(k, n, round(la, 5), round(lo, 5))] = addr
         else:
             la, lo = sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps)
             pts.append((k, n, la, lo, imp))
+            if addr: address_by_spot[(k, n, round(la, 5), round(lo, 5))] = addr
             if k in MACHI_KINDS and len(ps) >= 3:
                 r = thin(ps, 0.0002)
                 if len(r) > 16: r = [r[i * len(r) // 16] for i in range(16)]
@@ -308,7 +326,14 @@ def main():
     for k, n, la, lo, imp in pts:
         if k == "station": continue
         rla, rlo = round(la, 5), round(lo, 5); ol = outline.get((k, n, rla, rlo))
-        tiles[f"{int(la // T)}_{int(lo // T)}"][k].append((n, rla, rlo) + ((1 if imp else 0, ol) if ol else (1,) if imp else ()))
+        base = (n, rla, rlo) + ((1 if imp else 0, ol) if ol else (1,) if imp else ())
+        addr = address_by_spot.get((k, n, rla, rlo), "")
+        if addr:
+            # 5番目は従来どおり外形。住所は6番目に追加（外形なしなら null を入れる）
+            if len(base) == 3: base += (0, None)
+            elif len(base) == 4: base += (None,)
+            base += (addr,)
+        tiles[f"{int(la // T)}_{int(lo // T)}"][k].append(base)
     sdir = os.path.join(out, "spots"); os.makedirs(sdir, exist_ok=True)
     for f in os.listdir(sdir):
         if f.endswith(".json"): os.remove(os.path.join(sdir, f))
