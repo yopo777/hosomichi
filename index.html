@@ -221,7 +221,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1126.1424</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1126.1515</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3942,7 +3942,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1126.1424", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1126.1515", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6797,7 +6797,7 @@ function photoBackBtn() {
   }
   b.style.display = photoBack ? "block" : "none";
 }
-function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ストビュー・🛰航空写真 だけ（🪜⛰マーク用）   // 「ここを 出発にする / 目的地にする」（note：タイトルの下の 小さい説明1行・acts：[{t, col, fn}] いちばん上に足すボタン）
+function pinPopup(ll, v, title, note, acts, only, knownAddr) {   // only：acts と 📷ストビュー・🛰航空写真 だけ（🪜⛰マーク用）   // 「ここを 出発にする / 目的地にする」（note：タイトルの下の 小さい説明1行・acts：[{t, col, fn}] いちばん上に足すボタン・knownAddr：もうわかっている住所。あれば⭐お気に入りで しらべなおさない）
   ll = L.latLng(ll);   // 検索からは [緯度,経度] の配列で来る → ここで LatLng にそろえる（ll.lat が undefined になって ピンが NaN で止まっていた）
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note).replace(/\n/g, "<br>")}</span><br>` : "")
@@ -6817,8 +6817,9 @@ function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ス
     if (ev.target.dataset.fake) { L.DomEvent.stopPropagation(ev); setFake(ev.target.dataset.fake === "1" ? [+ll.lat.toFixed(6), +ll.lng.toFixed(6)] : null); map.closePopup(pop); return; }
     if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); showTab("pts", true); return; }
     if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); showTab("pts", true); return; }
-    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title); map.closePopup(pop); showTab("pts", true); return; }
+    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title, knownAddr); map.closePopup(pop); showTab("pts", true); return; }
     const k = ev.target.dataset.k; if (!k) return;
+    if (v) sugPicked.set(v, [ll.lat, ll.lng]);   // 🔍検索の吹き出しなどから選んだときは、あとでルート計算のとき 名前からさがしなおさず この座標をそのまま使う
     $(k).value = v; $(k).dataset.ll = ll.lat + "," + ll.lng; $(k).dataset.v = v; inPins(); map.closePopup(pop);
     rtLast = "route"; showTab("route", true);   // メニューは開かない（じゃまなので）。「ひらく」を押したとき もう 🚲シンプルが出ているように 中だけ切りかえておく
     setMsg(`${{ from: "出発", via: "経由地", to: "目的地" }[k]}に入れたよ（ひらく→ルートを作る）`); };
@@ -6897,12 +6898,12 @@ async function searchNearby(q) {
     if (ll[0] < S || ll[0] > N || ll[1] < W || ll[1] > E) continue;
     const key = name + "/" + ll[0].toFixed(6) + "/" + ll[1].toFixed(6);
     if (seen.has(key)) continue;
-    seen.add(key); found.push({ name, ll });
+    seen.add(key); found.push({ name, ll, addr: typeof e[5] === "string" ? e[5] : "" });   // addr：make_quests.py が入れた OSMの住所（なければ ""）
   }
   found.sort((a, b) => hav([map.getCenter().lat, map.getCenter().lng], a.ll) - hav([map.getCenter().lat, map.getCenter().lng], b.ll));
   for (const p of found) {
     L.marker(p.ll, { icon: L.divIcon({ className: "poi-marker", html: '<div class="poi-bubble">' + esc(p.name) + '</div>', iconSize: [160, 30], iconAnchor: [80, 37] }) })
-      .on("click", () => pinPopup(p.ll, p.name, p.name))
+      .on("click", () => pinPopup(p.ll, p.name, p.name, p.addr ? "📍 " + p.addr : null, null, false, p.addr))
       .addTo(poiLayer);
   }
   if (!found.length) { setMsg("保存データのこの地図範囲に " + kind.label + " は見つからなかったよ", true); return true; }
@@ -8959,9 +8960,20 @@ async function muniTable() {   // 市区町村コード → 名前（地理院�
   } catch {}
   return muni;
 }
-async function addrName(p) {   // 地名（市区町村＋町名）。わからなければ ""（ルート名の placeName とは別）
+async function addrName(p) {   // 地名（市区町村＋町名）。Nominatimを先に使い、失敗時は国土地理院へ
+  const lat = (+p[0]).toFixed(6), lon = (+p[1]).toFixed(6);
+  // 住所検索と同じNominatim経由に統一（1秒間隔の制限も nomiFetch が管理）
   try {
-    const r = await (await tfetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${p[0].toFixed(6)}&lon=${p[1].toFixed(6)}`, {}, 6000)).json();
+    const r = await (await nomiFetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=ja`)).json();
+    const a = r.address || {};
+    const parts = [a.state, a.city || a.town || a.village || a.county, a.city_district, a.suburb || a.quarter || a.neighbourhood, a.road, a.house_number].filter(Boolean);
+    const unique = [...new Set(parts)];
+    if (unique.length) return unique.join("");
+    if (r.display_name) return r.display_name.split(",").slice(0, 4).reverse().join("");
+  } catch (e) { console.warn("お気に入り住所(Nominatim):", e); }
+  // Nominatimで取れない場合だけ国土地理院を試す
+  try {
+    const r = await (await tfetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${lat}&lon=${lon}`, {}, 6000)).json();
     const t = r.results; if (!t) return "";
     return ((await muniTable())[+t.muniCd] || "") + (t.lv01Nm && t.lv01Nm !== "－" ? t.lv01Nm : "");
   } catch { return ""; }
@@ -9021,9 +9033,9 @@ function drawFavs() {
   favs.forEach((q, i) => L.marker(q.p, { zIndexOffset: 300, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">⭐</div>' }) }).on("click", () => ptPop("f" + i)).addTo(favLayer));   // タップで 名前と ボタン
   try { spotsTabDraw(); } catch {}
 }
-async function addFav(ll, title) {   // title：マークの名前（「🪨 庚申塚」など）。あれば「庚申塚 松戸市○○町○丁目」にする
-  setMsg("⭐ 住所をしらべているよ…");
-  const a = await addrName([ll.lat, ll.lng]).catch(() => "");
+async function addFav(ll, title, knownAddr) {   // title：マークの名前（「🪨 庚申塚」など）。あれば「庚申塚 松戸市○○町○丁目」にする。knownAddr：🔍検索の結果など すでにわかっている住所（あれば しらべなおさない）
+  let a = knownAddr || "";
+  if (!a) { setMsg("⭐ 住所をしらべているよ…"); a = await addrName([ll.lat, ll.lng]).catch(() => ""); }
   const t = (title || "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
   const def = [t, a].filter(Boolean).join(" ");
   const name = prompt(`⭐ お気に入りの名前（はじめは${t ? "名前と住所" : "住所"}だよ。かえてもいいよ）`, def);

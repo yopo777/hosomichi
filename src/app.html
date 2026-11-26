@@ -3898,7 +3898,7 @@ function photoBackBtn() {
   }
   b.style.display = photoBack ? "block" : "none";
 }
-function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ストビュー・🛰航空写真 だけ（🪜⛰マーク用）   // 「ここを 出発にする / 目的地にする」（note：タイトルの下の 小さい説明1行・acts：[{t, col, fn}] いちばん上に足すボタン）
+function pinPopup(ll, v, title, note, acts, only, knownAddr) {   // only：acts と 📷ストビュー・🛰航空写真 だけ（🪜⛰マーク用）   // 「ここを 出発にする / 目的地にする」（note：タイトルの下の 小さい説明1行・acts：[{t, col, fn}] いちばん上に足すボタン・knownAddr：もうわかっている住所。あれば⭐お気に入りで しらべなおさない）
   ll = L.latLng(ll);   // 検索からは [緯度,経度] の配列で来る → ここで LatLng にそろえる（ll.lat が undefined になって ピンが NaN で止まっていた）
   const div = document.createElement("div"); div.className = "pin";
   div.innerHTML = (title ? `<b>${esc(title)}</b><br>` : "") + (note ? `<span style="font-size:11px;color:#666">${esc(note).replace(/\n/g, "<br>")}</span><br>` : "")
@@ -3918,8 +3918,9 @@ function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ス
     if (ev.target.dataset.fake) { L.DomEvent.stopPropagation(ev); setFake(ev.target.dataset.fake === "1" ? [+ll.lat.toFixed(6), +ll.lng.toFixed(6)] : null); map.closePopup(pop); return; }
     if (ev.target.dataset.home) { L.DomEvent.stopPropagation(ev); setHome(L.latLng(ll)); map.closePopup(pop); showTab("pts", true); return; }
     if (ev.target.dataset.sec) { L.DomEvent.stopPropagation(ev); addSecret(L.latLng(ll)); map.closePopup(pop); showTab("pts", true); return; }
-    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title); map.closePopup(pop); showTab("pts", true); return; }
+    if (ev.target.dataset.fav) { L.DomEvent.stopPropagation(ev); addFav(L.latLng(ll), title, knownAddr); map.closePopup(pop); showTab("pts", true); return; }
     const k = ev.target.dataset.k; if (!k) return;
+    if (v) sugPicked.set(v, [ll.lat, ll.lng]);   // 🔍検索の吹き出しなどから選んだときは、あとでルート計算のとき 名前からさがしなおさず この座標をそのまま使う
     $(k).value = v; $(k).dataset.ll = ll.lat + "," + ll.lng; $(k).dataset.v = v; inPins(); map.closePopup(pop);
     rtLast = "route"; showTab("route", true);   // メニューは開かない（じゃまなので）。「ひらく」を押したとき もう 🚲シンプルが出ているように 中だけ切りかえておく
     setMsg(`${{ from: "出発", via: "経由地", to: "目的地" }[k]}に入れたよ（ひらく→ルートを作る）`); };
@@ -3998,12 +3999,12 @@ async function searchNearby(q) {
     if (ll[0] < S || ll[0] > N || ll[1] < W || ll[1] > E) continue;
     const key = name + "/" + ll[0].toFixed(6) + "/" + ll[1].toFixed(6);
     if (seen.has(key)) continue;
-    seen.add(key); found.push({ name, ll });
+    seen.add(key); found.push({ name, ll, addr: typeof e[5] === "string" ? e[5] : "" });   // addr：make_quests.py が入れた OSMの住所（なければ ""）
   }
   found.sort((a, b) => hav([map.getCenter().lat, map.getCenter().lng], a.ll) - hav([map.getCenter().lat, map.getCenter().lng], b.ll));
   for (const p of found) {
     L.marker(p.ll, { icon: L.divIcon({ className: "poi-marker", html: '<div class="poi-bubble">' + esc(p.name) + '</div>', iconSize: [160, 30], iconAnchor: [80, 37] }) })
-      .on("click", () => pinPopup(p.ll, p.name, p.name))
+      .on("click", () => pinPopup(p.ll, p.name, p.name, p.addr ? "📍 " + p.addr : null, null, false, p.addr))
       .addTo(poiLayer);
   }
   if (!found.length) { setMsg("保存データのこの地図範囲に " + kind.label + " は見つからなかったよ", true); return true; }
@@ -6133,9 +6134,9 @@ function drawFavs() {
   favs.forEach((q, i) => L.marker(q.p, { zIndexOffset: 300, icon: L.divIcon({ className: "", iconSize: [0, 0], html: '<div style="transform:translate(-50%,-50%);font-size:17px;text-shadow:0 0 3px #fff,0 0 3px #fff">⭐</div>' }) }).on("click", () => ptPop("f" + i)).addTo(favLayer));   // タップで 名前と ボタン
   try { spotsTabDraw(); } catch {}
 }
-async function addFav(ll, title) {   // title：マークの名前（「🪨 庚申塚」など）。あれば「庚申塚 松戸市○○町○丁目」にする
-  setMsg("⭐ 住所をしらべているよ…");
-  const a = await addrName([ll.lat, ll.lng]).catch(() => "");
+async function addFav(ll, title, knownAddr) {   // title：マークの名前（「🪨 庚申塚」など）。あれば「庚申塚 松戸市○○町○丁目」にする。knownAddr：🔍検索の結果など すでにわかっている住所（あれば しらべなおさない）
+  let a = knownAddr || "";
+  if (!a) { setMsg("⭐ 住所をしらべているよ…"); a = await addrName([ll.lat, ll.lng]).catch(() => ""); }
   const t = (title || "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
   const def = [t, a].filter(Boolean).join(" ");
   const name = prompt(`⭐ お気に入りの名前（はじめは${t ? "名前と住所" : "住所"}だよ。かえてもいいよ）`, def);
