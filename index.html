@@ -221,7 +221,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1126.1316</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1126.1424</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3942,7 +3942,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "__VER__", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1126.1424", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6829,91 +6829,75 @@ map.on("contextmenu", e => {   // 長おし（パソコンは右クリック）�
 // 🔍 地図の表示範囲から周辺施設をさがす（まずは蕎麦屋）
 async function searchNearby(q) {
   const n = q.normalize("NFKC").replace(/[　\s]/g, "").toLowerCase();
-  // 検索語 → OSMタグ。表記ゆれもまとめて扱うよ
+  // tools/make_quests.py で作った spots JSON を検索にも使うよ。
+  // OSMへ毎回問い合わせないので、読み込み済みタイルはキャッシュからすぐ検索できる。
   const kinds = [
-    [/^(蕎麦屋|そば屋|そば|蕎麦|おそば|soba)$/, "蕎麦屋", '["amenity"~"^(restaurant|fast_food)$"]["cuisine"~"soba",i]', '["amenity"~"^(restaurant|fast_food|cafe)$"]["name"~"そば|蕎麦",i]'],
-    [/^(ラーメン|らーめん|らー麺|ramen|つけ麺|つけめん)$/, "ラーメン店", '["amenity"~"^(restaurant|fast_food)$"]["cuisine"~"ramen|noodle",i]', '["amenity"~"^(restaurant|fast_food)$"]["name"~"ラーメン|らーめん|つけ麺",i]'],
-    [/^(寿司|すし|鮨|sushi|回転寿司|回転ずし|回転すし|回転鮨|かいてんずし|かいてん寿司)$/, n.includes("回転") || n.includes("かいてん") ? "回転寿司" : "寿司店", '["amenity"~"^(restaurant|fast_food)$"]["cuisine"~"sushi",i]', '["amenity"~"^(restaurant|fast_food)$"]["name"~"寿司|すし|鮨|スシロー|くら寿司|はま寿司|かっぱ寿司|魚べい|銚子丸|元気寿司|回転",i]'],
-    [/^(刺身|海鮮|海鮮料理|海鮮丼)$/, "海鮮料理店", '["amenity"="restaurant"]["cuisine"~"seafood|fish",i]', '["amenity"="restaurant"]["name"~"海鮮|刺身",i]'],
-    [/^(天ぷら|てんぷら|天丼)$/, "天ぷら店", '["amenity"="restaurant"]["cuisine"~"tempura",i]', '["amenity"="restaurant"]["name"~"天ぷら|天丼",i]'],
-    [/^(とんかつ|豚カツ|トンカツ)$/, "とんかつ店", '["amenity"="restaurant"]["cuisine"~"tonkatsu",i]', '["amenity"="restaurant"]["name"~"とんかつ|トンカツ|豚カツ",i]'],
-    [/^(うなぎ|鰻|うな重)$/, "うなぎ店", '["amenity"="restaurant"]["cuisine"~"unagi",i]', '["amenity"="restaurant"]["name"~"うなぎ|鰻",i]'],
-    [/^(焼き鳥|焼鳥|やきとり)$/, "焼き鳥店", '["amenity"~"^(restaurant|fast_food)$"]["cuisine"~"yakitori",i]', '["amenity"~"^(restaurant|fast_food)$"]["name"~"焼き鳥|焼鳥|やきとり",i]'],
-    [/^(焼肉|焼き肉|やきにく)$/, "焼肉店", '["amenity"="restaurant"]["cuisine"~"yakiniku|barbecue",i]', '["amenity"="restaurant"]["name"~"焼肉|焼き肉",i]'],
-    [/^(しゃぶしゃぶ|すき焼き|すきやき)$/, "しゃぶしゃぶ・すき焼き店", '["amenity"="restaurant"]["cuisine"~"shabu|sukiyaki",i]', '["amenity"="restaurant"]["name"~"しゃぶしゃぶ|すき焼き|すきやき",i]'],
-    [/^(うどん|饂飩|udon)$/, "うどん店", '["amenity"~"^(restaurant|fast_food)$"]["cuisine"~"udon",i]', '["amenity"~"^(restaurant|fast_food)$"]["name"~"うどん",i]'],
-    [/^(定食|定食屋|食堂)$/, "定食・食堂", '["amenity"="restaurant"]["cuisine"~"japanese",i]', '["amenity"="restaurant"]["name"~"定食|食堂",i]'],
-    [/^(丼もの|丼|牛丼|親子丼|かつ丼)$/, "丼もの店", '["amenity"~"^(restaurant|fast_food)$"]["cuisine"~"donburi|beef_bowl",i]', '["amenity"~"^(restaurant|fast_food)$"]["name"~"丼|牛丼|親子丼|かつ丼",i]'],
-    [/^(お好み焼き|おこのみやき|もんじゃ焼き|もんじゃ)$/, "お好み焼き・もんじゃ店", '["amenity"="restaurant"]["cuisine"~"okonomiyaki|monjayaki",i]', '["amenity"="restaurant"]["name"~"お好み焼き|もんじゃ",i]'],
-    [/^(たこ焼き|たこやき)$/, "たこ焼き店", '["amenity"="fast_food"]["cuisine"~"takoyaki",i]', '["amenity"~"^(restaurant|fast_food)$"]["name"~"たこ焼き|たこやき",i]'],
-    [/^(ハンバーグ|ステーキ|洋食)$/, n, '["amenity"="restaurant"]["cuisine"~"steak|burger|western",i]', '["amenity"="restaurant"]["name"~"ハンバーグ|ステーキ|洋食",i]'],
-    [/^(イタリアン|フレンチ|パスタ|ピザ|ピッツァ)$/, n, '["amenity"="restaurant"]["cuisine"~"italian|french|pasta|pizza",i]', '["amenity"="restaurant"]["name"~"イタリアン|フレンチ|パスタ|ピザ",i]'],
-    [/^(ハンバーガー|hamburger|バーガー)$/, "ハンバーガー店", '["amenity"~"^(restaurant|fast_food)$"]["cuisine"~"burger",i]', '["amenity"~"^(restaurant|fast_food)$"]["name"~"バーガー|ハンバーガー|マクドナルド|モスバーガー|ロッテリア|バーガーキング",i]'],
-    [/^(カレー|カレーライス|curry)$/, "カレー店", '["amenity"~"^(restaurant|fast_food)$"]["cuisine"~"curry|indian",i]', '["amenity"~"^(restaurant|fast_food)$"]["name"~"カレー",i]'],
-    [/^(インド料理|中華料理|韓国料理|タイ料理|ベトナム料理|メキシコ料理)$/, n, '["amenity"="restaurant"]["cuisine"~"indian|chinese|korean|thai|vietnamese|mexican",i]', '["amenity"="restaurant"]["name"~"インド|中華|韓国|タイ|ベトナム|メキシコ",i]'],
-    [/^(ファミレス|ファミリーレストラン)$/, "ファミリーレストラン", '["amenity"="restaurant"]["name"~"ガスト|サイゼリヤ|デニーズ|ジョナサン|ココス|ロイヤルホスト|ビッグボーイ|びっくりドンキー",i]'],
-    [/^(ファストフード|ファーストフード)$/, "ファストフード", '["amenity"="fast_food"]'],
-    [/^(弁当|弁当屋|お弁当)$/, "弁当店", '["shop"="deli"]', '["name"~"弁当|ほっともっと|オリジン|ほっかほっか亭",i]'],
-    [/^(おにぎり|おむすび|サンドイッチ)$/, n, '["shop"="deli"]', '["name"~"おにぎり|おむすび|サンドイッチ",i]'],
-    [/^(パン屋|パン|ベーカリー|bread)$/, "パン屋", '["shop"="bakery"]'],
-    [/^(ケーキ屋|ケーキ|洋菓子)$/, "ケーキ・洋菓子店", '["shop"="pastry"]', '["shop"="confectionery"]'],
-    [/^(和菓子)$/, "和菓子店", '["shop"="confectionery"]', '["name"~"和菓子|だんご|団子",i]'],
-    [/^(アイスクリーム|アイス)$/, "アイスクリーム店", '["amenity"="ice_cream"]', '["shop"="ice_cream"]'],
-    [/^(カフェ|喫茶店|コーヒー|coffee)$/, "カフェ・喫茶店", '["amenity"="cafe"]'],
-    [/^(居酒屋)$/, "居酒屋", '["amenity"="pub"]', '["amenity"="bar"]'],
-    [/^(バー)$/, "バー", '["amenity"="bar"]'],
-    [/^(コンビニ|コンビニエンスストア)$/, "コンビニ", '["shop"="convenience"]'],
-    [/^(スーパー|スーパーマーケット)$/, "スーパー", '["shop"="supermarket"]'],
-    [/^(ディスカウントストア|ディスカウントショップ)$/, "ディスカウントストア", '["shop"="discount"]'],
-    [/^(ドラッグストア|薬局|くすりや)$/, n === "薬局" ? "薬局" : "ドラッグストア", '["shop"~"^(chemist|pharmacy)$"]'],
-    [/^(ホームセンター)$/, "ホームセンター", '["shop"="doityourself"]'],
-    [/^(家電量販店|電気店)$/, "家電量販店", '["shop"="electronics"]'],
-    [/^(100円ショップ|百円ショップ|百均)$/, "100円ショップ", '["shop"="variety_store"]', '["name"~"ダイソー|セリア|キャンドゥ|ワッツ",i]'],
-    [/^(本屋|書店)$/, "本屋", '["shop"="books"]'],
-    [/^(文房具店|文具店)$/, "文房具店", '["shop"="stationery"]'],
-    [/^(花屋|生花店)$/, "花屋", '["shop"="florist"]'],
-    [/^(肉屋|精肉店)$/, "肉屋", '["shop"="butcher"]'],
-    [/^(魚屋|鮮魚店)$/, "魚屋", '["shop"="seafood"]'],
-    [/^(八百屋|青果店)$/, "八百屋", '["shop"="greengrocer"]'],
-    [/^(酒屋)$/, "酒屋", '["shop"="alcohol"]'],
-    [/^(コインランドリー|ランドリー)$/, "コインランドリー", '["shop"="laundry"]', '["amenity"="laundry"]'],
-    [/^(公衆トイレ|トイレ|お手洗い)$/, "公衆トイレ", '["amenity"="toilets"]'],
-    [/^(公園)$/, "公園", '["leisure"="park"]'],
-    [/^(駐車場)$/, "駐車場", '["amenity"="parking"]'],
-    [/^(駐輪場)$/, "駐輪場", '["amenity"="bicycle_parking"]'],
-    [/^(ガソリンスタンド|給油所)$/, "ガソリンスタンド", '["amenity"="fuel"]'],
-    [/^(病院)$/, "病院", '["amenity"="hospital"]'],
-    [/^(歯医者|歯科)$/, "歯医者", '["amenity"="dentist"]'],
-    [/^(郵便局)$/, "郵便局", '["amenity"="post_office"]'],
-    [/^(銀行)$/, "銀行", '["amenity"="bank"]'],
-    [/^(atm)$/, "ATM", '["amenity"="atm"]'],
-    [/^(駅)$/, "駅", '["railway"="station"]'],
-    [/^(図書館)$/, "図書館", '["amenity"="library"]'],
-    [/^(温泉|銭湯)$/, n, '["amenity"="public_bath"]', '["leisure"="water_park"]']
+    [/^(蕎麦屋|そば屋|そば|蕎麦|おそば|soba)$/, "蕎麦屋", ["soba"]],
+    [/^(ラーメン|らーめん|らー麺|ramen|つけ麺|つけめん)$/, "ラーメン店", ["ramen"]],
+    [/^(寿司|すし|鮨|sushi|回転寿司|回転ずし|回転すし|回転鮨|かいてんずし|かいてん寿司)$/, n.includes("回転") || n.includes("かいてん") ? "回転寿司" : "寿司店", ["sushi"], n.includes("回転") || n.includes("かいてん") ? /スシロー|くら寿司|はま寿司|かっぱ寿司|魚べい|銚子丸|元気寿司|回転/ : null],
+    [/^(ファミレス|ファミリーレストラン)$/, "ファミリーレストラン", ["restaurant"], /ガスト|サイゼリヤ|デニーズ|ジョナサン|ココス|ロイヤルホスト|ビッグボーイ|びっくりドンキー|バーミヤン|夢庵|華屋与兵衛|和食さと|ステーキガスト|ジョリーパスタ|不二家レストラン|ブロンコビリー|フライングガーデン|とんでん/],
+    [/^(ファストフード|ファーストフード)$/, "ファストフード", ["restaurant", "burger", "ramen"], /マクドナルド|モスバーガー|ロッテリア|バーガーキング|ケンタッキー|吉野家|すき家|松屋|なか卯|ミスタードーナツ|サブウェイ|フレッシュネス/],
+    [/^(刺身|海鮮|海鮮料理|海鮮丼|天ぷら|てんぷら|天丼|とんかつ|豚カツ|トンカツ|うなぎ|鰻|うな重|焼き鳥|焼鳥|やきとり|焼肉|焼き肉|やきにく|しゃぶしゃぶ|すき焼き|すきやき|うどん|饂飩|udon|定食|定食屋|食堂|丼もの|丼|牛丼|親子丼|かつ丼|お好み焼き|おこのみやき|もんじゃ焼き|もんじゃ|たこ焼き|たこやき)$/, "飲食店", ["teishoku", "restaurant"], /海鮮|刺身|天ぷら|天丼|とんかつ|トンカツ|豚カツ|うなぎ|鰻|焼き鳥|焼鳥|やきとり|焼肉|しゃぶしゃぶ|すき焼き|うどん|饂飩|定食|食堂|丼|牛丼|親子丼|かつ丼|お好み焼き|もんじゃ|たこ焼き|たこやき/],
+    [/^(ハンバーグ|ステーキ|洋食|イタリアン|フレンチ|パスタ|ピザ|ピッツァ)$/, "洋食・イタリアン", ["western", "restaurant"], /ハンバーグ|ステーキ|洋食|イタリアン|フレンチ|パスタ|ピザ|ピッツァ|トラットリア|ビストロ/],
+    [/^(ハンバーガー|hamburger|バーガー)$/, "ハンバーガー店", ["burger", "restaurant"], /バーガー|ハンバーガー|マクドナルド|モスバーガー|ロッテリア|バーガーキング/],
+    [/^(カレー|カレーライス|curry|インド料理|中華料理|韓国料理|タイ料理|ベトナム料理|メキシコ料理)$/, "カレー・各国料理", ["curry", "chinese", "restaurant"], /カレー|インド|ネパール|中華|餃子|韓国|タイ|ベトナム|メキシコ/],
+    [/^(弁当|弁当屋|お弁当|おにぎり|おむすび|サンドイッチ)$/, "弁当・おにぎり店", ["restaurant", "conv"], /弁当|ほっともっと|オリジン|ほっかほっか亭|おにぎり|おむすび|サンドイッチ/],
+    [/^(パン屋|パン|ベーカリー|bread)$/, "パン屋", ["bakery"]],
+    [/^(ケーキ屋|ケーキ|洋菓子|和菓子|アイスクリーム|アイス)$/, "お菓子・アイス", ["sweets"]],
+    [/^(カフェ|喫茶店|コーヒー|coffee)$/, "カフェ・喫茶店", ["cafe"]],
+    [/^(居酒屋)$/, "居酒屋", ["restaurant"], /居酒屋|酒場|炉端|鳥貴族|磯丸水産|魚民|白木屋|笑笑|目利きの銀次|庄や|はなの舞/],
+    [/^(バー)$/, "バー", ["restaurant"], /バー|BAR/],
+    [/^(コンビニ|コンビニエンスストア)$/, "コンビニ", ["conv"]],
+    [/^(スーパー|スーパーマーケット)$/, "スーパー", []],
+    [/^(ディスカウントストア|ディスカウントショップ)$/, "ディスカウントストア", [], /ドン・キホーテ|ＭＥＧＡドンキ|業務スーパー|ロピア|トライアル/],
+    [/^(ドラッグストア|薬局|くすりや)$/, n === "薬局" ? "薬局" : "ドラッグストア", ["drug"]],
+    [/^(ホームセンター)$/, "ホームセンター", [], /カインズ|コーナン|ビバホーム|ケーヨー|ＤＣＭ|ジョイフル本田|コメリ/],
+    [/^(家電量販店|電気店)$/, "家電量販店", [], /ヤマダ|ビックカメラ|ヨドバシ|ケーズデンキ|ノジマ|エディオン|コジマ/],
+    [/^(100円ショップ|百円ショップ|百均)$/, "100円ショップ", [], /ダイソー|セリア|キャンドゥ|ワッツ/],
+    [/^(本屋|書店)$/, "本屋・書店", []],
+    [/^(文房具店|文具店)$/, "文房具店", []],
+    [/^(花屋|生花店)$/, "花屋", []],
+    [/^(肉屋|精肉店|魚屋|鮮魚店|八百屋|青果店|酒屋)$/, "食品店", []],
+    [/^(コインランドリー|ランドリー)$/, "コインランドリー", []],
+    [/^(公衆トイレ|トイレ|お手洗い)$/, "公衆トイレ", ["toilet"]],
+    [/^(公園)$/, "公園", ["park"]],
+    [/^(駐車場)$/, "駐車場", ["aparking"]],
+    [/^(駐輪場)$/, "駐輪場", ["bikepark"]],
+    [/^(ガソリンスタンド|給油所)$/, "ガソリンスタンド", [], /ＥＮＥＯＳ|エネオス|出光|コスモ石油|apollostation|ガソリン/],
+    [/^(病院)$/, "病院", ["hospital"]],
+    [/^(歯医者|歯科)$/, "歯医者", [], /歯科|デンタル/],
+    [/^(郵便局)$/, "郵便局", ["post"]],
+    [/^(銀行)$/, "銀行", []],
+    [/^(atm)$/, "ATM", []],
+    [/^(駅)$/, "駅", []],
+    [/^(図書館)$/, "図書館", ["library"]],
+    [/^(温泉|銭湯)$/, "温泉・銭湯", ["bath"]]
   ];
   const hit = kinds.find(x => x[0].test(n));
   if (!hit) return false;
-  const kind = { label: hit[1] };
-  const b = map.getBounds(), box = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(x => x.toFixed(6)).join(",");
+  const kind = { label: hit[1], keys: hit[2], nameRe: hit[3] || null };
+  if (!kind.keys.length) { poiLayer.clearLayers(); setMsg(kind.label + " は、いまの保存データには入っていないよ", true); return true; }
+  const b = map.getBounds(), S = b.getSouth(), N = b.getNorth(), W = b.getWest(), E = b.getEast();
+  const keys = [];
+  for (let i = Math.floor(S / SPOT_T); i <= Math.floor(N / SPOT_T); i++)
+    for (let j = Math.floor(W / SPOT_T); j <= Math.floor(E / SPOT_T); j++) keys.push(i + "_" + j);
   poiLayer.clearLayers();
-  setMsg("地図に見えている範囲から さがしているよ…");
-  const selectors = hit.slice(2).filter(Boolean).map(tag => "nwr" + tag + "(" + box + ");").join("");
-  const query = "[out:json][timeout:20];(" + selectors + ");out center;";
-  let data = null, last = null;
-  for (const url of ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]) {
-    try {
-      const res = await tfetch(url, { method: "POST", body: "data=" + encodeURIComponent(query), headers: { "Content-Type": "application/x-www-form-urlencoded" } }, 25000);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      data = await res.json(); break;
-    } catch (err) { last = err; addLog("周辺検索失敗: " + err.message, "w"); }
+  if (keys.length > 60) {
+    setMsg("地図の範囲が広すぎるよ。少し拡大してから検索してね", true);
+    return true;
   }
-  if (!data) throw new Error("周辺検索に失敗したよ。少し待ってから試してね" + (last ? "（" + last.message + "）" : ""));
+  setMsg("保存してある施設データから さがしているよ…");
+  const tiles = await Promise.all(keys.map(spotTile));
   const seen = new Set(), found = [];
-  for (const el of data.elements || []) {
-    const t = el.tags || {}, ll = el.type === "node" ? [el.lat, el.lon] : el.center ? [el.center.lat, el.center.lon] : null;
-    if (!ll || !t.name) continue;
-    const key = el.type + "/" + el.id; if (seen.has(key)) continue; seen.add(key);
-    found.push({ name: t.name, ll, detail: [t.cuisine, t.amenity, t.shop, t.leisure].filter(Boolean).join("・") });
+  for (const tile of tiles) for (const k of kind.keys) for (const e of tile[k] || []) {
+    if (!Array.isArray(e) || !Number.isFinite(e[1]) || !Number.isFinite(e[2])) continue;
+    const name = e[0] || "";
+    if (!name || (kind.nameRe && !kind.nameRe.test(name))) continue;
+    const ll = [e[1], e[2]];
+    if (ll[0] < S || ll[0] > N || ll[1] < W || ll[1] > E) continue;
+    const key = name + "/" + ll[0].toFixed(6) + "/" + ll[1].toFixed(6);
+    if (seen.has(key)) continue;
+    seen.add(key); found.push({ name, ll });
   }
   found.sort((a, b) => hav([map.getCenter().lat, map.getCenter().lng], a.ll) - hav([map.getCenter().lat, map.getCenter().lng], b.ll));
   for (const p of found) {
@@ -6921,13 +6905,14 @@ async function searchNearby(q) {
       .on("click", () => pinPopup(p.ll, p.name, p.name))
       .addTo(poiLayer);
   }
-  if (!found.length) { setMsg("この地図の範囲に " + kind.label + " は見つからなかったよ", true); return true; }
+  if (!found.length) { setMsg("保存データのこの地図範囲に " + kind.label + " は見つからなかったよ", true); return true; }
   if (follow) setFollow(false);
   $("panel").classList.add("min"); $("tog").textContent = "ひらく";
-  setMsg("この地図の範囲で " + found.length + "件 見つかったよ（店名の吹き出しを押してね）");
-  addLog("🔍 " + kind.label + ": " + found.length + "件（表示中の地図範囲）", "ok");
+  setMsg("保存データから " + found.length + "件 見つかったよ（店名の吹き出しを押してね）");
+  addLog("🔍 " + kind.label + ": " + found.length + "件（保存済み・表示中の地図範囲）", "ok");
   return true;
 }
+
 // 🔍 検索（地名・駅名・住所・周辺施設）
 $("jump").addEventListener("keydown", async e => {
   if (e.key !== "Enter" || e.isComposing) return;
