@@ -496,6 +496,7 @@ function setBase(n) {
 }
 map.attributionControl.setPrefix(false);
 const layer = L.layerGroup().addTo(map);
+const poiLayer = L.layerGroup().addTo(map);   // 🔍 周辺検索の結果
 
 // ---------- 便利関数 ----------
 const RAD = Math.PI / 180;
@@ -3922,12 +3923,56 @@ function pinPopup(ll, v, title, note, acts, only) {   // only：acts と 📷ス
 map.on("contextmenu", e => {   // 長おし（パソコンは右クリック）で「ここを出発・目的地にする」。タップでふいに出ないように
   pinPopup(e.latlng, e.latlng.lat.toFixed(6) + "," + e.latlng.lng.toFixed(6));
 });
-// 🔍 検索（地名・駅名・住所で地図を動かす）
+// 🔍 地図の表示範囲から周辺施設をさがす（まずは蕎麦屋）
+async function searchNearby(q) {
+  const n = q.normalize("NFKC").replace(/[　\s]/g, "");
+  const kinds = [
+    { re: /^(蕎麦屋|そば屋|そば|蕎麦|おそば|soba)$/i, tag: '["cuisine"~"soba",i]', name: '["name"~"そば|蕎麦",i]', label: "蕎麦屋" }
+  ];
+  const kind = kinds.find(x => x.re.test(n));
+  if (!kind) return false;
+  const b = map.getBounds(), box = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(x => x.toFixed(6)).join(",");
+  poiLayer.clearLayers();
+  setMsg("地図に見えている範囲から さがしているよ…");
+  const query = `[out:json][timeout:20];(nwr["amenity"~"^(restaurant|fast_food|cafe)$"]${kind.tag}(${box});nwr["amenity"~"^(restaurant|fast_food|cafe)$"]${kind.name}(${box}););out center 80;`;
+  let data = null, last = null;
+  for (const url of ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]) {
+    try {
+      const res = await tfetch(url, { method: "POST", body: "data=" + encodeURIComponent(query), headers: { "Content-Type": "application/x-www-form-urlencoded" } }, 25000);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      data = await res.json(); break;
+    } catch (err) { last = err; addLog("周辺検索失敗: " + err.message, "w"); }
+  }
+  if (!data) throw new Error("周辺検索に失敗したよ。少し待ってから試してね" + (last ? "（" + last.message + "）" : ""));
+  const seen = new Set(), found = [];
+  for (const el of data.elements || []) {
+    const t = el.tags || {}, ll = el.type === "node" ? [el.lat, el.lon] : el.center ? [el.center.lat, el.center.lon] : null;
+    if (!ll || !t.name) continue;
+    const key = el.type + "/" + el.id; if (seen.has(key)) continue; seen.add(key);
+    found.push({ name: t.name, ll, detail: [t.cuisine, t.amenity].filter(Boolean).join("・") });
+  }
+  found.sort((a, b) => hav([map.getCenter().lat, map.getCenter().lng], a.ll) - hav([map.getCenter().lat, map.getCenter().lng], b.ll));
+  for (const p of found) {
+    L.circleMarker(p.ll, { radius: 7, color: "#fff", weight: 2, fillColor: "#d93025", fillOpacity: .95 })
+      .bindTooltip(p.name, { direction: "top" })
+      .on("click", () => pinPopup(p.ll, p.name, p.detail || kind.label))
+      .addTo(poiLayer);
+  }
+  if (!found.length) { setMsg(`この地図の範囲に ${kind.label} は見つからなかったよ`, true); return true; }
+  if (follow) setFollow(false);
+  $("panel").classList.add("min"); $("tog").textContent = "ひらく";
+  setMsg(`この地図の範囲で ${found.length}件 見つかったよ（赤い点を押してね）`);
+  addLog(`🔍 ${kind.label}: ${found.length}件（表示中の地図範囲）`, "ok");
+  return true;
+}
+// 🔍 検索（地名・駅名・住所・周辺施設）
 $("jump").addEventListener("keydown", async e => {
   if (e.key !== "Enter" || e.isComposing) return;
   const t = $("jump").value.trim(); if (!t) return;
   $("jump").blur();
   try {
+    if (await searchNearby(t)) return;
+    poiLayer.clearLayers();
     { const C = await footCityData(); const hit = C ? cityFind(C, t) : [];   // 🏙 市区町村の名前なら、👣足あとと同じ わく（いちばん近い所）
       if (hit.length) { const c0 = map.getCenter(); hit.sort((a, b) => hav([c0.lat, c0.lng], cityCenter(C, a) || [0, 0]) - hav([c0.lat, c0.lng], cityCenter(C, b) || [0, 0])); return cityGo(hit[0], true); } }
     const [ll, name] = await geocode(t);
