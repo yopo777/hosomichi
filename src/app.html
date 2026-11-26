@@ -5117,7 +5117,7 @@ function spotsTabDraw() {
     + `<span class="hq">?</span><div class="hd">⭐🏠🔒🚫⚠ と、🪜✕（階段じゃない）・🪜✓（階段だった）の印を ぜんぶまとめて、地図をどれくらい引いても出すか決めるよ。いまのレベルだと ズーム${MZ("pt")}から${plv === 4 ? "（いつも＝ズームでは消さないよ）" : ""}。右はしの📍ボタンで かくしているときは レベルに関係なく出さないよ</div></div>`
     + `<div style="font-size:12px;color:#666;margin:2px 0 4px">📌 名前をタップでその場所へ。長おしで名前をかえるよ<span class="hq">?</span><div class="hd">📌 登録した地点の一覧だよ。名前をタップでその場所へ、長おし（パソコンは右クリック）で名前をかえられるよ。つけるのは 地図を長おしから。ぜんぶ この端末の中だけ</div></div>`
     + sec(`⭐ お気に入り ${favs.length}`, "よく行く所。SNSでは消さないよ", newest(favs).map(([q, i]) => row("⭐", q.name || "お気に入り", "f" + i)).join(""))
-    + sec("🏠 家", "SNSでは まわりを消すよ。「家まで約○km」にも使うよ", home ? row("🏠", homeName || "家", "h") : "")
+    + sec("🏠 自宅", "SNSでは まわりを消すよ。「自宅まで約○km」にも使うよ", home ? row("🏠", homeName || "自宅", "h") : "")
     + sec(`🔒 秘密の場所 ${secrets.length}`, "親せきの家・職場など。SNSでは家と同じように まわりを消すよ", newest(secrets).map(([q, i]) => row("🔒", q.name || "秘密の場所", "s" + i)).join(""))
     + sec(`🚫 通れない ${bo.length}`, "いちばん近い道（12m以内）を ルートに使わないよ", bo.map(([b, i]) => row("🚫", b.name || "通れない", "b" + i)).join(""))
     + sec(`⚠ 通りたくない ${ba.length}`, "いちばん近い道を まるごと避けるよ（どれくらいかは ⚙設定 → 🚲道の好み）", ba.map(([b, i]) => row("⚠️", b.name || "通りたくない", "b" + i)).join(""))
