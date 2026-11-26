@@ -132,6 +132,9 @@ body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0;display:none}
 #flr small{position:absolute;right:-6px;left:-6px;bottom:-15px;text-align:center;font-size:10px;color:#333;text-shadow:0 0 3px #fff;white-space:nowrap}
 .shLbl{white-space:nowrap;pointer-events:none}.shLbl i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#5f6368;border:2px solid #fff;box-sizing:border-box}
+/* 🔍 周辺検索：店名を地図上の吹き出しで表示 */
+.leaflet-tooltip.poi-tip{background:#fff;color:#202124;border:1px solid #d93025;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;line-height:1.25;box-shadow:0 2px 6px #0004;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.leaflet-tooltip.poi-tip:before{border-top-color:#d93025}
 .shLbl b{position:absolute;left:7px;top:-8px;font-size:11px;color:#333;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}   /* 🔗 共有ルートの 通った所の名前 */
 #ft{position:absolute;top:calc(50% + var(--rb) - 206px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;font-size:18px;padding:0}
@@ -3934,7 +3937,7 @@ async function searchNearby(q) {
   const b = map.getBounds(), box = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(x => x.toFixed(6)).join(",");
   poiLayer.clearLayers();
   setMsg("地図に見えている範囲から さがしているよ…");
-  const query = `[out:json][timeout:20];(nwr["amenity"~"^(restaurant|fast_food|cafe)$"]${kind.tag}(${box});nwr["amenity"~"^(restaurant|fast_food|cafe)$"]${kind.name}(${box}););out center 80;`;
+  const query = `[out:json][timeout:20];(nwr["amenity"~"^(restaurant|fast_food|cafe)$"]${kind.tag}(${box});nwr["amenity"~"^(restaurant|fast_food|cafe)$"]${kind.name}(${box}););out center;`;
   let data = null, last = null;
   for (const url of ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]) {
     try {
@@ -3953,15 +3956,15 @@ async function searchNearby(q) {
   }
   found.sort((a, b) => hav([map.getCenter().lat, map.getCenter().lng], a.ll) - hav([map.getCenter().lat, map.getCenter().lng], b.ll));
   for (const p of found) {
-    L.circleMarker(p.ll, { radius: 7, color: "#fff", weight: 2, fillColor: "#d93025", fillOpacity: .95 })
-      .bindTooltip(p.name, { direction: "top" })
+    L.circleMarker(p.ll, { radius: 6, color: "#fff", weight: 2, fillColor: "#d93025", fillOpacity: .95 })
+      .bindTooltip(esc(p.name), { permanent: true, direction: "top", offset: [0, -7], opacity: 1, className: "poi-tip" })
       .on("click", () => pinPopup(p.ll, p.name, p.detail || kind.label))
       .addTo(poiLayer);
   }
   if (!found.length) { setMsg(`この地図の範囲に ${kind.label} は見つからなかったよ`, true); return true; }
   if (follow) setFollow(false);
   $("panel").classList.add("min"); $("tog").textContent = "ひらく";
-  setMsg(`この地図の範囲で ${found.length}件 見つかったよ（赤い点を押してね）`);
+  setMsg(`この地図の範囲で ${found.length}件 見つかったよ（店名の吹き出しを押してね）`);
   addLog(`🔍 ${kind.label}: ${found.length}件（表示中の地図範囲）`, "ok");
   return true;
 }
