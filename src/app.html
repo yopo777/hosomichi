@@ -4019,7 +4019,7 @@ async function searchNearby(q) {
   found.sort((a, b) => hav([map.getCenter().lat, map.getCenter().lng], a.ll) - hav([map.getCenter().lat, map.getCenter().lng], b.ll));
   for (const p of found) {
     L.marker(p.ll, { icon: L.divIcon({ className: "poi-marker", html: '<div class="poi-bubble">' + esc(p.name) + '</div>', iconSize: [160, 30], iconAnchor: [80, 37] }) })
-      .on("click", () => pinPopup(p.ll, p.name, p.detail || kind.label))
+      .on("click", () => pinPopup(p.ll, p.name, p.name))
       .addTo(poiLayer);
   }
   if (!found.length) { setMsg("この地図の範囲に " + kind.label + " は見つからなかったよ", true); return true; }
