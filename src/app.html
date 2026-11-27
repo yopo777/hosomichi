@@ -465,9 +465,34 @@ const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;"
 // ---------- 地図 ----------
 // 出典の表示は必要（地理院タイル・OpenStreetMap）。まちがえて開かないようにリンクにはしない
 const attr = '地理院タイル | 経路 &copy; OpenStreetMap contributors';
+// 🚲 CyclOSM：見た所だけ ブラウザにためる（先読みはしない・OSMのサーバーにやさしく）。ためたタイルは 電波が弱いときに先に出す
+const CYC_URL = "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png";
+let cycC = null, cycPuts = 0;
+const cycCache = () => cycC || (cycC = (window.caches ? caches.open("hosomichi-cyclosm-v1") : Promise.resolve(null)).catch(() => null));
+const CycTiles = L.TileLayer.extend({
+  createTile(coords, done) {
+    const img = document.createElement("img"); img.alt = ""; img.setAttribute("role", "presentation");
+    const u = this.getTileUrl(coords);
+    img.onload = () => done(null, img);
+    img.onerror = () => done(new Error("tile"), img);
+    (async () => {
+      const c = await cycCache();
+      let blob = null;
+      const hit = c ? await c.match(u).catch(() => null) : null;
+      if (hit) blob = await hit.blob();
+      else {
+        try { const r = await fetch(u, { mode: "cors" }); if (r.ok) { blob = await r.blob(); if (c) { c.put(u, new Response(blob)).catch(() => {}); if (++cycPuts % 100 === 0) trimCyc(c); } } } catch {}
+      }
+      if (!blob) return img.onerror();
+      img._u = URL.createObjectURL(blob); img.src = img._u;
+    })();
+    return img;
+  }
+});
+async function trimCyc(c) { try { const ks = await c.keys(); if (ks.length > 3000) for (const k of ks.slice(0, ks.length - 2500)) await c.delete(k); } catch {} }   // ためすぎない（古いものからけす）
 // 背景の地図（⚙ 設定でえらぶ）
 const BASES = {
-  cyclosm: ["CyclOSM（自転車用）", () => L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+  cyclosm: ["CyclOSM（自転車用）", () => new CycTiles(CYC_URL,
     { subdomains: "abc", maxZoom: 20, maxNativeZoom: 20, crossOrigin: "anonymous", attribution: "CyclOSM | 地図データ &copy; OpenStreetMap contributors" })],   // crossOrigin：見ていた地図のタイルを、SNS・軌跡の画像づくりでそのまま使えるように（もう一回読まなくていい）
   pale: ["国土地理院 淡色", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
   std: ["国土地理院 標準", () => L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", { maxZoom: 18, attribution: attr })],
