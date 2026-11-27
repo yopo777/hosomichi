@@ -222,7 +222,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.2218</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.2235</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3966,7 +3966,7 @@ async function myExportBlob(pw) {   // 暗号化した中身（.enc）を作る�
     const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
     const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
   }
-  const out = { app: "hosomichi", kind: "mydata", ver: "1127.2218", at: new Date().toISOString(),
+  const out = { app: "hosomichi", kind: "mydata", ver: "1127.2235", at: new Date().toISOString(),
     localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
   {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
     const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5629,6 +5629,9 @@ async function histPut(R) {
 }
 async function histCount() { try { const db = await histOpen(); return await new Promise(ok => { const r = db.transaction("days").objectStore("days").count(); r.onsuccess = () => ok(r.result); r.onerror = () => ok(0); }); } catch { return 0; } }
 async function histClear() { const db = await histOpen(); await new Promise((ok, ng) => { const tx = db.transaction("days", "readwrite"); tx.objectStore("days").clear(); tx.oncomplete = ok; tx.onerror = () => ng(tx.error); }); }
+async function histDelDay(d) { const db = await histOpen(); await new Promise((ok, ng) => { const tx = db.transaction("days", "readwrite"); tx.objectStore("days").delete(d); tx.oncomplete = ok; tx.onerror = () => ng(tx.error); }); }   // 1日分だけ消す
+// 👣 足あとは「どの日が塗った道か」を覚えたキャッシュから作っているので、日を消したらキャッシュを捨てて、残っている日ぶんだけ計算しなおす
+async function footReset() { await footKv("segs4", {}); await footKv("done4", {}); await footKv("first4", {}); footRuns = null; footStat = null; footKnown = null; footFirst = {}; trkCityC.clear(); for (const k in trkImgC) delete trkImgC[k]; footDraw(); }
 async function histGet(d) { try { const db = await histOpen(); return await new Promise(ok => { const r = db.transaction("days").objectStore("days").get(d); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); }); } catch { return null; } }
 async function histMonth(ym) {   // その月の日ごとの きょり（中身の点は読まない）
   try {
@@ -6456,7 +6459,7 @@ async function trkDay(R, today) {
 
     <div style="font-weight:bold;margin:10px 0 4px">🏙 市ごとの塗り（この日）</div><div id="trkCity" style="font-size:12px;color:#888;border:1px solid #eee;border-radius:8px;padding:4px 8px">しらべてるよ…</div>
     <div style="font-weight:bold;margin:10px 0 4px">📍 通った所</div><div id="trkList" style="color:#888;max-height:42vh;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:2px 6px">さがしているよ…</div>
-    <div style="font-size:11px;color:#888;margin-top:8px">${today ? `<div style="text-align:right;margin-top:6px"><button id="trkReset" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 今日の軌跡をリセット</button></div>` : ""}
+    <div style="font-size:11px;color:#888;margin-top:8px">${today ? `<div style="text-align:right;margin-top:6px"><button id="trkReset" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 今日の軌跡をリセット</button></div>` : `<div style="text-align:right;margin-top:6px"><button id="trkDelDay" style="font-size:11px;padding:3px 8px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#c5221f">🗑 この日の軌跡を消す</button></div>`}
     この画面の地図は、この端末の中だけで、家のまわりもそのまま出ているよ（SNSに出すときは消すよ）。線が切れている所は、アプリを閉じていて記録がない所だよ</div></div>`;
   // 同じ日・同じ記録なら、前に作った画像をそのまま使う（作りなおさない）
   const ik = trkDay.cur = dkey(R.t0) + ":" + P.length, put = u => { if ($("trkImg") && trkDay.cur === ik) $("trkImg").outerHTML = u ? `<img id="trkImg" src="${u}" style="width:100%;border-radius:8px;border:1px solid #ddd;display:block">` : '<div id="trkImg" style="color:#888">地図の画像を作れなかったよ</div>'; };
@@ -6469,7 +6472,16 @@ async function trkDay(R, today) {
       const d = dkey(R.t0); await albClear(o => o.d === d);   // 📷 今日の写真も
       rideNew(true); trkDay(ride, true);
     };
-  } else $("trkBack").onclick = () => trkPast();
+  } else {
+    $("trkBack").onclick = () => trkPast();
+    $("trkDelDay").onclick = async () => {   // その日の軌跡だけ消す（写真はのこす）。うっかり消さないように2回きく
+      const d = dkey(R.t0);
+      if (!confirm(`${md}の軌跡（${fmtKm(dist)}・記録 ${P.length}点）と、その日の📷写真を消す？\n足あとも、この日の分をのぞいて計算しなおすよ。\n（アプリのアルバムの写真だけ消えるよ。スマホの元の写真は消えないよ）消したら元にもどせないよ`)) return;
+      if (!confirm("ほんとうに消していい？")) return;
+      try { await histDelDay(d); await albClear(o => o.d === d); await footReset(); addLog(`🗑 ${d} の軌跡と写真を消したよ（👣足あともつくりなおし）`, "m"); } catch (e) { alert("消せなかったよ: " + e); return; }
+      trkPast();
+    };
+  }
   // 通った所（経由地・スタンプ・となりを通った名所や施設・駅）と時刻
   const items = R.ev.filter(e => e.k === "stop" || e.k === "stamp").map(e => ({ t: e.t, name: e.name, p: e.p, k: e.k }));
   for (const c of await passList(P, () => false).catch(() => [])) items.push({ t: c.t, name: (c.ic ? c.ic + " " : "") + c.name, p: c.p, nm: c.name });
