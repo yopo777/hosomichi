@@ -124,7 +124,7 @@ body.ov .me-ic::before{content:"";position:absolute;left:50%;top:50%;width:90px;
 body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;font-weight:bold}   /* 本当の場所じゃないことがわかるように */
 #locBtn{position:absolute;top:calc(50% + var(--rb) + 190px);right:18px;z-index:1000;width:38px;height:38px;border-radius:50%;border:none;background:#fff;color:#222;box-shadow:0 1px 6px #0005;display:flex;align-items:center;justify-content:center;padding:0}
 #locBtn.here{color:#1a73e8}   /* 地図が現在地に来た：青 */
-#locBtn.busy{animation:locBlink .5s steps(2,start) infinite}   /* いま移動中：点滅 */
+#locBtn.busy{color:#0a00ff;animation:locBlink .5s steps(2,start) infinite}   /* 押した直後：真っ青で点滅 */
 @keyframes locBlink{to{opacity:.2}}
 #locL{position:absolute;top:calc(50% + var(--rb) + 232px);right:12px;z-index:1000;font-size:11px;font-weight:bold;color:#222;background:#fffe;border-radius:6px;padding:0 4px;box-shadow:0 1px 3px #0003;pointer-events:none}
 body.navi #locBtn,body.navi #locL{display:none}   /* ナビ中は 現在地ボタンをしまう */
@@ -1461,7 +1461,7 @@ $("fGo").onclick = () => $("go").click();
 let fGoSig = "", fGoUntil = 0;   // 🚲地図下のボタン：経由地・目的地を入れた直後だけ10秒出す（住所表示とかさなるので、出しっぱなしにしない）
 setInterval(() => {
   if (wid !== null && !rideNav && cur) { rideNav = true; setFollow(true); }   // 🛣 軌跡の記録中にルートを作ったら、ナビに切りかえる（地図を固定・音声も）
-  const want = wid !== null ? (rideNav ? "ナビ終了" : "軌跡終了") : (cur ? "ナビ開始" : "軌跡開始");
+  const want = wid !== null ? (rideNav ? "ナビ終了" : "記録終了") : (cur ? "ナビ開始" : "記録開始");
   if ($("gpsL").textContent !== want) gpsLabel();   // ルートを作った・消した・ナビに切りかえたときに 名前をかえる
   const b = $("fStop"), on = $("stop").style.display !== "none" && $("go").disabled && $("panel").classList.contains("min");
   if (b.style.display !== (on ? "" : "none")) b.style.display = on ? "" : "none";
@@ -5218,11 +5218,11 @@ $("gps").onclick = async () => {
     gpsLabel();
   } else rideEnd();
 };
-// ◎（🚲）：走っていないときは「ナビ開始」（ルートがあるとき）か「軌跡開始」。走っているときは「ナビ終了」か「軌跡終了」
+// ◎（🚲）：走っていないときは「ナビ開始」（ルートがあるとき）か「記録開始」。走っているときは「ナビ終了」か「記録終了」
 function gpsLabel() {
   const run = wid !== null;
   $("gps").classList.toggle("on", run); $("gpsL").classList.toggle("on", run);
-  $("gpsL").textContent = run ? (rideNav ? "ナビ終了" : "軌跡終了") : (cur ? "ナビ開始" : "軌跡開始");
+  $("gpsL").textContent = run ? (rideNav ? "ナビ終了" : "記録終了") : (cur ? "ナビ開始" : "記録開始");
 }
 // 🏁 終了：地図の固定・音声・GPS・記録を止める。記録はここで区切る（つぎに始めたとき 線をつながない）
 function rideEnd() {
@@ -5242,13 +5242,29 @@ function rideToTrack() {
 // 📍 現在地へ（gmapのように、ナビは始めないで地図を動かすだけ）
 // 黒：いつも ／ 点滅：移動中 ／ 青：地図が現在地に来た（地図を大きく動かすと 黒にもどる）
 const locSet = s => { const b = $("locBtn"); b.dataset.s = s; b.classList.toggle("busy", s === "busy"); b.classList.toggle("here", s === "here"); };
-$("locBtn").onclick = () => {
-  const c = me ? me.getLatLng() : fakePos ? { lat: fakePos[0], lng: fakePos[1] } : null;
-  if (!c) return setMsg("まだ現在地がとれていないよ。🚲で開始すると とれるよ");
+function locGo(c) {   // 現在地へ地図を動かす（押した直後は真っ青・動いたら普通の青）
   locSet("busy");
   const done = () => { if ($("locBtn").dataset.s === "busy") locSet("here"); };
   map.once("moveend", done); setTimeout(done, 900);   // 動かなかったときも青にする
   map.setView([c.lat, c.lng], Math.max(map.getZoom(), 16));
+}
+async function locGet() {   // まだ現在地がないとき（アプリを開いたすぐ）：1回だけとりに行く。ナビは始めない
+  if (!lsGet("hosomichi_geook", false)) {
+    const a = await geoAsk();
+    if (a === "no") return;
+    if (a === "fake") { const c = map.getCenter(); return locGo({ lat: c.lat, lng: c.lng }); }
+    lsSet("hosomichi_geook", true);
+  }
+  if (!navigator.geolocation) return setMsg("この端末では位置情報が使えません");
+  locSet("busy");
+  navigator.geolocation.getCurrentPosition(p => locGo({ lat: p.coords.latitude, lng: p.coords.longitude }),
+    () => { locSet("idle"); setMsg("現在地がとれなかったよ。位置情報の許可を確かめてね"); },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+}
+$("locBtn").onclick = () => {
+  const c = me ? me.getLatLng() : fakePos ? { lat: fakePos[0], lng: fakePos[1] } : null;
+  if (!c) return locGet();
+  locGo(c);
 };
 map.on("dragstart", () => { if ($("locBtn").dataset.s === "here") locSet("idle"); });
 $("dir").onclick = () => {
