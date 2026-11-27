@@ -362,10 +362,11 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
     </div>
     <div id="tabTrk" style="display:none"></div>
     <div id="tabLog" style="display:none">
-      <div id="dtabs" class="ttabs"><button data-d="tool" class="on">🛠 ツール</button><button data-d="hl">🎨 ハイライト</button><button data-d="log">📜 ログ</button><button data-d="issue">📝 課題</button></div>
+      <div id="dtabs" class="ttabs"><button data-d="tool" class="on">🛠 ツール</button><button data-d="hl">🎨 ハイライト</button><button data-d="log">📜 ログ</button><button data-d="issue">📝 課題</button><button data-d="upd">🆕 更新</button></div>
       <div id="dbgIssue" style="display:none"></div>
+      <div id="dbgUpd" style="display:none"><div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div><div id="updList"></div></div>
       <div id="dbgTool">
-      <div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div>
+
       <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>🔎 警察のデータのマークをさがす</b>
         <div style="font-size:11px;color:#666;margin-top:2px">地図のまん中から いちばん近いものへ動くよ。もう一度おすと 次に近いもの（30kmくらいまで。遠いと少し時間がかかるよ）</div>
@@ -5302,6 +5303,25 @@ const ISSUES = [
   ["➡️ シンプルパスは ためし", "曲がらずに遠くまで続く細い道を、OSMのデータから自動で見つけたものだよ。いまは関東の人の多い市区のまわりだけで、遠回りになりすぎないか・住宅街で迷わないかは まだ走って確かめていないの。",
     "使ってみて へんな道に案内されたら 教えてね。⚙設定の「🚲 自転車道」の いちばん下で 倍率を「気にしない」にすれば 使わないよ。ほかの地域は データを作りたせば広げられるよ"],
 ];
+// 🆕 更新履歴：pushするたびに、日付時刻と変更点を1行ずつ足す（新しいものを上に）
+const UPDATES = [
+  ["2026-11-28 00:13", "押したときに現在地がないなら、1回だけ取りにいくようにした（押した直後は真っ青で点滅）"],
+  ["2026-11-28 00:13", "ルートがないときのボタン名を「記録開始・記録終了」に変えた"],
+  ["2026-11-28 00:07", "現在地ボタンを小さくして、黒→点滅→青で状態がわかるように（下に「現在地」）"],
+  ["2026-11-28 00:07", "記録開始でも、現在地へズームして地図を固定するようにした（ルートを消しても固定は続く）"],
+  ["2026-11-27 23:59", "🚲 ナビ開始・終了ボタン（ルートがないときは記録開始・終了）"],
+  ["2026-11-27 23:59", "📍 現在地ボタンを追加（ナビ中は消える）"],
+  ["2026-11-27 23:59", "終了で、地図の固定・音声・GPS・記録を止める。次の開始は線を切って続ける"],
+  ["2026-11-27 23:59", "記録中にルートを作ると、ナビに切りかわる"],
+  ["2026-11-27 23:59", "地図を動かす間かくに 7秒・10秒を追加"],
+  ["2026-11-27 23:59", "SNSの警告を短くした"],
+  ["2026-11-27 23:59", "📝 課題から3つ消した（タイムライン・ルートをスマホへ・節電）"],
+  ["2026-11-27 22:36", "🗓過去で、走った日を1日だけ消せるように（📷写真もいっしょに）。消したあとは足あとを計算しなおす"],
+];
+function dbgUpdDraw() {
+  $("updList").innerHTML = '<div style="font-size:12px;color:#666;margin:2px 0 6px">いつ何を変えたか（新しい順）</div>'
+    + UPDATES.map(([t, d]) => `<div style="font-size:12px;margin:0 0 4px;line-height:1.5"><span style="color:#888">${t}</span>　${d}</div>`).join("");
+}
 function dbgIssueDraw() {
   $("dbgIssue").innerHTML = '<div style="font-size:12px;color:#666;margin:2px 0 6px">わかっている問題だよ。直せたら ここから消すね</div>'
     + ISSUES.map(([t, d, w]) => `<div style="font-size:12px;margin:0 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px"><b>${t}</b>
@@ -5309,8 +5329,9 @@ function dbgIssueDraw() {
 }
 for (const b of document.querySelectorAll("#dtabs button")) b.onclick = () => {
   for (const x of document.querySelectorAll("#dtabs button")) x.classList.toggle("on", x === b);
-  const d = b.dataset.d; for (const [k, id] of [["tool", "dbgTool"], ["log", "dbgLog"], ["issue", "dbgIssue"], ["hl", "dbgHl"]]) $(id).style.display = d === k ? "" : "none";
+  const d = b.dataset.d; for (const [k, id] of [["tool", "dbgTool"], ["log", "dbgLog"], ["issue", "dbgIssue"], ["upd", "dbgUpd"], ["hl", "dbgHl"]]) $(id).style.display = d === k ? "" : "none";
   if (d === "issue") dbgIssueDraw();
+  if (d === "upd") dbgUpdDraw();
   if (d === "log" && $("lgAuto").checked) $("log").scrollTop = $("log").scrollHeight;
 };
 // 自分で描いたアイコン（マーク・印で使う。印の一覧を はじめに描くので ここで先に決めておく）
