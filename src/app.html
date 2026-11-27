@@ -264,13 +264,13 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
     <div id="tabData" class="spane" data-s="data">
-      <div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:#e8f0fe;font-size:12px">🔒 家・ルート・印・設定は <b>この端末の中だけ</b>。どこにも送らないよ（☁ Googleドライブに保存したときだけ、暗号化したファイルを送るよ）<span class="hq">?</span><div class="hd">🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、この端末の中だけに保存していて、どこにも送らないよ。<br>☁ Googleドライブに保存したときだけ、パスワードで暗号化したファイルを、あなたの Googleドライブの「アプリ専用の場所」に置くよ（ほかの人からは見えないよ・Googleにも中身は読めないよ）。<br>ただし、地図の画像・道路データ・住所や地名をさがすときは、見ている場所や入れた地名を、それぞれの地図サービス（OpenStreetMap・国土地理院など）に問い合わせるよ。アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。</div></div>
+      <div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:#e8f0fe;font-size:12px">🔒 家・ルート・印・設定は <b>この端末の中だけ</b>。どこにも送らないよ（☁ Googleドライブに送ったときだけ、暗号化したファイルを送るよ）<span class="hq">?</span><div class="hd">🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、この端末の中だけに保存していて、どこにも送らないよ。<br>☁ Googleドライブに送ったときだけ、パスワードで暗号化したファイルを、あなたの Googleドライブの「アプリ専用の場所」に置くよ（ほかの人からは見えないよ・Googleにも中身は読めないよ）。<br>ただし、地図の画像・道路データ・住所や地名をさがすときは、見ている場所や入れた地名を、それぞれの地図サービス（OpenStreetMap・国土地理院など）に問い合わせるよ。アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。</div></div>
       <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <b>📤 バックアップ</b>
-        <div style="font-size:11px;color:#666;margin-top:2px">家・ルート・記録・写真を、1つのファイルにするよ<span class="hq">?</span><div class="hd">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あと・📷アルバムの写真を、1つのファイルにしてダウンロードするよ。パソコンのナビをスマホとおなじにしたり、パソコンで ながめたりする用だよ。<br>ファイルは パスワードで <b>暗号化</b>するよ（AES-256）。読みこむときも おなじパスワードがいるよ。パスワードは どこにも保存しないので、わすれないでね。<br>「⬆ 読みこむ」は、この端末のデータを ファイルの中身で <b>上書き</b>して、書き出した端末とおなじにするよ（スマホ → パソコンのミラー用）。道路データ・この端末だけの設定（自動でためる・ためしの現在地など）はそのままだよ。<br>⚠ 家の場所や走った道がぜんぶ入っているよ。暗号化していても、人にわたしたり 公開の場所に置いたりしないでね</div></div>
+        <b>🔁 ミラーリング</b>
+        <div style="font-size:11px;color:#666;margin-top:2px">家・ルート・記録・写真を、ほかの端末と おなじにするよ<span class="hq">?</span><div class="hd">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あと・📷アルバムの写真を、1つのファイルにまとめて、暗号化してダウンロードするよ。スマホとパソコンのあいだで、この端末の中身をおなじにするための機能（ミラーリング）だよ。<br>ファイルは パスワードで <b>暗号化</b>するよ（AES-256）。読みこむときも おなじパスワードがいるよ。パスワードは どこにも保存しないので、わすれないでね。<br>「⬆ 読みこむ」は、この端末のデータを ファイルの中身で <b>上書き</b>して、書き出した端末とおなじにするよ（スマホ → パソコンのミラー用）。道路データ・この端末だけの設定（自動でためる・ためしの現在地など）はそのままだよ。<br>⚠ 家の場所や走った道がぜんぶ入っているよ。暗号化していても、人にわたしたり 公開の場所に置いたりしないでね</div></div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:6px">🔑<input type="text" id="myPw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore placeholder="パスワード（6文字以上）" style="-webkit-text-security:disc;flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:8px;font-size:13px"><label style="font-size:11px;white-space:nowrap"><input type="checkbox" id="myPwShow">見せる</label></div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="myExp" style="font-size:12px">⬇ 暗号化して書き出す</button><button class="ib" id="myImp" style="font-size:12px">⬆ 読みこむ</button></div>
-        <div class="btns" style="margin-top:6px"><button class="ib" id="drvSave" style="font-size:12px">☁ Googleドライブに保存</button><button class="ib" id="drvLoad" style="font-size:12px">☁ Googleドライブから読みこむ</button></div>
+        <div class="btns" style="margin-top:6px"><button class="ib" id="drvSave" style="font-size:12px">☁ Googleドライブに送る</button><button class="ib" id="drvLoad" style="font-size:12px">☁ Googleドライブから読みこむ</button></div>
         <input type="file" id="myFile" accept=".enc,.json" style="display:none">
       </div>
       <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -1177,8 +1177,8 @@ $("drvSave").onclick = async () => {
     const { blob } = await myExportBlob(pw);
     b.textContent = "アップロード中…";
     await gSave(blob, await gFind());
-    addLog(`☁ Googleドライブに保存したよ（${(blob.size / 1024).toFixed(0)}KB）`, "m");
-    alert("☁ Googleドライブに保存したよ！");
+    addLog(`☁ Googleドライブに送ったよ（${(blob.size / 1024).toFixed(0)}KB）`, "m");
+    alert("☁ Googleドライブに送ったよ！");
   } catch (e) { alert("保存できなかったよ: " + e.message); }
   b.disabled = false; b.textContent = old;
 };
