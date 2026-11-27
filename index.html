@@ -221,7 +221,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1126.1530</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.1043</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3942,7 +3942,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1126.1530", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1127.1043", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4250,12 +4250,18 @@ function workerReset() {
 $("fStop").onclick = () => $("stop").click();
 // 🚲 メニューをたたんでいても 作れるように、目的地（or 1周）が決まっていれば 地図の下にも「ルートを作る」を出す
 $("fGo").onclick = () => $("go").click();
+let fGoSig = "", fGoUntil = 0;   // 🚲地図下のボタン：経由地・目的地を入れた直後だけ10秒出す（住所表示とかさなるので、出しっぱなしにしない）
 setInterval(() => {
   const b = $("fStop"), on = $("stop").style.display !== "none" && $("go").disabled && $("panel").classList.contains("min");
   if (b.style.display !== (on ? "" : "none")) b.style.display = on ? "" : "none";
   const lk = (() => { try { return loopKm(); } catch { return 0; } })();
   const g = $("fGo"), gOn = !$("go").disabled && $("panel").classList.contains("min") && (lk || $("to").value.trim() !== "");
-  if (g.style.display !== (gOn ? "" : "none")) g.style.display = gOn ? "" : "none";
+  if (gOn) {
+    const sig = (lk ? "loop:" + lk : "") + "|" + $("from").value.trim() + "|" + $("via").value.trim() + "|" + $("to").value.trim();
+    if (sig !== fGoSig) { fGoSig = sig; fGoUntil = Date.now() + 10000; }   // 経由地・目的地が変わった＝入れなおした、とみなして10秒だけ出す
+  } else { fGoSig = ""; fGoUntil = 0; }
+  const show = gOn && Date.now() < fGoUntil;
+  if (g.style.display !== (show ? "" : "none")) g.style.display = show ? "" : "none";
 }, 1000);
 $("bResume").onclick = () => {
   audioUnlock(); barMax = 0;

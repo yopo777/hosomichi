@@ -1351,12 +1351,18 @@ function workerReset() {
 $("fStop").onclick = () => $("stop").click();
 // 🚲 メニューをたたんでいても 作れるように、目的地（or 1周）が決まっていれば 地図の下にも「ルートを作る」を出す
 $("fGo").onclick = () => $("go").click();
+let fGoSig = "", fGoUntil = 0;   // 🚲地図下のボタン：経由地・目的地を入れた直後だけ10秒出す（住所表示とかさなるので、出しっぱなしにしない）
 setInterval(() => {
   const b = $("fStop"), on = $("stop").style.display !== "none" && $("go").disabled && $("panel").classList.contains("min");
   if (b.style.display !== (on ? "" : "none")) b.style.display = on ? "" : "none";
   const lk = (() => { try { return loopKm(); } catch { return 0; } })();
   const g = $("fGo"), gOn = !$("go").disabled && $("panel").classList.contains("min") && (lk || $("to").value.trim() !== "");
-  if (g.style.display !== (gOn ? "" : "none")) g.style.display = gOn ? "" : "none";
+  if (gOn) {
+    const sig = (lk ? "loop:" + lk : "") + "|" + $("from").value.trim() + "|" + $("via").value.trim() + "|" + $("to").value.trim();
+    if (sig !== fGoSig) { fGoSig = sig; fGoUntil = Date.now() + 10000; }   // 経由地・目的地が変わった＝入れなおした、とみなして10秒だけ出す
+  } else { fGoSig = ""; fGoUntil = 0; }
+  const show = gOn && Date.now() < fGoUntil;
+  if (g.style.display !== (show ? "" : "none")) g.style.display = show ? "" : "none";
 }, 1000);
 $("bResume").onclick = () => {
   audioUnlock(); barMax = 0;
