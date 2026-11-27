@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.5.3/dist/leaflet-rotate.js"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
 <style>
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overscroll-behavior:none;font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
@@ -221,7 +222,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.2002</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.2201</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -263,12 +264,13 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="spotBox" style="margin-top:6px;font-size:12px;max-height:62vh;overflow:auto"></div>
     </div>
     <div id="tabData" class="spane" data-s="data">
-      <div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:#e8f0fe;font-size:12px">🔒 家・ルート・印・設定は <b>この端末の中だけ</b>。どこにも送らないよ<span class="hq">?</span><div class="hd">🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、この端末の中だけに保存していて、どこにも送らないよ。<br>ただし、地図の画像・道路データ・住所や地名をさがすときは、見ている場所や入れた地名を、それぞれの地図サービス（OpenStreetMap・国土地理院など）に問い合わせるよ。アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。</div></div>
+      <div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:#e8f0fe;font-size:12px">🔒 家・ルート・印・設定は <b>この端末の中だけ</b>。どこにも送らないよ（☁ Googleドライブに保存したときだけ、暗号化したファイルを送るよ）<span class="hq">?</span><div class="hd">🏠 家・💾 保存したルート・🏁 スタンプ・🚫 通れない印・設定は、この端末の中だけに保存していて、どこにも送らないよ。<br>☁ Googleドライブに保存したときだけ、パスワードで暗号化したファイルを、あなたの Googleドライブの「アプリ専用の場所」に置くよ（ほかの人からは見えないよ・Googleにも中身は読めないよ）。<br>ただし、地図の画像・道路データ・住所や地名をさがすときは、見ている場所や入れた地名を、それぞれの地図サービス（OpenStreetMap・国土地理院など）に問い合わせるよ。アクセスした人の数だけ GoatCounter で数えているよ（だれかはわからない形で）。<br>共有URL・QR には、ルートや印の場所が入るよ（家は入らないよ）。</div></div>
       <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>📤 バックアップ</b>
         <div style="font-size:11px;color:#666;margin-top:2px">家・ルート・記録・写真を、1つのファイルにするよ<span class="hq">?</span><div class="hd">家・お気に入り・保存したルート・印・設定・🗓過去の記録・👣足あと・📷アルバムの写真を、1つのファイルにしてダウンロードするよ。パソコンのナビをスマホとおなじにしたり、パソコンで ながめたりする用だよ。<br>ファイルは パスワードで <b>暗号化</b>するよ（AES-256）。読みこむときも おなじパスワードがいるよ。パスワードは どこにも保存しないので、わすれないでね。<br>「⬆ 読みこむ」は、この端末のデータを ファイルの中身で <b>上書き</b>して、書き出した端末とおなじにするよ（スマホ → パソコンのミラー用）。道路データ・この端末だけの設定（自動でためる・ためしの現在地など）はそのままだよ。<br>⚠ 家の場所や走った道がぜんぶ入っているよ。暗号化していても、人にわたしたり 公開の場所に置いたりしないでね</div></div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:6px">🔑<input type="text" id="myPw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore placeholder="パスワード（6文字以上）" style="-webkit-text-security:disc;flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:8px;font-size:13px"><label style="font-size:11px;white-space:nowrap"><input type="checkbox" id="myPwShow">見せる</label></div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="myExp" style="font-size:12px">⬇ 暗号化して書き出す</button><button class="ib" id="myImp" style="font-size:12px">⬆ 読みこむ</button></div>
+        <div class="btns" style="margin-top:6px"><button class="ib" id="drvSave" style="font-size:12px">☁ Googleドライブに保存</button><button class="ib" id="drvLoad" style="font-size:12px">☁ Googleドライブから読みこむ</button></div>
         <input type="file" id="myFile" accept=".enc,.json" style="display:none">
       </div>
       <div style="font-size:12px;margin-top:8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
@@ -3958,25 +3960,28 @@ async function myDecrypt(buf, pw) {   // まちがったパスワードなら nu
 }
 // type="password" にすると ブラウザが「安全なパスワードを自動生成」を出して、おぼえられないのができちゃうので、ふつうの文字の欄を ●● で見せる
 $("myPwShow").onchange = () => { $("myPw").style.webkitTextSecurity = $("myPwShow").checked ? "none" : "disc"; };
+async function myExportBlob(pw) {   // 暗号化した中身（.enc）を作る（ボタンとGoogleドライブで同じものを使う）
+  const ls = {}, lsRaw = [];   // lsRaw：JSON じゃない ただの文字で入っているもの（読みこむとき そのままもどす）
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
+    const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
+  }
+  const out = { app: "hosomichi", kind: "mydata", ver: "1127.2201", at: new Date().toISOString(),
+    localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
+  {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
+    const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
+    out.album = [];
+    for (const o of await albAll()) { const u = o.b instanceof Blob ? await toUrl(o.b) : null; if (u) out.album.push({ ...o, b: u }); }
+  }
+  const blob = await myEncrypt(JSON.stringify(out), pw);
+  return { blob, out };
+}
 $("myExp").onclick = async () => {
   const pw = $("myPw").value;
   if (pw.length < 6) { alert("🔑 パスワードを6文字以上 入れてね（読みこむときに使うよ）"); $("myPw").focus(); return; }
   const b = $("myExp"); b.disabled = true; b.textContent = "書き出し中…";
   try {
-    const ls = {}, lsRaw = [];   // lsRaw：JSON じゃない ただの文字で入っているもの（読みこむとき そのままもどす）
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
-      const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
-    }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1127.2002", at: new Date().toISOString(),
-      localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
-    {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
-      const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
-      out.album = [];
-      for (const o of await albAll()) { const u = o.b instanceof Blob ? await toUrl(o.b) : null; if (u) out.album.push({ ...o, b: u }); }
-    }
-    b.textContent = "暗号化中…";
-    const blob = await myEncrypt(JSON.stringify(out), pw);
+    const { blob, out } = await myExportBlob(pw);
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = `hosomichi-mydata-${today()}.enc`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
@@ -3992,9 +3997,8 @@ async function idbReplace(dbp, store, rows) {
   await new Promise((ok, ng) => { const tx = db.transaction(store, "readwrite"), st = tx.objectStore(store); st.clear(); for (const r of rows || []) st.put(r); tx.oncomplete = ok; tx.onerror = () => ng(tx.error); });
 }
 $("myImp").onclick = () => $("myFile").click();
-$("myFile").onchange = async e => {
-  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-  const buf = await f.arrayBuffer(), head = new TextDecoder().decode(new Uint8Array(buf).slice(0, MY_MAGIC.length));
+async function importMyBuf(buf) {   // 書き出したファイル（.enc / 前の版の .json）を読みこんで、この端末を おなじにする
+  const head = new TextDecoder().decode(new Uint8Array(buf).slice(0, MY_MAGIC.length));
   let text;
   if (head === MY_MAGIC) {   // 🔐 暗号化されたファイル
     let pw = $("myPw").value || prompt("🔑 書き出したときのパスワードを入れてね");
@@ -4020,6 +4024,78 @@ $("myFile").onchange = async e => {
     alert("読みこんだよ！ページを読みなおすね");
     location.reload();
   } catch (err) { alert("とちゅうで失敗しちゃった: " + err); }
+}
+$("myFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  await importMyBuf(await f.arrayBuffer());
+};
+
+// ☁ Googleドライブ（アプリ専用の場所・drive.appdata）に、暗号化したファイルを 保存・読みこみ
+// ⚠ GOOGLE_CLIENT_ID は Google Cloud で作ったクライアントID（公開してOKな値）。まだ入れていないと「設定がまだ」と出る
+const GOOGLE_CLIENT_ID = "268270608642-qtfh7oknrqln5i3hnm3ckmdjfp38p75l.apps.googleusercontent.com";
+const GDRIVE_NAME = "hosomichi-mydata.enc";
+let gTok = null, gTokExp = 0;
+function gToken() {   // 押したときだけ Googleにログイン（ログインの許可は とりなおしが いるとき だけ出す）
+  if (gTok && Date.now() < gTokExp) return Promise.resolve(gTok);
+  return new Promise((ok, ng) => {   // ⚠ ボタンを押したすぐ後に呼ぶ（間に await を入れるとポップアップがブロックされる）
+    if (!window.google || !google.accounts) return ng(new Error("Googleのログインを読みこめなかったよ（電波を見てね）"));
+    const c = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID, scope: "https://www.googleapis.com/auth/drive.appdata",
+      callback: r => { if (r.access_token) { gTok = r.access_token; gTokExp = Date.now() + (Number(r.expires_in) - 60) * 1000; ok(gTok); } else ng(new Error(r.error || "ログインできなかったよ")); },
+      error_callback: e => ng(new Error(e.message || e.type || "ログインできなかったよ")),
+    });
+    c.requestAccessToken();
+  });
+}
+async function gApi(url, opt = {}) {
+  const t = await gToken();
+  const r = await fetch(url, { ...opt, headers: { Authorization: "Bearer " + t, ...(opt.headers || {}) } });
+  if (!r.ok) throw new Error("Googleドライブ " + r.status);
+  return r;
+}
+async function gFind() {   // アプリ専用の場所にある いちばんの ファイル（なければ null）
+  const q = encodeURIComponent(`name='${GDRIVE_NAME}' and trashed=false`);
+  const j = await (await gApi(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,modifiedTime)&q=${q}`)).json();
+  return (j.files || [])[0] || null;
+}
+async function gSave(blob, existing) {   // あれば上書き（ファイルは1つだけ）・なければ作る
+  if (existing) return gApi(`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=media`, { method: "PATCH", headers: { "Content-Type": "application/octet-stream" }, body: blob });
+  const bd = "hm" + Date.now().toString(36);
+  const meta = JSON.stringify({ name: GDRIVE_NAME, parents: ["appDataFolder"] });
+  const body = new Blob([`--${bd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${bd}\r\nContent-Type: application/octet-stream\r\n\r\n`, blob, `\r\n--${bd}--`]);
+  return gApi("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${bd}` }, body });
+}
+$("drvSave").onclick = async () => {
+  const pw = $("myPw").value;
+  if (pw.length < 6) { alert("🔑 パスワードを6文字以上 入れてね（読みこむときに使うよ）"); $("myPw").focus(); return; }
+  if (GOOGLE_CLIENT_ID.startsWith("__")) return alert("☁ Googleドライブの設定がまだだよ（クライアントIDを入れてね）");
+  const b = $("drvSave"), old = b.textContent; b.disabled = true; b.textContent = "ログイン中…";
+  const login = gToken();   // ボタンのすぐ後でログインを始める
+  try {
+    await login;
+    b.textContent = "暗号化中…";
+    const { blob } = await myExportBlob(pw);
+    b.textContent = "アップロード中…";
+    await gSave(blob, await gFind());
+    addLog(`☁ Googleドライブに保存したよ（${(blob.size / 1024).toFixed(0)}KB）`, "m");
+    alert("☁ Googleドライブに保存したよ！");
+  } catch (e) { alert("保存できなかったよ: " + e.message); }
+  b.disabled = false; b.textContent = old;
+};
+$("drvLoad").onclick = async () => {
+  if (GOOGLE_CLIENT_ID.startsWith("__")) return alert("☁ Googleドライブの設定がまだだよ（クライアントIDを入れてね）");
+  const b = $("drvLoad"), old = b.textContent; b.disabled = true; b.textContent = "ログイン中…";
+  const login = gToken();   // ボタンのすぐ後でログインを始める
+  let buf = null;
+  try {
+    await login;
+    const f = await gFind();
+    if (!f) throw new Error("まだ保存されたデータがないよ");
+    b.textContent = "ダウンロード中…";
+    buf = await (await gApi(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`)).arrayBuffer();
+  } catch (e) { alert("読みこめなかったよ: " + e.message); }
+  b.disabled = false; b.textContent = old;
+  if (buf) await importMyBuf(buf);   // パスワードは上の「🔑」の欄を使う（書き出したときと おなじもの）
 };
 
 // 書き出し・読みこみ（ためた道路データをほかの端末や人にわたす）
