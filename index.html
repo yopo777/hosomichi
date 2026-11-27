@@ -121,7 +121,9 @@ body.ov .me-ic::before{content:"";position:absolute;left:50%;top:50%;width:90px;
 #gps.on{background:#1a73e8;color:#fff}
 #gpsL{position:absolute;top:calc(50% + var(--rb) + 148px);right:4px;z-index:1000;width:76px;text-align:center;font-size:13px;line-height:1.25;white-space:pre;font-weight:bold;color:#222;text-shadow:-2px 0px 0 #fff,2px 0px 0 #fff,0px -2px 0 #fff,0px 2px 0 #fff,-2px -2px 0 #fff,2px -2px 0 #fff,-2px 2px 0 #fff,2px 2px 0 #fff,-1px -2px 0 #fff,1px -2px 0 #fff,-1px 2px 0 #fff,1px 2px 0 #fff,-2px -1px 0 #fff,2px -1px 0 #fff,-2px 1px 0 #fff,2px 1px 0 #fff,0 0 4px #fff;pointer-events:none}   /* 縁取り文字（白ぶち） */
 #gpsL.on{color:#1a73e8;font-weight:bold}
-body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;font-weight:bold}   /* 本当の場所じゃないことがわかるように */
+body.fake #gpsL::after{content:'\A🧪 ためし';white-space:pre;color:#e8710a;font-weight:bold}
+#locBtn{position:absolute;top:calc(50% + var(--rb) + 190px);right:12px;z-index:1000;width:50px;height:50px;border-radius:50%;border:none;background:#fff;box-shadow:0 2px 8px #0005;display:flex;align-items:center;justify-content:center;padding:0}
+body.navi #locBtn{display:none}   /* ナビ中は 現在地ボタンをしまう */   /* 本当の場所じゃないことがわかるように */
 #dir{position:absolute;top:calc(50% + var(--rb) + 34px);right:17px;z-index:1000;width:40px;height:40px;border-radius:50%;
   border:none;background:#fff;box-shadow:0 2px 8px #0005;padding:0}
 #dir.on{background:#1a73e8}
@@ -222,7 +224,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.2235</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.2357</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -343,7 +345,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div id="idleLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="idleLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="idleLv" value="10"> 10秒</label><label><input type="radio" name="idleLv" value="15"> 15秒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">⬛で暗くしているあいだは、進行方向の丸も止めるよ（⭕丸のときは動くよ）</div>
         <div style="font-weight:bold;margin-top:6px">📡 地図を動かす間かく<span class="pw s">🔋節電中</span></div>
-        <div id="gpsLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="gpsLv" value="1"> 1秒（ふつう）</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="2"> 2秒</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="3"> 3秒</label><label><input type="radio" name="gpsLv" value="5"> 5秒</label></div>
+        <div id="gpsLv" style="margin-top:2px"><label style="margin-right:10px"><input type="radio" name="gpsLv" value="1"> 1秒（ふつう）</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="2"> 2秒</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="3"> 3秒</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="5"> 5秒</label><label style="margin-right:10px"><input type="radio" name="gpsLv" value="7"> 7秒</label><label><input type="radio" name="gpsLv" value="10"> 10秒</label></div>
         <div style="font-size:11px;color:#666;margin-top:2px">長くするほど 電池にやさしいよ<span class="hq">?</span><div class="hd">間かくを長くすると、地図の描きなおしがへって電池にやさしいよ。走った記録はいままでどおり取るよ。曲がる所の手前200mと、ルートから外れたときは1秒ごとにもどすよ</div></div>
         <div style="font-size:11px;color:#b45309;margin-top:4px">💡 画面の明るさを下げるのも、とっても効くよ（アプリからは変えられないので、スマホの設定で）</div>
       </div>
@@ -435,7 +437,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
   border-radius:10px;padding:8px 12px;font-size:14px;box-shadow:0 2px 8px #0005;white-space:nowrap"></div>
 <div id="inapp" style="display:none;position:absolute;left:8px;right:8px;top:calc(var(--ptop) + 8px);z-index:1001;background:#333e;color:#fff;
   border-radius:10px;padding:6px 8px 6px 12px;font-size:13px;align-items:center;gap:8px"><span style="flex:1">📱 走るときはブラウザで<span id="inappHow">（「⋮」→ブラウザで開く）</span></span><a id="inappGo" style="display:none;background:#1a73e8;color:#fff;border-radius:8px;padding:5px 10px;text-decoration:none;font-weight:bold;white-space:nowrap">🌐 Chrome</a><button onclick="this.parentNode.remove()" style="border:none;background:#555;color:#fff;border-radius:6px;padding:4px 8px">✕</button></div>
-<button id="gps" title="現在地についていく">◎</button><div id="gpsL">ナビ開始</div>
+<button id="gps" title="ナビ開始・終了（ルートがないときは軌跡）">🚲</button><div id="gpsL">ナビ開始</div><button id="locBtn" title="現在地へ"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1a73e8" opacity=".2"/><circle cx="12" cy="12" r="6" fill="#1a73e8" stroke="#fff" stroke-width="2"/></svg></button>
 <button id="alt" title="ルートを切りかえる"><span id="altN">1</span><small id="altL"></small></button>
 <button id="ft" title="👣足あと（塗れた道）を出す／かくす">👣<small id="ftL">足あと</small></button>
 <button id="mk" title="マークと📌スポット（⭐🏠🔒🚫）を出す／かくす（長押し：このあたりの🪜階段？・⛰急坂？を見る）">📍<small id="mkL">マーク</small></button>
@@ -3727,7 +3729,7 @@ function geoErrText(e) {
 function onGeoErr(e) {
   addLog(`現在地エラー: code=${e && e.code} ${e && e.message}`, "e");
   if (wid !== null && wid >= 0) navigator.geolocation.clearWatch(wid);
-  wid = null; follow = false; ovMode = false; document.body.classList.remove("navi", "ov"); $("homeD").style.display = "none"; $("gps").classList.remove("on"); $("gpsL").classList.remove("on"); $("gpsL").textContent = "ナビ開始";
+  wid = null; follow = false; ovMode = false; document.body.classList.remove("navi", "ov"); $("homeD").style.display = "none"; gpsLabel();
   map.dragging.enable();
   $("panel").classList.remove("min"); $("tog").textContent = "たたむ";
   setMsg(geoErrText(e), true);
@@ -3966,7 +3968,7 @@ async function myExportBlob(pw) {   // 暗号化した中身（.enc）を作る�
     const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
     const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
   }
-  const out = { app: "hosomichi", kind: "mydata", ver: "1127.2235", at: new Date().toISOString(),
+  const out = { app: "hosomichi", kind: "mydata", ver: "1127.2357", at: new Date().toISOString(),
     localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
   {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
     const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -4354,6 +4356,9 @@ $("fStop").onclick = () => $("stop").click();
 $("fGo").onclick = () => $("go").click();
 let fGoSig = "", fGoUntil = 0;   // 🚲地図下のボタン：経由地・目的地を入れた直後だけ10秒出す（住所表示とかさなるので、出しっぱなしにしない）
 setInterval(() => {
+  if (wid !== null && !rideNav && cur) { rideNav = true; setFollow(true); }   // 🛣 軌跡の記録中にルートを作ったら、ナビに切りかえる（地図を固定・音声も）
+  const want = wid !== null ? (rideNav ? "ナビ終了" : "軌跡終了") : (cur ? "ナビ開始" : "軌跡開始");
+  if ($("gpsL").textContent !== want) gpsLabel();   // ルートを作った・消した・ナビに切りかえたときに 名前をかえる
   const b = $("fStop"), on = $("stop").style.display !== "none" && $("go").disabled && $("panel").classList.contains("min");
   if (b.style.display !== (on ? "" : "none")) b.style.display = on ? "" : "none";
   const lk = (() => { try { return loopKm(); } catch { return 0; } })();
@@ -5580,7 +5585,7 @@ function isWarp(a, b) {
 }
 function warpSplit(P) {   // 点の列 → ワープで切った かたまり（点は [緯度, 経度, 時刻…] のまま）
   const runs = []; let seg = [];
-  for (let i = 0; i < P.length; i++) { if (i && isWarp(P[i - 1], P[i])) { if (seg.length > 1) runs.push(seg); seg = []; } seg.push(P[i]); }
+  for (let i = 0; i < P.length; i++) { if (i && (P[i][4] || isWarp(P[i - 1], P[i]))) { if (seg.length > 1) runs.push(seg); seg = []; } seg.push(P[i]); }
   if (seg.length > 1) runs.push(seg);
   return runs;
 }
@@ -5597,7 +5602,7 @@ function rideTrim(P) {
 function trkStats(P) {
   P = rideTrim(P);
   let dist = 0, move = 0;
-  for (let i = 1; i < P.length; i++) { const d = hav(P[i - 1], P[i]), dt = P[i][2] - P[i - 1][2]; if (dt < 5 * 60e3 && !isWarp(P[i - 1], P[i])) { dist += d; move += dt; } }
+  for (let i = 1; i < P.length; i++) { const d = hav(P[i - 1], P[i]), dt = P[i][2] - P[i - 1][2]; if (dt < 5 * 60e3 && !P[i][4] && !isWarp(P[i - 1], P[i])) { dist += d; move += dt; } }
   return { dist, move };
 }
 // 🗓 過去の記録：1日1件、この端末の IndexedDB に入れておく（日付 "2026-11-13" がかぎ）
@@ -5658,7 +5663,7 @@ const FOOT_STYLE = { renderer: footRend, color: "#ff6d00", weight: 5, opacity: 0
 function footSplit(P, dbg) {
   const runs = []; let seg = [];
   for (let i = 0; i < P.length; i++) {
-    const fast = !dbg && i && isWarp(P[i - 1], P[i]);   // 🌀 ワープ（速すぎる・長く記録がない）
+    const fast = i && (P[i][4] || (!dbg && isWarp(P[i - 1], P[i])));   // 🌀 ワープ（速すぎる・長く記録がない）／終了して もどってきた所（線を切る）
     if ((P[i][3] && !dbg) || fast) { if (seg.length > 1) runs.push(seg); seg = P[i][3] ? [] : [[P[i][0], P[i][1]]]; continue; }
     if (i && P[i][2] - P[i - 1][2] > 5 * 60e3 && hav(P[i - 1], P[i]) > 300) { if (seg.length > 1) runs.push(seg); seg = []; }
     const q = [P[i][0], P[i][1]];
@@ -6517,7 +6522,7 @@ async function snsOpen() {
   const box = document.createElement("div"); box.id = "snsBox";
   box.innerHTML = `<div class="box"><b style="font-size:15px">📣 SNSに出す</b> <span style="font-size:11px;color:#666">消しかた・写真を決めてから「🖼 作る」を押してね</span>
     <div style="font-size:12px;color:#666;margin:4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">🔒 家のそばから道にそって<select id="snsR2" style="padding:3px;border:1px solid #ccc;border-radius:6px"></select>は出さないよ。走っているとちゅうの来た道は<select id="snsTr" style="padding:3px;border:1px solid #ccc;border-radius:6px"><option value="0">その日ぜんぶ</option><option value="1000">さいごの1km</option><option value="3000">さいごの3km</option><option value="5000">さいごの5km</option><option value="10000">さいごの10km</option></select><span style="font-size:11px">（丸で消すと家の場所を推理されるので、道にそった距離で。長さはこの端末だけ少しずらしてあるよ。家のほか、その日の出発地もかならず消すよ。とちゅうで長くいた所は、ただ通りすぎたように見せるよ）。投稿はXなどで自分でしてね</span></div>
-    <div style="background:#fff4e5;color:#b45309;border:1px solid #f6c38b;font-size:12px;line-height:1.55;padding:6px 8px;border-radius:8px;margin-bottom:6px"><b>⚠ 待ちぶせに注意</b>：これから行く場所（目的地）の予告や、行き先が予想できるルート（サイクリングロード（CR）や橋など、この先 通る道がほぼ決まっている所）を投稿すると、待ちぶせなどのトラブルにあうおそれがあるよ。走っているとちゅうの投稿は とくに気をつけてね。自転車や自分の姿がわかる写真の投稿をさけるなど、対策を考えてね</div>
+    <div style="background:#fff4e5;color:#b45309;border:1px solid #f6c38b;font-size:12px;line-height:1.55;padding:6px 8px;border-radius:8px;margin-bottom:6px"><b>⚠ 待ちぶせに注意</b>：行き先の予告や、行き先が予想できるルートは投稿しないでね。自分や自転車がわかる写真もさけてね</div>
     <div id="snsWarn" style="display:none;background:#fde7e9;color:#c5221f;font-weight:bold;font-size:13px;padding:6px 8px;border-radius:8px;margin-bottom:6px">🧪 テスト中：家のまわりも出発地も消していないよ。共有・文やURLのコピーはできないよ（画像の保存だけできるよ。画像にも「テスト」と入るよ。画面をとじるともどるよ）</div>
     <div style="margin-top:2px"><label class="ib" style="display:inline-block;padding:8px 12px;border:1px solid #ddd;border-radius:10px">📷 写真をえらぶ（3枚まで）<input type="file" id="snsPh" accept="image/*" multiple style="display:none"></label>
       <span style="font-size:11px;color:#888">写真の位置情報は消してからわたすよ。撮った所に小さく置くよ</span></div>
@@ -6531,7 +6536,7 @@ async function snsOpen() {
 </div>`;
   $("trkBody").innerHTML = ""; $("trkBody").appendChild(box);
   let map0 = null, photos = [], link = "", made = false, warned = false;
-  const snsAsk = () => warned || (warned = confirm("⚠ 投稿する前にたしかめてね\n\nこれから行く場所（目的地）の予告や、行き先が予想できるルート（サイクリングロード（CR）や橋など、この先 通る道がほぼ決まっている所）を投稿すると、待ちぶせなどのトラブルにあうおそれがあるよ。\n自転車や自分の姿がわかる写真の投稿をさけるなど、対策を考えてね。\n\n大丈夫なら OK を押してね"));
+  const snsAsk = () => warned || (warned = confirm("⚠ 待ちぶせに注意\n\n行き先の予告や、行き先が予想できるルートは投稿しないでね。\n自分や自転車がわかる写真もさけてね。\n\nOK なら押してね"));
   const lock = () => { for (const id of ["snsShare", "snsCopy", "snsUrl", "snsSave"]) { const off = !made || (snsTest && id !== "snsSave"); $(id).disabled = off; $(id).style.opacity = off ? .35 : 1; } };   // 作るまでは共有・保存できない。テスト中は保存だけ
   const stale = () => { if (made) { made = false; $("snsMake").textContent = "🖼 作りなおす"; lock(); } };   // 設定を変えたら作りなおし
   let cmT = null;
@@ -6654,6 +6659,7 @@ $("bNew").onclick = async () => {
   clearShared();   // ルートの線・流れる点・ナビのゲージ・ミスコースの点線 などをまとめて消す
   // ↩ ミスコースのときの「ルートにもどる」ボタン・「外れています」の しるしも消す
   try { vcOff = false; vcFor = null; vcJoined = false; joinFor = null; vcEnd = false; tickFor = null; for (const t of $("bar").querySelectorAll(".tick")) t.remove(); $("bar").classList.remove("run", "busy", "done"); setBar(0); } catch {}
+  rideToTrack();   // ナビ中にルートを消したら、走りは続けて 軌跡の記録にする
   try { if (ovMode) ovSet(false, "ルート消去"); autoOvBy = false; } catch {}
   lsSet(LKEY, null);   // 読みこみなおしても 消したルートが もどってこないように
   for (const id of ["result", "share", "qr", "nav"]) $(id).style.display = "none";
@@ -7164,6 +7170,7 @@ function nearestOnRoute(p) {
 // ---------- 📣 走った記録（SNS用）：走った道と、着いた所・時刻。この端末の中だけ ----------
 let ride = lsGet("hosomichi_ride", null), rideSaveT = 0;
 const RIDE_GAP = 3 * 3600e3;
+let rideNav = false;   // いまの走りが ナビ（ルートあり）か 軌跡（ルートなし）か
 // 🚲 走った記録は「その日の分」：夜の0時か、🔄リセットで新しくなる（ルートを作りなおしても、ゴールに着いても切れない）
 const dayOf = t => new Date(t).toDateString();
 function rideNew(discard) {
@@ -7192,6 +7199,7 @@ function rideAdd(ll, accu) {
   if (wid < 0) q.push(1);   // 4つ目の 1＝🧪ためしの現在地・ためし走行（👣足あとには入れない）
   if (!L) { ride.pts.push(q); rideEv("start", "", ll); return; }
   if (hav(L, ll) < 20) return;
+  if (ride.cutNext) { ride.cutNext = false; while (q.length < 4) q.push(0); q[4] = 1; }   // 終了して もどってきた：ここから線を切る（q[4]＝1）
   ride.pts.push(q);
   if (ride.done) {   // 🏁 着いたあとも 走りつづけた（つぎのルートへ）：着いた所から200mはなれたら「走っている途中」にもどす（📣SNSの「さいごの◯km」・イマココ が使えるように）
     const g = [...ride.ev].reverse().find(e => e.k === "goal");
@@ -7201,7 +7209,7 @@ function rideAdd(ll, accu) {
   if (ride.pts.length > 6000) ride.pts.splice(1, 1);
   rideSave(false);
 }
-// 📡 地図の更新の間かく（1 / 2 / 3 / 5 秒）。走った記録はぜんぶ取る。曲がる所の近く・ルートから外れたときは毎回更新
+// 📡 地図の更新の間かく（1 / 2 / 3 / 5 / 7 / 10 秒）。走った記録はぜんぶ取る。曲がる所の近く・ルートから外れたときは毎回更新
 let gpsEvery = +lsGet("hosomichi_gps", 1) || 1, gpsLast = 0;
 for (const r of document.querySelectorAll("[name=gpsLv]")) {
   r.checked = +r.value === gpsEvery;
@@ -8093,19 +8101,45 @@ $("gps").onclick = async () => {
     else lsSet("hosomichi_geook", true);
   }
   if (wid === null) {
-    rideStart();
+    rideNav = !!cur; rideStart();
     if (fakePos) { wid = -1; setTimeout(feedFake); }   // 🧪 ためしの現在地
     else {
       if (!navigator.geolocation) return alert("この端末では位置情報が使えません");
       wid = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 2000 });
     }
-    setFollow(true); wake();
+    if (rideNav) setFollow(true); wake();   // 軌跡だけのときは 地図を固定しない
     audioUnlock(); if (vcOn) try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch {} /* 「始めます」は言わない（音の出ない一言で、あとの読み上げを使えるようにしておく） */
     $("dir").style.display = "block";
     $("panel").classList.add("min"); $("tog").textContent = "ひらく";
-  } else {
-    setFollow(!follow);
-  }
+    gpsLabel();
+  } else rideEnd();
+};
+// ◎（🚲）：走っていないときは「ナビ開始」（ルートがあるとき）か「軌跡開始」。走っているときは「ナビ終了」か「軌跡終了」
+function gpsLabel() {
+  const run = wid !== null;
+  $("gps").classList.toggle("on", run); $("gpsL").classList.toggle("on", run);
+  $("gpsL").textContent = run ? (rideNav ? "ナビ終了" : "軌跡終了") : (cur ? "ナビ開始" : "軌跡開始");
+}
+// 🏁 終了：地図の固定・音声・GPS・記録を止める。記録はここで区切る（つぎに始めたとき 線をつながない）
+function rideEnd() {
+  if (wid !== null && wid >= 0) navigator.geolocation.clearWatch(wid);
+  wid = null;
+  if (ride && ride.pts.length) { ride.cutNext = true; rideSave(true); }
+  try { speechSynthesis.cancel(); } catch {}
+  try { if (lock) lock.release(); lock = null; } catch {}
+  setFollow(false); gpsLabel();
+}
+// 🗑 ナビ中にルートを消したら、走りは続けて 軌跡の記録にする（音声の案内と地図の固定はやめる）
+function rideToTrack() {
+  if (wid === null || !rideNav) return;
+  rideNav = false; try { speechSynthesis.cancel(); } catch {}
+  setFollow(false); gpsLabel();
+}
+// 📍 現在地へ（gmapのように、ナビは始めないで地図を動かすだけ）
+$("locBtn").onclick = () => {
+  const c = me ? me.getLatLng() : fakePos ? { lat: fakePos[0], lng: fakePos[1] } : null;
+  if (!c) return setMsg("まだ現在地がとれていないよ。🚲で開始すると とれるよ");
+  map.setView([c.lat, c.lng], Math.max(map.getZoom(), 16));
 };
 $("dir").onclick = () => {
   headUp = !headUp;
@@ -8117,8 +8151,7 @@ $("dir").onclick = () => {
 function setFollow(on) {
   if (!on && ovMode) { if (Date.now() - ovSince < 8000) addLog("🗺 全体図をやめた（固定をはずした）", "w"); ovMode = false; document.body.classList.remove("ov"); }
   follow = on; document.body.classList.toggle("navi", on); try { probeReq(); } catch {} if (!on) { try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {} }
-  $("gps").classList.toggle("on", on);
-  $("gpsL").classList.toggle("on", on); $("gpsL").textContent = on ? "押すと\n固定解除" : "ナビ開始";
+  gpsLabel();
   const z = on ? "center" : true;
   map.options.touchZoom = z; map.options.scrollWheelZoom = z; map.options.doubleClickZoom = z;
   if (on) { map.dragging.disable(); if (me) { const c = me.getLatLng(), z = Math.max(map.getZoom(), 16); map.setView(aheadLL([c.lat, c.lng], z), z); } }
@@ -8134,10 +8167,6 @@ document.addEventListener("visibilitychange", () => { if (wid !== null && docume
 const ISSUES = [
   ["🪜 階段に案内されることがある", "地図データに「階段」と書いてない階段に、ルートが通っちゃうことがあるよ（例：県道に降りる石段）。いまは「階段・石段」の名前や、坂がすごく急なことから見分けてるけど、ぜんぶはわからないの。",
     "見つけたら、地図を長おし →「🚫 通れない」をつけてね。OpenStreetMap に階段（highway=steps）と書きたせば、みんなのルートからも消えるよ"],
-  ["💡（検討）Googleマップのタイムラインを 👣足あとに読みこむ", "ブラウザのアプリは 画面を消すと位置がとれないので、ナビを開いていない日は 記録が残らないよ。Googleマップのタイムラインは スマホの設定から 書き出せる（JSON）ので、通った道の点を読みこんで 👣足あとに足せそう。",
-    "まだ作っていないよ。作るなら：タイムラインの書き出し → 📦データで読みこみ → 自転車っぽい所だけ 👣に入れる"],
-  ["🔄 作ったルートを さっとスマホに送れない", "パソコンで作ったルートは、💾で保存して 📦データの「⬇ 暗号化して書き出す」→ スマホで「⬆ 読みこむ」をすれば 送れるよ（スマホ → パソコンも同じ）。でも、いま作ったばかりのルートを すぐ送る方法はないの。🔗共有URL・📷QR は SNSを作るときに かくしたままなの。",
-    "いまは 保存してから 📦データで移す。共有URL・QR のボタンを もどせば さっと送れるよ"],
   ["⛰ 電波のない所で 地図の絵が出ない", "地図の絵は その場でネットから取るだけで、端末にためていないよ。山岳道路などでは灰色になるの（ルートの線・現在地・曲がる案内は出るよ）。坂の見分け・地名さがし・住所の読み上げも ネットがいるよ。",
     "家でルートを作ってから出かける。直すなら「ルートのまわりの地図を先に入れておく」（地図サービスのルールを確かめてから）"],
   ["⛰ すごく急な坂が 🪜階段？になる", "標高で 15mの間に30%より急な所は 🪜階段？にしているので、すごく急な坂も階段あつかいになって 通らないことがあるよ（階段を坂とまちがえるよりは ましなので、迷ったら階段にしているの）。",
@@ -8146,8 +8175,6 @@ const ISSUES = [
     "いまは地図を見て自分でもどる。直すなら「いちばん近いルート上の点＋100m先」にもどるようにする案があるよ"],
   ["➡️ シンプルパスは ためし", "曲がらずに遠くまで続く細い道を、OSMのデータから自動で見つけたものだよ。いまは関東の人の多い市区のまわりだけで、遠回りになりすぎないか・住宅街で迷わないかは まだ走って確かめていないの。",
     "使ってみて へんな道に案内されたら 教えてね。⚙設定の「🚲 自転車道」の いちばん下で 倍率を「気にしない」にすれば 使わないよ。ほかの地域は データを作りたせば広げられるよ"],
-  ["💤 節電に入らないことがある", "つぎのときは、さわらなくても節電に入らないよ：◎固定がはずれている（地図を動かした・検索した）／地図のふきだしがひらいたまま／メニュー（パネル）がひらいたまま／入力欄にカーソルがある。さわっている途中で急に暗くならないように、わざとそうしているの。",
-    "ナビ中は ふきだしを閉じて、メニューをたたむと 入るよ（◎で固定にもどすのも わすれずに）。ひらいたままでも入るようにする案はあるけど、いまは変えていないよ"],
 ];
 function dbgIssueDraw() {
   $("dbgIssue").innerHTML = '<div style="font-size:12px;color:#666;margin:2px 0 6px">わかっている問題だよ。直せたら ここから消すね</div>'
