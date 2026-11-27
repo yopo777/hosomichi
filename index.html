@@ -221,7 +221,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.1043</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.1724</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3942,7 +3942,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1127.1043", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1127.1724", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5190,6 +5190,44 @@ async function snsStartCard({ sub }) {
   g.font = "bold 34px sans-serif"; g.fillStyle = "#666"; g.fillText("ほそみちナビ(無料)", W / 2, H - 70);
   return new Promise(ok => cv.toBlob(b => { if (b) b.rects = []; ok(b); }, "image/jpeg", 0.9));
 }
+// 🗺 国土地理院タイルを ためておく（SNS・軌跡の画像を早く作るため）。CyclOSM（OSM）は 規約で先読みできないので 対象外。
+const GSI_PALE = "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png";
+let gsiCacheP = null, gsiPfBusy = false;
+const gsiCache = () => gsiCacheP || (gsiCacheP = (window.caches ? caches.open("hosomichi-gsi-v1") : Promise.resolve(null)).catch(() => null));
+async function gsiGet(u, signal) {   // ためてあれば それを使う（電波いらない）。なければ読んで ためる
+  const c = await gsiCache();
+  if (c) { const hit = await c.match(u).catch(() => null); if (hit) return hit; }
+  const r = await fetch(u, { mode: "cors", signal });
+  if (r.ok && c) c.put(u, r.clone()).catch(() => {});
+  return r;
+}
+async function gsiPrefetch(pts) {   // 走った線のまわりのタイル（ズーム14〜16・線から1枚ぶん）を、こっそり先に読んでおく
+  if (gsiPfBusy || !pts || pts.length < 2 || navigator.onLine === false || (navigator.connection && navigator.connection.saveData)) return;
+  const c = await gsiCache(); if (!c) return;
+  const set = new Set();
+  for (const z of [14, 15, 16]) {
+    const n = 2 ** z; let last = "";
+    for (const q of pts) {
+      const x = Math.floor((q[1] + 180) / 360 * n), sn = Math.sin(q[0] * RAD), y = Math.floor((0.5 - Math.log((1 + sn) / (1 - sn)) / (4 * Math.PI)) * n), k = z + "/" + x + "/" + y;
+      if (k === last) continue; last = k;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) set.add(`${z}/${x + dx}/${y + dy}`);
+    }
+  }
+  const list = [...set].slice(0, 500); if (!list.length) return;
+  gsiPfBusy = true;
+  try {
+    let i = 0;
+    await Promise.all([0, 1, 2].map(async () => { while (i < list.length) {
+      const [z, x, y] = list[i++].split("/"), u = GSI_PALE.replace("{z}", z).replace("{x}", x).replace("{y}", y);
+      if (await c.match(u).catch(() => null)) continue;
+      const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 10000);
+      try { const r = await fetch(u, { mode: "cors", signal: ac.signal }); if (r.ok) await c.put(u, r); } catch {} finally { clearTimeout(tm); }
+    } }));
+    const ks = await c.keys(); if (ks.length > 1500) for (const q of ks.slice(0, ks.length - 1000)) c.delete(q);   // ためすぎない
+  } catch {} finally { gsiPfBusy = false; }
+}
+const gsiPfRide = () => { try { if (ride && ride.pts.length >= 2 && dkey(ride.t0) === dkey(Date.now())) gsiPrefetch(ride.pts.filter((_, i) => i % 3 === 0)); } catch {} };
+setTimeout(gsiPfRide, 30000); setInterval(gsiPfRide, 5 * 60000);   // 走っているあいだ、5分ごと
 async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, marks, thumbs }) {   // 1200×1600（3:4 の縦長。Xのスマホで切られずに いちばん大きく見える）の地図＋線＋寄った所＋写真
   pins = pins || []; thumbs = thumbs || []; const rects = [];   // rects：小さい写真を置いた所（タップ用。できた画像の .rects に入れて返す）
   const W = 1200, H = 1600, PAD = 70, all = runs.flat().concat(stops.map(q => q.p), here ? [here] : [], pins.map(q => q.p), thumbs.map(q => q.p));
@@ -5212,21 +5250,21 @@ async function snsImage({ runs, stops, sub, here, dir, big, pins, test, km, mark
     const zt = Math.min(Math.ceil(z - 1e-6) + K - 1, 18), f = 2 ** (zt - z), T = 256 / f, ox2 = ox * f, oy2 = oy * f;   // T：タイル1枚の大きさ（1200のつもりの座標で）
     const xs = [], ys = []; for (let tx = Math.floor(ox2 / 256); tx <= Math.floor((ox2 + W * f) / 256); tx++) xs.push(tx); for (let ty = Math.floor(oy2 / 256); ty <= Math.floor((oy2 + H * f) / 256); ty++) ys.push(ty);
     const cells = xs.flatMap(tx => ys.map(ty => [tx, ty])), got = TILES.map(() => new Map());
-    const load = async (ti, url) => {
-      let done = 0, todo = cells.filter(([tx, ty]) => !got[ti].has(tx + "," + ty));
-      for (let pass = 0; pass < 3 && todo.length; pass++) {
+    const load = async (ti, url, ms) => {   // ms：この地図に かけてよい時間（CyclOSMが遅い・つながらないときに、何分も待たないように）
+      const dl = Date.now() + ms; let done = 0, todo = cells.filter(([tx, ty]) => !got[ti].has(tx + "," + ty));
+      for (let pass = 0; pass < 3 && todo.length && Date.now() < dl; pass++) {
         const prog = () => { try { snsImage.prog && snsImage.prog(`地図を読んでいるよ… ${got[ti].size}/${cells.length}${pass ? `（読みなおし${pass}回目）` : ""}${ti ? "（国土地理院）" : ""}`); } catch {} };
         prog(); let i = 0;
-        const one = async () => { while (i < todo.length) { const [tx, ty] = todo[i++];
+        const one = async () => { while (i < todo.length && Date.now() < dl && !(ti === 0 && done >= 6 && !got[ti].size)) { const [tx, ty] = todo[i++];
           const u = url.replace("{s}", "abc"[(tx + ty) % 3]).replace("{z}", zt).replace("{x}", tx).replace("{y}", ty), ac = new AbortController(), tm = setTimeout(() => ac.abort(), 10000);
-          try { const r = await fetch(u, { mode: "cors", signal: ac.signal }); if (r.ok) got[ti].set(tx + "," + ty, await createImageBitmap(await r.blob())); } catch {} finally { clearTimeout(tm); done++; prog(); } } };
+          try { const r = await (ti ? gsiGet(u, ac.signal) : fetch(u, { mode: "cors", signal: ac.signal })); if (r.ok) got[ti].set(tx + "," + ty, await createImageBitmap(await r.blob())); } catch {} finally { clearTimeout(tm); done++; prog(); } } };
         await Promise.all([...Array(6)].map(one));
         todo = todo.filter(([tx, ty]) => !got[ti].has(tx + "," + ty));
         if (todo.length && pass < 2) await new Promise(r => setTimeout(r, 1500));
       }
     };
-    await load(0, TILES[0][0]);
-    if (got[0].size < cells.length) await load(1, TILES[1][0]);
+    await load(0, TILES[0][0], 20000);   // CyclOSM は 最大20秒（はじめの6枚が1枚も読めなければ すぐやめる）
+    if (got[0].size < cells.length) await load(1, TILES[1][0], 90000);
     const main = got[1].size > got[0].size ? 1 : 0, sub = 1 - main; let mixed = false;
     for (const [tx, ty] of cells) {
       const k = tx + "," + ty, im = got[main].get(k) || got[sub].get(k); if (!im) continue;
