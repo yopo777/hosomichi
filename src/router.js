@@ -889,6 +889,7 @@ function search(G, s, g, gll, useLen, onProg) {
     const chk = !useLen && L > 0 && G.xcost[u] > 0 && pu >= 0;
     const tw = !useLen && G.turn > 0 && pu >= 0 ? inWay[st] : -1;
     for (const e of G.adj[u]) {
+      if (e.v === pu) continue;   // その場でUターンしない（大きい道に入って すぐもどると、横断の判定をすりぬけて 4車線を信号なしで渡れてしまう）
       let nc = c + (useLen ? e.L : e.c);
       if (chk && isCrossing(G, pu, u, e.v, ul, e.l, L)) nc += G.xcost[u];
       if (tw >= 0 && e.w !== tw && isTurn(G, pu, u, e.v)) nc += G.turn;   // 別の道へ曲がる
@@ -962,7 +963,7 @@ function analyze(G, path) {
     if (edge(G, path[i - 1], path[i]).w !== edge(G, path[i], path[i + 1]).w && isTurn(G, path[i - 1], path[i], path[i + 1])) turns++;
     { const g = guideAt(G, path, i); if (g) tp.push(g); }
     const u = path[i], L = G.lvl[u]; if (!L || G.cfg.crossRule === "off") continue;   // 渡るルールを使わないときは 横断の印も出さない
-    if (isCrossing(G, path[i - 1], u, path[i + 1], edge(G, path[i - 1], u).l, edge(G, u, path[i + 1]).l, L)) {
+    if (path[i - 1] === path[i + 1] || isCrossing(G, path[i - 1], u, path[i + 1], edge(G, path[i - 1], u).l, edge(G, u, path[i + 1]).l, L)) {   // 大きい道の上の Uターンも 渡るのと同じ
       const p = [G.lat[u], G.lon[u]], k = G.xkind[u];
       if (k === 1) ok.push(p); else if (k === 2) xw.push(p);
       else if (G.xcost[u] > 0 || L === 2) { ng.push(p); ngIdx.push(i); }   // ルール違反（または4車線を信号なし）

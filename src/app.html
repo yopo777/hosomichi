@@ -3761,6 +3761,8 @@ const PEN_BONUS = new Set(["residential,living_street,unclassified", "path,track
 const penOpts = ks => LADF(...(PEN_BONUS.has(ks) ? L_ALL : L_UP), ...(ks === "residential,living_street,unclassified" ? [] : ["no"]));
 const CFG_DEF = { bkLane: 1, bkNavi: 1, pen: { living_street: 0.4, residential: 0.4, service: 1, unclassified: 0.4, cycleway: 0.4, tertiary: 1.5, secondary: 3,
   primary: 3, trunk: 3, footway: 1.5, pedestrian: 10, path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 1.5, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 30, allWide: "off", fastCross: "mid", midCross: 100, oneway: 1, bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 10, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 3, station: 10, cemetery: "no", park: 10, riv: 0.4, warp: 0.4, warpMin: 1500 };
+// 古い設定を直す印（let cfg の中の c.xxxV◯）。「はじめの設定にもどす」・はじめて使う人の設定にも 印をつけておく（ないと 開きなおすたびに直しが走って、曲がる回数などが 勝手に変わる）
+Object.assign(CFG_DEF, { areaV2: 1, bridgeV2: 1, avoidV2: 1, penV2: 1, cfgV3: 1, cfgV4: 1, cfgV5: 1, cfgV6: 1, cfgV7: 1, cfgV8: 1, cfgV9: 1, cfgV10: 1, cfgV11: 1 });
 const BK_OPT = LADF(...L_ALL);   // 🚲 自転車道のなかま ぜんぶ同じ
 const OTHER_ROWS = [
   ["avoidPen", "⚠ 通りたくない道", LADF(1.5, 3, 5, 10)],

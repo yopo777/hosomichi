@@ -221,7 +221,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.1724</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1127.1948</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -1342,6 +1342,7 @@ function search(G, s, g, gll, useLen, onProg) {
     const chk = !useLen && L > 0 && G.xcost[u] > 0 && pu >= 0;
     const tw = !useLen && G.turn > 0 && pu >= 0 ? inWay[st] : -1;
     for (const e of G.adj[u]) {
+      if (e.v === pu) continue;   // その場でUターンしない（大きい道に入って すぐもどると、横断の判定をすりぬけて 4車線を信号なしで渡れてしまう）
       let nc = c + (useLen ? e.L : e.c);
       if (chk && isCrossing(G, pu, u, e.v, ul, e.l, L)) nc += G.xcost[u];
       if (tw >= 0 && e.w !== tw && isTurn(G, pu, u, e.v)) nc += G.turn;   // 別の道へ曲がる
@@ -1415,7 +1416,7 @@ function analyze(G, path) {
     if (edge(G, path[i - 1], path[i]).w !== edge(G, path[i], path[i + 1]).w && isTurn(G, path[i - 1], path[i], path[i + 1])) turns++;
     { const g = guideAt(G, path, i); if (g) tp.push(g); }
     const u = path[i], L = G.lvl[u]; if (!L || G.cfg.crossRule === "off") continue;   // 渡るルールを使わないときは 横断の印も出さない
-    if (isCrossing(G, path[i - 1], u, path[i + 1], edge(G, path[i - 1], u).l, edge(G, u, path[i + 1]).l, L)) {
+    if (path[i - 1] === path[i + 1] || isCrossing(G, path[i - 1], u, path[i + 1], edge(G, path[i - 1], u).l, edge(G, u, path[i + 1]).l, L)) {   // 大きい道の上の Uターンも 渡るのと同じ
       const p = [G.lat[u], G.lon[u]], k = G.xkind[u];
       if (k === 1) ok.push(p); else if (k === 2) xw.push(p);
       else if (G.xcost[u] > 0 || L === 2) { ng.push(p); ngIdx.push(i); }   // ルール違反（または4車線を信号なし）
@@ -3942,7 +3943,7 @@ $("myExp").onclick = async () => {
       const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
       const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
     }
-    const out = { app: "hosomichi", kind: "mydata", ver: "1127.1724", at: new Date().toISOString(),
+    const out = { app: "hosomichi", kind: "mydata", ver: "1127.1948", at: new Date().toISOString(),
       localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
     {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
       const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -6660,6 +6661,8 @@ const PEN_BONUS = new Set(["residential,living_street,unclassified", "path,track
 const penOpts = ks => LADF(...(PEN_BONUS.has(ks) ? L_ALL : L_UP), ...(ks === "residential,living_street,unclassified" ? [] : ["no"]));
 const CFG_DEF = { bkLane: 1, bkNavi: 1, pen: { living_street: 0.4, residential: 0.4, service: 1, unclassified: 0.4, cycleway: 0.4, tertiary: 1.5, secondary: 3,
   primary: 3, trunk: 3, footway: 1.5, pedestrian: 10, path: 1, track: 1 }, mode: "full", alts: "yes", avoidPen: 10, preferK: 0.5, turn: 100, area: "auto", steps: "no", brSteps: "ramp", bridge: 1.5, tunnel: 1.5, unpaved: "no", crossRule: "on", wideCross: "crosswalk", xDet: 30, allWide: "off", fastCross: "mid", midCross: 100, oneway: 1, bigCross: "mid", sidewalk: 3, kodo: 1, slope: 5, stepsGuess: 10, steep: 3, paintPen: 1, danchi: "no", privy: "no", unkSurf: 3, station: 10, cemetery: "no", park: 10, riv: 0.4, warp: 0.4, warpMin: 1500 };
+// 古い設定を直す印（let cfg の中の c.xxxV◯）。「はじめの設定にもどす」・はじめて使う人の設定にも 印をつけておく（ないと 開きなおすたびに直しが走って、曲がる回数などが 勝手に変わる）
+Object.assign(CFG_DEF, { areaV2: 1, bridgeV2: 1, avoidV2: 1, penV2: 1, cfgV3: 1, cfgV4: 1, cfgV5: 1, cfgV6: 1, cfgV7: 1, cfgV8: 1, cfgV9: 1, cfgV10: 1, cfgV11: 1 });
 const BK_OPT = LADF(...L_ALL);   // 🚲 自転車道のなかま ぜんぶ同じ
 const OTHER_ROWS = [
   ["avoidPen", "⚠ 通りたくない道", LADF(1.5, 3, 5, 10)],
