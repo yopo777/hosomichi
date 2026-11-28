@@ -5057,6 +5057,14 @@ function backWord(off) {   // 「ルートは右の方向、200メートルで�
   return `ルートは${a < 35 ? "前" : a > 145 ? "うしろ" : d > 0 ? "右" : "左"}の方向、${m}メートルです`;
 }
 let offSince = 0;   // 🤖 外れはじめた時刻（自動でルートにもどる用）
+// もどる予定の点：出発（いまの進み具合の先・外れた距離か100mの大きいほう）と、合流（500m先）
+function rejoinPlan(offNow) {
+  const R = cur.route, along = navAlong || 0;
+  let si = cum.findIndex(c => c >= along + Math.max(100, offNow || 0)); if (si < 0 || si >= R.length) si = R.length - 1;
+  let ti = cum.findIndex(c => c >= along + 500); if (ti < 0 || ti >= R.length) ti = R.length - 1;
+  if (si >= ti) si = Math.max(0, ti - 1);
+  return { si, ti, s: R[si], g: R[ti] };
+}
 function backHint(off) {
   const show = follow && me && off > 60 && cur && !cur.partial;
   backLayer.clearLayers();
@@ -5066,7 +5074,10 @@ function backHint(off) {
   else if (!offSince) offSince = Date.now();
   else if (Date.now() - offSince >= 3000 && !job) { offSince = 0; $("rjBtn").onclick(); }
   if (!show) return;
-  const q = backNear(); if (q) L.polyline([me.getLatLng(), q], { color: "#1a73e8", weight: 4, dashArray: "6 8", opacity: .9, interactive: false }).addTo(backLayer);
+  const pl = rejoinPlan(off);   // もどる予定の点を見せる（白い丸＝出発・青い点＝合流）
+  L.polyline([me.getLatLng(), pl.s], { color: "#1a73e8", weight: 4, dashArray: "6 8", opacity: .9, interactive: false }).addTo(backLayer);
+  L.circleMarker(pl.s, { radius: 9, color: "#1a73e8", weight: 3, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(backLayer);
+  L.circleMarker(pl.g, { radius: 5, color: "#1a73e8", weight: 2, fillColor: "#1a73e8", fillOpacity: .8, interactive: false }).addTo(backLayer);
   $("rjBtn").textContent = vcJoined ? `↩ ルートにもどる（${fmtKm(off)}）` : `🚲 ルートまでの道を作る（${fmtKm(off)}）`;
 }
 $("rjBtn").onclick = () => {
@@ -5074,10 +5085,7 @@ $("rjBtn").onclick = () => {
   const old = cur, R = old.route, h = [me.getLatLng().lat, me.getLatLng().lng];
   const along = navAlong || 0, offNow = nearestOnRoute(h)[0] || 0;
   // 出発：ルートの上で、いまの進み具合から「外れた距離」か100m、大きいほう先（うしろには戻らない）
-  let si = cum.findIndex(c => c >= along + Math.max(100, offNow)); if (si < 0 || si >= R.length) si = R.length - 1;
-  // 合流：いまの進み具合から500m先
-  let ti = cum.findIndex(c => c >= along + 500); if (ti < 0 || ti >= R.length) ti = R.length - 1;
-  if (si >= ti) si = Math.max(0, ti - 1);
+  const pl = rejoinPlan(offNow), si = pl.si, ti = pl.ti;   // 出発・合流（表示している点と同じ）
   job = { g: R[ti], cfg: structuredClone(cfg), prefix: null, loop: 0, rejoin: { old, ti, from: h } };
   $("rjBtn").style.display = "none"; $("stop").style.display = ""; setMsg("↩ ルートにもどる道をさがしているよ…");   // 計算を「■ 止める」で止められるように
   addLog("↩ ルートにもどる道をさがすよ（100m先から500m先で合流）", "h");
