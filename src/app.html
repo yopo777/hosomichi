@@ -366,12 +366,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
       <div id="dbgIssue" style="display:none"></div>
       <div id="dbgUpd" style="display:none"><div class="btns" style="margin:4px 0 6px"><button class="ib" id="updChk" style="width:100%">🆕 新しい版があるか見る（いまは <span id="verNow"></span>）</button></div><div id="updList"></div></div>
       <div id="dbgTool">
-
-      <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
-        <b>🔎 警察のデータのマークをさがす</b>
-        <div style="font-size:11px;color:#666;margin-top:2px">地図のまん中から いちばん近いものへ動くよ。もう一度おすと 次に近いもの（30kmくらいまで。遠いと少し時間がかかるよ）</div>
-        <div id="jxFind" class="btns" style="margin-top:4px;flex-wrap:wrap;gap:4px"></div>
-      </div>
       <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
         <b>🧪 ためし走行</b>
         <div style="font-size:11px;color:#666;margin-top:2px">作ったルートの上を ためしに自動で走るよ（テスト用）<span class="hq">?</span><div class="hd">🚲ルートタブで作ったルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。一時停止して、つづきから走れるよ。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div></div>
@@ -381,6 +375,12 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="simWipe" style="font-size:12px;color:#c5221f">🧪 ためしの軌跡と足あとを消す（本物はのこす）</button></div>
 
+      </div>
+
+      <div style="font-size:12px;margin:6px 0 8px;padding:6px 8px;border:1px solid #ddd;border-radius:8px">
+        <b>🔎 警察のデータのマークをさがす</b>
+        <div style="font-size:11px;color:#666;margin-top:2px">地図のまん中から いちばん近いものへ動くよ。もう一度おすと 次に近いもの（30kmくらいまで。遠いと少し時間がかかるよ）</div>
+        <div id="jxFind" class="btns" style="margin-top:4px;flex-wrap:wrap;gap:4px"></div>
       </div>
       <div style="font-size:11px;color:#666;margin-bottom:6px">🧪 ためしの現在地は、地図を長おしで決めるよ<span class="hq">?</span><div class="hd">🧪 ためしの現在地は、地図を長おし（パソコンは右クリック）→「ここを現在地にする」で決めるよ。もどすときも長おし →「本当の現在地にもどす」</div></div>
       </div>
@@ -2224,8 +2224,8 @@ $("simGo").onclick = async () => {
       devPath.d += v * dt / 1000;
       if (devPath.d < devPath.cum[devPath.cum.length - 1]) { fakePos = devAt(devPath); feedFake(); return; }
       devPath = null; simD = devRejoin(R, c, simD);
+      if (devJ) while (devNext < devJ.length && c[devJ[devNext].k] < simD) devNext++;   // 外れている間に通りすぎた分かれ道は飛ばす
     } else if (devJ && !devBusy) {
-      while (devNext < devJ.length && c[devJ[devNext].k] < simD) devNext++;
       if (devNext < devJ.length && c[devJ[devNext].k] <= simD) {   // 分かれ道を通った → 外れるかサイコロ
         const j = devNext++;
         if (Math.random() < devRate) {
