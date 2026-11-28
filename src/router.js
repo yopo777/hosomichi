@@ -2891,8 +2891,14 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "jarSig") { const r = await jarSigIn(d.bb, d.cfg).catch(e => ({ err: e.message, sigs: [] })); return self.postMessage({ type: "jarSig", id: d.id, who: d.who, ...r }); }
-      if (d.cmd === "wanderPrep") return self.postMessage({ type: "wanderPrep", id: d.id, ...wanderJunctions(d.pts) });   // 🧭 分かれ道の一覧
-      if (d.cmd === "wander") return self.postMessage({ type: "wander", id: d.id, ...wanderWalkOne(d.j, d.b, d.len) });   // 🧭 外れた道を走る点の列
+      if (d.cmd === "wanderPrep") {   // 🧭 分かれ道の一覧（失敗しても 返事はする）
+        try { return self.postMessage({ type: "wanderPrep", id: d.id, ...wanderJunctions(d.pts) }); }
+        catch (e) { return self.postMessage({ type: "wanderPrep", id: d.id, junc: [], err: e.message }); }
+      }
+      if (d.cmd === "wander") {   // 🧭 外れた道を走る点の列
+        try { return self.postMessage({ type: "wander", id: d.id, ...wanderWalkOne(d.j, d.b, d.len) }); }
+        catch (e) { return self.postMessage({ type: "wander", id: d.id, pts: [], err: e.message }); }
+      }
       if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg, d.opt).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, tag: d.tag, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;

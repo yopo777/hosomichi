@@ -2210,6 +2210,8 @@ $("simGo").onclick = async () => {
     devFor = cur; devJ = null; devNext = 0; devPath = null;
     const r = await wanderCall("wanderPrep", { pts: R });
     devJ = r.junc || [];
+    if (r.err) addLog("🧭 分かれ道のしらべに失敗: " + r.err, "e");
+    else addLog(devJ.length ? `🧭 分かれ道 ${devJ.length}か所（外れる率 ${devRate * 100}%）` : "🧭 分かれ道が見つからなかったよ（ルートの点と道のデータが合わない？）", devJ.length ? "i" : "w");
   } else if (devRate === 0) devJ = null;
   const dt = 250;
   $("simGo").textContent = "⏸ 一時停止";   // パネルはそのまま（一時停止・速さをすぐ変えられるように）
@@ -2228,7 +2230,9 @@ $("simGo").onclick = async () => {
         const j = devNext++;
         if (Math.random() < devRate) {
           devBusy = true;
-          wanderCall("wander", { j, b: Math.floor(Math.random() * devJ[j].n), len: 50 + Math.random() * 250 }).then(r => { devBusy = false; if (r.pts && r.pts.length > 1) devPath = devStart(r.pts); });
+          const b = Math.floor(Math.random() * devJ[j].n), len = Math.round(50 + Math.random() * 250);
+          addLog(`🧭 分かれ道で ルートを外れるよ（${devJ[j].n}本のうち${b + 1}本目・${len}m）`, "w");
+          wanderCall("wander", { j, b, len }).then(r => { devBusy = false; if (r.err) addLog("🧭 外れる道のしらべに失敗: " + r.err, "e"); else if (r.pts && r.pts.length > 1) devPath = devStart(r.pts); });
         }
         return;
       }
