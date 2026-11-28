@@ -2853,20 +2853,50 @@ function wanderJunctions(pts) {
   }
   return { junc: wanderJ.map(j => ({ k: j.k, n: j.br.length })) };
 }
-// 分かれ道 j の、br[b] の道へ入って、ランダムに lenM 分走る（Uターンはしない）。点の列［緯度,経度］を返す
-function wanderWalkOne(j, b, lenM) {
+// 道づたいに一番近い「ルートの先の点」まで行く最短の道（Dijkstra・maxM まで）。見つからなければ null
+function wanderPath(G, s, S, maxM) {
+  const dist = new Map([[s, 0]]), prev = new Map(), H = [[0, s]];
+  const push = x => { H.push(x); let i = H.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (H[p][0] <= H[i][0]) break; [H[p], H[i]] = [H[i], H[p]]; i = p; } };
+  const pop = () => { const top = H[0], last = H.pop(); if (H.length) { H[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < H.length && H[l][0] < H[m][0]) m = l; if (r < H.length && H[r][0] < H[m][0]) m = r; if (m === i) break; [H[m], H[i]] = [H[i], H[m]]; i = m; } } return top; };
+  while (H.length) {
+    const [d, u] = pop();
+    if (d > (dist.get(u) ?? Infinity)) continue;
+    if (S.has(u)) { const path = [u]; let x = u; while (prev.has(x)) { x = prev.get(x); path.push(x); } return path.reverse(); }
+    if (d > maxM) break;
+    for (const e of G.adj[u] || []) {
+      if (!G.inGraph[e.v]) continue;
+      const nd = d + hav(G.lat[u], G.lon[u], G.lat[e.v], G.lon[e.v]);
+      if (nd < (dist.get(e.v) ?? Infinity)) { dist.set(e.v, nd); prev.set(e.v, u); push([nd, e.v]); }
+    }
+  }
+  return null;
+}
+// 分かれ道 j の、br[b] の道へ入って、ランダムに lenM 分走る（Uターンはしない）。
+// そのあと、ルートの先の点（ahead）のどれかへ道づたいにもどる。点の列［緯度,経度］と、もどった先の ahead の番号（ri）を返す
+function wanderWalkOne(j, b, lenM, ahead) {
   const G = wanderG, J = wanderJ[j];
-  if (!G || !J || J.br[b] === undefined) return { pts: [] };
+  if (!G || !J || J.br[b] === undefined) return { pts: [], ri: -1 };
   let prev = J.u, cur = J.br[b], d = 0, guard = 0;
-  const pts = [[G.lat[prev], G.lon[prev]], [G.lat[cur], G.lon[cur]]];
+  const nodes = [prev, cur];
   while (d < lenM && guard++ < 3000) {
     const opts = (G.adj[cur] || []).filter(e => e.v !== prev && G.inGraph[e.v]);
     if (!opts.length) break;
     const e = opts[Math.floor(Math.random() * opts.length)];
     d += hav(G.lat[cur], G.lon[cur], G.lat[e.v], G.lon[e.v]);
-    pts.push([G.lat[e.v], G.lon[e.v]]); prev = cur; cur = e.v;
+    nodes.push(e.v); prev = cur; cur = e.v;
   }
-  return { pts };
+  // もどり先：ahead の点（道の番号に直したもの）のうち、いちばん手前のもの
+  let ri = -1;
+  if (Array.isArray(ahead) && ahead.length) {
+    const M = wanderIndex(G), S = new Map();
+    ahead.forEach((p, pos) => { const u = M.get(wKey(p[0], p[1])); if (u !== undefined && !S.has(u)) S.set(u, pos); });
+    if (S.size) {
+      const back = wanderPath(G, cur, new Set(S.keys()), 3000);
+      if (back) { for (const u of back.slice(1)) nodes.push(u); ri = S.get(back[back.length - 1]); }
+    }
+  }
+  const pts = nodes.map(u => [G.lat[u], G.lon[u]]);
+  return { pts, ri };
 }
 
 if (typeof self !== "undefined" && typeof self.postMessage === "function" && typeof module === "undefined") {
@@ -2896,7 +2926,7 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
         catch (e) { return self.postMessage({ type: "wanderPrep", id: d.id, junc: [], err: e.message }); }
       }
       if (d.cmd === "wander") {   // 🧭 外れた道を走る点の列
-        try { return self.postMessage({ type: "wander", id: d.id, ...wanderWalkOne(d.j, d.b, d.len) }); }
+        try { return self.postMessage({ type: "wander", id: d.id, ...wanderWalkOne(d.j, d.b, d.len, d.ahead) }); }
         catch (e) { return self.postMessage({ type: "wander", id: d.id, pts: [], err: e.message }); }
       }
       if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg, d.opt).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, tag: d.tag, ...r }); }

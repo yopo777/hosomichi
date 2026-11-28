@@ -2223,7 +2223,9 @@ $("simGo").onclick = async () => {
     if (devPath) {   // わざと外れている途中：ルート以外の道を走る
       devPath.d += v * dt / 1000;
       if (devPath.d < devPath.cum[devPath.cum.length - 1]) { fakePos = devAt(devPath); feedFake(); return; }
-      devPath = null; simD = devRejoin(R, c, simD);
+      // もどった先（道づたいで着いたルートの点）からつづける。見つからなかったときだけ、いちばん近い点へ
+      simD = devPath.rk >= 0 ? c[devPath.rk] : devRejoin(R, c, simD);
+      devPath = null;
       if (devJ) while (devNext < devJ.length && c[devJ[devNext].k] < simD) devNext++;   // 外れている間に通りすぎた分かれ道は飛ばす
     } else if (devJ && !devBusy) {
       if (devNext < devJ.length && c[devJ[devNext].k] <= simD) {   // 分かれ道を通った → 外れるかサイコロ
@@ -2232,7 +2234,12 @@ $("simGo").onclick = async () => {
           devBusy = true;
           const b = Math.floor(Math.random() * devJ[j].n), len = Math.round(50 + Math.random() * 250);
           addLog(`🧭 分かれ道で ルートを外れるよ（${devJ[j].n}本のうち${b + 1}本目・${len}m）`, "w");
-          wanderCall("wander", { j, b, len }).then(r => { devBusy = false; if (r.err) addLog("🧭 外れる道のしらべに失敗: " + r.err, "e"); else if (r.pts && r.pts.length > 1) devPath = devStart(r.pts); });
+          const kk = devJ[j].k;   // もどり先は、この分かれ道の先のルートの点
+          wanderCall("wander", { j, b, len, ahead: R.slice(kk + 1, kk + 201) }).then(r => {
+            devBusy = false;
+            if (r.err) addLog("🧭 外れる道のしらべに失敗: " + r.err, "e");
+            else if (r.pts && r.pts.length > 1) { devPath = devStart(r.pts); devPath.rk = r.ri >= 0 ? kk + 1 + r.ri : -1; }
+          });
         }
         return;
       }
