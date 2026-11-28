@@ -1318,7 +1318,7 @@ worker.onmessage = ev => {
   }
   if (job && job.rejoin) {   // ↩ ルートにもどる道：とちゅうのルートは出さない
     if (m.type === "partial" || m.type === "short") return;
-    if (m.type === "done" || m.type === "error" || m.type === "stopped") { rejoinEnd(m); return; }
+    if (m.type === "done" || m.type === "error" || m.type === "stopped") { if (job.rejoin.pre != null) arrEnd(m); else rejoinEnd(m); return; }
   }
   if (m.type === "short") {   // あとから届く「ただの最短」
     if (cur && !cur.short) { cur.short = m.short; cur.slen = m.slen; showRoute(cur, false); lsSet(LKEY, packRoute(cur)); }
@@ -1980,7 +1980,7 @@ for (const id of ["from", "via", "to"]) $(id).addEventListener("input", () => in
 setTimeout(() => inPins(), 0);
 function showRoute(r, fit) {
   if (r !== cur) { $("bar").classList.remove("trip"); for (const t of $("bar").querySelectorAll(".tick")) t.remove(); tickFor = null; }
-  cur = r; layer.clearLayers(); setTimeout(() => inPins()); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r);
+  cur = r; layer.clearLayers(); setTimeout(() => inPins()); setTimeout(() => { try { flowPrep(); } catch {} }); if (window.updSaveBtn) setTimeout(updSaveBtn); altBtn(r); arrBtnUpdate();
   if (!r.partial && r.len) $("mini").textContent = (r.opts && r.opts.length > 1 ? `ルート${(r.sel || 0) + 1}/${r.opts.length}　` : "") + `📏 ${fmtKm(r.len)}` + (r.turns != null ? `・曲がる${r.turns}回` : "");   // たたんでいても距離が見える
   const tent = r.tent || [];
   r.nav = r.route.length ? r.route.concat(tent.slice(1)) : tent.slice();   // ナビで使う線（確定＋仮）
@@ -5113,6 +5113,76 @@ function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルー�
   setMsg(`↩ ルートにもどる道を作ったよ（合流まで ${fmtKm(m.len || 0)}）`); addLog(`↩ 合流まで ${fmtKm(m.len || 0)}`, "ok");
   if (vcOn) say("ルートにもどる道を作ったよ");
 }
+// ✋ ルートのアレンジ：つまみをドラッグして離すと、そこから1km先までの道をつなぎ直す（ナビ中・記録中はできない）
+var arrM = null;   // { mk: つまみ, old: もとのルート }
+function arrCanUse() { return !!cur && !cur.partial && !!cur.route && cur.route.length > 2 && !follow && wid === null; }
+function arrBtnUpdate() {
+  const b = $("arrBtn"); if (!b) return;
+  b.style.display = cur && !cur.partial && cur.route && cur.route.length > 2 ? "" : "none";
+  b.disabled = !arrCanUse() && !arrM;
+  b.title = follow || wid !== null ? "ナビ中・記録中はアレンジできないよ" : "ルートのつまみを動かして、道をつなぎ直す";
+}
+(function arrInit() {
+  const b = document.createElement("button"); b.id = "arrBtn"; b.className = "ib"; b.style.display = "none"; b.textContent = "✋ アレンジ";
+  b.onclick = () => { if (arrM) arrExit(); else arrEnter(); };
+  $("bOther").parentNode.insertBefore(b, $("bOther"));
+  document.body.insertAdjacentHTML("beforeend", '<div id="arrBar" style="display:none;position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2100;background:#e8710a;color:#fff;border-radius:10px;padding:8px 12px;font-size:14px;align-items:center;gap:10px;box-shadow:0 2px 8px #0005;white-space:nowrap"><span id="arrMsg"></span><button id="arrEnd" style="font:inherit;border:0;border-radius:8px;padding:4px 10px;background:#fff;color:#e8710a;font-weight:bold">✅ おわる</button></div>');
+  $("arrEnd").onclick = () => arrExit();
+  document.head.insertAdjacentHTML("beforeend", "<style>body.arr #panel, body.arr #gps, body.arr #gpsL, body.arr #locBtn, body.arr #alt, body.arr #ft, body.arr #mk, body.arr #col, body.arr #cdot { display: none !important; }</style>");
+})();
+function arrEnter() {
+  if (!arrCanUse()) { setMsg("ナビ中・記録中はアレンジできないよ", true); return; }
+  if (job) { setMsg("いまルートを計算中だから、おわってからね", true); return; }
+  const R = cur.route, c = map.getCenter(); let k = 0, bd = Infinity;
+  for (let i = 0; i < R.length; i++) { const d = hav(R[i], [c.lat, c.lng]); if (d < bd) { bd = d; k = i; } }   // つまみは、画面のまん中にいちばん近い点に出す
+  const mk = L.marker(R[k], { draggable: true, zIndexOffset: 2000, icon: L.divIcon({ className: "arrPin", html: '<div style="width:26px;height:26px;border-radius:50%;background:#e8710a;border:3px solid #fff;box-shadow:0 1px 6px #0008"></div>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
+  arrM = { mk, old: cur };
+  mk.on("dragend", arrDrop);
+  map.dragging.disable(); map.touchZoom.disable(); map.scrollWheelZoom.disable(); map.doubleClickZoom.disable();
+  document.body.classList.add("arr");
+  $("arrMsg").textContent = "つまみを動かして、離すと そこから1km先まで つなぎ直すよ";
+  $("arrBar").style.display = "flex";
+  arrBtnUpdate();
+}
+function arrExit() {
+  if (arrM) { arrM.mk.remove(); arrM = null; }
+  if (!follow) { map.dragging.enable(); map.touchZoom.enable(); map.scrollWheelZoom.enable(); map.doubleClickZoom.enable(); }
+  document.body.classList.remove("arr"); $("arrBar").style.display = "none"; arrBtnUpdate();
+}
+function arrDrop() {
+  if (!arrM) return;
+  const { mk, old } = arrM, R = old.route, q = (() => { const p = mk.getLatLng(); return [p.lat, p.lng]; })();
+  if (follow || wid !== null || cur !== old) { arrExit(); setMsg("アレンジはやめたよ", true); return; }
+  let ia = 0, bd = Infinity;
+  for (let i = 0; i < R.length; i++) { const d = hav(R[i], q); if (d < bd) { bd = d; ia = i; } }
+  let ti = cum.findIndex((cv, i) => i > ia && cv >= cum[ia] + 1000); if (ti < 0 || ti >= R.length) ti = R.length - 1;
+  if (ti <= ia) { arrExit(); setMsg("ここは おわりの点だから、動かせないよ", true); return; }
+  arrExit();
+  job = { g: R[ti], cfg: structuredClone(cfg), prefix: null, loop: 0, rejoin: { old, ti, from: R[ia], pre: ia } };
+  $("rjBtn").style.display = "none"; $("stop").style.display = ""; setMsg("✋ つなぎ直す道をさがしているよ…");
+  addLog("✋ アレンジで、いまの点から1km先までつなぎ直すよ", "h");
+  $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: "✋ つなぎ直す道" };
+  clearInterval(tickTimer); tickTimer = setInterval(showProg, 250);
+  rtDrop = false; worker.postMessage({ s: R[ia], g: R[ti], cfg: job.cfg, blocks: blocks.filter(b => !BLK_SOFT(b.r)).map(b => b.p), oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: 0, poi: null, via: null });
+}
+function arrEnd(m) {   // つなぎ直した結果を、ルートに入れる（前は残す・あとは残す）
+  const { old, ti, pre } = job.rejoin; job = null;
+  clearInterval(tickTimer); $("go").disabled = $("msnGo").disabled = false; $("stop").style.display = "none";
+  if (m.type !== "done") { setMsg(m.type === "error" ? "道がつながらなかったよ：" + m.msg : "止めたよ", m.type === "error"); return; }
+  const R = old.route, mr = m.route || [], head = R.slice(0, pre + 1), rest = R.slice(ti + 1);
+  const route = head.concat(mr.slice(1), rest);   // mr の最初の点は R[pre] と同じなので ひとつ飛ばす
+  const keepPts = head.concat(rest), keep = p => keepPts.some(q => hav(q, p) < 3);
+  let plen = 0; for (let i = 1; i < head.length; i++) plen += hav(head[i - 1], head[i]);
+  let rlen = 0; for (let i = 1; i < rest.length; i++) rlen += hav(rest[i - 1], rest[i]);
+  const kc = old.kc && m.ek ? old.kc.slice(0, pre).concat(m.ek.map(kcOf), old.kc.slice(ti)) : null;
+  const tp = old.tp && m.tp ? m.tp.concat(old.tp.filter(keep)) : null;
+  const n = { ...old, route, kc: null, ek: undefined, tp, opts: null, short: null, slen: 0, resume: null, partial: false, tent: null,
+    ok: (m.ok || []).concat((old.ok || []).filter(keep)), xw: (m.xw || []).concat((old.xw || []).filter(keep)), ng: (m.ng || []).concat((old.ng || []).filter(keep)),
+    xvia: (m.xvia || []).concat((old.xvia || []).filter(v => keep([v[0], v[1]]) || keep([v[2], v[3]]))), len: plen + (m.len || 0) + rlen };
+  if (kc && kc.length === route.length - 1) n.kc = kc;
+  showRoute(n, false); lsSet(LKEY, packRoute(n));
+  setMsg(`✋ つなぎ直したよ（全体 ${fmtKm(n.len)}）`); addLog("✋ アレンジでつなぎ直した", "ok");
+}
 let vcXv = [];
 let vcNg = [];
 function vcNgFind() {   // cur.ng（信号も横断歩道もない所で渡る）→ [{ s: ルートの何m目 }]。曲がる所と同じ（20m以内）なら その曲がりに「道路を横断します」をつける
@@ -5355,6 +5425,7 @@ $("dir").onclick = () => {
 };
 // ナビ中は地図を動かせない（拡大・縮小だけ。自分の位置を中心に）。◎をもう一度押すまで解除しない
 function setFollow(on) {
+  if (on && arrM) arrExit();   // ナビ中はアレンジできない
   if (!on && ovMode) { if (Date.now() - ovSince < 8000) addLog("🗺 全体図をやめた（固定をはずした）", "w"); ovMode = false; document.body.classList.remove("ov"); }
   follow = on; document.body.classList.toggle("navi", on); try { probeReq(); } catch {} if (!on) { try { backLayer.clearLayers(); $("rjBtn").style.display = "none"; } catch {} }
   gpsLabel();
