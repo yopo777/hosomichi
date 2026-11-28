@@ -371,6 +371,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <div style="font-size:11px;color:#666;margin-top:2px">作ったルートの上を ためしに自動で走るよ（テスト用）<span class="hq">?</span><div class="hd">🚲ルートタブで作ったルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。一時停止して、つづきから走れるよ。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div></div>
         <div class="btns" style="margin-top:4px;align-items:center"><select id="simMode" title="どの線を走るか" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="main" selected>🚲 いつものルート</option><option value="alt">👻 2本目（影）のルート</option></select><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="10">×2</option><option value="15">×3</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px"><input type="checkbox" id="simAutoRj">外れたら3秒後に、自動で「ルートにもどる」（案内中のとき）</label>
         <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="simWipe" style="font-size:12px;color:#c5221f">🧪 ためしの軌跡と足あとを消す（本物はのこす）</button></div>
 
@@ -5055,10 +5056,15 @@ function backWord(off) {   // 「ルートは右の方向、200メートルで�
   const d = ((b - heading + 540) % 360) - 180, a = Math.abs(d);
   return `ルートは${a < 35 ? "前" : a > 145 ? "うしろ" : d > 0 ? "右" : "左"}の方向、${m}メートルです`;
 }
+let offSince = 0;   // 🤖 外れはじめた時刻（自動でルートにもどる用）
 function backHint(off) {
   const show = follow && me && off > 60 && cur && !cur.partial;
   backLayer.clearLayers();
   $("rjBtn").style.display = show && !(job && job.rejoin) ? "block" : "none";
+  // 🤖 自動：外れたまま3秒たったら、「ルートにもどる」を1回だけ押す（計算中は押さない）
+  if (!show || !$("simAutoRj").checked) offSince = 0;
+  else if (!offSince) offSince = Date.now();
+  else if (Date.now() - offSince >= 3000 && !job) { offSince = 0; $("rjBtn").onclick(); }
   if (!show) return;
   const q = backNear(); if (q) L.polyline([me.getLatLng(), q], { color: "#1a73e8", weight: 4, dashArray: "6 8", opacity: .9, interactive: false }).addTo(backLayer);
   $("rjBtn").textContent = vcJoined ? `↩ ルートにもどる（${fmtKm(off)}）` : `🚲 ルートまでの道を作る（${fmtKm(off)}）`;
