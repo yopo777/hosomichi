@@ -235,6 +235,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // 1マスの取得。8秒返事がなければ次のサーバーにも同時にたのみ（かけもち）、早く返ってきた方を使う
 const HEDGE_MS = 8000, TRY_TIMEOUT = 45000;
 let cancelFetch = false;   // ルートができた後など、もういらない取得をやめる
+let wanderG = null, wanderJ = [], wanderHash = null;   // 🧭 ためし走行：いちばん新しいルートの道のつながり（Worker に残す）・分かれ道の一覧・点→番号
 async function fetchOSM(b, prog, start = 0, quick = false, tag = "") {
   const body = "data=" + encodeURIComponent(overpassQuery(b));
   const urls = OVERPASS_URLS.map((_, i) => OVERPASS_URLS[(i + start) % OVERPASS_URLS.length]);
@@ -2728,6 +2729,7 @@ async function routeOnce(req, prog, partial) {
         log(`確定: +${(a.len / 1000).toFixed(2)}km（合計 ${(confLen / 1000).toFixed(2)}km）曲がる ${a.turns}回・信号 ${a.ok.length}・横断歩道 ${a.xw.length}・ルール外 ${a.ng.length}`, a.ng.length ? "w" : "ok");
       } else if (!final) log("今回は確定できる所がなかった（先のデータ待ち）");
       lastGraph = { G, sn: G.idx.get(G.ids[path[0]]) };
+      wanderG = G;   // 🧭 ためし走行：わざと外れるとき、この道のつながりを使う
       if (final) break;
       const tentPts = tent.map(i => [G.lat[i], G.lon[i]]);
       partial({ route: conf.slice(), ek: ek.slice(), tent: tentPts, ok: ok.slice(), xw: xw.slice(), ng: ng.slice(), xvia: xvia.slice(), tp: tp.slice(), kinds: { ...kinds }, turns, len: confLen,
@@ -2830,6 +2832,43 @@ async function routeOnce(req, prog, partial) {
 // 「ただの最短」はくらべる用。順番に確定する方式では出さない
 function shortest() { return null; }
 
+// ---------- 🧭 ためし走行：分かれ道で わざとルートを外れる ----------
+const wKey = (la, lo) => la.toFixed(7) + "," + lo.toFixed(7);
+function wanderIndex(G) {   // 点（緯度・経度）→ 道の番号（いちどだけ作る）
+  if (!wanderHash || wanderHash.G !== G) { const m = new Map(); for (let i = 0; i < G.lat.length; i++) if (G.inGraph[i]) m.set(wKey(G.lat[i], G.lon[i]), i); wanderHash = { G, m }; }
+  return wanderHash.m;
+}
+// ルートの点のうち、ルート以外にも道がつながる交差点（3方向以上）を 一覧にする。返すのは［ルートの何番目の点・ルート以外へ行ける道の数］
+function wanderJunctions(pts) {
+  const G = wanderG; wanderJ = [];
+  if (!G || !Array.isArray(pts)) return { junc: [] };
+  const M = wanderIndex(G), ix = pts.map(p => M.get(wKey(p[0], p[1])));
+  for (let k = 1; k < pts.length - 1; k++) {
+    const u = ix[k], pv = ix[k - 1], nx = ix[k + 1];
+    if (u === undefined || pv === undefined || nx === undefined || !G.adj[u]) continue;
+    const nb = [...new Set(G.adj[u].map(e => e.v))];
+    if (nb.length < 3) continue;
+    const br = nb.filter(v => v !== pv && v !== nx && v !== u);
+    if (br.length) wanderJ.push({ k, u, br });
+  }
+  return { junc: wanderJ.map(j => ({ k: j.k, n: j.br.length })) };
+}
+// 分かれ道 j の、br[b] の道へ入って、ランダムに lenM 分走る（Uターンはしない）。点の列［緯度,経度］を返す
+function wanderWalkOne(j, b, lenM) {
+  const G = wanderG, J = wanderJ[j];
+  if (!G || !J || J.br[b] === undefined) return { pts: [] };
+  let prev = J.u, cur = J.br[b], d = 0, guard = 0;
+  const pts = [[G.lat[prev], G.lon[prev]], [G.lat[cur], G.lon[cur]]];
+  while (d < lenM && guard++ < 3000) {
+    const opts = (G.adj[cur] || []).filter(e => e.v !== prev && G.inGraph[e.v]);
+    if (!opts.length) break;
+    const e = opts[Math.floor(Math.random() * opts.length)];
+    d += hav(G.lat[cur], G.lon[cur], G.lat[e.v], G.lon[e.v]);
+    pts.push([G.lat[e.v], G.lon[e.v]]); prev = cur; cur = e.v;
+  }
+  return { pts };
+}
+
 if (typeof self !== "undefined" && typeof self.postMessage === "function" && typeof module === "undefined") {
   logFn = m => self.postMessage({ type: "log", ...m });
   self.onmessage = async ev => {
@@ -2852,6 +2891,8 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
       if (d.cmd === "slopeView") { okPts = Array.isArray(d.oks) ? d.oks : []; const r = await slopeView(d.bb); return self.postMessage({ type: "slopeView", ...r }); }
       if (d.cmd === "oneway") { const r = await onewayIn(d.bb); return self.postMessage({ type: "oneway", id: d.id, ...r }); }
       if (d.cmd === "jarSig") { const r = await jarSigIn(d.bb, d.cfg).catch(e => ({ err: e.message, sigs: [] })); return self.postMessage({ type: "jarSig", id: d.id, who: d.who, ...r }); }
+      if (d.cmd === "wanderPrep") return self.postMessage({ type: "wanderPrep", id: d.id, ...wanderJunctions(d.pts) });   // 🧭 分かれ道の一覧
+      if (d.cmd === "wander") return self.postMessage({ type: "wander", id: d.id, ...wanderWalkOne(d.j, d.b, d.len) });   // 🧭 外れた道を走る点の列
       if (d.cmd === "dbgView") { const r = await dbgView(d.bb, d.cfg, d.opt).catch(e => ({ err: e.message })); return self.postMessage({ type: "dbgView", id: d.id, tag: d.tag, ...r }); }
       if (d.cmd === "autoPf") {
         pfStop = false;
@@ -2897,4 +2938,4 @@ if (typeof self !== "undefined" && typeof self.postMessage === "function" && typ
     }
   };
 }
-if (typeof module !== "undefined") module.exports = { dbgView, _mem: () => mem, _setPaint: (k, p) => { paintedSet = new Set(k); PAINT_PEN = p; }, applySlope, demCache, heightAt, demXY, tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
+if (typeof module !== "undefined") module.exports = { wanderJunctions, wanderWalkOne, setWanderG: g => { wanderG = g; }, dbgView, _mem: () => mem, _setPaint: (k, p) => { paintedSet = new Set(k); PAINT_PEN = p; }, applySlope, demCache, heightAt, demXY, tileEls, nearestGood, shortest, padFor, buildGraph, dijkstra, analyze, nearest, route, isWide, wayCost, overpassQuery, tilesFor, DEFAULT_CFG };
