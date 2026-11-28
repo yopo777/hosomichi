@@ -5095,12 +5095,16 @@ function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルー�
   if (m.type !== "done") { setMsg(m.type === "error" ? "もどる道が見つからなかったよ：" + m.msg : "止めたよ", m.type === "error"); return; }
   const rest = old.route.slice(ti), mr = m.route || [];
   let rl = 0; for (let i = 1; i < rest.length; i++) rl += hav(rest[i - 1], rest[i]);
-  const kc = old.kc && m.ek ? m.ek.map(kcOf).concat([old.kc[ti - 1] ?? old.kc[ti] ?? kcOf(m.ek[m.ek.length - 1])], old.kc.slice(ti)) : null;
+  // 残すのは「合流の点から先」だけ。古いルートの、合流より手前の印（信号・横断・ルール外）は、もう線がないので外す
+  const keep = p => rest.some(q => hav(q, p) < 3);
+  // 色分け：いまの位置→出発の点の直線（ひとつ目）＋合流の道の辺＋合流の辺＋残りの辺。辺の数をルートの点の数に合わせる
+  const headK = from && mr.length && m.ek && m.ek.length ? [kcOf(m.ek[0])] : [];
+  const kc = old.kc && m.ek ? headK.concat(m.ek.map(kcOf), [old.kc[ti - 1] ?? old.kc[ti] ?? kcOf(m.ek[m.ek.length - 1])], old.kc.slice(ti)) : null;
   const tp = old.tp && m.tp ? m.tp.concat(old.tp.filter(t => rest.some(q => hav(q, t) < 3))) : null;
   const head = from ? [from] : [];   // いまの位置から、出発の点までの直線
   if (from && mr.length) rl += hav(from, mr[0]);
   const n = { ...old, route: head.concat(mr, rest), kc, ek: undefined, tp, opts: null, short: null, slen: 0, resume: null, partial: false, tent: null,
-    ok: (m.ok || []).concat(old.ok || []), xw: (m.xw || []).concat(old.xw || []), ng: (m.ng || []).concat(old.ng || []), xvia: (m.xvia || []).concat(old.xvia || []), len: (m.len || 0) + rl };
+    ok: (m.ok || []).concat((old.ok || []).filter(keep)), xw: (m.xw || []).concat((old.xw || []).filter(keep)), ng: (m.ng || []).concat((old.ng || []).filter(keep)), xvia: (m.xvia || []).concat((old.xvia || []).filter(v => keep([v[0], v[1]]) || keep([v[2], v[3]]))), len: (m.len || 0) + rl };
   if (kc && kc.length !== n.route.length - 1) n.kc = null;
   showRoute(n, false); lsSet(LKEY, packRoute(n));
   setMsg(`↩ ルートにもどる道を作ったよ（合流まで ${fmtKm(m.len || 0)}）`); addLog(`↩ 合流まで ${fmtKm(m.len || 0)}`, "ok");
