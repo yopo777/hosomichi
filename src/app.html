@@ -2237,6 +2237,11 @@ $("simGo").onclick = async () => {
   const dt = 250;
   $("simGo").textContent = "⏸ 一時停止";   // パネルはそのまま（一時停止・速さをすぐ変えられるように）
   simT = setInterval(() => {
+    if (!cur || !cur.nav || cur.nav.length < 2) {   // ルートを消したら、ためし走行もやめる（2本目の線も消す）
+      devPath = null; simPause(); devReset(); simD = 0; simFor = null;
+      if (fakePos) setFake(null);   // 本当の現在地にもどす
+      return addLog("🧪 ルートがなくなったので、ためし走行をやめて、本当の現在地にもどしたよ", "w");
+    }
     if (simFor !== cur && cur && cur.nav && cur.nav.length > 1) {   // 走っている途中でルートが変わった（↩ ルートにもどる など）→ 新しいルートの、いちばん近い所からつづける
       simFor = cur; build(); const h = fakePos; let bi = 0, bd = Infinity; for (let i = 0; i < R.length; i++) { const d = hav(R[i], h); if (d < bd) { bd = d; bi = i; } } simD = c[bi];
     }

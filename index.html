@@ -228,7 +228,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1128.1610</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1128.1627</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3983,7 +3983,7 @@ async function myExportBlob(pw) {   // 暗号化した中身（.enc）を作る�
     const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
     const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
   }
-  const out = { app: "hosomichi", kind: "mydata", ver: "1128.1610", at: new Date().toISOString(),
+  const out = { app: "hosomichi", kind: "mydata", ver: "1128.1627", at: new Date().toISOString(),
     localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
   {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
     const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5147,6 +5147,11 @@ $("simGo").onclick = async () => {
   const dt = 250;
   $("simGo").textContent = "⏸ 一時停止";   // パネルはそのまま（一時停止・速さをすぐ変えられるように）
   simT = setInterval(() => {
+    if (!cur || !cur.nav || cur.nav.length < 2) {   // ルートを消したら、ためし走行もやめる（2本目の線も消す）
+      devPath = null; simPause(); devReset(); simD = 0; simFor = null;
+      if (fakePos) setFake(null);   // 本当の現在地にもどす
+      return addLog("🧪 ルートがなくなったので、ためし走行をやめて、本当の現在地にもどしたよ", "w");
+    }
     if (simFor !== cur && cur && cur.nav && cur.nav.length > 1) {   // 走っている途中でルートが変わった（↩ ルートにもどる など）→ 新しいルートの、いちばん近い所からつづける
       simFor = cur; build(); const h = fakePos; let bi = 0, bd = Infinity; for (let i = 0; i < R.length; i++) { const d = hav(R[i], h); if (d < bd) { bd = d; bi = i; } } simD = c[bi];
     }
