@@ -370,7 +370,6 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
         <b>🧪 ためし走行</b>
         <div style="font-size:11px;color:#666;margin-top:2px">作ったルートの上を ためしに自動で走るよ（テスト用）<span class="hq">?</span><div class="hd">🚲ルートタブで作ったルートの上を、ためしの現在地で自動で走るよ（GPSは使わないよ）。一時停止して、つづきから走れるよ。音声案内・スタンプ・📣SNSのテスト用。終わったら地図を長おし →「本当の現在地にもどす」</div></div>
         <div class="btns" style="margin-top:4px;align-items:center"><select id="simSp" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="5">ふつう（時速18km）</option><option value="25" selected>×5</option><option value="100">×20</option><option value="400">×80</option></select>
-          <select id="simDev" title="分かれ道ごとに、ルートを外れる確率" style="padding:6px;border:1px solid #ccc;border-radius:8px"><option value="0" selected>🧭 外れない</option><option value="3">🧭 外れる 3%</option><option value="10">🧭 外れる 10%</option><option value="30">🧭 外れる 30%</option></select>
           <button class="ib" id="simGo" style="font-size:12px">▶ 走る</button><button class="ib" id="simStop" style="font-size:12px">⏮ はじめから</button></div>
         <div style="font-size:11px;color:#888;margin-top:2px">⌨ パソコン：<b>Ctrl＋Alt＋Space</b>＝走る／一時停止</div>
         <div class="btns" style="margin-top:6px"><button class="ib" id="simWipe" style="font-size:12px;color:#c5221f">🧪 ためしの軌跡と足あとを消す（本物はのこす）</button></div>
@@ -1293,7 +1292,7 @@ worker.onmessage = ev => {
   if (m.type === "dbgView") { if (m.tag === "rw") rwDraw(m); else dbgDraw(m); return; }
   if (m.type === "jarSig") { if (m.who === "spot") spotJarDraw(m); else jarSigDraw(m); return; }
   if (m.type === "footLive") { footLiveGot(m.segs || []); return; }
-  if (m.type === "wanderPrep" || m.type === "wander") { const f = wanderCb.get(m.id); wanderCb.delete(m.id); if (f) f(m); return; }   // 🧭 ためし走行の外れる道
+  if (m.type === "altRoute") { const f = wanderCb.get(m.id); wanderCb.delete(m.id); if (f) f(m); return; }   // 🧭 ためし走行の外れる道
   if (m.type === "footMatch") { const f = footCb.get(m.id); footCb.delete(m.id); if (f) f(m.segs || []); return; }
   if (m.type === "packinfo") { packKeys = m.keys.concat(m.empty).map(n => "0.01:" + n.replace("_", ",")); drawArea(); return; }
   if (m.type === "pk") { onPk(m); return; }
@@ -2180,14 +2179,28 @@ $("bCopy").onclick = async () => { updateShare(); if (!confirmShare()) return; t
 $("bSys").onclick = () => { updateShare(); if (!confirmShare()) return; if (navigator.share) navigator.share({ title: "細道ルート", url: $("url").value }).catch(() => {}); else $("bCopy").click(); };
 // ---------- 🧪 ためし走行：ルートの上を ためしの現在地 で自動で動かす ----------
 let simT = null, simD = 0, simFor = null;
-// 🧭 ためし走行：分かれ道で わざとルートを外れる（外れる率は パネルの 🧭）。分かれ道の一覧は Worker（wanderPrep）から もらう
-let devRate = 0, devJ = null, devNext = 0, devPath = null, devBusy = false, devFor = null;
-function devReset() { devJ = null; devNext = 0; devPath = null; devBusy = false; devFor = null; }
+// 🧭 わざと外れる：いちばん新しいルートと、曲がりペナルティをかえた2本目のルート（Worker で計算）をくらべて、ちがう道を走る
+let devPath = null, altR = null, altMain = null, devFor = null;
+const keyOf = p => p[0].toFixed(7) + "," + p[1].toFixed(7);
+// 2本目のルートで、いま居る所から 1本目とちがう道（点が1本目にない所）を通る部分。1本目にもどる点（番号）つき
+function altSeg() {
+  if (!altR || !altMain) return null;
+  let ia = -1, bd = 40;
+  for (let i = 0; i < altR.length; i++) { const d = hav(altR[i], fakePos); if (d < bd) { bd = d; ia = i; } }
+  if (ia < 0 || ia + 1 >= altR.length || altMain.has(keyOf(altR[ia + 1]))) return null;   // ちがう道が始まっていない
+  let ib = -1;
+  for (let j = ia + 1; j < altR.length; j++) if (altMain.has(keyOf(altR[j]))) { ib = j; break; }
+  if (ib < 0) return null;
+  const P = devStart([fakePos, ...altR.slice(ia + 1, ib + 1)]);
+  P.rk = altMain.get(keyOf(altR[ib]));
+  return P;
+}
+function devReset() { devPath = null; devFor = null; altR = null; altMain = null; }
 const wanderCb = new Map(); let wanderCbN = 0;
 function wanderCall(cmd, o) { return new Promise(ok => { const id = ++wanderCbN; wanderCb.set(id, ok); worker.postMessage({ cmd, id, ...o }); }); }
 function devStart(pts) { const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + hav(pts[i - 1], pts[i])); return { pts, cum, d: 0 }; }
 function devAt(P) { const d = P.d, cum = P.cum; let i = 1; while (i < cum.length - 1 && cum[i] < d) i++; const u = Math.min(1, (d - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1)); return [P.pts[i - 1][0] + (P.pts[i][0] - P.pts[i - 1][0]) * u, P.pts[i - 1][1] + (P.pts[i][1] - P.pts[i - 1][1]) * u]; }
-// 外れたあと：いちばん近いルートの点（うしろには戻らない）からつづける
+// 外れたあと：いちばん近いルートの点（うしろには戻らない）からつづける（見つからないときだけ使う）
 function devRejoin(R, c, from) { let bi = 0, bd = Infinity; for (let i = 0; i < R.length; i++) { if (c[i] < from - 100) continue; const d = hav(R[i], fakePos); if (d < bd) { bd = d; bi = i; } } return c[bi]; }
 function simPause() { clearInterval(simT); simT = null; if (fakePos) lsSet("hosomichi_fake", fakePos); $("simGo").textContent = simD > 0 ? "▶ つづきから" : "▶ 走る"; }
 $("simStop").onclick = () => { simPause(); simD = 0; simFor = null; devReset(); $("simGo").textContent = "▶ 走る"; };
@@ -2205,14 +2218,13 @@ $("simGo").onclick = async () => {
     await $("gps").onclick();
     if (wasOpen) { $("panel").classList.remove("min"); $("tog").textContent = "たたむ"; }
   } else feedFake();
-  devRate = +$("simDev").value / 100;
-  if (devRate > 0 && (devFor !== cur || !devJ)) {   // 分かれ道の一覧を Worker にたのむ（ルートがかわったときだけ）
-    devFor = cur; devJ = null; devNext = 0; devPath = null;
-    const r = await wanderCall("wanderPrep", { pts: R });
-    devJ = r.junc || [];
-    if (r.err) addLog("🧭 分かれ道のしらべに失敗: " + r.err, "e");
-    else addLog(devJ.length ? `🧭 分かれ道 ${devJ.length}か所（外れる率 ${devRate * 100}%）` : "🧭 分かれ道が見つからなかったよ（ルートの点と道のデータが合わない？）", devJ.length ? "i" : "w");
-  } else if (devRate === 0) devJ = null;
+  if (devFor !== cur) {   // 2本目のルートは、ルートがかわったときに作る（曲がりペナルティだけかえて・同じ出発と目的地）
+    devFor = cur; altR = null; altMain = null;
+    addLog("🧭 2本目のルートを作っているよ（曲がりペナルティをかえて計算）…", "i");
+    const a = await wanderCall("altRoute", {});
+    if (a.route && a.route.length > 1) { altR = a.route; altMain = new Map(R.map((p, i) => [keyOf(p), i])); addLog(`🧭 2本目のルートができたよ（${a.route.length}点）`, "ok"); }
+    else addLog("🧭 2本目のルートはできなかったよ（今回は外れないで走るよ）", "w");
+  }
   const dt = 250;
   $("simGo").textContent = "⏸ 一時停止";   // パネルはそのまま（一時停止・速さをすぐ変えられるように）
   simT = setInterval(() => {
@@ -2220,29 +2232,14 @@ $("simGo").onclick = async () => {
       simFor = cur; build(); const h = fakePos; let bi = 0, bd = Infinity; for (let i = 0; i < R.length; i++) { const d = hav(R[i], h); if (d < bd) { bd = d; bi = i; } } simD = c[bi];
     }
     const v = +$("simSp").value;   // m/秒（走っている途中で速さを変えてもOK）
-    if (devPath) {   // わざと外れている途中：ルート以外の道を走る
+    if (devPath) {   // わざと外れている途中：2本目のちがう道を走る
       devPath.d += v * dt / 1000;
       if (devPath.d < devPath.cum[devPath.cum.length - 1]) { fakePos = devAt(devPath); feedFake(); return; }
-      // もどった先（道づたいで着いたルートの点）からつづける。見つからなかったときだけ、いちばん近い点へ
-      simD = devPath.rk >= 0 ? c[devPath.rk] : devRejoin(R, c, simD);
+      simD = devPath.rk >= 0 ? c[devPath.rk] : devRejoin(R, c, simD);   // 1本目のもどった点からつづける
       devPath = null;
-      if (devJ) while (devNext < devJ.length && c[devJ[devNext].k] < simD) devNext++;   // 外れている間に通りすぎた分かれ道は飛ばす
-    } else if (devJ && !devBusy) {
-      if (devNext < devJ.length && c[devJ[devNext].k] <= simD) {   // 分かれ道を通った → 外れるかサイコロ
-        const j = devNext++;
-        if (Math.random() < devRate) {
-          devBusy = true;
-          const b = Math.floor(Math.random() * devJ[j].n), len = Math.round(50 + Math.random() * 250);
-          addLog(`🧭 分かれ道で ルートを外れるよ（${devJ[j].n}本のうち${b + 1}本目・${len}m）`, "w");
-          const kk = devJ[j].k;   // もどり先は、この分かれ道の先のルートの点
-          wanderCall("wander", { j, b, len, ahead: R.slice(kk + 1, kk + 201) }).then(r => {
-            devBusy = false;
-            if (r.err) addLog("🧭 外れる道のしらべに失敗: " + r.err, "e");
-            else if (r.pts && r.pts.length > 1) { devPath = devStart(r.pts); devPath.rk = r.ri >= 0 ? kk + 1 + r.ri : -1; }
-          });
-        }
-        return;
-      }
+    } else if (altR) {
+      const P = altSeg();   // いま、2本目が1本目とちがう道を通っている所か
+      if (P) { devPath = P; addLog(`🧭 2本目の道で ルートを外れるよ（${Math.round(P.cum[P.cum.length - 1])}m）`, "w"); return; }
     }
     simD = Math.min(c[c.length - 1], simD + v * dt / 1000);
     fakePos = at(simD); feedFake();
