@@ -228,7 +228,7 @@ const GC_SHARED = location.hash.includes("r=");   // 共有URL・QRで開かれ�
 <div id="map"></div>
 <div id="ring"></div>
 <div id="panel">
-  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1128.2253</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
+  <div id="head"><button id="fs" title="全画面">⛶</button><span class="t">🚲 ほそみちナビ(無料)<small style="font-weight:normal;font-size:11px">（関東・関西・中京版）</small> <small id="ver" style="font-weight:normal;font-size:11px;color:#999">v1128.2331</small> <small id="today" style="font-weight:normal;font-size:11px;color:#999"></small><small id="mini"></small></span><button id="stop" title="計算を止める" style="display:none">■ 止める</button><button id="tog">たたむ</button></div>
   <div id="prog"><div id="bar"><div></div></div><div id="msg"></div></div>   <!-- ゲージはどのタブでも見える -->
   <div class="body">
     <div id="topBar" style="display:flex;gap:6px;align-items:center;margin:2px 0 6px">   <!-- どのタブでも出す：🔍 地名さがし ＋ 🗑 ルート消去 -->
@@ -3984,7 +3984,7 @@ async function myExportBlob(pw) {   // 暗号化した中身（.enc）を作る�
     const k = localStorage.key(i); if (!k || !k.startsWith("hosomichi_")) continue;
     const v = localStorage.getItem(k); try { ls[k] = JSON.parse(v); } catch { ls[k] = v; lsRaw.push(k); }
   }
-  const out = { app: "hosomichi", kind: "mydata", ver: "1128.2253", at: new Date().toISOString(),
+  const out = { app: "hosomichi", kind: "mydata", ver: "1128.2331", at: new Date().toISOString(),
     localStorage: ls, lsRaw, hist: await idbDump("hosomichi_hist", "days"), foot: await idbDump("hosomichi_foot", "kv") };
   {   // 📷 写真（Blob）は JSON に入らないので、data:URL の文字にする
     const toUrl = b => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(b); });
@@ -5139,7 +5139,7 @@ $("simGo").onclick = async () => {
   useAlt = wantAlt && !!altR;   // 👻 影のルートを走るとき（外れる動きはしない）
   build();
   if (simFor !== cur || simD >= c[c.length - 1]) { simFor = cur; simD = 0; }   // ルートが変わった・最後まで走った → はじめから
-  setFake(at(simD));
+  setFake(devPath ? devAt(devPath) : at(simD));   // 外れている途中で止めたら、外れた道の続きから（ワープ防止）
   if (wid === null) {   // ◎ を押すとパネルがたたまれるので、もとにもどす
     const wasOpen = !$("panel").classList.contains("min");
     await $("gps").onclick();
@@ -5154,7 +5154,7 @@ $("simGo").onclick = async () => {
       return addLog("🧪 ルートがなくなったので、ためし走行をやめて、本当の現在地にもどしたよ", "w");
     }
     if (simFor !== cur && cur && cur.nav && cur.nav.length > 1) {   // 走っている途中でルートが変わった（↩ ルートにもどる など）→ 新しいルートの、いちばん近い所からつづける
-      simFor = cur; build(); const h = fakePos; let bi = 0, bd = Infinity; for (let i = 0; i < R.length; i++) { const d = hav(R[i], h); if (d < bd) { bd = d; bi = i; } } simD = c[bi];
+      simFor = cur; build(); const h = fakePos; let bi = 0, bd = Infinity; for (let i = 0; i < R.length; i++) { if (c[i] < simD - 150) continue; const d = hav(R[i], h); if (d < bd) { bd = d; bi = i; } } simD = c[bi];   // うしろ（150m より前）には もどらない（ワープ防止）
     }
     const v = +$("simSp").value;   // m/秒（走っている途中で速さを変えてもOK）
     if (devPath) {   // わざと外れている途中：2本目のちがう道を走る
@@ -7982,22 +7982,30 @@ function backHint(off) {
 $("rjBtn").onclick = () => {
   if (!cur || !me || (job && !job.rejoin && $("go").disabled)) return;
   const old = cur, R = old.route, h = [me.getLatLng().lat, me.getLatLng().lng];
-  let ti = cum.findIndex(c => c >= (navAlong || 0) + 400); if (ti < 0 || ti >= R.length) ti = R.length - 1;   // 400m先で合流
-  job = { g: R[ti], cfg: structuredClone(cfg), prefix: null, loop: 0, rejoin: { old, ti } };
-  $("rjBtn").style.display = "none"; setMsg("↩ ルートにもどる道をさがしているよ…"); addLog("↩ ルートにもどる道をさがすよ（400m先で合流）", "h");
+  const along = navAlong || 0, offNow = nearestOnRoute(h)[0] || 0;
+  // 出発：ルートの上で、いまの進み具合から「外れた距離」か100m、大きいほう先（うしろには戻らない）
+  let si = cum.findIndex(c => c >= along + Math.max(100, offNow)); if (si < 0 || si >= R.length) si = R.length - 1;
+  // 合流：いまの進み具合から500m先
+  let ti = cum.findIndex(c => c >= along + 500); if (ti < 0 || ti >= R.length) ti = R.length - 1;
+  if (si >= ti) si = Math.max(0, ti - 1);
+  job = { g: R[ti], cfg: structuredClone(cfg), prefix: null, loop: 0, rejoin: { old, ti, from: h } };
+  $("rjBtn").style.display = "none"; $("stop").style.display = ""; setMsg("↩ ルートにもどる道をさがしているよ…");   // 計算を「■ 止める」で止められるように
+  addLog("↩ ルートにもどる道をさがすよ（100m先から500m先で合流）", "h");
   $("go").disabled = $("msnGo").disabled = true; tStart = Date.now(); lastProg = { stage: 1, msg: "↩ ルートにもどる道" };
   clearInterval(tickTimer); tickTimer = setInterval(showProg, 250);
-  rtDrop = false; worker.postMessage({ s: h, g: R[ti], cfg: job.cfg, blocks: blocks.filter(b => !BLK_SOFT(b.r)).map(b => b.p), oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: 0, poi: null, via: null });
+  rtDrop = false; worker.postMessage({ s: R[si], g: R[ti], cfg: job.cfg, blocks: blocks.filter(b => !BLK_SOFT(b.r)).map(b => b.p), oks: blocks.filter(b => BLK_FIX(b.r)).map(b => [...b.p, b.r]), avoids: blocks.filter(b => b.r === "a").map(b => b.p), prefers: blocks.filter(b => b.r === "w").map(b => b.p), loop: 0, poi: null, via: null });
 };
 function rejoinEnd(m) {   // 合流の道 ＋ 合流した所から先のルート
-  const { old, ti } = job.rejoin; job = null;
+  const { old, ti, from } = job.rejoin; job = null;
   clearInterval(tickTimer); $("go").disabled = $("msnGo").disabled = false; $("stop").style.display = "none";
   if (m.type !== "done") { setMsg(m.type === "error" ? "もどる道が見つからなかったよ：" + m.msg : "止めたよ", m.type === "error"); return; }
   const rest = old.route.slice(ti), mr = m.route || [];
   let rl = 0; for (let i = 1; i < rest.length; i++) rl += hav(rest[i - 1], rest[i]);
   const kc = old.kc && m.ek ? m.ek.map(kcOf).concat([old.kc[ti - 1] ?? old.kc[ti] ?? kcOf(m.ek[m.ek.length - 1])], old.kc.slice(ti)) : null;
   const tp = old.tp && m.tp ? m.tp.concat(old.tp.filter(t => rest.some(q => hav(q, t) < 3))) : null;
-  const n = { ...old, route: mr.concat(rest), kc, ek: undefined, tp, opts: null, short: null, slen: 0, resume: null, partial: false, tent: null,
+  const head = from ? [from] : [];   // いまの位置から、出発の点までの直線
+  if (from && mr.length) rl += hav(from, mr[0]);
+  const n = { ...old, route: head.concat(mr, rest), kc, ek: undefined, tp, opts: null, short: null, slen: 0, resume: null, partial: false, tent: null,
     ok: (m.ok || []).concat(old.ok || []), xw: (m.xw || []).concat(old.xw || []), ng: (m.ng || []).concat(old.ng || []), xvia: (m.xvia || []).concat(old.xvia || []), len: (m.len || 0) + rl };
   if (kc && kc.length !== n.route.length - 1) n.kc = null;
   showRoute(n, false); lsSet(LKEY, packRoute(n));
